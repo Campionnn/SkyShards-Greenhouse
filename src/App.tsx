@@ -8,6 +8,7 @@ import { CropMutationInfoModal } from "./components/calculator/CropMutationInfoM
 
 const CalculatorPage = lazy(() => import("./pages/CalculatorPage").then((module) => ({ default: module.CalculatorPage })));
 const DesignerPage = lazy(() => import("./pages/DesignerPage").then((module) => ({ default: module.DesignerPage })));
+const ProfitPage = lazy(() => import("./pages/ProfitPage").then((module) => ({ default: module.ProfitPage })));
 const AboutPage = lazy(() => import("./pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const ContactPage = lazy(() => import("./pages/ContactPage").then((module) => ({ default: module.ContactPage })));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
@@ -73,6 +74,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<LoadingSpinner />}>
             <DesignerPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "profit",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <ProfitPage />
           </Suspense>
         ),
       },

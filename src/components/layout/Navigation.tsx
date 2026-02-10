@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Calculator, Palette, Menu, X, ExternalLink } from "lucide-react";
+import { Calculator, Palette, Coins, Menu, X, ExternalLink } from "lucide-react";
 
 export const Navigation: React.FC = () => {
   const location = useLocation();
@@ -9,6 +9,7 @@ export const Navigation: React.FC = () => {
   const navItems = [
     { path: "/", label: "Calculator", icon: Calculator },
     { path: "/designer", label: "Designer", icon: Palette },
+    { path: "/profit", label: "Profit", icon: Coins },
   ];
 
   return (
@@ -29,10 +30,15 @@ export const Navigation: React.FC = () => {
             {navItems.map(({ path, label, icon: Icon }) => {
               const isActive = location.pathname === path;
               const isDesigner = path === "/designer";
+              const isProfit = path === "/profit";
               const colorClasses = isDesigner
                 ? (isActive 
                     ? "bg-blue-500/30 text-blue-300 border border-blue-500/40 ring-1 ring-offset-0 ring-blue-400"
                     : "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/20 hover:border-blue-500/30")
+                : isProfit
+                ? (isActive 
+                    ? "bg-amber-500/30 text-amber-300 border border-amber-500/40 ring-1 ring-offset-0 ring-amber-400"
+                    : "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/20 hover:border-amber-500/30")
                 : (isActive 
                     ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 ring-1 ring-offset-0 ring-emerald-400"
                     : "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/20 hover:border-emerald-500/30");
@@ -77,10 +83,15 @@ export const Navigation: React.FC = () => {
               {navItems.map(({ path, label, icon: Icon }) => {
                 const isActive = location.pathname === path;
                 const isDesigner = path === "/designer";
+                const isProfit = path === "/profit";
                 const colorClasses = isDesigner
                   ? (isActive 
                       ? "bg-blue-500/30 text-blue-300 border border-blue-500/40 ring-1 ring-offset-0 ring-blue-400"
                       : "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/20 hover:border-blue-500/30")
+                  : isProfit
+                  ? (isActive 
+                      ? "bg-amber-500/30 text-amber-300 border border-amber-500/40 ring-1 ring-offset-0 ring-amber-400"
+                      : "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/20 hover:border-amber-500/30")
                   : (isActive 
                       ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 ring-1 ring-offset-0 ring-emerald-400"
                       : "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/20 hover:border-emerald-500/30");
