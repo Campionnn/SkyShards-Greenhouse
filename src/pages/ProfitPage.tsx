@@ -384,7 +384,7 @@ export const ProfitPage: React.FC = () => {
             label="Unique Crops"
             value={params.unique_crop_count}
             onChange={(v) => updateParam("unique_crop_count", v)}
-            min={1}
+            min={0}
             max={12}
             step={1}
             description="1-12"
