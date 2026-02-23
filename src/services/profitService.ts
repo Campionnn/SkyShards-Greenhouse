@@ -79,7 +79,7 @@ export async function fetchOptimalProfits(
   params: ProfitParams,
   abortSignal?: AbortSignal
 ): Promise<OptimalProfitResponse> {
-  const response = await fetch(`${API_BASE}/profit/optimal`, {
+  const response = await fetch(`${API_BASE}/greenhouse/profit/optimal`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ params }),
@@ -102,7 +102,7 @@ export async function fetchLayoutProfit(
   mutationCounts: Record<string, number>,
   abortSignal?: AbortSignal
 ): Promise<LayoutProfitResponse> {
-  const response = await fetch(`${API_BASE}/profit/layout`, {
+  const response = await fetch(`${API_BASE}/greenhouse/profit/layout`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
