@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, type RefObject } from "react";
-import { Save, FolderOpen, Share2, Clipboard, Trash2, RotateCcw, Layers, X, Image, Film, Download, ClipboardCopy, Loader2 } from "lucide-react";
+import { Save, FolderOpen, Share2, Clipboard, Trash2, RotateCcw, Layers, X, Image, Film, Download, ClipboardCopy, Loader2, Gamepad2 } from "lucide-react";
 
 // API base URL for share links
 const SHARE_BASE_URL = "https://api.skyshards.com/share";
@@ -7,6 +7,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useDesigner, useGreenhouseData } from "../../context";
 import { useToast } from "../ui/toastContext";
 import { encodeDesign, decodeDesign } from "../../utilities";
+import {
+  generateModExportJSON,
+  exportModJSONToClipboard,
+  exportModJSONToFile,
+} from "../../utilities/modExport";
 import { 
   loadLayouts, 
   saveLayouts,
@@ -54,7 +59,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     selectedCropForPlacement,
     setSelectedCropForPlacement,
   } = useDesigner();
-  const { getCropDef, getMutationDef } = useGreenhouseData();
+  const { crops, mutations, getCropDef, getMutationDef } = useGreenhouseData();
   const { toast } = useToast();
   
   // State for modals
@@ -542,6 +547,44 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       handleDownload();
     }
   }, [currentExportBlob, toast, resetExportState, handleDownload]);
+
+  // --- Mod export handlers ---
+
+  const handleModExportToClipboard = useCallback(async () => {
+    const json = generateModExportJSON(inputPlacements, targetPlacements, crops, mutations);
+    const success = await exportModJSONToClipboard(json);
+
+    if (success) {
+      toast({
+        title: "Copied for mod!",
+        description: "Paste in-game with /greenhouse import clipboard",
+        variant: "success",
+        duration: 4000,
+      });
+    } else {
+      toast({
+        title: "Clipboard unavailable",
+        description: "Downloading as file instead...",
+        variant: "warning",
+        duration: 3000,
+      });
+      handleModExportToFile();
+    }
+  }, [inputPlacements, targetPlacements, crops, mutations, toast]);
+
+  const handleModExportToFile = useCallback(() => {
+    const json = generateModExportJSON(inputPlacements, targetPlacements, crops, mutations);
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `skyshards-layout-${timestamp}.json`;
+    exportModJSONToFile(json, filename);
+
+    toast({
+      title: "Layout downloaded!",
+      description: `Saved as ${filename}`,
+      variant: "success",
+      duration: 3000,
+    });
+  }, [inputPlacements, targetPlacements, crops, mutations, toast]);
   
   const totalPlacements = inputPlacements.length + targetPlacements.length;
   
@@ -721,6 +764,30 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
               </>
             )}
           </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Export for Mod Section */}
+      <div className="space-y-2">
+        <div className="text-xs text-slate-400 uppercase tracking-wider">Export for Mod</div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={handleModExportToClipboard}
+            disabled={totalPlacements === 0}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-cyan-500/20 border border-cyan-500/30 rounded-lg text-sm text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Gamepad2 className="w-4 h-4" />
+            Copy JSON
+          </button>
+
+          <button
+            onClick={handleModExportToFile}
+            disabled={totalPlacements === 0}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-cyan-500/20 border border-cyan-500/30 rounded-lg text-sm text-cyan-300 hover:bg-cyan-500/30 hover:border-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download .json
+          </button>
         </div>
       </div>
       
