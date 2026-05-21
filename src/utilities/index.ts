@@ -41,3 +41,6 @@ export * from "./localStorageManager";
 
 // Grid export utilities
 export * from "./gridExport";
+
+// Mod export utilities (Fabric companion mod integration)
+export * from "./modExport";
