@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, type RefObject } from "react";
-import { Save, FolderOpen, Share2, Clipboard, Trash2, RotateCcw, Layers, X, Image, Film, Download, ClipboardCopy, Loader2 } from "lucide-react";
+import { Save, FolderOpen, Share2, Clipboard, Trash2, RotateCcw, X, Image, Film, Download, ClipboardCopy, Loader2 } from "lucide-react";
 
 // API base URL for share links
 const SHARE_BASE_URL = "https://api.skyshards.com/share";
@@ -25,6 +25,7 @@ import {
 } from "../../utilities/gridExport";
 import type { SavedLayout } from "../../types/layout";
 import type { DesignerGridHandle } from "./DesignerGrid";
+import { Portal } from "../ui";
 import { SaveLayoutModal } from "./SaveLayoutModal";
 import { LoadLayoutModal } from "./LoadLayoutModal";
 
@@ -42,17 +43,13 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   gridRef,
   showTargets = true,
 }) => {
-  const { 
-    mode, 
-    setMode,
-    inputPlacements, 
-    targetPlacements, 
-    clearInputPlacements, 
+  const {
+    inputPlacements,
+    targetPlacements,
+    clearInputPlacements,
     clearTargetPlacements,
     clearAllPlacements,
     loadFromSolverResult,
-    selectedCropForPlacement,
-    setSelectedCropForPlacement,
   } = useDesigner();
   const { getCropDef, getMutationDef } = useGreenhouseData();
   const { toast } = useToast();
@@ -86,16 +83,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     setExportProgress(0);
     setCurrentExportBlob(null);
   }, []);
-  
-  // Handle mode change with auto-deselect
-  const handleModeChange = useCallback((newMode: "inputs" | "targets") => {
-    setMode(newMode);
-    
-    // If switching to targets and a non-mutation crop is selected, deselect it
-    if (newMode === "targets" && selectedCropForPlacement && !selectedCropForPlacement.isMutation) {
-      setSelectedCropForPlacement(null);
-    }
-  }, [setMode, selectedCropForPlacement, setSelectedCropForPlacement]);
   
   // Open save modal
   const handleOpenSave = useCallback(() => {
@@ -394,16 +381,16 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [importText, extractLayoutCode, loadFromSolverResult, getCropDef, getMutationDef, toast]);
   
-  // Clear current mode's placements
-  const handleClearCurrent = useCallback(() => {
-    if (mode === "inputs") {
-      clearInputPlacements();
-      toast({ title: "Input placements cleared", variant: "success", duration: 2000 });
-    } else {
-      clearTargetPlacements();
-      toast({ title: "Target placements cleared", variant: "success", duration: 2000 });
-    }
-  }, [mode, clearInputPlacements, clearTargetPlacements, toast]);
+  // Clear one kind of placement
+  const handleClearInputs = useCallback(() => {
+    clearInputPlacements();
+    toast({ title: "Input placements cleared", variant: "success", duration: 2000 });
+  }, [clearInputPlacements, toast]);
+
+  const handleClearTargets = useCallback(() => {
+    clearTargetPlacements();
+    toast({ title: "Target placements cleared", variant: "success", duration: 2000 });
+  }, [clearTargetPlacements, toast]);
   
   // Clear all placements
   const handleClearAll = useCallback(() => {
@@ -554,33 +541,9 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   
   return (
     <div className={`space-y-4 ${className}`}>
-      {/* Mode Toggle */}
-      <div className="flex rounded-lg overflow-hidden border border-slate-600/50">
-        <button
-          onClick={() => handleModeChange("inputs")}
-          className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-            mode === "inputs"
-              ? "bg-emerald-500/20 text-emerald-300 border-r border-emerald-500/30"
-              : "bg-slate-800/60 text-slate-400 hover:bg-slate-700/60 border-r border-slate-600/50"
-          }`}
-        >
-          <Layers className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
-          Inputs ({inputPlacements.length})
-        </button>
-        <button
-          onClick={() => handleModeChange("targets")}
-          className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-            mode === "targets"
-              ? "bg-purple-500/20 text-purple-300"
-              : "bg-slate-800/60 text-slate-400 hover:bg-slate-700/60"
-          }`}
-        >
-          <Layers className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
-          Targets ({targetPlacements.length})
-        </button>
-      </div>
-      
       {/* Action Buttons */}
+      <div className="space-y-2">
+      <div className="text-xs text-slate-400 uppercase tracking-wider">Save & Share</div>
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={handleOpenSave}
@@ -615,6 +578,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
           <Clipboard className="w-4 h-4" />
           Paste Link
         </button>
+      </div>
       </div>
       
       {/* Export Image Section */}
@@ -726,6 +690,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       
       {/* Import Modal */}
       {isImportModalOpen && (
+        <Portal>
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto" onClick={() => setIsImportModalOpen(false)}>
           <div 
             className="bg-slate-800 border border-slate-600 rounded-lg p-4 w-full max-w-md my-auto"
@@ -765,17 +730,30 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
             </div>
           </div>
         </div>
+        </Portal>
       )}
       
       {/* Clear Buttons */}
-      <div className="flex gap-2">
+      <div className="space-y-2">
+        <div className="text-xs text-slate-400 uppercase tracking-wider">Clear</div>
+        <div className="flex gap-2">
         <button
-          onClick={handleClearCurrent}
-          disabled={(mode === "inputs" ? inputPlacements.length : targetPlacements.length) === 0}
+          onClick={handleClearInputs}
+          disabled={inputPlacements.length === 0}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="Remove every input crop"
         >
           <RotateCcw className="w-4 h-4" />
-          Clear {mode === "inputs" ? "Inputs" : "Targets"}
+          Inputs
+        </button>
+        <button
+          onClick={handleClearTargets}
+          disabled={targetPlacements.length === 0}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="Remove every target mutation"
+        >
+          <RotateCcw className="w-4 h-4" />
+          Targets
         </button>
         
         <button
@@ -791,6 +769,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         >
           <Trash2 className="w-4 h-4" />
         </button>
+        </div>
       </div>
       
       {/* Save Layout Modal */}

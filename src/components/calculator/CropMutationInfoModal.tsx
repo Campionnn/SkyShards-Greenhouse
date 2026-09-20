@@ -212,7 +212,7 @@ export const CropMutationInfoModal: React.FC = () => {
       <div
         ref={modalRef}
         className={`bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-h-[95vh] my-auto overflow-hidden flex flex-col ${
-          isMutation && (requirements.length > 0 || (drops && Object.keys(drops).length > 0)) ? "max-w-3xl" : "max-w-lg"
+          isMutation && (requirements.length > 0 || special === "all_positive_crop_effects" || (drops && Object.keys(drops).length > 0)) ? "max-w-3xl" : "max-w-lg"
         }`}
       >
         {/* Modal Header */}
@@ -252,9 +252,9 @@ export const CropMutationInfoModal: React.FC = () => {
         </div>
 
         {/* Modal Content */}
-        <div className={`p-4 sm:p-6 overflow-y-auto ${isMutation && (requirements.length > 0 || (drops && Object.keys(drops).length > 0)) ? "flex flex-col lg:flex-row gap-4 lg:gap-6" : ""}`}>
+        <div className={`p-4 sm:p-6 overflow-y-auto ${isMutation && (requirements.length > 0 || special === "all_positive_crop_effects" || (drops && Object.keys(drops).length > 0)) ? "flex flex-col lg:flex-row gap-4 lg:gap-6" : ""}`}>
           {/* Left Column - General Info */}
-          <div className={`space-y-4 ${isMutation && (requirements.length > 0 || (drops && Object.keys(drops).length > 0)) ? "flex-1 min-w-0" : ""}`}>
+          <div className={`space-y-4 ${isMutation && (requirements.length > 0 || special === "all_positive_crop_effects" || (drops && Object.keys(drops).length > 0)) ? "flex-1 min-w-0" : ""}`}>
             {/* Ground Type */}
             <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -304,7 +304,11 @@ export const CropMutationInfoModal: React.FC = () => {
                   <WandSparkles className="w-4 h-4 text-amber-400" />
                   <h3 className="text-sm font-medium text-amber-200">Special Condition</h3>
                 </div>
-                <p className="text-sm text-amber-300/90">{formatName(special)}</p>
+                <p className="text-sm text-amber-300/90">
+                  {special === "all_positive_crop_effects"
+                    ? `Spawns in any empty ${size}x${size} area that receives every one of its positive effects from neighbouring crops (directly from a side neighbour, or relayed by a Wild Rose): ${positiveBuffs.map(formatName).join(", ")}. No crop requirements.`
+                    : formatName(special)}
+                </p>
               </div>
             )}
 
@@ -382,10 +386,10 @@ export const CropMutationInfoModal: React.FC = () => {
           </div>
 
           {/* Right Column - Requirements & Drops (Mutations Only) */}
-          {isMutation && (requirements.length > 0 || (drops && Object.keys(drops).length > 0)) && (
+          {isMutation && (requirements.length > 0 || special === "all_positive_crop_effects" || (drops && Object.keys(drops).length > 0)) && (
             <div className="w-full lg:w-72 flex-shrink-0 space-y-4">
               {/* Requirements Section */}
-              {requirements.length > 0 && (
+              {(requirements.length > 0 || special === "all_positive_crop_effects") && (
                 <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Target className="w-4 h-4 text-yellow-400" />

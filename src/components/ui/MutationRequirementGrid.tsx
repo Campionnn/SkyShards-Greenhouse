@@ -69,7 +69,7 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
         const cells = generateFullGrid();
         const targets = [{ mutation: mutationId, count: 1, maximize: false }];
         
-        const response = await solveGreenhouseDirect(cells, targets, abortController.signal);
+        const response = await solveGreenhouseDirect(cells, targets, abortController.signal, 15);
         
         if (!abortController.signal.aborted) {
           setResult(response);

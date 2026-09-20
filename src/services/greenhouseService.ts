@@ -9,7 +9,8 @@ import type {
   MutationGoal,
 } from "../types/greenhouse";
 
-const API_BASE = import.meta.env.DEV ? "/api" : "https://api.skyshards.com";
+import { REMOTE_API_BASE, loadLocalSolverSettings, resolveSolverEndpoint } from "./solverEndpoint";
+import type { ResolvedEndpoint } from "./solverEndpoint";
 
 // Polling interval for job status checks (ms)
 const POLL_INTERVAL = 500;
@@ -18,8 +19,11 @@ const POLL_INTERVAL = 500;
  * Submit a solve job to the queue.
  * Returns the job ID for status polling.
  */
-export async function submitSolveJob(request: SolveRequest): Promise<string> {
-  const response = await fetch(`${API_BASE}/greenhouse/jobs`, {
+export async function submitSolveJob(request: SolveRequest, endpoint?: ResolvedEndpoint): Promise<string> {
+  const target = endpoint ?? (await resolveSolverEndpoint());
+  // The local solver honours a per-solve time limit (the public API ignores it).
+  const timeLimit = target.local ? request.time_limit ?? loadLocalSolverSettings().timeLimit : null;
+  const response = await fetch(`${target.base}/greenhouse/jobs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -29,9 +33,11 @@ export async function submitSolveJob(request: SolveRequest): Promise<string> {
         targets: request.targets,
         priorities: request.priorities || {},
         locks: request.locks || [],
-        ...(request.unique_crops !== undefined && request.unique_crops > 0
-          ? { unique_crops: request.unique_crops }
+        ...(request.effect_weights && Object.keys(request.effect_weights).length > 0
+          ? { effect_weights: request.effect_weights }
           : {}),
+        ...(request.buff_crops ? { buff_crops: request.buff_crops } : {}),
+        ...(timeLimit ? { time_limit: timeLimit } : {}),
       },
     }),
   });
@@ -45,8 +51,8 @@ export async function submitSolveJob(request: SolveRequest): Promise<string> {
   return result.job_id;
 }
 
-export async function getJobStatus(jobId: string): Promise<JobStatusResponse> {
-  const response = await fetch(`${API_BASE}/greenhouse/jobs/${jobId}`);
+export async function getJobStatus(jobId: string, base: string = REMOTE_API_BASE): Promise<JobStatusResponse> {
+  const response = await fetch(`${base}/greenhouse/jobs/${jobId}`);
   
   if (!response.ok) {
     if (response.status === 404) {
@@ -59,8 +65,8 @@ export async function getJobStatus(jobId: string): Promise<JobStatusResponse> {
   return response.json();
 }
 
-export async function cancelJob(jobId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/greenhouse/jobs/${jobId}`, {
+export async function cancelJob(jobId: string, base: string = REMOTE_API_BASE): Promise<void> {
+  const response = await fetch(`${base}/greenhouse/jobs/${jobId}`, {
     method: "DELETE",
   });
 
@@ -74,6 +80,8 @@ export interface SolveJobCallbacks {
   onProgress?: (progress: JobProgress) => void;
   onQueuePosition?: (position: number) => void;
   onPreviewUpdate?: (result: SolveResponse) => void;
+  /** Which server took the job (local solver, or remote - possibly as a fallback). */
+  onEndpoint?: (endpoint: ResolvedEndpoint) => void;
 }
 
 export async function solveGreenhouseWithJob(
@@ -81,8 +89,13 @@ export async function solveGreenhouseWithJob(
   callbacks?: SolveJobCallbacks,
   abortSignal?: AbortSignal
 ): Promise<SolveResponse> {
+  // Pick the server (local solver if enabled and running, else the public API)
+  const endpoint = await resolveSolverEndpoint();
+  callbacks?.onEndpoint?.(endpoint);
+  const base = endpoint.base;
+
   // Submit the job
-  const jobId = await submitSolveJob(request);
+  const jobId = await submitSolveJob(request, endpoint);
 
   // Poll for completion
   return new Promise((resolve, reject) => {
@@ -93,7 +106,7 @@ export async function solveGreenhouseWithJob(
       abortSignal.addEventListener("abort", async () => {
         cancelled = true;
         try {
-          await cancelJob(jobId);
+          await cancelJob(jobId, base);
         } catch {
           // Ignore cancel errors
         }
@@ -107,7 +120,7 @@ export async function solveGreenhouseWithJob(
       }
 
       try {
-        const status = await getJobStatus(jobId);
+        const status = await getJobStatus(jobId, base);
 
         switch (status.status) {
           case "queued":
@@ -176,8 +189,9 @@ export async function solveGreenhouseWithJob(
   });
 }
 
+// Expansion always runs on the public API, never on the local solver.
 export async function optimizeExpansion(request: ExpansionRequest): Promise<ExpansionResponse> {
-  const response = await fetch(`${API_BASE}/greenhouse/expansion`, {
+  const response = await fetch(`${REMOTE_API_BASE}/greenhouse/expansion`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -198,18 +212,15 @@ export async function optimizeExpansion(request: ExpansionRequest): Promise<Expa
 export async function solveGreenhouseDirect(
   cells: [number, number][],
   targets: MutationGoal[],
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  timeLimitSeconds?: number
 ): Promise<SolveResponse> {
-  const response = await fetch(`${API_BASE}/greenhouse/solver`, {
+  const query = timeLimitSeconds ? `?time_limit=${timeLimitSeconds}` : "";
+  const { base } = await resolveSolverEndpoint();
+  const response = await fetch(`${base}/greenhouse/solver${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      req: {
-        cells,
-        targets,
-        "remove_unused_crops": false
-      },
-    }),
+    body: JSON.stringify({ cells, targets }),
     signal: abortSignal,
   });
 

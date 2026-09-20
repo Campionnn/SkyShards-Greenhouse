@@ -26,6 +26,44 @@ const PrivacyPolicy: React.FC = () => (
     </ul>
 
     <Divider />
+    <h2 className="text-xl font-semibold mb-2 text-slate-300">Local Solver Contributions</h2>
+    <p className="mb-4 text-slate-400">
+      The greenhouse calculator can solve on your own computer with the optional{" "}
+      <a
+        href="https://github.com/Campionnn/SkyShards-Solver"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-amber-300/70 underline font-bold"
+      >
+        local solver
+      </a>
+      . It is off until you download it and turn it on. While it runs, your solves stay on your machine.
+    </p>
+    <p className="mb-4 text-slate-400">
+      When a solve finishes, the local solver offers the result to our server. If the layout beats the one we already
+      have for that exact problem, we keep it so everyone gets the better answer.
+    </p>
+    <ul className="list-disc pl-6 mb-4 text-slate-400">
+      <li>
+        What is sent: the puzzle and its answer, meaning your unlocked grid cells, mutation targets, crop priorities,
+        effect weights and the resulting layout.
+      </li>
+      <li>
+        What is <span className="font-bold">not</span> sent: no name, no account, no file paths and nothing about your
+        computer. Saved layouts and other settings stay in your browser.
+      </li>
+      <li>
+        Our server logs the sending IP address with each stored contribution, and briefly keeps IP addresses in memory
+        to limit how often one machine can submit.
+      </li>
+      <li>
+        To opt out, set <span className="font-mono text-slate-300">&quot;contribute&quot;: false</span> in the local
+        solver&rsquo;s <span className="font-mono text-slate-300">config.json</span>, or simply do not use it. Solving
+        on our server sends the same puzzle data, since that is the request itself.
+      </li>
+    </ul>
+
+    <Divider />
     <h2 className="text-xl font-semibold mb-2 text-slate-300">Ko-fi Support</h2>
     <ul className="list-disc pl-6 mb-4 text-slate-400">
       <li>

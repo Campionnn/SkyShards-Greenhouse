@@ -1,15 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
-import { 
-  CropSelectionPalette, 
-  DesignerActions, 
+import { Eye, EyeOff, LayoutTemplate, ClipboardCheck } from "lucide-react";
+import {
+  CropSelectionPalette,
+  DesignerActions,
   DesignerGrid,
   MutationValidator,
+  Panel,
 } from "../components";
 import { CropImage } from "../components/shared";
 import { useToast } from "../components/ui/toastContext";
 import { useDesigner, useGreenhouseData } from "../context";
+import { useFitCellSize } from "../hooks";
 import { decodeDesign, getRarityTextColor } from "../utilities";
 import { captureGridAsPng, aggregateCropInfo } from "../utilities/gridExport";
 import type { DesignerGridHandle } from "../components";
@@ -23,14 +25,10 @@ export const DesignerPage: React.FC = () => {
   const { getCropDef, getMutationDef, isLoading: isDataLoading } = useGreenhouseData();
   const [hasLoadedFromUrl, setHasLoadedFromUrl] = useState(false);
   
-  // Responsive grid sizing
-  const [gridSize, setGridSize] = useState(() => {
-    const width = window.innerWidth;
-    if (width < 640) return { cellSize: 32, gap: 1 };
-    if (width < 1024) return { cellSize: 40, gap: 2 };
-    return { cellSize: 48, gap: 2 };
-  });
-  
+  // Grid sizing: fit the available width, never scroll
+  const fitRef = useRef<HTMLDivElement>(null);
+  const gridSize = useFitCellSize(fitRef);
+
   // Get crop counts for display
   const inputCropCounts = React.useMemo(() => {
     const counts = new Map<string, { name: string; rarity: string; count: number }>();
@@ -76,19 +74,7 @@ export const DesignerPage: React.FC = () => {
     return targetPlacements.reduce((sum, p) => sum + (p.size * p.size), 0);
   }, [targetPlacements]);
   
-  useEffect(() => {
-    const handleResize = () => {
-      const width = window.innerWidth;
-      if (width < 640) setGridSize({ cellSize: 32, gap: 1 });
-      else if (width < 1024) setGridSize({ cellSize: 40, gap: 2 });
-      else setGridSize({ cellSize: 48, gap: 2 });
-    };
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-  
-  // Export grid function for Playwright-based share image generation
+// Export grid function for Playwright-based share image generation
   const exportGridForShare = useCallback(async (): Promise<string> => {
     if (!gridRef.current) {
       throw new Error('Grid not available');
@@ -247,20 +233,19 @@ export const DesignerPage: React.FC = () => {
   
   return (
     <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl">
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_420px] gap-4 lg:gap-6">
-        <div className="space-y-4 order-2 lg:order-1">
-          <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[300px_minmax(0,1fr)_380px] gap-4 lg:gap-6 lg:items-start">
+        {/* Left column: layout actions + validation. Sticky on desktop, scrolls internally. */}
+        <div className="order-2 space-y-4 lg:col-start-1 lg:row-start-2 xl:row-start-1 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto scrollbar-dark xl:pr-1">
+          <Panel title="Layout" icon={<LayoutTemplate />}>
             <DesignerActions gridRef={gridRef} showTargets={showTargets} />
-          </div>
-          
-          {/* Mutation Validator */}
-          <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4">
-            <h3 className="text-sm font-medium text-slate-200 mb-3">Mutation Status</h3>
+          </Panel>
+
+          <Panel title="Mutation Status" icon={<ClipboardCheck />}>
             <MutationValidator />
-          </div>
+          </Panel>
         </div>
-        
-        <div className="flex flex-col items-center order-1 lg:order-2">
+
+        <div className="flex flex-col items-center order-1 min-w-0 lg:col-start-1 lg:row-start-1 xl:col-start-2">
           <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4 w-full">
             <div className="flex flex-col sm:flex-row items-center justify-between mb-4 gap-2">
               <h3 className="text-sm font-medium text-slate-200">Greenhouse Designer</h3>
@@ -292,17 +277,13 @@ export const DesignerPage: React.FC = () => {
               <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
                 Grid Layout
               </h4>
-              <div className="w-full">
-                <div className="overflow-x-auto">
-                  <div className="flex flex-col items-center min-w-full">
-                    <DesignerGrid 
-                      ref={gridRef} 
-                      showTargets={showTargets}
-                      cellSize={gridSize.cellSize}
-                      gap={gridSize.gap}
-                    />
-                  </div>
-                </div>
+              <div ref={fitRef} className="w-full flex flex-col items-center">
+                <DesignerGrid
+                  ref={gridRef}
+                  showTargets={showTargets}
+                  cellSize={gridSize.cellSize}
+                  gap={gridSize.gap}
+                />
               </div>
             </div>
             
@@ -377,7 +358,8 @@ export const DesignerPage: React.FC = () => {
           </div>
         </div>
         
-        <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4 h-[500px] lg:h-[calc(100vh-180px)] lg:min-h-[500px] order-3">
+        {/* Right column: the palette, with the Inputs/Targets switch. Same sticky treatment as the left. */}
+        <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 h-[500px] lg:h-[calc(100vh-2rem)] order-3 lg:col-start-2 lg:row-start-1 lg:row-span-2 xl:col-start-3 xl:row-span-1 lg:sticky lg:top-4 min-h-0">
           <CropSelectionPalette className="h-full" />
         </div>
       </div>

@@ -2,12 +2,14 @@ import React, { useRef, useMemo, useCallback, forwardRef, useImperativeHandle } 
 import { Trash2 } from "lucide-react";
 import { useDesigner, useGreenhouseData, useInfoModal } from "../../context";
 import { useDesignerGridPlacement } from "../../hooks";
-import { 
-  getGridDimensions, 
+import {
+  getGridDimensions,
   calculateCropImageDimensions,
   getCellPixelPosition,
+  effectiveEffects,
+  effectsGivenBy,
 } from "../../utilities";
-import { GridBackground, DragValidationOverlay } from "../grid";
+import { GridBackground, DragValidationOverlay, EffectTooltip } from "../grid";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { CropImage } from "../shared";
 import type { DesignerPlacement } from "../../context";
@@ -77,6 +79,7 @@ interface DesignerPlacementCellProps {
   groundType: string;
   showImage?: boolean;
   validationInfo?: { isValid: boolean; missingRequirements: Array<{ crop: string; needed: number; have: number }> };
+  title?: string;
   onMouseDown: (e: React.MouseEvent) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -94,6 +97,7 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
   groundType,
   showImage = true,
   validationInfo,
+  title,
   onMouseDown,
   onMouseEnter,
   onMouseLeave,
@@ -163,7 +167,7 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       onContextMenu={(e) => e.preventDefault()}
-      title={`${placement.cropName} - Drag to move, right-click to remove`}
+      title={title ?? `${placement.cropName} - Drag to move, right-click to remove`}
     >
       {showImage && (
         <CropImage
@@ -271,6 +275,8 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
     isPlacementMode,
     getTargetValidation,
     setHoveredTargetId,
+    setHoveredInputId,
+    effectSimulation,
   } = useDesigner();
   
   // Expose grid element via ref
@@ -308,6 +314,25 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
     handlePlacementMouseDown,
   } = useDesignerGridPlacement({ cellSize, gap, gridRef });
   
+  // Floating effects card for the hovered placement (not while dragging)
+  const hoveredEffects = useMemo(() => {
+    if (!hoveredPlacementId || dragState?.isDragging) return null;
+    const placement = allPlacements.find(p => p.id === hoveredPlacementId);
+    if (!placement) return null;
+    const raw = effectSimulation.heldOver(placement.position, placement.size);
+    const has = effectiveEffects(raw);
+    // A target is a slot: it shows where the mutation can spawn, so it gives
+    // nothing. The same plant placed as an input does give its buffs.
+    const isSlot = targetPlacements.some(t => t.id === placement.id);
+    return {
+      placement,
+      isSlot,
+      has,
+      suppressed: [...raw].filter(e => !has.has(e)),
+      gives: effectsGivenBy(placement.cropId, isSlot),
+    };
+  }, [hoveredPlacementId, dragState, allPlacements, targetPlacements, effectSimulation]);
+
   // Get ground type for a crop
   const getGroundType = (cropId: string): string => {
     const cropDef = getCropDef(cropId);
@@ -355,9 +380,16 @@ return (
             isPlacementMode={isPlacementMode}
             isInput={true}
             groundType={getGroundType(placement.cropId)}
+            title=""
             onMouseDown={(e) => handlePlacementMouseDown(placement.id, e)}
-            onMouseEnter={() => setHoveredPlacementId(placement.id)}
-            onMouseLeave={() => setHoveredPlacementId(null)}
+            onMouseEnter={() => {
+              setHoveredPlacementId(placement.id);
+              setHoveredInputId(placement.id);
+            }}
+            onMouseLeave={() => {
+              setHoveredPlacementId(null);
+              setHoveredInputId(null);
+            }}
             onClick={() => openInfo(placement.cropId)}
           />
         );
@@ -388,6 +420,7 @@ return (
             groundType={getGroundType(placement.cropId)}
             showImage={showTargets}
             validationInfo={validationInfo}
+            title=""
             onMouseDown={(e) => handlePlacementMouseDown(placement.id, e)}
             onMouseEnter={() => {
               setHoveredPlacementId(placement.id);
@@ -402,6 +435,24 @@ return (
         );
       })}
       
+      {/* Effects of the hovered placement */}
+      {hoveredEffects && !isPlacementMode && (
+        <EffectTooltip
+          id={hoveredEffects.placement.cropId}
+          name={hoveredEffects.placement.cropName}
+          position={hoveredEffects.placement.position}
+          size={hoveredEffects.placement.size}
+          has={hoveredEffects.has}
+          gives={hoveredEffects.gives}
+          suppressed={hoveredEffects.suppressed}
+          cellSize={cellSize}
+          gap={gap}
+          gridWidth={gridWidth}
+          gridHeight={gridHeight}
+          note={hoveredEffects.isSlot ? "target" : "input"}
+        />
+      )}
+
       {/* Drag preview validation overlay */}
       {dragState?.isDragging && dragValidation && (
         <DragValidationOverlay

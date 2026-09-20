@@ -41,3 +41,6 @@ export * from "./localStorageManager";
 
 // Grid export utilities
 export * from "./gridExport";
+
+// Crop effect propagation (port of the API solver simulation)
+export * from "./effectSimulation";

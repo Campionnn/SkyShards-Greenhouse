@@ -33,6 +33,8 @@ export interface MutationGoal {
   mutation: string;
   maximize: boolean;
   count: number | null;
+  // Per-target override of the request-level effect weights (merged key by key)
+  effect_weights?: Record<string, number>;
 }
 
 // Lock object for pre-placed crops/mutations
@@ -47,7 +49,16 @@ export interface SolveRequest {
   targets: MutationGoal[];
   priorities?: Record<string, number>;
   locks?: LockDefinition[];
-  unique_crops?: number;
+  // How much each crop effect on the spawned target is worth, in units of one
+  // plain mutation spot (0.5 = a spot with this effect counts as 1.5 spots).
+  // Negative effects should get negative weights. Missing/0 = ignored.
+  effect_weights?: Record<string, number>;
+  // Plants the solver may place freely as effect sources (defaults to every
+  // buff-carrying base crop). Only consulted when effect_weights is set.
+  buff_crops?: string[];
+  // Seconds the solver may run. Only honoured by the local solver; the public
+  // API always uses its own budget.
+  time_limit?: number;
 }
 
 // Unified placement/mutation format - uses position/size
@@ -62,6 +73,10 @@ export interface MutationResult {
   mutation: string;
   position: [number, number];
   size: number;
+  // Effects the mutation holds once spawned here (after immunity / improved-override rules)
+  effects?: string[];
+  // This spot's contribution to the score (spawn rate plus weighted effect value)
+  value?: number;
 }
 
 export interface SolveResponse {
@@ -70,7 +85,15 @@ export interface SolveResponse {
   placements: CropPlacement[];
   mutations: MutationResult[];
   cache_hit?: string;
-  solver_approach?: string;
+  // What the solver maximizes: expected spawns/tick of the maximize targets
+  // plus the weighted effect value over every target spot
+  score?: number;
+  effect_value?: number;
+  expected_spawns_per_tick?: number;
+  // Effect weights actually used, resolved per target mutation
+  effect_weights?: Record<string, Record<string, number>>;
+  // Free buff-source crops the solver was allowed to place
+  buff_crops?: string[];
 }
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";

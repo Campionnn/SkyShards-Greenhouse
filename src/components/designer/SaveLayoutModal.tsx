@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { X, Save } from "lucide-react";
 import { useDesigner, useGreenhouseData } from "../../context";
 import type { DesignerPlacement } from "../../context/DesignerContext";
+import { Portal } from "../ui";
 
 interface SaveLayoutModalProps {
   isOpen: boolean;
@@ -125,6 +126,7 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
   if (!isOpen) return null;
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm overflow-y-auto"
       onClick={handleBackdropClick}
@@ -230,5 +232,6 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
         </form>
       </div>
     </div>
+    </Portal>
   );
 };

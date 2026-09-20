@@ -1,16 +1,17 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Play, Grid3x3 } from "lucide-react";
+import { Play, Grid3x3, Square } from "lucide-react";
 import { useGridState, useGreenhouseData, useLockedPlacements } from "../context";
-import { GridManagerModal, FirstTimeVisitorModal } from "../components";
-import { MutationTargets, SolverResults, CropConfigurationsPanel } from "../components";
+import { GridManagerModal, FirstTimeVisitorModal, Panel, useToast } from "../components";
+import { MutationTargets, SolverResults, CropConfigurationsPanel, EffectWeightsPanel, LocalSolverPanel } from "../components";
 import { solveGreenhouseWithJob } from "../services";
 import { LocalStorageManager } from "../utilities";
 import type { SolveResponse, MutationGoal, JobProgress } from "../types/greenhouse";
 
 export const CalculatorPage: React.FC = () => {
   const { getUnlockedCellsArray, unlockedCells } = useGridState();
-  const { selectedMutations, isLoading: dataLoading, uniqueCrops } = useGreenhouseData();
+  const { selectedMutations, isLoading: dataLoading, effectWeights } = useGreenhouseData();
   const { getLocksForAPI, priorities } = useLockedPlacements();
+  const { toast } = useToast();
 
   // Modal state
   const [isGridModalOpen, setIsGridModalOpen] = useState(false);
@@ -104,7 +105,7 @@ export const CalculatorPage: React.FC = () => {
           targets,
           priorities: Object.keys(priorities).length > 0 ? priorities : undefined,
           locks: getLocksForAPI().length > 0 ? getLocksForAPI() : undefined,
-          unique_crops: uniqueCrops > 0 ? uniqueCrops : undefined,
+          effect_weights: Object.keys(effectWeights).length > 0 ? effectWeights : undefined,
         },
         {
           onProgress: (p) => {
@@ -117,6 +118,16 @@ export const CalculatorPage: React.FC = () => {
           },
           onPreviewUpdate: (preview) => {
             setPreviewResult(preview);
+          },
+          onEndpoint: (endpoint) => {
+            if (endpoint.fallback) {
+              toast({
+                id: "local-solver-fallback",
+                title: "Local solver not reachable",
+                description: "Solving on the server instead. Start the local solver or turn off \"Solve locally\".",
+                variant: "warning",
+              });
+            }
           },
         },
         abortControllerRef.current.signal
@@ -140,7 +151,7 @@ export const CalculatorPage: React.FC = () => {
       setQueuePosition(null);
       abortControllerRef.current = null;
     }
-  }, [getUnlockedCellsArray, selectedMutations, previewResult, priorities, getLocksForAPI, uniqueCrops]);
+  }, [getUnlockedCellsArray, selectedMutations, previewResult, priorities, getLocksForAPI, effectWeights, toast]);
 
   const handleCancel = useCallback(() => {
     if (abortControllerRef.current) {
@@ -164,45 +175,49 @@ export const CalculatorPage: React.FC = () => {
   return (
     <>
       <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl">
-        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_420px] gap-4 lg:gap-6">
-          <div className="space-y-4 order-2 lg:order-1">
-            <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-slate-200">Grid Configuration</h3>
-                <span className="text-xs text-slate-400">
-                  {unlockedCount} cells unlocked
-                </span>
-              </div>
-              <button
-                onClick={() => setIsGridModalOpen(true)}
-                className="w-full px-4 py-3 bg-slate-700/50 hover:bg-slate-700/70 border border-slate-600/50 hover:border-emerald-500/50 rounded-lg text-sm font-medium text-slate-300 hover:text-emerald-300 transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer"
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[320px_minmax(0,1fr)_380px] gap-4 lg:gap-6 lg:items-start">
+          {/* Left column: setup. Sticky on desktop, scrolls internally when tall, Solve pinned. */}
+          <aside className="order-2 lg:order-1 flex flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-7rem)]">
+            <div className="flex-1 min-h-0 lg:overflow-y-auto scrollbar-dark space-y-3 lg:pr-1">
+              <Panel
+                title="Grid"
+                icon={<Grid3x3 />}
+                actions={
+                  <>
+                    <span className="text-xs text-slate-400">{unlockedCount} cells</span>
+                    <button
+                      onClick={() => setIsGridModalOpen(true)}
+                      className="px-2 py-1 text-xs bg-slate-700/50 hover:bg-slate-700/70 border border-slate-600/50 hover:border-emerald-500/50 rounded-md text-slate-300 hover:text-emerald-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+                      title="Choose which cells of your greenhouse are unlocked"
+                    >
+                      <Square className="w-3.5 h-3.5" />
+                      Configure
+                    </button>
+                  </>
+                }
               >
-                <Grid3x3 className="w-4 h-4" />
-                <span>Configure Grid</span>
-              </button>
-              <p className="text-xs text-slate-500 mt-2 text-center">
-                <span className="hidden sm:inline">Click to manage unlocked cells</span>
-                <span className="sm:hidden">Tap to manage unlocked cells</span>
-              </p>
+                <p className="text-xs text-slate-500">Which cells of the 10x10 plot you have unlocked.</p>
+              </Panel>
+
+              <MutationTargets />
+
+              <EffectWeightsPanel />
+
+              <LocalSolverPanel />
             </div>
 
-            {/* Mutation Targets */}
-            <MutationTargets />
-
-            {/* Solve Button */}
+            {/* Solve */}
             <button
               onClick={isLoading ? handleCancel : handleSolve}
               disabled={dataLoading}
-              className={`w-full px-4 py-3 font-medium rounded-lg text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`w-full flex-shrink-0 px-4 py-3 font-semibold rounded-lg text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg ${
                 isLoading
-                  ? "bg-red-500/80 hover:bg-red-600 text-white"
-                  : "bg-emerald-500 hover:bg-emerald-600 text-white"
+                  ? "bg-red-500/80 hover:bg-red-600 text-white shadow-red-900/30"
+                  : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-900/30"
               }`}
             >
               {isLoading ? (
-                <>
-                  <span>Stop Solving</span>
-                </>
+                <span>Stop solving</span>
               ) : (
                 <>
                   <Play className="w-4 h-4" />
@@ -210,9 +225,10 @@ export const CalculatorPage: React.FC = () => {
                 </>
               )}
             </button>
-          </div>
+          </aside>
 
-          <div className="order-1 lg:order-2">
+          {/* Centre column: the solution */}
+          <div className="order-1 lg:order-2 min-w-0">
             <SolverResults
               result={displayResult}
               error={error}
@@ -223,17 +239,17 @@ export const CalculatorPage: React.FC = () => {
             />
           </div>
 
-          {/* Column 3 - Crop Configurations (wider) */}
-          <div className="flex flex-col h-[500px] lg:h-[calc(100vh-180px)] lg:min-h-[500px] order-3">
+          {/* Right column: crop priorities & locks, full height, sticky */}
+          <div className="order-3 flex flex-col min-h-0 h-[500px] lg:h-[calc(100vh-2rem)] lg:sticky lg:top-4">
             <CropConfigurationsPanel className="flex-1 overflow-hidden" />
           </div>
         </div>
       </div>
 
       {/* Grid Manager Modal */}
-      <GridManagerModal 
-        isOpen={isGridModalOpen} 
-        onClose={() => setIsGridModalOpen(false)} 
+      <GridManagerModal
+        isOpen={isGridModalOpen}
+        onClose={() => setIsGridModalOpen(false)}
       />
 
       {/* First Time Visitor Modal */}
@@ -245,3 +261,5 @@ export const CalculatorPage: React.FC = () => {
     </>
   );
 };
+
+

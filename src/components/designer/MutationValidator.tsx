@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { AlertCircle, CheckCircle } from "lucide-react";
 import { useDesigner, useGreenhouseData } from "../../context";
-import { CropImage } from "../shared";
+import { CropImage, EffectChips } from "../shared";
 import type { MutationValidationInfo, DesignerPlacement } from "../../context/DesignerContext";
 
 interface HoveredValidation extends MutationValidationInfo {
@@ -13,8 +13,14 @@ interface MutationValidatorProps {
 }
 
 export const MutationValidator: React.FC<MutationValidatorProps> = ({ className = "" }) => {
-  const { inputPlacements, targetPlacements, getPossibleMutations, hoveredTargetId, getTargetValidation } = useDesigner();
-  const { mutations, getCropDef } = useGreenhouseData();
+  const {
+    inputPlacements,
+    targetPlacements,
+    getPossibleMutations,
+    hoveredTargetId,
+    getTargetValidation,
+  } = useDesigner();
+  const { mutations, getCropDef, getMutationDef } = useGreenhouseData();
   
   // Get possible mutations based on current input placements
   const possibleMutations = useMemo(() => {
@@ -59,10 +65,11 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
     return (
       <div className={`text-center text-slate-500 py-4 ${className}`}>
         <p className="text-sm">Place target mutations to validate them</p>
+        <p className="text-xs mt-1">Hover any placement on the grid to see the effects it has and gives.</p>
       </div>
     );
   }
-  
+
   return (
     <div className={`space-y-3 ${className}`}>
       {/* Summary */}
@@ -112,6 +119,34 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
             </span>
           </div>
           
+          {/* Effect requirements (godseed) */}
+          {hoveredValidation.effectRequirements.length > 0 && (
+            <div className="ml-7 space-y-2">
+              <p className="text-xs text-slate-400">
+                The 3x3 spot must receive every effect below from neighbouring crops
+                (side neighbours, or relayed by a Wild Rose):
+              </p>
+              {hoveredValidation.effectRequirements.some(r => !r.satisfied) && (
+                <>
+                  <p className="text-xs font-medium text-red-400">Missing</p>
+                  <EffectChips
+                    effects={hoveredValidation.effectRequirements.filter(r => !r.satisfied).map(r => r.effect)}
+                    variant="missing"
+                  />
+                </>
+              )}
+              {hoveredValidation.effectRequirements.some(r => r.satisfied) && (
+                <>
+                  <p className="text-xs font-medium text-green-400">Satisfied</p>
+                  <EffectChips
+                    effects={hoveredValidation.effectRequirements.filter(r => r.satisfied).map(r => r.effect)}
+                    variant="satisfied"
+                  />
+                </>
+              )}
+            </div>
+          )}
+
           {/* Missing requirements */}
           {hoveredValidation.missingRequirements.length > 0 && (
             <>
@@ -119,7 +154,7 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
               <div className="space-y-1 ml-7">
                 {hoveredValidation.missingRequirements.map((req, i) => {
                   const cropDef = getCropDef(req.crop);
-                  const cropName = cropDef?.name || req.crop;
+                  const cropName = cropDef?.name || getMutationDef(req.crop)?.name || req.crop;
                   return (
                     <div key={i} className="flex items-center gap-2 text-xs">
                       <CropImage
@@ -146,7 +181,7 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
               <div className="space-y-1 ml-7">
                 {hoveredValidation.satisfiedRequirements.map((req, i) => {
                   const cropDef = getCropDef(req.crop);
-                  const cropName = cropDef?.name || req.crop;
+                  const cropName = cropDef?.name || getMutationDef(req.crop)?.name || req.crop;
                   return (
                     <div key={i} className="flex items-center gap-2 text-xs">
                       <CropImage

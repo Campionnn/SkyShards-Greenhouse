@@ -220,6 +220,9 @@ export interface CropCellProps {
   gap: number;
   isLocked?: boolean;
   onClick?: () => void;
+  title?: string;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
 export const CropCell: React.FC<CropCellProps> = ({
@@ -232,6 +235,9 @@ export const CropCell: React.FC<CropCellProps> = ({
   gap,
   isLocked = false,
   onClick,
+  title,
+  onMouseEnter,
+  onMouseLeave,
 }) => {
   const { imageWidth, imageHeight } = calculateCropImageDimensions(size, cellSize, gap);
   
@@ -264,9 +270,11 @@ export const CropCell: React.FC<CropCellProps> = ({
   return (
     <div
       style={style}
-      title={`${name} (${position[0]}, ${position[1]})${size > 1 ? ` - ${size}x${size}` : ""}${isLocked ? " (Locked)" : ""} - Click for info`}
+      title={title ?? `${name} (${position[0]}, ${position[1]})${size > 1 ? ` - ${size}x${size}` : ""}${isLocked ? " (Locked)" : ""} - Click for info`}
       className={`transition-transform hover:z-10 ${onClick ? "hover:brightness-110" : ""}`}
       onClick={handleClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <CropImage
         cropId={id}
@@ -292,6 +300,9 @@ export interface MutationCellProps {
   gap: number;
   showImage: boolean;
   onClick?: () => void;
+  title?: string;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
 export const MutationCell: React.FC<MutationCellProps> = ({
@@ -304,6 +315,9 @@ export const MutationCell: React.FC<MutationCellProps> = ({
   gap,
   showImage,
   onClick,
+  title,
+  onMouseEnter,
+  onMouseLeave,
 }) => {
   const { imageWidth, imageHeight } = calculateCropImageDimensions(size, cellSize, gap);
   
@@ -332,9 +346,11 @@ export const MutationCell: React.FC<MutationCellProps> = ({
   return (
     <div
       style={style}
-      title={`${name} (${position[0]}, ${position[1]})${size > 1 ? ` - ${size}x${size}` : ""} - Click for info`}
+      title={title ?? `${name} (${position[0]}, ${position[1]})${size > 1 ? ` - ${size}x${size}` : ""} - Click for info`}
       className={`transition-transform hover:z-10 ${onClick ? "hover:brightness-110" : ""}`}
       onClick={handleClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       {showImage && (
         <CropImage

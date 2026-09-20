@@ -17,7 +17,7 @@ const STORAGE_KEYS = {
   DESIGNER_TARGETS: "skyshards-designer-targets",
   LOCKED_PLACEMENTS: "skyshards-locked-placements",
   MUTATION_TARGETS: "skyshards-mutation-targets",
-  UNIQUE_CROPS: "skyshards-unique-crops",
+  EFFECT_WEIGHTS: "skyshards-effect-weights",
 } as const;
 
 // Type Definitions
@@ -272,27 +272,46 @@ export class LocalStorageManager {
     this.remove(STORAGE_KEYS.MUTATION_TARGETS);
   }
 
-  // Unique Crops (Calculator)
+  // Effect Weights (Calculator)
 
   /**
-   * Save the unique crops slider value (0-12)
+   * Save the effect weights (effect id -> weight); zero weights are dropped
    */
-  static saveUniqueCrops(value: number): boolean {
-    return this.save(STORAGE_KEYS.UNIQUE_CROPS, value);
+  static saveEffectWeights(weights: Record<string, number>): boolean {
+    const cleaned: Record<string, number> = {};
+    for (const [k, v] of Object.entries(weights)) {
+      if (typeof v === "number" && Number.isFinite(v) && v !== 0) cleaned[k] = v;
+    }
+    if (Object.keys(cleaned).length === 0) {
+      this.remove(STORAGE_KEYS.EFFECT_WEIGHTS);
+      return true;
+    }
+    return this.save(STORAGE_KEYS.EFFECT_WEIGHTS, cleaned);
   }
 
   /**
-   * Load the unique crops slider value
+   * Load the effect weights. Also drops the retired unique-crops key.
    */
-  static loadUniqueCrops(): number | null {
-    return this.load<number>(STORAGE_KEYS.UNIQUE_CROPS);
+  static loadEffectWeights(): Record<string, number> | null {
+    try {
+      localStorage.removeItem("skyshards-unique-crops");
+    } catch {
+      // ignore
+    }
+    const data = this.load<Record<string, number>>(STORAGE_KEYS.EFFECT_WEIGHTS);
+    if (!data || typeof data !== "object") return null;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (typeof v === "number" && Number.isFinite(v) && v !== 0) out[k] = v;
+    }
+    return out;
   }
 
   /**
-   * Clear the unique crops value
+   * Clear the effect weights
    */
-  static clearUniqueCrops(): void {
-    this.remove(STORAGE_KEYS.UNIQUE_CROPS);
+  static clearEffectWeights(): void {
+    this.remove(STORAGE_KEYS.EFFECT_WEIGHTS);
   }
 
   // Utility Methods
@@ -307,7 +326,7 @@ export class LocalStorageManager {
     this.clearDesignerTargets();
     this.clearLockedPlacements();
     this.clearMutationTargets();
-    this.clearUniqueCrops();
+    this.clearEffectWeights();
   }
 
   /**

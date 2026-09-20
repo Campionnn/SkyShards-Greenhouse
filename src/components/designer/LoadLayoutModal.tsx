@@ -3,6 +3,7 @@ import { X, Trash2, FolderOpen, Search, Edit2, Check } from "lucide-react";
 import type { SavedLayout } from "../../types/layout";
 import { getCropPreviewColor } from "../../data/cropColors";
 import { useGreenhouseData } from "../../context";
+import { Portal } from "../ui";
 
 interface LoadLayoutModalProps {
   isOpen: boolean;
@@ -391,6 +392,7 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
   if (!isOpen) return null;
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm overflow-y-auto"
       onClick={handleBackdropClick}
@@ -474,5 +476,6 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
         </div>
       </div>
     </div>
+    </Portal>
   );
 };

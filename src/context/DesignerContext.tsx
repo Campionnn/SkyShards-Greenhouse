@@ -7,7 +7,10 @@ import {
   validateGridBounds,
   generatePlacementId,
   LocalStorageManager,
+  simulateEffects,
+  SPECIAL_EFFECT_SETS,
 } from "../utilities";
+import type { EffectSimulation } from "../utilities";
 
 export type DesignerMode = "inputs" | "targets";
 
@@ -35,11 +38,19 @@ export interface RequirementInfo {
   satisfied: boolean;
 }
 
+// Effect requirement (godseed-style mutations: the spot must hold these effects)
+export interface EffectRequirementInfo {
+  effect: string;
+  satisfied: boolean;
+}
+
 // Mutation validation result
 export interface MutationValidationInfo {
   isValid: boolean;
   missingRequirements: Array<RequirementInfo>;
   satisfiedRequirements: Array<RequirementInfo>;
+  // Only for mutations whose eligibility is an effect condition (godseed)
+  effectRequirements: Array<EffectRequirementInfo>;
 }
 
 interface DesignerContextType {
@@ -73,6 +84,13 @@ interface DesignerContextType {
   // Hovered target for showing validation info
   hoveredTargetId: string | null;
   setHoveredTargetId: (id: string | null) => void;
+
+  // Hovered input crop (for showing its effects)
+  hoveredInputId: string | null;
+  setHoveredInputId: (id: string | null) => void;
+
+  // Effect propagation over the current design (inputs + targets)
+  effectSimulation: EffectSimulation;
   
   // Load from calculator results
   loadFromSolverResult: (
@@ -111,6 +129,7 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
   const [selectedCropForPlacement, setSelectedCropForPlacement] = useState<SelectedCropForDesigner | null>(null);
   const [hoveredTargetId, setHoveredTargetId] = useState<string | null>(null);
+  const [hoveredInputId, setHoveredInputId] = useState<string | null>(null);
   const isInitialInputsMount = useRef(true);
   const isInitialTargetsMount = useRef(true);
   
@@ -145,6 +164,16 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // All placements combined (for overlap checking and display)
   const allPlacements = useMemo(() => {
     return [...inputPlacements, ...targetPlacements];
+  }, [inputPlacements, targetPlacements]);
+
+  // Effect propagation across the whole design. Inputs are real plants that
+  // push their buffs; targets are slots - they mark where a mutation *can*
+  // spawn, so they receive effects but never give any (same as the solver).
+  const effectSimulation = useMemo(() => {
+    return simulateEffects([
+      ...inputPlacements.map(p => ({ id: p.cropId, position: p.position, size: p.size })),
+      ...targetPlacements.map(p => ({ id: p.cropId, position: p.position, size: p.size, isSlot: true })),
+    ]);
   }, [inputPlacements, targetPlacements]);
   
   // Check if position is occupied by any placement (inputs or targets)
@@ -324,7 +353,30 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // For each mutation, check if requirements can be satisfied
     for (const mutation of mutations) {
       const validPositions: [number, number][] = [];
-      
+
+      // Godseed-style: the spot must hold every required effect. Only spots
+      // free of input crops count (a mutation cannot spawn on top of crops).
+      if (SPECIAL_EFFECT_SETS[mutation.id]) {
+        for (let row = 0; row <= 10 - mutation.size; row++) {
+          for (let col = 0; col <= 10 - mutation.size; col++) {
+            let coversInput = false;
+            for (let dr = 0; dr < mutation.size && !coversInput; dr++) {
+              for (let dc = 0; dc < mutation.size; dc++) {
+                if (cropAtCell.has(`${row + dr},${col + dc}`)) { coversInput = true; break; }
+              }
+            }
+            if (coversInput) continue;
+            if (effectSimulation.isSpecialEligible(mutation.id, [row, col], mutation.size)) {
+              validPositions.push([row, col]);
+            }
+          }
+        }
+        if (validPositions.length > 0) {
+          results.push({ mutation, positions: validPositions });
+        }
+        continue;
+      }
+
       // Try each possible position for the mutation
       for (let row = 0; row <= 10 - mutation.size; row++) {
         for (let col = 0; col <= 10 - mutation.size; col++) {
@@ -388,7 +440,7 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     
     return results;
-  }, [inputPlacements, isValidPlacementPosition]);
+  }, [inputPlacements, isValidPlacementPosition, effectSimulation]);
   
   // Get validation info for a target placement
   const getTargetValidation = useCallback((
@@ -397,13 +449,31 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ): MutationValidationInfo => {
     const target = targetPlacements.find(t => t.id === targetId);
     if (!target) {
-      return { isValid: false, missingRequirements: [], satisfiedRequirements: [] };
+      return { isValid: false, missingRequirements: [], satisfiedRequirements: [], effectRequirements: [] };
     }
-    
+
     // Find the mutation definition
     const mutationDef = mutations.find(m => m.id === target.cropId);
     if (!mutationDef) {
-      return { isValid: false, missingRequirements: [], satisfiedRequirements: [] };
+      return { isValid: false, missingRequirements: [], satisfiedRequirements: [], effectRequirements: [] };
+    }
+
+    // Godseed-style: an effect condition on the spot instead of crop counts
+    const requiredEffects = SPECIAL_EFFECT_SETS[mutationDef.id];
+    if (requiredEffects) {
+      const missing = new Set(
+        effectSimulation.missingSpecialEffects(mutationDef.id, target.position, target.size)
+      );
+      const effectRequirements: EffectRequirementInfo[] = requiredEffects.map(effect => ({
+        effect,
+        satisfied: !missing.has(effect),
+      }));
+      return {
+        isValid: missing.size === 0,
+        missingRequirements: [],
+        satisfiedRequirements: [],
+        effectRequirements,
+      };
     }
     
     // Build a map of what crops are at each cell
@@ -477,8 +547,8 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
     
-    return { isValid, missingRequirements, satisfiedRequirements };
-  }, [inputPlacements, targetPlacements]);
+    return { isValid, missingRequirements, satisfiedRequirements, effectRequirements: [] };
+  }, [inputPlacements, targetPlacements, effectSimulation]);
   
   const value: DesignerContextType = {
     mode,
@@ -500,6 +570,9 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isPlacementMode: selectedCropForPlacement !== null,
     hoveredTargetId,
     setHoveredTargetId,
+    hoveredInputId,
+    setHoveredInputId,
+    effectSimulation,
     loadFromSolverResult,
     allPlacements,
     getPossibleMutations,

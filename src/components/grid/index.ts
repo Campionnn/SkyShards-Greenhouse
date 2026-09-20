@@ -16,3 +16,7 @@ export type { DragValidationOverlayProps } from "./DragValidationOverlay";
 // Interactive grid wrapper
 export { InteractiveGrid } from "./InteractiveGrid";
 export type { InteractiveGridProps } from "./InteractiveGrid";
+
+// Floating effects card for hovered cells
+export { EffectTooltip } from "./EffectTooltip";
+export type { EffectTooltipProps } from "./EffectTooltip";

@@ -4,3 +4,5 @@ export { SolverProgress } from "./SolverProgress";
 export { SolverResults } from "./SolverResults";
 export { CropConfigurationsPanel } from "./CropConfigurationsPanel";
 export { CropMutationInfoModal } from "./CropMutationInfoModal";
+export { EffectWeightsPanel } from "./EffectWeightsPanel";
+export { LocalSolverPanel } from "./LocalSolverPanel";

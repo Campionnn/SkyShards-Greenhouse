@@ -17,3 +17,5 @@ export type {
   UseDesignerGridPlacementOptions,
   UseDesignerGridPlacementReturn,
 } from "./useDesignerGridPlacement";
+export { useFitCellSize } from "./useFitCellSize";
+export type { FitCellSize } from "./useFitCellSize";

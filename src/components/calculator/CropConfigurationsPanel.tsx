@@ -1,13 +1,15 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
-import { Brush, X, ChevronDown, Lock, Trash2, AlertTriangle, Info, ChevronUp } from "lucide-react";
+import { Brush, X, ChevronDown, Lock, Trash2, AlertTriangle, Info, ChevronUp, SlidersHorizontal } from "lucide-react";
 import { useGreenhouseData, useLockedPlacements, useInfoModal } from "../../context";
-import { getRarityTextColor } from "../../utilities";
+import { getRarityTextColor, LocalStorageManager } from "../../utilities";
 import { CropImage, SearchFilterHeader } from "../shared";
 import { useCropFiltering } from "../../hooks/shared/useCropFiltering";
 import type { CropDefinition, MutationDefinition, SelectedCropForPlacement } from "../../types/greenhouse";
 
 interface CropConfigurationsPanelProps {
   className?: string;
+  /** Render as a collapsible sidebar section (fixed open height) instead of a full-height panel */
+  collapsible?: boolean;
 }
 
 // Item row for a single crop/mutation
@@ -200,6 +202,7 @@ const LockedPlacementItem: React.FC<{
 
 export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = ({
   className = "",
+  collapsible = false,
 }) => {
   const { crops, getCropDef, getMutationDef, addMutation } = useGreenhouseData();
   const {
@@ -216,7 +219,13 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
   
   const { openInfo } = useInfoModal();
   const [priorityWarningDismissed, setPriorityWarningDismissed] = useState(false);
-  
+  // Collapsed by default unless the user has already customised something here
+  const [open, setOpen] = useState(() => {
+    if (!collapsible) return true;
+    const custom = Object.keys(LocalStorageManager.loadPriorities() || {}).length > 0;
+    return custom || (LocalStorageManager.loadLockedPlacements() || []).length > 0;
+  });
+
   // Use shared filtering hook
   const { searchTerm, setSearchTerm, filter, setFilter, filteredCrops } = useCropFiltering({
     crops,
@@ -283,24 +292,54 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
   }, [addMutation]);
   
   return (
-    <div className={`flex flex-col h-full gap-4 ${className}`}>
-      {/* Main Panel - Crop Configurations */}
-      <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 flex flex-col flex-1 overflow-hidden">
+    <div className={`flex flex-col gap-3 ${collapsible ? "" : "h-full"} ${className}`}>
+      {/* Main Panel - Crop priorities & locks */}
+      <div className={`bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 flex flex-col overflow-hidden min-h-0 ${
+        collapsible ? (open ? "h-[460px]" : "") : "flex-1"
+      }`}>
         {/* Header */}
-        <div className="flex items-center justify-between mb-3 flex-shrink-0">
-          <h3 className="text-sm font-medium text-slate-200">Crop Configurations</h3>
-          <button
-            onClick={() => {
-              Object.keys(priorities).forEach((cropId) => {
-                setPriority(cropId, defaultPriorities[cropId] || 0);
-              });
-            }}
-            className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
-            title="Reset all priorities to defaults"
-          >
-            Reset Priorities
-          </button>
+        <div className={`flex items-center justify-between gap-2 flex-shrink-0 min-h-[24px] ${open ? "mb-3" : ""}`}>
+          <div className="flex items-center gap-2 min-w-0">
+            <SlidersHorizontal className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <h3 className="text-sm font-medium text-slate-200 truncate">Crop priorities & locks</h3>
+            {(hasPriorities || lockedPlacements.length > 0) && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex-shrink-0">
+                {[hasPriorities ? "priorities" : null, lockedPlacements.length > 0 ? `${lockedPlacements.length} locked` : null].filter(Boolean).join(" · ")}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {open && (
+              <button
+                onClick={() => {
+                  Object.keys(priorities).forEach((cropId) => {
+                    setPriority(cropId, defaultPriorities[cropId] || 0);
+                  });
+                }}
+                className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer whitespace-nowrap"
+                title="Reset all priorities to defaults"
+              >
+                Reset Priorities
+              </button>
+            )}
+            {collapsible && (
+              <button
+                onClick={() => setOpen((o) => !o)}
+                className="p-1 hover:bg-slate-600/50 rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                title={open ? "Collapse" : "Expand"}
+                aria-expanded={open}
+              >
+                {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
         </div>
+        {open && (
+        <p className="text-xs text-slate-400 mb-3 flex-shrink-0">
+          Priorities tell the solver which crops to use sparingly (higher = use less). The brush locks a crop on the grid so the solver must work around it.
+        </p>
+        )}
+        {open && (<>
         
         {/* Search and Filter Row */}
         <SearchFilterHeader
@@ -358,8 +397,9 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
             })
           )}
         </div>
+        </>)}
       </div>
-      
+
       {/* Locked Placements Summary - Separate panel below */}
       {lockedPlacements.length > 0 && (
         <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">

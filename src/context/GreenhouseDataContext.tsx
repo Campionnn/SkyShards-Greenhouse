@@ -17,8 +17,10 @@ interface GreenhouseDataContextType {
   updateMutationTargetCount: (id: string, count: number) => void;
   clearSelectedMutations: () => void;
   
-  uniqueCrops: number;
-  setUniqueCrops: (value: number) => void;
+  // Effect weights for the solver (effect id -> weight in "spots"; 0 = ignored)
+  effectWeights: Record<string, number>;
+  setEffectWeight: (effectId: string, value: number) => void;
+  resetEffectWeights: () => void;
   
   // mutation definition
   getMutationDef: (id: string) => MutationDefinition | undefined;
@@ -93,9 +95,8 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
   });
   const isInitialMutationsMount = useRef(true);
   
-  const [uniqueCrops, setUniqueCropsState] = useState<number>(() => {
-    const saved = LocalStorageManager.loadUniqueCrops();
-    return saved !== null ? Math.min(12, Math.max(0, saved)) : 0;
+  const [effectWeights, setEffectWeightsState] = useState<Record<string, number>>(() => {
+    return LocalStorageManager.loadEffectWeights() || {};
   });
 
   // Load data from JSON on mount
@@ -150,10 +151,23 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     setSelectedMutations([]);
   }, []);
   
-  const setUniqueCrops = useCallback((value: number) => {
-    const clamped = Math.min(12, Math.max(0, value));
-    setUniqueCropsState(clamped);
-    LocalStorageManager.saveUniqueCrops(clamped);
+  const setEffectWeight = useCallback((effectId: string, value: number) => {
+    setEffectWeightsState(prev => {
+      const next = { ...prev };
+      const clamped = Math.max(-100, Math.min(100, value));
+      if (!Number.isFinite(clamped) || clamped === 0) {
+        delete next[effectId];
+      } else {
+        next[effectId] = clamped;
+      }
+      LocalStorageManager.saveEffectWeights(next);
+      return next;
+    });
+  }, []);
+
+  const resetEffectWeights = useCallback(() => {
+    setEffectWeightsState({});
+    LocalStorageManager.clearEffectWeights();
   }, []);
   
   const getMutationDef = useCallback((id: string): MutationDefinition | undefined => {
@@ -175,8 +189,9 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     updateMutationMode,
     updateMutationTargetCount,
     clearSelectedMutations,
-    uniqueCrops,
-    setUniqueCrops,
+    effectWeights,
+    setEffectWeight,
+    resetEffectWeights,
     getMutationDef,
     getCropDef,
   };

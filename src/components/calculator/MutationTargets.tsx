@@ -1,9 +1,10 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { X, Target, TrendingUp, Trash2, AlertTriangle, ChevronUp, ChevronDown, Sprout } from "lucide-react";
+import { X, Target, TrendingUp, Trash2, AlertTriangle, ChevronUp, ChevronDown } from "lucide-react";
 import { useGreenhouseData } from "../../context";
 import { MutationAutocomplete } from "./MutationAutocomplete";
 import { CropImage } from "../shared";
-import { getRarityTextColor } from "../../utilities";
+import { Panel } from "../ui";
+import { getRarityTextColor, getEffectName } from "../../utilities";
 import type { MutationDefinition } from "../../types/greenhouse";
 
 export const MutationTargets: React.FC = () => {
@@ -17,8 +18,6 @@ export const MutationTargets: React.FC = () => {
     isLoading,
     getCropDef,
     getMutationDef,
-    uniqueCrops,
-    setUniqueCrops,
   } = useGreenhouseData();
   
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
@@ -72,7 +71,7 @@ export const MutationTargets: React.FC = () => {
 
   // Check for mutations with special rules not yet implemented
   const hasSpecialRuleMutations = useMemo(() => {
-    const specialRuleMutationIds = ["shellfruit", "godseed", "jerryseed"];
+    const specialRuleMutationIds = ["shellfruit", "jerryflower"];
     return selectedMutations.some((m) => specialRuleMutationIds.includes(m.id.toLowerCase()));
   }, [selectedMutations]);
 
@@ -104,38 +103,22 @@ export const MutationTargets: React.FC = () => {
   };
 
   if (isLoading) {
-  return (
-    <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Target className="w-4 h-4 text-emerald-400" />
-          <h3 className="text-sm font-medium text-slate-200">Mutation Targets</h3>
-        </div>
-        {selectedMutations.length > 0 && (
-          <button
-            onClick={() => selectedMutations.forEach((m) => removeMutation(m.id))}
-            className="p-1.5 hover:bg-slate-600/50 rounded text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
-            title="Clear all targets"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        )}
-      </div>
+    return (
+      <Panel title="Mutation Targets" icon={<Target />}>
         <div className="flex items-center justify-center py-4">
           <div className="w-5 h-5 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
         </div>
-      </div>
+      </Panel>
     );
   }
 
   return (
-    <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Target className="w-4 h-4 text-emerald-400" />
-          <h3 className="text-sm font-medium text-slate-200">Mutation Targets</h3>
-        </div>
-        {selectedMutations.length > 0 && (
+    <Panel
+      title="Mutation Targets"
+      icon={<Target />}
+      description="Pick the mutations to optimize for: maximize how many spawn, or ask for an exact number."
+      actions={
+        selectedMutations.length > 0 ? (
           <button
             onClick={() => selectedMutations.forEach((m) => removeMutation(m.id))}
             className="p-1.5 hover:bg-slate-600/50 rounded text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
@@ -143,16 +126,12 @@ export const MutationTargets: React.FC = () => {
           >
             <Trash2 className="w-4 h-4" />
           </button>
-        )}
-      </div>
-
-      <p className="text-xs text-slate-400 mb-4">
-        Select which mutations to optimize for. Choose to maximize count or set
-        a specific target.
-      </p>
+        ) : undefined
+      }
+    >
 
       {/* selected mutations */}
-      <div className="space-y-2 mb-4">
+      <div className="space-y-2 mb-3">
         {selectedMutations.map((selected) => {
           const mutation = mutations.find((m) => m.id === selected.id);
           return (
@@ -183,7 +162,15 @@ export const MutationTargets: React.FC = () => {
                 </button>
               </div>
 
-              {mutation && (
+              {mutation && mutation.special === "all_positive_crop_effects" && (
+                <div className="text-xs text-slate-400 mb-2">
+                  Requires all effects:{" "}
+                  <span className="text-emerald-300/90">
+                    {mutation.positive_buffs.map((e) => getEffectName(e)).join(", ")}
+                  </span>
+                </div>
+              )}
+              {mutation && mutation.special !== "all_positive_crop_effects" && (
                 <div className="text-xs text-slate-400 mb-2">
                   Requires:{" "}
                   {mutation.requirements.map((r, i) => {
@@ -287,7 +274,18 @@ export const MutationTargets: React.FC = () => {
         <div className="flex items-start gap-2 p-2.5 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-md">
           <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-amber-300/90">
-            One or more selected mutations have special rules that have not been implemented yet. They will be added in the future.
+            One or more selected mutations spawn through special conditions the solver does not model (Shellfruit, Jerryflower). They cannot be solved for.
+          </p>
+        </div>
+      )}
+
+      {/* Godseed note */}
+      {selectedMutations.some((m) => m.id === "godseed") && (
+        <div className="flex items-start gap-2 p-2.5 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-md">
+          <Target className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-emerald-300/90">
+            Godseed requires any empty 3x3 that receives all six of its positive effects from
+            neighbouring crops (directly or relayed by Effect Spread) can spawn one.
           </p>
         </div>
       )}
@@ -302,29 +300,6 @@ export const MutationTargets: React.FC = () => {
         />
       )}
 
-      {/* Unique Crops slider */}
-      <div className="mt-4 pt-4 border-t border-slate-600/30">
-        <div className="flex items-center gap-2 mb-2">
-          <Sprout className="w-4 h-4 text-emerald-400" />
-          <h3 className="text-sm font-medium text-slate-200">Unique Crops</h3>
-          <span className="ml-auto text-xs font-medium text-slate-300">
-            {uniqueCrops === 0 ? "Disabled" : uniqueCrops}
-          </span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={12}
-          step={1}
-          value={uniqueCrops}
-          onChange={(e) => setUniqueCrops(Number(e.target.value))}
-          className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-slate-600/60 accent-emerald-500"
-        />
-        <div className="flex justify-between text-xs text-slate-500 mt-1">
-          <span>0</span>
-          <span>12</span>
-        </div>
-      </div>
-    </div>
+    </Panel>
   );
 };
