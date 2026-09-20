@@ -105,7 +105,7 @@ export const CalculatorPage: React.FC = () => {
           targets,
           priorities: Object.keys(priorities).length > 0 ? priorities : undefined,
           locks: getLocksForAPI().length > 0 ? getLocksForAPI() : undefined,
-          effect_weights: Object.keys(effectWeights).length > 0 ? effectWeights : undefined,
+          effect_weights: effectWeights,
         },
         {
           onProgress: (p) => {

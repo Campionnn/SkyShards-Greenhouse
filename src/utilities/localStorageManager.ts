@@ -282,10 +282,6 @@ export class LocalStorageManager {
     for (const [k, v] of Object.entries(weights)) {
       if (typeof v === "number" && Number.isFinite(v) && v !== 0) cleaned[k] = v;
     }
-    if (Object.keys(cleaned).length === 0) {
-      this.remove(STORAGE_KEYS.EFFECT_WEIGHTS);
-      return true;
-    }
     return this.save(STORAGE_KEYS.EFFECT_WEIGHTS, cleaned);
   }
 

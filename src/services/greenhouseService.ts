@@ -33,9 +33,7 @@ export async function submitSolveJob(request: SolveRequest, endpoint?: ResolvedE
         targets: request.targets,
         priorities: request.priorities || {},
         locks: request.locks || [],
-        ...(request.effect_weights && Object.keys(request.effect_weights).length > 0
-          ? { effect_weights: request.effect_weights }
-          : {}),
+        effect_weights: request.effect_weights ?? {},
         ...(request.buff_crops ? { buff_crops: request.buff_crops } : {}),
         ...(timeLimit ? { time_limit: timeLimit } : {}),
       },

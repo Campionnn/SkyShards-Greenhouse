@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import type { CropDefinition, MutationDefinition, SelectedMutation } from "../types/greenhouse";
 import greenhouseData from "../../public/greenhouse/data.json";
+import defaultEffectWeights from "../../public/greenhouse/default_effect_weights.json";
 import { LocalStorageManager } from "../utilities";
+
+/** Solver defaults, and the only weights whose solutions the server caches. */
+const DEFAULT_EFFECT_WEIGHTS: Record<string, number> = defaultEffectWeights;
 
 interface GreenhouseDataContextType {
   crops: CropDefinition[];
@@ -95,8 +99,10 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
   });
   const isInitialMutationsMount = useRef(true);
   
+  // Saved weights win; otherwise the defaults, which are also the only
+  // weights whose solutions the server caches (see DEFAULT_EFFECT_WEIGHTS).
   const [effectWeights, setEffectWeightsState] = useState<Record<string, number>>(() => {
-    return LocalStorageManager.loadEffectWeights() || {};
+    return LocalStorageManager.loadEffectWeights() ?? { ...DEFAULT_EFFECT_WEIGHTS };
   });
 
   // Load data from JSON on mount
@@ -166,8 +172,8 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
   }, []);
 
   const resetEffectWeights = useCallback(() => {
-    setEffectWeightsState({});
-    LocalStorageManager.clearEffectWeights();
+    setEffectWeightsState({ ...DEFAULT_EFFECT_WEIGHTS });
+    LocalStorageManager.saveEffectWeights(DEFAULT_EFFECT_WEIGHTS);
   }, []);
   
   const getMutationDef = useCallback((id: string): MutationDefinition | undefined => {
