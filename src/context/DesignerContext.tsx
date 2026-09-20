@@ -3,6 +3,7 @@ import type { MutationDefinition } from "../types/greenhouse";
 import {
   isPositionOccupiedByPlacements,
   findOverlappingPlacements,
+  doPlacementsOverlapByPlacement,
   getPlacementAtCell,
   validateGridBounds,
   generatePlacementId,
@@ -115,18 +116,39 @@ interface DesignerContextType {
 
 const DesignerContext = createContext<DesignerContextType | null>(null);
 
+function resolveOverlaps(
+  inputs: DesignerPlacement[],
+  targets: DesignerPlacement[]
+): { inputs: DesignerPlacement[]; targets: DesignerPlacement[] } {
+  const keptInputs: DesignerPlacement[] = [];
+  for (const placement of inputs) {
+    if (!keptInputs.some(kept => doPlacementsOverlapByPlacement(kept, placement))) {
+      keptInputs.push(placement);
+    }
+  }
+
+  const keptTargets: DesignerPlacement[] = [];
+  for (const placement of targets) {
+    const clashes =
+      keptInputs.some(kept => doPlacementsOverlapByPlacement(kept, placement)) ||
+      keptTargets.some(kept => doPlacementsOverlapByPlacement(kept, placement));
+    if (!clashes) {
+      keptTargets.push(placement);
+    }
+  }
+
+  return { inputs: keptInputs, targets: keptTargets };
+}
+
 export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mode, setMode] = useState<DesignerMode>("inputs");
-  const [inputPlacements, setInputPlacements] = useState<DesignerPlacement[]>(() => {
-    // Try to load from localStorage
-    const saved = LocalStorageManager.loadDesignerInputs();
-    return saved || [];
-  });
-  const [targetPlacements, setTargetPlacements] = useState<DesignerPlacement[]>(() => {
-    // Try to load from localStorage
-    const saved = LocalStorageManager.loadDesignerTargets();
-    return saved || [];
-  });
+  // Load both lists together so overlaps between them can be resolved
+  const [savedPlacements] = useState(() => resolveOverlaps(
+    LocalStorageManager.loadDesignerInputs() || [],
+    LocalStorageManager.loadDesignerTargets() || []
+  ));
+  const [inputPlacements, setInputPlacements] = useState<DesignerPlacement[]>(savedPlacements.inputs);
+  const [targetPlacements, setTargetPlacements] = useState<DesignerPlacement[]>(savedPlacements.targets);
   const [selectedCropForPlacement, setSelectedCropForPlacement] = useState<SelectedCropForDesigner | null>(null);
   const [hoveredTargetId, setHoveredTargetId] = useState<string | null>(null);
   const [hoveredInputId, setHoveredInputId] = useState<string | null>(null);
@@ -157,8 +179,7 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     LocalStorageManager.saveDesignerTargets(targetPlacements);
   }, [targetPlacements]);
   
-  // Get the current placements based on mode
-  const currentPlacements = mode === "inputs" ? inputPlacements : targetPlacements;
+  // Placements of the current mode get the new entry
   const setCurrentPlacements = mode === "inputs" ? setInputPlacements : setTargetPlacements;
   
   // All placements combined (for overlap checking and display)
@@ -211,14 +232,14 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return { valid: true };
   }, [isValidPlacementPosition, isPositionOccupied]);
   
-  // Find overlapping placements in current mode's list
+  // Find overlapping placements in either list
   const getOverlappingPlacements = useCallback((
     position: [number, number],
     size: number,
     excludeId?: string
   ): DesignerPlacement[] => {
-    return findOverlappingPlacements(position, size, currentPlacements, excludeId);
-  }, [currentPlacements]);
+    return findOverlappingPlacements(position, size, allPlacements, excludeId);
+  }, [allPlacements]);
   
   // Add placement to current mode's list
   const addPlacement = useCallback((
@@ -234,14 +255,20 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       id: generatePlacementId("designer"),
     };
     
-    // Remove any overlapping placements in the current mode's list
+    // Painting over an existing placement replaces it
     const overlapping = getOverlappingPlacements(placement.position, placement.size);
     const overlappingIds = new Set(overlapping.map(p => p.id));
     
-    setCurrentPlacements(prev => [
-      ...prev.filter(p => !overlappingIds.has(p.id)),
-      newPlacement,
-    ]);
+    const dropOverlapping = (prev: DesignerPlacement[]) => {
+      const next = prev.filter(p => !overlappingIds.has(p.id));
+      return next.length === prev.length ? prev : next;
+    };
+    
+    if (overlappingIds.size > 0) {
+      setInputPlacements(dropOverlapping);
+      setTargetPlacements(dropOverlapping);
+    }
+    setCurrentPlacements(prev => [...prev, newPlacement]);
     
     return { success: true };
   }, [isValidPlacementPosition, getOverlappingPlacements, setCurrentPlacements]);
@@ -329,8 +356,9 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       isMutation: true,
     }));
     
-    setInputPlacements(newInputs);
-    setTargetPlacements(newTargets);
+    const resolved = resolveOverlaps(newInputs, newTargets);
+    setInputPlacements(resolved.inputs);
+    setTargetPlacements(resolved.targets);
   }, []);
   
   // Get possible mutations based on current input placements

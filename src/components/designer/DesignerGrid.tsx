@@ -149,7 +149,7 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
   }, [onMouseDown]);
   
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    if (mouseDownPos.current && onClick) {
+    if (mouseDownPos.current && onClick && !isPlacementMode && e.button === 0) {
       const dx = Math.abs(e.clientX - mouseDownPos.current.x);
       const dy = Math.abs(e.clientY - mouseDownPos.current.y);
       if (dx < CLICK_THRESHOLD && dy < CLICK_THRESHOLD) {
@@ -157,7 +157,7 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
       }
     }
     mouseDownPos.current = null;
-  }, [onClick]);
+  }, [onClick, isPlacementMode]);
 
   return (
     <div
