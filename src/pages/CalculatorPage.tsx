@@ -9,7 +9,7 @@ import type { SolveResponse, MutationGoal, JobProgress } from "../types/greenhou
 
 export const CalculatorPage: React.FC = () => {
   const { getUnlockedCellsArray, unlockedCells } = useGridState();
-  const { selectedMutations, isLoading: dataLoading, effectWeights } = useGreenhouseData();
+  const { selectedMutations, isLoading: dataLoading, effectiveEffectWeights } = useGreenhouseData();
   const { getLocksForAPI, priorities } = useLockedPlacements();
   const { toast } = useToast();
 
@@ -105,7 +105,7 @@ export const CalculatorPage: React.FC = () => {
           targets,
           priorities: Object.keys(priorities).length > 0 ? priorities : undefined,
           locks: getLocksForAPI().length > 0 ? getLocksForAPI() : undefined,
-          effect_weights: effectWeights,
+          effect_weights: effectiveEffectWeights,
         },
         {
           onProgress: (p) => {
@@ -151,7 +151,7 @@ export const CalculatorPage: React.FC = () => {
       setQueuePosition(null);
       abortControllerRef.current = null;
     }
-  }, [getUnlockedCellsArray, selectedMutations, previewResult, priorities, getLocksForAPI, effectWeights, toast]);
+  }, [getUnlockedCellsArray, selectedMutations, previewResult, priorities, getLocksForAPI, effectiveEffectWeights, toast]);
 
   const handleCancel = useCallback(() => {
     if (abortControllerRef.current) {

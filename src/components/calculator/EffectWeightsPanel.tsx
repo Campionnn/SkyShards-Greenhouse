@@ -38,7 +38,8 @@ function parseWeight(raw: string): number | null {
  * step by 0.1 (Shift: 1).
  */
 export const EffectWeightsPanel: React.FC = () => {
-  const { effectWeights, setEffectWeight, resetEffectWeights } = useGreenhouseData();
+  const { effectWeights, setEffectWeight, resetEffectWeights, weightsOverridden, canOverrideWeights, setKeepWeights } =
+    useGreenhouseData();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [collapsed, setCollapsed] = useState(() => Object.values(effectWeights).every((v) => v === 0));
 
@@ -46,6 +47,7 @@ export const EffectWeightsPanel: React.FC = () => {
     () => Object.values(effectWeights).filter((v) => v !== 0).length,
     [effectWeights]
   );
+
 
   const handleChange = useCallback((effectId: string, raw: string) => {
     setDrafts((prev) => ({ ...prev, [effectId]: raw }));
@@ -127,6 +129,21 @@ export const EffectWeightsPanel: React.FC = () => {
     >
       {!collapsed && (
         <>
+          {canOverrideWeights && (
+            <div className="mb-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/30">
+              <p className="text-[11px] text-amber-200/90">
+                {weightsOverridden
+                  ? "Gloomgourd alone: solving for spawn rate, weights below set aside."
+                  : "Gloomgourd alone: using your weights instead of solving for spawn rate."}
+              </p>
+              <button
+                onClick={() => setKeepWeights(weightsOverridden)}
+                className="mt-1 text-[11px] underline text-amber-300 hover:text-amber-200 cursor-pointer"
+              >
+                {weightsOverridden ? "Use my weights" : "Solve for spawn rate"}
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-y-0.5">
             {EFFECT_IDS.map((effectId) => {
               const negative = isNegativeEffect(effectId);

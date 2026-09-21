@@ -218,7 +218,7 @@ export async function solveGreenhouseDirect(
   const response = await fetch(`${base}/greenhouse/solver${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cells, targets }),
+    body: JSON.stringify({ cells, targets, effect_weights: {} }),
     signal: abortSignal,
   });
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CropDefinition, MutationDefinition, SelectedMutation } from "../types/greenhouse";
 import greenhouseData from "../../public/greenhouse/data.json";
 import defaultEffectWeights from "../../public/greenhouse/default_effect_weights.json";
@@ -25,6 +25,13 @@ interface GreenhouseDataContextType {
   effectWeights: Record<string, number>;
   setEffectWeight: (effectId: string, value: number) => void;
   resetEffectWeights: () => void;
+  // Maximizing gloomgourd alone is about raw spawn rate, so the weights are
+  // dropped for that solve unless the user keeps them.
+  weightsOverridden: boolean;
+  canOverrideWeights: boolean;
+  setKeepWeights: (keep: boolean) => void;
+  // What a solve should actually send.
+  effectiveEffectWeights: Record<string, number>;
   
   // mutation definition
   getMutationDef: (id: string) => MutationDefinition | undefined;
@@ -175,6 +182,21 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     setEffectWeightsState({ ...DEFAULT_EFFECT_WEIGHTS });
     LocalStorageManager.saveEffectWeights(DEFAULT_EFFECT_WEIGHTS);
   }, []);
+
+  // Gloomgourd on its own: solve for spawn rate, unless the user says otherwise.
+  const [keepWeights, setKeepWeights] = useState(false);
+  const canOverrideWeights = useMemo(
+    () =>
+      selectedMutations.length === 1 &&
+      selectedMutations[0].id === "gloomgourd" &&
+      selectedMutations[0].mode === "maximize",
+    [selectedMutations]
+  );
+  const weightsOverridden = canOverrideWeights && !keepWeights;
+  const effectiveEffectWeights = useMemo(
+    () => (weightsOverridden ? {} : effectWeights),
+    [weightsOverridden, effectWeights]
+  );
   
   const getMutationDef = useCallback((id: string): MutationDefinition | undefined => {
     return mutations.find(m => m.id === id);
@@ -198,6 +220,10 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     effectWeights,
     setEffectWeight,
     resetEffectWeights,
+    weightsOverridden,
+    canOverrideWeights,
+    setKeepWeights,
+    effectiveEffectWeights,
     getMutationDef,
     getCropDef,
   };
