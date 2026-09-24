@@ -1,27 +1,33 @@
 /**
  * Crop effect propagation - a TypeScript port of the API's solver/effects.py.
  *
- * Game rules (as implemented by the solver):
- * - Every plant lists buffs (positive + negative). It PUSHES them onto its
- *   four cardinal neighbours; it never holds its own listed buffs.
- * - A plant that lists effect_spread also relays everything it currently
- *   holds (except effect_spread itself). effect_spread is pushed like any
- *   listed buff, but a plant that merely received it does not relay.
- * - The game visits the plot row-major from the top-left, twice. Effects
- *   therefore travel south/east across the plot in one pass but only one
- *   cell north/west per pass.
+ * Game rules (measured in game; see the API docstring for the evidence):
+ * 1. Direct effects: every plant gives its listed buffs (positive + negative)
+ *    to its four cardinal neighbours, all at once. Nothing holds its own
+ *    listed buffs.
+ * 2. Relays: every plant that now HOLDS effect_spread - it stands next to
+ *    something listing it, such as a wild rose - gets exactly one turn, and
+ *    on it gives everything it holds (except effect_spread) to its
+ *    neighbours. What it receives after its turn is not passed on. A lone
+ *    rose relays nothing; the plants next to it do.
+ * 3. Turn order is Java HashMap iteration: slot (13 * column + row) % table,
+ *    ascending, ties by row then column. The table starts at 16 and doubles
+ *    whenever the relay count exceeds 75% of it, so 13, 25, 49 and 97 relays
+ *    each reorder every turn on the plot.
  * - Effects are a set. Immunity cancels negatives for the plant that holds
  *   it (it still relays them). improved_x hides x.
- * - A multi-cell plant is one entity with one shared effect set.
- * - A mutation SLOT (a solver target / a designer target) pushes nothing: it
- *   marks where the mutation *can* spawn, not a plant standing there. Slots
- *   still receive - that is what gets scored. A mutation placed as an input
- *   crop, or locked onto the grid, is a real plant and does push.
+ * - A multi-cell plant is one entity: one shared effect set, one turn keyed
+ *   at its top-left position.
+ * - A mutation SLOT (a solver target / a designer target) gives nothing and
+ *   never relays: it marks where the mutation *can* spawn, not a plant
+ *   standing there. Slots still receive - that is what gets scored. A
+ *   mutation placed as an input crop, or locked onto the grid, is a real
+ *   plant and does give.
  * - Godseed (special "all_positive_crop_effects") has no crop requirements:
  *   a spot is eligible when its (empty) cells receive every positive effect
- *   godseed lists - the slot rule above, applied to eligibility. A godseed
- *   placed as an input crop is an ordinary plant and does give its six
- *   positive buffs; only the slot it would spawn in gives nothing.
+ *   godseed lists - the slot rule above, applied to eligibility.
+ * Unlike the API simulator, this one also records what EMPTY tiles receive
+ * (the designer shows godseed candidate spots); empty tiles never relay.
  */
 
 import greenhouseData from "../../public/greenhouse/data.json";
@@ -53,8 +59,25 @@ export const SPECIAL_EFFECT_SETS: Record<string, string[]> = Object.fromEntries(
 );
 
 export interface PlantBuffs {
-  intrinsic: Set<string>; // what it pushes (positive + negative, effect_spread included)
-  spreads: boolean;       // lists effect_spread: relays what it holds
+  intrinsic: Set<string>; // what it gives (positive + negative, effect_spread included)
+  spreads: boolean;       // lists effect_spread: makes its NEIGHBOURS relays
+}
+
+// Relay turn order = Java HashMap iteration over positions.
+export const RELAY_HASH_COLUMN_FACTOR = 13;
+export const RELAY_TABLE_INITIAL = 16;
+export const RELAY_TABLE_LOAD_FACTOR = 0.75;
+
+/** HashMap capacity holding `count` relays: 16, doubled past 75% full. */
+export function relayTableSize(count: number): number {
+  let table = RELAY_TABLE_INITIAL;
+  while (count > RELAY_TABLE_LOAD_FACTOR * table) table *= 2;
+  return table;
+}
+
+/** A relay's hash slot for its turn (ties then go by row, then column). */
+export function relaySlot(position: [number, number], table: number): number {
+  return (RELAY_HASH_COLUMN_FACTOR * position[1] + position[0]) % table;
 }
 
 const buffCache = new Map<string, PlantBuffs | undefined>();
@@ -129,6 +152,7 @@ export interface SimPlacement {
 
 interface SimPlant {
   id: string;
+  position: [number, number];
   cells: string[];
   buffs: PlantBuffs;
   has: Set<string>;
@@ -146,17 +170,21 @@ export interface EffectSimulation {
   isSpecialEligible(mutationId: string, position: [number, number], size: number): boolean;
   /** Which required effects a spot is missing (empty list = eligible). */
   missingSpecialEffects(mutationId: string, position: [number, number], size: number): string[];
+  /** Positions of the relays, in the order they took their turn. */
+  relayOrder: Array<[number, number]>;
+  /** HashMap table size that produced that order. */
+  relayTable: number;
 }
 
 const CARDINAL: Array<[number, number]> = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 
 export function simulateEffects(
   placements: SimPlacement[],
-  gridSize = 10,
-  passes = 2
+  gridSize = 10
 ): EffectSimulation {
   const cellToPlant = new Map<string, SimPlant>();
   const received = new Map<string, Set<string>>();
+  const plants: SimPlant[] = [];
 
   for (const p of placements) {
     const buffs = getPlantBuffs(p.id) || { intrinsic: new Set<string>(), spreads: false };
@@ -169,40 +197,62 @@ export function simulateEffects(
         cells.push(`${r},${c}`);
       }
     }
-    const plant: SimPlant = { id: p.id, cells, buffs, has: new Set(), isSlot: !!p.isSlot };
+    const plant: SimPlant = { id: p.id, position: p.position, cells, buffs, has: new Set(), isSlot: !!p.isSlot };
+    plants.push(plant);
     for (const cell of cells) cellToPlant.set(cell, plant);
   }
 
-  for (let pass = 0; pass < passes; pass++) {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
-        const plant = cellToPlant.get(`${r},${c}`);
-        if (!plant || plant.isSlot) continue;
-        const payload = new Set(plant.buffs.intrinsic);
-        if (plant.buffs.spreads) {
-          for (const e of plant.has) if (e !== RELAY_EFFECT) payload.add(e);
-        }
-        if (payload.size === 0) continue;
-        for (const [dr, dc] of CARDINAL) {
-          const nr = r + dr;
-          const nc = c + dc;
-          if (nr < 0 || nc < 0 || nr >= gridSize || nc >= gridSize) continue;
-          const key = `${nr},${nc}`;
-          const q = cellToPlant.get(key);
-          if (q) {
-            if (q === plant) continue;
-            for (const e of payload) q.has.add(e);
-          } else {
-            let set = received.get(key);
-            if (!set) {
-              set = new Set();
-              received.set(key, set);
-            }
-            for (const e of payload) set.add(e);
-          }
+  /** Neighbouring tiles of a whole plant: other plants, and empty tile keys. */
+  const neighbours = (plant: SimPlant): { plants: SimPlant[]; empty: string[] } => {
+    const out = { plants: [] as SimPlant[], empty: [] as string[] };
+    for (const cell of plant.cells) {
+      const [r, c] = cell.split(",").map(Number);
+      for (const [dr, dc] of CARDINAL) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr < 0 || nc < 0 || nr >= gridSize || nc >= gridSize) continue;
+        const key = `${nr},${nc}`;
+        const q = cellToPlant.get(key);
+        if (q) {
+          if (q !== plant && !out.plants.includes(q)) out.plants.push(q);
+        } else if (!out.empty.includes(key)) {
+          out.empty.push(key);
         }
       }
     }
+    return out;
+  };
+
+  const give = (plant: SimPlant, payload: Set<string>) => {
+    const { plants: near, empty } = neighbours(plant);
+    for (const q of near) for (const e of payload) q.has.add(e);
+    for (const key of empty) {
+      let set = received.get(key);
+      if (!set) {
+        set = new Set();
+        received.set(key, set);
+      }
+      for (const e of payload) set.add(e);
+    }
+  };
+
+  // 1. Direct effects, all at once. Slots give nothing.
+  for (const plant of plants) {
+    if (plant.isSlot || plant.buffs.intrinsic.size === 0) continue;
+    give(plant, plant.buffs.intrinsic);
+  }
+
+  // 2-3. One relay turn per plant holding effect_spread, in HashMap order.
+  const relays = plants.filter((p) => !p.isSlot && p.has.has(RELAY_EFFECT));
+  const relayTable = relayTableSize(relays.length);
+  relays.sort((a, b) =>
+    relaySlot(a.position, relayTable) - relaySlot(b.position, relayTable) ||
+    a.position[0] - b.position[0] ||
+    a.position[1] - b.position[1]
+  );
+  for (const plant of relays) {
+    const payload = new Set([...plant.has].filter((e) => e !== RELAY_EFFECT));
+    if (payload.size > 0) give(plant, payload);
   }
 
   const heldAt = (row: number, col: number): Set<string> => {
@@ -236,6 +286,8 @@ export function simulateEffects(
     isSpecialEligible: (mutationId, position, size) =>
       !!SPECIAL_EFFECT_SETS[mutationId] && missingSpecialEffects(mutationId, position, size).length === 0,
     missingSpecialEffects,
+    relayOrder: relays.map((p) => p.position),
+    relayTable,
   };
 }
 
