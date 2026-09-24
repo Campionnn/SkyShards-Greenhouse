@@ -39,6 +39,7 @@ export interface MutationDataJSON {
   positive_buffs: string[];
   negative_buffs: string[];
   drops: Record<string, number>;
+  requires_watering: boolean;
   harvest_info?: string;
   growing_info?: string;
 }

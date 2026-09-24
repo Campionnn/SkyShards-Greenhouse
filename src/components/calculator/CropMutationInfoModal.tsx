@@ -4,7 +4,7 @@ import {
   AlertTriangle,
   Loader2,
   Box,
-  ClockArrowUp, Flame, Target, PackageOpen, ClockArrowDown, WandSparkles, Sprout, Scissors
+  ClockArrowUp, Flame, Target, PackageOpen, ClockArrowDown, WandSparkles, Sprout, Scissors, Droplets
 } from "lucide-react";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { CropImage } from "../shared";
@@ -201,6 +201,7 @@ export const CropMutationInfoModal: React.FC = () => {
   const special = isMutation ? mutationData!.special : null;
   const decay = isMutation ? mutationData!.decay : null;
   const drops = isMutation ? mutationData!.drops : null;
+  const requiresWatering = isMutation ? mutationData!.requires_watering ?? null : null;
   const harvestInfo = isMutation ? mutationData!.harvest_info : null;
   const growingInfo = isMutation ? mutationData!.growing_info : null;
 
@@ -237,6 +238,17 @@ export const CropMutationInfoModal: React.FC = () => {
                 {rarity && (
                   <span className={`text-xs px-1.5 py-0.5 rounded border ${getRarityBgColor(rarity)} ${getRarityColor(rarity)}`}>
                     {rarity.charAt(0).toUpperCase() + rarity.slice(1)}
+                  </span>
+                )}
+                {requiresWatering !== null && (
+                  <span
+                    className={`text-xs px-1.5 py-0.5 rounded border ${
+                      requiresWatering
+                        ? "bg-sky-500/20 border-sky-500/30 text-sky-300"
+                        : "bg-slate-500/20 border-slate-500/30 text-slate-400"
+                    }`}
+                  >
+                    {requiresWatering ? "Needs Water" : "No Water"}
                   </span>
                 )}
               </div>
@@ -294,6 +306,33 @@ export const CropMutationInfoModal: React.FC = () => {
                     <span className="text-sm text-slate-300">{decay} day{decay !== 1 ? "s" : ""}</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Watering Requirement (Mutations Only) */}
+            {isMutation && requiresWatering !== null && (
+              <div
+                className={`rounded-lg p-4 border ${
+                  requiresWatering
+                    ? "bg-sky-500/10 border-sky-500/30"
+                    : "bg-slate-800/40 border-slate-600/30"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Droplets
+                    className={`w-4 h-4 ${requiresWatering ? "text-sky-400" : "text-slate-500"}`}
+                  />
+                  <h3 className="text-sm font-medium text-slate-200">Watering</h3>
+                </div>
+                <p
+                  className={`text-sm leading-relaxed ${
+                    requiresWatering ? "text-sky-300/90" : "text-slate-400"
+                  }`}
+                >
+                  {requiresWatering
+                    ? "Requires water while growing. A mutation that dries out has a chance to stall on its next growth stage, so keep it watered. Water Retain crops nearby help."
+                    : "Does not need water to grow."}
+                </p>
               </div>
             )}
 

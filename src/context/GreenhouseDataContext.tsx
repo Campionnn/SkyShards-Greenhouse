@@ -74,6 +74,7 @@ function loadGreenhouseData() {
       positive_buffs: mutation.positive_buffs,
       negative_buffs: mutation.negative_buffs,
       drops: mutation.drops,
+      requires_watering: mutation.requires_watering,
     });
 
     // Also add mutation as a crop option

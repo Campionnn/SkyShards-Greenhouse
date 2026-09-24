@@ -27,6 +27,7 @@ export interface MutationDefinition {
   positive_buffs: string[];
   negative_buffs: string[];
   drops: Record<string, number>;
+  requires_watering: boolean;
 }
 
 export interface MutationGoal {
