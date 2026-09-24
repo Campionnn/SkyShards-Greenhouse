@@ -56,6 +56,7 @@ function loadGreenhouseData() {
       growth_stages: crop.growth_stages,
       positive_buffs: crop.positive_buffs,
       negative_buffs: crop.negative_buffs,
+      drops: crop.drops,
       isMutation: false,
     });
   }
@@ -87,6 +88,7 @@ function loadGreenhouseData() {
       growth_stages: mutation.growth_stages,
       positive_buffs: mutation.positive_buffs,
       negative_buffs: mutation.negative_buffs,
+      drops: mutation.drops,
       isMutation: true,
     });
   }

@@ -20,6 +20,7 @@ export interface CropDataJSON {
   growth_stages: number | null;
   positive_buffs: string[];
   negative_buffs: string[];
+  drops: Record<string, number>;
 }
 
 export interface MutationRequirementJSON {

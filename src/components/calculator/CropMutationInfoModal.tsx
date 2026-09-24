@@ -200,10 +200,30 @@ export const CropMutationInfoModal: React.FC = () => {
   const requirements = isMutation ? mutationData!.requirements : [];
   const special = isMutation ? mutationData!.special : null;
   const decay = isMutation ? mutationData!.decay : null;
-  const drops = isMutation ? mutationData!.drops : null;
+  const drops = isMutation ? mutationData!.drops : cropData!.drops ?? null;
   const requiresWatering = isMutation ? mutationData!.requires_watering ?? null : null;
   const harvestInfo = isMutation ? mutationData!.harvest_info : null;
   const growingInfo = isMutation ? mutationData!.growing_info : null;
+
+  // Shared by the mutation "Drops" list and the crop "Base Yield" list.
+  const renderDropRows = (entries: [string, number][]) => (
+    <div className="space-y-1">
+      {entries.map(([item, amount]) => (
+        <div key={item} className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CropImage
+              cropId={item}
+              cropName={formatName(item)}
+              size="xs"
+              showFallback={false}
+            />
+            <span className="text-sm text-slate-300">{formatName(item)}</span>
+          </div>
+          <span className="text-sm text-slate-400">{amount}</span>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div
@@ -422,6 +442,19 @@ export const CropMutationInfoModal: React.FC = () => {
                 </div>
               </div>
             )}
+            {/* Base Yield (Crops Only) */}
+            {!isMutation && drops && Object.keys(drops).length > 0 && (
+              <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <PackageOpen className="w-4 h-4 text-blue-400" />
+                  <h3 className="text-sm font-medium text-slate-200">Base Yield</h3>
+                </div>
+                {renderDropRows(Object.entries(drops))}
+                <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-600/30">
+                  Per harvest before Farming Fortune and Yield buffs.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Right Column - Requirements & Drops (Mutations Only) */}
@@ -475,22 +508,7 @@ export const CropMutationInfoModal: React.FC = () => {
                     <PackageOpen className="w-4 h-4 text-blue-400" />
                     <h3 className="text-sm font-medium text-slate-200">Drops</h3>
                   </div>
-                  <div className="space-y-1">
-                    {Object.entries(drops).map(([item, amount]) => (
-                      <div key={item} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <CropImage
-                            cropId={item}
-                            cropName={item}
-                            size="xs"
-                            showFallback={false}
-                          />
-                          <span className="text-sm text-slate-300">{formatName(item)}</span>
-                        </div>
-                        <span className="text-sm text-slate-400">{amount}</span>
-                      </div>
-                    ))}
-                  </div>
+                  {renderDropRows(Object.entries(drops))}
                 </div>
               )}
             </div>

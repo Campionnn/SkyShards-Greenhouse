@@ -8,7 +8,11 @@
       "positive_buffs": [
         "harvest_boost"
       ],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {
+        "wheat": 72,
+        "seeds": 1
+      }
     },
     "potato": {
       "name": "Potato",
@@ -18,7 +22,10 @@
       "positive_buffs": [
         "immunity"
       ],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {
+        "potato": 150
+      }
     },
     "carrot": {
       "name": "Carrot",
@@ -28,7 +35,10 @@
       "positive_buffs": [
         "xp_boost"
       ],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {
+        "carrot": 175
+      }
     },
     "pumpkin": {
       "name": "Pumpkin",
@@ -38,7 +48,10 @@
       "positive_buffs": [
         "bonus_drops"
       ],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {
+        "pumpkin": 68
+      }
     },
     "melon": {
       "name": "Melon",
@@ -48,7 +61,10 @@
       "positive_buffs": [
         "water_retain"
       ],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {
+        "melon": 320
+      }
     },
     "cocoa_beans": {
       "name": "Cocoa Beans",
@@ -58,7 +74,10 @@
       "positive_buffs": [
         "immunity"
       ],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {
+        "cocoa_beans": 120
+      }
     },
     "sugar_cane": {
       "name": "Sugar Cane",
@@ -70,7 +89,10 @@
       ],
       "negative_buffs": [
         "harvest_loss"
-      ]
+      ],
+      "drops": {
+        "sugar_cane": 136
+      }
     },
     "cactus": {
       "name": "Cactus",
@@ -82,7 +104,10 @@
       ],
       "negative_buffs": [
         "harvest_loss"
-      ]
+      ],
+      "drops": {
+        "cactus": 132
+      }
     },
     "nether_wart": {
       "name": "Nether Wart",
@@ -94,7 +119,10 @@
       ],
       "negative_buffs": [
         "xp_loss"
-      ]
+      ],
+      "drops": {
+        "nether_wart": 108
+      }
     },
     "red_mushroom": {
       "name": "Red Mushroom",
@@ -106,7 +134,10 @@
       ],
       "negative_buffs": [
         "water_drain"
-      ]
+      ],
+      "drops": {
+        "red_mushroom": 30
+      }
     },
     "brown_mushroom": {
       "name": "Brown Mushroom",
@@ -118,7 +149,10 @@
       ],
       "negative_buffs": [
         "water_drain"
-      ]
+      ],
+      "drops": {
+        "brown_mushroom": 30
+      }
     },
     "moonflower": {
       "name": "Moonflower",
@@ -128,7 +162,10 @@
       "positive_buffs": [
         "bonus_drops"
       ],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {
+        "moonflower": 232
+      }
     },
     "sunflower": {
       "name": "Sunflower",
@@ -138,7 +175,10 @@
       "positive_buffs": [
         "bonus_drops"
       ],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {
+        "sunflower": 232
+      }
     },
     "wild_rose": {
       "name": "Wild Rose",
@@ -148,7 +188,10 @@
       "positive_buffs": [
         "effect_spread"
       ],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {
+        "wild_rose": 200
+      }
     },
     "fire": {
       "name": "Fire",
@@ -156,7 +199,8 @@
       "ground": "netherrack",
       "growth_stages": null,
       "positive_buffs": [],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {}
     },
     "dead_plant": {
       "name": "Dead Plant",
@@ -164,7 +208,8 @@
       "ground": "farmland",
       "growth_stages": null,
       "positive_buffs": [],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {}
     },
     "fermento": {
       "name": "Fermento",
@@ -172,7 +217,8 @@
       "ground": "farmland",
       "growth_stages": null,
       "positive_buffs": [],
-      "negative_buffs": []
+      "negative_buffs": [],
+      "drops": {}
     }
   },
   "mutations": {
@@ -1083,7 +1129,7 @@
           "count": 4
         }
       ],
-      "rarity": "epic",
+      "rarity": "rare",
       "growth_stages": 0,
       "decay": 3,
       "positive_buffs": [
@@ -1208,7 +1254,7 @@
         }
       ],
       "rarity": "legendary",
-      "growth_stages": 9,
+      "growth_stages": 8,
       "decay": 3,
       "positive_buffs": [
         "immunity",

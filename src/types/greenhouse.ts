@@ -7,6 +7,7 @@ export interface CropDefinition {
   growth_stages: number | null;
   positive_buffs: string[];
   negative_buffs: string[];
+  drops: Record<string, number>;
   isMutation?: boolean;
 }
 
