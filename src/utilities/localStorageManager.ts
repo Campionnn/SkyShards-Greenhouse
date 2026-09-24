@@ -286,14 +286,9 @@ export class LocalStorageManager {
   }
 
   /**
-   * Load the effect weights. Also drops the retired unique-crops key.
+   * Load the effect weights
    */
   static loadEffectWeights(): Record<string, number> | null {
-    try {
-      localStorage.removeItem("skyshards-unique-crops");
-    } catch {
-      // ignore
-    }
     const data = this.load<Record<string, number>>(STORAGE_KEYS.EFFECT_WEIGHTS);
     if (!data || typeof data !== "object") return null;
     const out: Record<string, number> = {};

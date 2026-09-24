@@ -3,6 +3,7 @@ import { Play, Grid3x3, Square } from "lucide-react";
 import { useGridState, useGreenhouseData, useLockedPlacements } from "../context";
 import { GridManagerModal, FirstTimeVisitorModal, Panel, useToast } from "../components";
 import { MutationTargets, SolverResults, CropConfigurationsPanel, EffectWeightsPanel, LocalSolverPanel } from "../components";
+import { UniqueCropsPanel, useUniqueCrops } from "../components"; // UNIQUE_CROPS
 import { solveGreenhouseWithJob } from "../services";
 import { LocalStorageManager } from "../utilities";
 import type { SolveResponse, MutationGoal, JobProgress } from "../types/greenhouse";
@@ -12,6 +13,7 @@ export const CalculatorPage: React.FC = () => {
   const { selectedMutations, isLoading: dataLoading, effectiveEffectWeights } = useGreenhouseData();
   const { getLocksForAPI, priorities } = useLockedPlacements();
   const { toast } = useToast();
+  const uniqueCrops = useUniqueCrops(); // UNIQUE_CROPS
 
   // Modal state
   const [isGridModalOpen, setIsGridModalOpen] = useState(false);
@@ -106,6 +108,7 @@ export const CalculatorPage: React.FC = () => {
           priorities: Object.keys(priorities).length > 0 ? priorities : undefined,
           locks: getLocksForAPI().length > 0 ? getLocksForAPI() : undefined,
           effect_weights: effectiveEffectWeights,
+          unique_crops: uniqueCrops > 0 ? uniqueCrops : undefined, // UNIQUE_CROPS
         },
         {
           onProgress: (p) => {
@@ -151,7 +154,7 @@ export const CalculatorPage: React.FC = () => {
       setQueuePosition(null);
       abortControllerRef.current = null;
     }
-  }, [getUnlockedCellsArray, selectedMutations, previewResult, priorities, getLocksForAPI, effectiveEffectWeights, toast]);
+  }, [getUnlockedCellsArray, selectedMutations, previewResult, priorities, getLocksForAPI, effectiveEffectWeights, toast, uniqueCrops]);
 
   const handleCancel = useCallback(() => {
     if (abortControllerRef.current) {
@@ -202,6 +205,8 @@ export const CalculatorPage: React.FC = () => {
               <MutationTargets />
 
               <EffectWeightsPanel />
+
+              <UniqueCropsPanel />
 
               <LocalSolverPanel />
             </div>

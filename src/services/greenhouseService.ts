@@ -35,6 +35,7 @@ export async function submitSolveJob(request: SolveRequest, endpoint?: ResolvedE
         locks: request.locks || [],
         effect_weights: request.effect_weights ?? {},
         ...(request.buff_crops ? { buff_crops: request.buff_crops } : {}),
+        ...(request.unique_crops ? { unique_crops: request.unique_crops } : {}), // UNIQUE_CROPS
         ...(timeLimit ? { time_limit: timeLimit } : {}),
       },
     }),

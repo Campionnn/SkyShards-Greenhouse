@@ -6,3 +6,5 @@ export { CropConfigurationsPanel } from "./CropConfigurationsPanel";
 export { CropMutationInfoModal } from "./CropMutationInfoModal";
 export { EffectWeightsPanel } from "./EffectWeightsPanel";
 export { LocalSolverPanel } from "./LocalSolverPanel";
+export { UniqueCropsPanel } from "./UniqueCropsPanel";
+export { useUniqueCrops } from "./uniqueCrops";

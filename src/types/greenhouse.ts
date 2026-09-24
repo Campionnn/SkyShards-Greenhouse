@@ -58,6 +58,8 @@ export interface SolveRequest {
   // Plants the solver may place freely as effect sources (defaults to every
   // buff-carrying base crop). Only consulted when effect_weights is set.
   buff_crops?: string[];
+  // UNIQUE_CROPS: at least this many distinct crop groups on the grid (0-12)
+  unique_crops?: number;
   // Seconds the solver may run. Only honoured by the local solver; the public
   // API always uses its own budget.
   time_limit?: number;
@@ -96,6 +98,8 @@ export interface SolveResponse {
   effect_weights?: Record<string, Record<string, number>>;
   // Free buff-source crops the solver was allowed to place
   buff_crops?: string[];
+  // UNIQUE_CROPS
+  unique_crops?: { requested: number; target: number; achieved: number; crops: string[] };
 }
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
