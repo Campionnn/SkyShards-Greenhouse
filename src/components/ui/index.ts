@@ -7,3 +7,4 @@ export { MutationRequirementGrid } from "./MutationRequirementGrid";
 export { FirstTimeVisitorModal } from "./FirstTimeVisitorModal";
 export { Panel, SectionLabel, SegmentedControl } from "./Panel";
 export { Portal } from "./Portal";
+export { InfoHint } from "./InfoHint";

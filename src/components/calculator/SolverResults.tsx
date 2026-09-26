@@ -1,12 +1,11 @@
 import React, { useMemo, useState, useRef, useCallback } from "react";
-import { CheckCircle2, AlertCircle, Grid3X3, Eye, EyeOff, Zap, Clock, RotateCcw, Paintbrush } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Grid3X3, Eye, EyeOff, RotateCcw, Paintbrush, Info, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { GRID_SIZE } from "../../constants";
 import { useGreenhouseData, useGridState, useLockedPlacements, useDesigner, useInfoModal } from "../../context";
 import { useGridPlacement, useFitCellSize } from "../../hooks";
 import {
   getGridDimensions,
-  getRarityTextColor,
   simulateEffects,
   effectiveEffects,
   effectsGivenBy,
@@ -23,15 +22,22 @@ import {
 import { CropImage } from "../shared";
 import { SectionLabel } from "../ui";
 import { useToast } from "../ui/toastContext";
-import type { SolveResponse, CropPlacement, MutationResult, JobProgress } from "../../types/greenhouse";
+import type { SolveResponse, CropPlacement, MutationResult } from "../../types/greenhouse";
+import type { SolveErrorInfo } from "../../services";
+import { SolverProgress } from "./SolverProgress";
+import { ResultSummary, MutationList, SolveErrorPanel } from "./ResultSummary";
+import type { SolveSession, SolveRunMeta } from "./solverStatus";
 
 interface SolverResultsProps {
   result: SolveResponse | null;
-  error: string | null;
-  isLoading: boolean;
-  progress?: JobProgress | null;
-  queuePosition?: number | null;
+  error: SolveErrorInfo | null;
+  /** Present while a solve is running. */
+  session?: SolveSession | null;
+  /** Facts about the finished solve (time taken, where it ran). */
+  runMeta?: SolveRunMeta | null;
   onClear?: () => void;
+  onDismissError?: () => void;
+  onRetry?: () => void;
 }
 
 // Represents a crop/mutation placement on the grid
@@ -103,86 +109,9 @@ function processMutationsToItems(
   });
 }
 
-const StatTile: React.FC<{ label: string; value: string; hint?: string; tone?: "emerald" | "sky" | "slate" }> = ({
-  label,
-  value,
-  hint,
-  tone = "slate",
-}) => {
-  const color = tone === "emerald" ? "text-emerald-400" : tone === "sky" ? "text-sky-300" : "text-slate-200";
-  return (
-    <div className="bg-slate-700/30 rounded-md px-3 py-2 min-w-0" title={hint}>
-      <span className="text-[11px] uppercase tracking-wide text-slate-400 block">{label}</span>
-      <span className={`text-lg font-semibold leading-tight ${color}`}>{value}</span>
-    </div>
-  );
-};
-
 const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = "" }) => (
   <div className={`bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 flex-1 ${className}`}>{children}</div>
 );
-
-
-const LoadingState: React.FC = () => (
-  <Card>
-    <div className="flex items-center gap-2 mb-3">
-      <Grid3X3 className="w-4 h-4 text-emerald-400" />
-      <h3 className="text-sm font-medium text-slate-200">Solution</h3>
-    </div>
-    <div className="flex flex-col items-center justify-center py-8">
-      <div className="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-3" />
-      <span className="text-sm text-slate-400">Solving...</span>
-    </div>
-  </Card>
-);
-
-const ErrorState: React.FC<{ error: string }> = ({ error }) => (
-  <Card>
-    <div className="flex items-center gap-2 mb-3">
-      <AlertCircle className="w-4 h-4 text-red-400" />
-      <h3 className="text-sm font-medium text-slate-200">Error</h3>
-    </div>
-    <div className="px-3 py-2 bg-red-500/20 border border-red-500/30 rounded-md text-red-300 text-sm">
-      {error}
-    </div>
-  </Card>
-);
-
-const QueueBanner: React.FC<{ position: number }> = ({ position }) => (
-  <div className="mb-4 bg-blue-500/20 border border-blue-500/30 rounded-lg px-4 py-3 flex items-center justify-between">
-    <div className="flex items-center gap-2">
-      <Clock className="w-4 h-4 text-blue-400" />
-      <span className="text-sm text-slate-300">Position in queue</span>
-    </div>
-    <span className="text-2xl font-bold text-blue-400">#{position}</span>
-  </div>
-);
-
-const ProgressBar: React.FC<{ progress: JobProgress }> = ({ progress }) => {
-  const elapsed = Math.round(progress.elapsed_seconds);
-  const minutes = Math.floor(elapsed / 60);
-  const seconds = elapsed % 60;
-  const time = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-  const pct = progress.percentage !== null && progress.percentage > 0 ? Math.round(progress.percentage) : null;
-  return (
-    <div className="mb-4 bg-slate-700/30 rounded-md px-3 py-2">
-      <div className="flex items-center justify-between gap-3 mb-1.5">
-        <span className="text-xs text-slate-300 truncate">{progress.current_activity || progress.phase}</span>
-        <span className="text-xs text-slate-400 flex items-center gap-3 flex-shrink-0">
-          <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-emerald-400" />{progress.solutions_found}</span>
-          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{time}</span>
-          {pct !== null && <span className="text-emerald-400">{pct}%</span>}
-        </span>
-      </div>
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-        <div
-          className={`h-full bg-emerald-500 transition-all duration-300 ${pct === null ? "animate-pulse w-1/3" : ""}`}
-          style={pct !== null ? { width: `${pct}%` } : undefined}
-        />
-      </div>
-    </div>
-  );
-};
 
 const StatusMessage: React.FC<{
   hoveredPlacementId: string | null;
@@ -235,10 +164,11 @@ const StatusMessage: React.FC<{
 export const SolverResults: React.FC<SolverResultsProps> = ({
   result,
   error,
-  isLoading,
-  progress,
-  queuePosition,
+  session,
+  runMeta,
   onClear,
+  onDismissError,
+  onRetry,
 }) => {
   const { getCropDef, getMutationDef } = useGreenhouseData();
   const { unlockedCells } = useGridState();
@@ -378,12 +308,9 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     return { item, ...effectInfoFor(item.id, [item.startRow, item.startCol], item.size, !!item.isMutation) };
   }, [hoveredEffectItem, hoveredPlacementId, lockedPlacements, getCropDef, getMutationDef, effectInfoFor, dragState]);
 
-  if (isLoading) return <LoadingState />;
-  if (error) return <ErrorState error={error} />;
-
   const hasResult = !!result;
-  const isOptimal = result?.status === "OPTIMAL";
-  const isSolving = progress !== null && progress !== undefined;
+  const isSolving = !!session;
+  const isFinal = hasResult && !isSolving && result.status !== "SOLVING";
 
   const renderGrid = () => (
     <div ref={fitRef} className="w-full">
@@ -514,33 +441,45 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     </div>
   );
 
-  const mutationCounts = new Map<string, number>();
-  (result?.mutations || []).forEach((m) => mutationCounts.set(m.mutation, (mutationCounts.get(m.mutation) || 0) + 1));
-  const placementCounts = new Map<string, number>();
-  (result?.placements || []).forEach((p) => placementCounts.set(p.crop, (placementCounts.get(p.crop) || 0) + 1));
-  const totalCells =
-    (result?.placements || []).reduce((sum, p) => sum + p.size * p.size, 0) +
-    (result?.mutations || []).reduce((sum, m) => sum + m.size * m.size, 0);
+  const placementCounts = new Map<string, { count: number; locked: number }>();
+  (result?.placements || []).forEach((p) => {
+    const e = placementCounts.get(p.crop) || { count: 0, locked: 0 };
+    e.count += 1;
+    if (p.locked) e.locked += 1;
+    placementCounts.set(p.crop, e);
+  });
+
+  // Header wording
+  let headerIcon: React.ReactNode = <Grid3X3 className="w-4 h-4 text-emerald-400" />;
+  let headerText = "Solution";
+  if (isSolving) {
+    headerIcon = <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />;
+    headerText = hasResult ? "Best layout so far" : "Solving";
+  } else if (error && !hasResult) {
+    headerIcon = <AlertTriangle className="w-4 h-4 text-amber-400" />;
+    headerText = error.kind === "no_solution" || error.kind === "infeasible_unique" ? "No solution" : "Solve failed";
+  } else if (hasResult) {
+    headerIcon =
+      result.status === "OPTIMAL" ? (
+        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+      ) : result.status === "CANCELLED" ? (
+        <AlertTriangle className="w-4 h-4 text-amber-400" />
+      ) : (
+        <Info className="w-4 h-4 text-sky-400" />
+      );
+    headerText = result.status === "OPTIMAL" ? "Optimal solution" : result.status === "CANCELLED" ? "Partial solution" : "Solution";
+  }
+
+  const unlockedCount = unlockedCells.size;
 
   return (
     <Card>
       {/* Header */}
       <div className="flex items-center gap-2 mb-3 min-h-[24px]">
-        {!hasResult ? (
-          <Grid3X3 className="w-4 h-4 text-emerald-400" />
-        ) : isOptimal ? (
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-        ) : isSolving ? (
-          <div className="w-4 h-4 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
-        ) : (
-          <AlertCircle className="w-4 h-4 text-yellow-400" />
-        )}
-        <h3 className="text-sm font-medium text-slate-200">
-          {!hasResult ? "Solution" : isSolving ? "Current best solution" : isOptimal ? "Optimal solution" : `Solution (${result.status.toLowerCase()})`}
-        </h3>
-        {hasResult && result.cache_hit && <span className="text-[11px] text-slate-500">cached</span>}
+        {headerIcon}
+        <h3 className="text-sm font-medium text-slate-200">{headerText}</h3>
         <div className="ml-auto flex items-center gap-2">
-          {(hasResult || lockedPlacements.length > 0) && (
+          {(hasResult || lockedPlacements.length > 0) && !isSolving && (
             <button
               onClick={handleSendToDesigner}
               className="px-2 py-1 text-xs bg-purple-500/40 hover:bg-purple-500/60 border border-purple-500/30 rounded text-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
@@ -550,7 +489,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
               Designer
             </button>
           )}
-          {hasResult && onClear && (
+          {(hasResult || error) && !isSolving && onClear && (
             <button
               onClick={onClear}
               className="px-2 py-1 text-xs bg-slate-600/50 hover:bg-slate-600/70 border border-slate-600/30 rounded text-slate-300 transition-colors flex items-center gap-1 cursor-pointer"
@@ -563,31 +502,14 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
         </div>
       </div>
 
-      {queuePosition !== null && queuePosition !== undefined && <QueueBanner position={queuePosition} />}
-      {progress && <ProgressBar progress={progress} />}
+      {/* Live status while solving */}
+      {session && <SolverProgress session={session} />}
 
-      {/* Score */}
-      {hasResult && !isSolving && result.score !== undefined && result.score !== null && (
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          <StatTile
-            label="Score"
-            value={result.score.toFixed(2)}
-            tone="emerald"
-            hint="What the solver maximizes: expected spawns per tick of the maximize targets plus the weighted effect value of every target spot"
-          />
-          <StatTile
-            label="Effects"
-            value={`${(result.effect_value ?? 0) >= 0 ? "+" : ""}${(result.effect_value ?? 0).toFixed(2)}`}
-            tone={(result.effect_value ?? 0) > 0 ? "sky" : "slate"}
-            hint="The part of the score that comes from your effect weights"
-          />
-          <StatTile
-            label="Spawns / tick"
-            value={(result.expected_spawns_per_tick ?? 0).toFixed(2)}
-            hint="Expected mutation spawns per growth tick, summed over every spot (competing mutations dilute the roll)"
-          />
-        </div>
-      )}
+      {/* Failure / no solution */}
+      {error && !isSolving && <SolveErrorPanel error={error} onDismiss={onDismissError} onRetry={onRetry} />}
+
+      {/* Final result status + stats */}
+      {isFinal && <ResultSummary result={result} meta={runMeta ?? null} unlockedCount={unlockedCount} />}
 
       {/* Grid */}
       <SectionLabel
@@ -604,79 +526,50 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
           ) : undefined
         }
       >
-        Layout
+        {isSolving && hasResult ? "Layout (live preview)" : "Layout"}
       </SectionLabel>
       {renderGrid()}
       <StatusMessage
         hoveredPlacementId={hoveredPlacementId}
         isPlacementMode={isPlacementMode}
         hoverInfo={hoverInfo}
-        hasResult={hasResult}
+        hasResult={hasResult || isSolving}
         hasLockedPlacements={lockedPlacements.length > 0}
       />
 
-      {/* Mutation Summary */}
+      {/* Targets */}
       {hasResult && (
         <div className="mb-4">
-          <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
-            Mutations
-          </h4>
-          <div className="space-y-2">
-            {Array.from(mutationCounts.entries()).map(([mutationId, count]) => {
-              const mutationDef = getMutationDef(mutationId);
-              const displayName = mutationDef?.name || mutationId.replace(/_/g, " ");
-              return (
-                <div
-                  key={mutationId}
-                  className="flex items-center justify-between bg-slate-700/30 rounded-md px-3 py-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <CropImage cropId={mutationId} cropName={displayName} size="xs" showFallback={false} />
-                    <span className={`text-sm ${mutationDef ? getRarityTextColor(mutationDef.rarity) : "text-slate-200"}`}>{displayName}</span>
-                  </div>
-                  <span className="text-sm font-medium text-emerald-400">x{count}</span>
-                </div>
-              );
-            })}
-            {mutationCounts.size === 0 && (
-              <div className="text-center py-2 text-xs text-slate-500">No mutations found</div>
-            )}
-          </div>
+          <SectionLabel>Mutations</SectionLabel>
+          <MutationList result={result} />
         </div>
       )}
 
       {/* Crop Placements */}
       {hasResult && (
-        <div className="mb-4">
-          <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
-            Crop Placements
-          </h4>
+        <div className="mb-1">
+          <SectionLabel>Crops to plant</SectionLabel>
           <div className="flex flex-wrap gap-2">
-            {Array.from(placementCounts.entries()).map(([cropId, count]) => {
+            {Array.from(placementCounts.entries()).map(([cropId, { count, locked }]) => {
               const cropDef = getCropDef(cropId);
               const mutationDef = getMutationDef(cropId);
               const displayName = cropDef?.name || mutationDef?.name || cropId.replace(/_/g, " ");
               return (
-                <div key={cropId} className="flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1">
+                <div
+                  key={cropId}
+                  className="flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1"
+                  title={locked ? `${locked} of these are your locked placements` : undefined}
+                >
                   <CropImage cropId={cropId} cropName={displayName} size="xs" showFallback={false} />
                   <span className="text-xs text-slate-300">{displayName}</span>
-                  <span className="text-xs text-slate-500">x{count}</span>
+                  <span className="text-xs text-slate-500 tabular-nums">
+                    x{count}
+                    {locked > 0 && <span className="text-slate-600"> ({locked} locked)</span>}
+                  </span>
                 </div>
               );
             })}
-            {placementCounts.size === 0 && (
-              <div className="text-center py-2 text-xs text-slate-500">No crops placed</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Total Cells Used */}
-      {hasResult && (
-        <div className="bg-slate-700/30 rounded-md px-3 py-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">Total Cells Used:</span>
-            <span className="text-sm font-medium text-emerald-400">{totalCells}</span>
+            {placementCounts.size === 0 && <div className="text-center py-2 text-xs text-slate-500">No crops placed</div>}
           </div>
         </div>
       )}

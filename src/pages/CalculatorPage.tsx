@@ -4,9 +4,18 @@ import { useGridState, useGreenhouseData, useLockedPlacements } from "../context
 import { GridManagerModal, FirstTimeVisitorModal, Panel, useToast } from "../components";
 import { MutationTargets, SolverResults, CropConfigurationsPanel, EffectWeightsPanel, LocalSolverPanel } from "../components";
 import { UniqueCropsPanel, useUniqueCrops } from "../components"; // UNIQUE_CROPS
-import { solveGreenhouseWithJob } from "../services";
+import { solveGreenhouseWithJob, SolveCancelledError, toSolveErrorInfo, loadLocalSolverSettings } from "../services";
+import type { SolveErrorInfo } from "../services";
 import { LocalStorageManager } from "../utilities";
-import type { SolveResponse, MutationGoal, JobProgress } from "../types/greenhouse";
+import type { SolveSession, SolveRunMeta } from "../components/calculator/solverStatus";
+import type { SolveResponse, MutationGoal } from "../types/greenhouse";
+
+const setupError = (title: string, message: string, suggestion: string): SolveErrorInfo => ({
+  kind: "invalid_request",
+  title,
+  message,
+  suggestions: [suggestion],
+});
 
 export const CalculatorPage: React.FC = () => {
   const { getUnlockedCellsArray, unlockedCells } = useGridState();
@@ -57,41 +66,55 @@ export const CalculatorPage: React.FC = () => {
   }, []);
 
   // Solver state
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SolveErrorInfo | null>(null);
   const [result, setResult] = useState<SolveResponse | null>(null);
-  
-  // Job progress state
-  const [progress, setProgress] = useState<JobProgress | null>(null);
-  const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [previewResult, setPreviewResult] = useState<SolveResponse | null>(null);
-  
+  // Live solve status; null when nothing is running
+  const [session, setSession] = useState<SolveSession | null>(null);
+  // Facts about the finished solve
+  const [runMeta, setRunMeta] = useState<SolveRunMeta | null>(null);
+  const isLoading = session !== null;
+
   // Abort controller for cancellation
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Latest preview, readable from the async solve without a stale closure
+  const previewRef = useRef<SolveResponse | null>(null);
 
   const handleSolve = useCallback(async () => {
     const cells = getUnlockedCellsArray();
 
     if (cells.length === 0) {
-      setError("No cells are unlocked. Go to the Grid tab to configure your greenhouse.");
+      setError(setupError("No cells unlocked", "Your greenhouse has no unlocked cells to plant in.", "Press Configure in the Grid panel and unlock the cells you have."));
       return;
     }
 
     if (selectedMutations.length === 0) {
-      setError("No mutation targets selected. Add at least one target to optimize for.");
+      setError(setupError("No targets", "Nothing to optimize for yet.", "Add at least one mutation target in the Targets panel."));
       return;
     }
 
+    const startedAt = Date.now();
+    const settings = loadLocalSolverSettings();
+
     // Reset state
-    setIsLoading(true);
     setError(null);
     setResult(null);
-    setProgress(null);
-    setQueuePosition(null);
     setPreviewResult(null);
+    setRunMeta(null);
+    previewRef.current = null;
+    setSession({
+      phase: "submitting",
+      startedAt,
+      endpoint: null,
+      queuePosition: null,
+      queueStart: null,
+      progress: null,
+      timeLimit: null,
+      lastImprovementAt: null,
+    });
 
-    // Create abort controller for this solve
     abortControllerRef.current = new AbortController();
+    let lastSolutions: number | null = null;
 
     try {
       // Convert selected mutations to API format
@@ -101,9 +124,9 @@ export const CalculatorPage: React.FC = () => {
         count: m.mode === "target" ? m.targetCount : null,
       }));
 
-      const response = await solveGreenhouseWithJob(
-        { 
-          cells, 
+      const { result: response, run } = await solveGreenhouseWithJob(
+        {
+          cells,
           targets,
           priorities: Object.keys(priorities).length > 0 ? priorities : undefined,
           locks: getLocksForAPI().length > 0 ? getLocksForAPI() : undefined,
@@ -111,18 +134,8 @@ export const CalculatorPage: React.FC = () => {
           unique_crops: uniqueCrops > 0 ? uniqueCrops : undefined, // UNIQUE_CROPS
         },
         {
-          onProgress: (p) => {
-            setProgress(p);
-            setQueuePosition(null);
-          },
-          onQueuePosition: (pos) => {
-            setQueuePosition(pos);
-            setProgress(null);
-          },
-          onPreviewUpdate: (preview) => {
-            setPreviewResult(preview);
-          },
           onEndpoint: (endpoint) => {
+            setSession((s) => s && { ...s, endpoint, timeLimit: endpoint.local ? settings.timeLimit : null });
             if (endpoint.fallback) {
               toast({
                 id: "local-solver-fallback",
@@ -132,43 +145,87 @@ export const CalculatorPage: React.FC = () => {
               });
             }
           },
+          onQueuePosition: (pos) => {
+            setSession((s) =>
+              s && s.phase !== "cancelling"
+                ? { ...s, phase: "queued", queuePosition: pos, queueStart: Math.max(s.queueStart ?? 0, pos) }
+                : s
+            );
+          },
+          onProgress: (p) => {
+            lastSolutions = p.solutions_found;
+            setSession((s) => {
+              if (!s) return s;
+              const improved = p.solutions_found > (s.progress?.solutions_found ?? 0);
+              return {
+                ...s,
+                phase: s.phase === "cancelling" ? "cancelling" : "running",
+                queuePosition: null,
+                progress: p,
+                lastImprovementAt: improved ? p.elapsed_seconds : s.lastImprovementAt,
+              };
+            });
+          },
+          onPreviewUpdate: (preview) => {
+            previewRef.current = preview;
+            setPreviewResult(preview);
+          },
+          onCancelling: () => {
+            setSession((s) => s && { ...s, phase: "cancelling" });
+          },
         },
         abortControllerRef.current.signal
       );
 
       setResult(response);
-      setPreviewResult(null);
+      setRunMeta({
+        endpoint: run.endpoint,
+        serverSeconds: run.serverSeconds,
+        queuedSeconds: run.queuedSeconds,
+        wallSeconds: (Date.now() - startedAt) / 1000,
+        solutionsFound: lastSolutions,
+      });
     } catch (err) {
-      if (err instanceof Error && err.message === "Job cancelled") {
-        // If we have a preview result, show it as the final result
-        if (previewResult) {
-          setResult({ ...previewResult, status: "CANCELLED" });
+      if (err instanceof SolveCancelledError) {
+        // Stopped before the server handed back a result: keep the live preview if there was one.
+        // (typed explicitly: TS narrows the ref to null after the reset above,
+        // not knowing the callbacks set it meanwhile)
+        const preview = previewRef.current as SolveResponse | null;
+        if (preview) {
+          setResult({ ...preview, status: "CANCELLED" });
+          setRunMeta({
+            endpoint: null,
+            serverSeconds: null,
+            queuedSeconds: null,
+            wallSeconds: (Date.now() - startedAt) / 1000,
+            solutionsFound: lastSolutions,
+          });
         }
       } else {
-        setError(err instanceof Error ? err.message : "Failed to solve");
+        setError(toSolveErrorInfo(err));
         setResult(null);
       }
     } finally {
-      setIsLoading(false);
-      setProgress(null);
-      setQueuePosition(null);
+      setPreviewResult(null);
+      setSession(null);
       abortControllerRef.current = null;
     }
-  }, [getUnlockedCellsArray, selectedMutations, previewResult, priorities, getLocksForAPI, effectiveEffectWeights, toast, uniqueCrops]);
+  }, [getUnlockedCellsArray, selectedMutations, priorities, getLocksForAPI, effectiveEffectWeights, toast, uniqueCrops]);
 
   const handleCancel = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
   }, []);
-  
+
   const handleClearResults = useCallback(() => {
     setResult(null);
     setPreviewResult(null);
     setError(null);
-    setProgress(null);
-    setQueuePosition(null);
+    setRunMeta(null);
   }, []);
+
+  const handleDismissError = useCallback(() => setError(null), []);
 
   const unlockedCount = unlockedCells.size;
 
@@ -222,7 +279,7 @@ export const CalculatorPage: React.FC = () => {
               }`}
             >
               {isLoading ? (
-                <span>Stop solving</span>
+                <span>{session?.phase === "cancelling" ? "Stopping..." : "Stop solving"}</span>
               ) : (
                 <>
                   <Play className="w-4 h-4" />
@@ -237,10 +294,11 @@ export const CalculatorPage: React.FC = () => {
             <SolverResults
               result={displayResult}
               error={error}
-              isLoading={false}
-              progress={progress}
-              queuePosition={queuePosition}
+              session={session}
+              runMeta={result ? runMeta : null}
               onClear={handleClearResults}
+              onDismissError={handleDismissError}
+              onRetry={error && error.kind !== "invalid_request" ? handleSolve : undefined}
             />
           </div>
 

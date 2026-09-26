@@ -89,6 +89,8 @@ export interface SolveResponse {
   placements: CropPlacement[];
   mutations: MutationResult[];
   cache_hit?: string;
+  // Seconds the solver was given (absent when answered from the cache without solving)
+  time_limit?: number | null;
   // What the solver maximizes: expected spawns/tick of the maximize targets
   // plus the weighted effect value over every target spot
   score?: number;
@@ -100,7 +102,28 @@ export interface SolveResponse {
   buff_crops?: string[];
   // UNIQUE_CROPS
   unique_crops?: { requested: number; target: number; achieved: number; crops: string[] };
+  // Internal effect-model statistics (debug info, not shown)
+  effect_model_stats?: Record<string, unknown>;
 }
+
+/**
+ * Result statuses the API can return:
+ * - OPTIMAL: CP-SAT proved no better layout exists
+ * - FEASIBLE: a valid layout, but the time budget ran out before it could be proven best
+ * - CANCELLED: the user stopped the solve; best layout found so far
+ * - SOLVING: frontend-only, a live preview while the job runs
+ */
+export type SolveResultStatus = "OPTIMAL" | "FEASIBLE" | "CANCELLED" | "SOLVING";
+
+/**
+ * cache_hit values:
+ * - exact_optimal: this exact setup was already proven optimal; returned instantly
+ * - resume_stopped: earlier solves stopped improving; saved best returned instantly
+ * - resume: continued from an earlier solve of this exact setup
+ * - warm_start: seeded with a saved layout for a similar setup
+ * - priority_variant: reused limits proven for the same setup with other priorities
+ */
+export type CacheHitKind = "exact_optimal" | "resume_stopped" | "resume" | "warm_start" | "priority_variant";
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -116,6 +139,19 @@ export interface JobProgress {
   preview_placements: CropPlacement[] | null;
   preview_mutations: MutationResult[] | null;
   preview_cells_used: number | null;
+  // Seconds the solver was given (newer API versions only)
+  time_limit_seconds?: number | null;
+  // Decoded objective (newer API versions only; absent on older local solvers).
+  // The objective is lexicographic: score first, then fewer priority points, then fewer cells.
+  stage?: "maximizing" | "tie_breaking" | null;
+  tie_break?: "priority" | "cells" | null;
+  has_score?: boolean | null;
+  has_priority?: boolean | null;
+  best_score?: number | null;
+  score_bound?: number | null;
+  best_priority?: number | null;
+  best_cells?: number | null;
+  best_mutations?: number | null;
 }
 
 export interface JobSubmitRequest {
@@ -132,6 +168,8 @@ export interface JobSubmitResponse {
 export interface JobStatusResponse {
   id: string;
   status: JobStatus;
+  request_type?: string;
+  request_params?: Record<string, unknown>;
   created_at: number;
   started_at: number | null;
   completed_at: number | null;
