@@ -8,7 +8,6 @@ import type { SolveResponse } from "../../types/greenhouse";
 import type { SolveErrorInfo } from "../../services";
 import {
   RESULT_STATUS_INFO,
-  CACHE_INFO,
   TONE_BADGE,
   cacheInfo,
   formatDuration,
@@ -41,7 +40,6 @@ export const StatusGlossary: React.FC<{ highlight?: string; cacheHit?: string | 
       <span className="text-slate-300">
         Solves of setups people have used before are saved. A cached answer is never worse than a fresh solve: the
         solver either reuses a proven answer or starts from the saved layout and keeps improving it.
-        {cacheHit && CACHE_INFO[cacheHit] && <> This result: {CACHE_INFO[cacheHit].long}</>}
       </span>
     </div>
   </div>

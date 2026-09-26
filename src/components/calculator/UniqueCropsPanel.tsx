@@ -10,7 +10,7 @@ export const UniqueCropsPanel: React.FC = () => {
       title="Unique Crops"
       icon={<Sprout />}
       actions={<span className="text-xs font-medium text-slate-300">{value === 0 ? "Off" : value}</span>}
-      description="Keep at least this many different crops in the greenhouse. Sunflower/moonflower and red/brown mushroom each count once. Locked crops and the targets' ingredients count too."
+      description="Keep at least this many different crops in the greenhouse."
     >
       <input
         type="range"

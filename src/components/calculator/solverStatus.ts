@@ -58,7 +58,7 @@ export const RESULT_STATUS_INFO: Record<string, StatusInfo> = {
     tone: "sky",
     short: "A valid layout. It is usually the best one, but that wasn't proven in time.",
     long:
-      "\"Feasible\" does not mean bad. The layout is valid and is the best the solver found within its time budget, which is normally the best there is. The solver just ran out of time before it could prove that nothing scores higher; that proof is often far harder than finding the layout. Most solves end as Feasible. The server keeps working on popular setups in the background, so solving again later (or on the local solver with a longer time limit) can sometimes improve it.",
+      "\"Feasible\" does not mean bad. The layout is valid and is the best the solver found within its time budget, which is normally the best there is. The solver just ran out of time before it could prove that nothing scores higher; that proof is often far harder than finding the layout. Most solves end as Feasible.",
   },
   CANCELLED: {
     label: "Stopped early",
