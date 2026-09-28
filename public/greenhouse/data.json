@@ -12,7 +12,8 @@
       "drops": {
         "wheat": 72,
         "seeds": 1
-      }
+      },
+      "sell_price": 6
     },
     "potato": {
       "name": "Potato",
@@ -25,7 +26,8 @@
       "negative_buffs": [],
       "drops": {
         "potato": 150
-      }
+      },
+      "sell_price": 3
     },
     "carrot": {
       "name": "Carrot",
@@ -38,7 +40,8 @@
       "negative_buffs": [],
       "drops": {
         "carrot": 175
-      }
+      },
+      "sell_price": 3
     },
     "pumpkin": {
       "name": "Pumpkin",
@@ -51,7 +54,8 @@
       "negative_buffs": [],
       "drops": {
         "pumpkin": 68
-      }
+      },
+      "sell_price": 10
     },
     "melon": {
       "name": "Melon",
@@ -64,7 +68,8 @@
       "negative_buffs": [],
       "drops": {
         "melon": 320
-      }
+      },
+      "sell_price": 2
     },
     "cocoa_beans": {
       "name": "Cocoa Beans",
@@ -77,7 +82,8 @@
       "negative_buffs": [],
       "drops": {
         "cocoa_beans": 120
-      }
+      },
+      "sell_price": 3
     },
     "sugar_cane": {
       "name": "Sugar Cane",
@@ -92,7 +98,8 @@
       ],
       "drops": {
         "sugar_cane": 136
-      }
+      },
+      "sell_price": 4
     },
     "cactus": {
       "name": "Cactus",
@@ -107,7 +114,8 @@
       ],
       "drops": {
         "cactus": 132
-      }
+      },
+      "sell_price": 4
     },
     "nether_wart": {
       "name": "Nether Wart",
@@ -122,7 +130,8 @@
       ],
       "drops": {
         "nether_wart": 108
-      }
+      },
+      "sell_price": 4
     },
     "red_mushroom": {
       "name": "Red Mushroom",
@@ -137,7 +146,8 @@
       ],
       "drops": {
         "red_mushroom": 30
-      }
+      },
+      "sell_price": 10
     },
     "brown_mushroom": {
       "name": "Brown Mushroom",
@@ -152,7 +162,8 @@
       ],
       "drops": {
         "brown_mushroom": 30
-      }
+      },
+      "sell_price": 10
     },
     "moonflower": {
       "name": "Moonflower",
@@ -165,7 +176,8 @@
       "negative_buffs": [],
       "drops": {
         "moonflower": 232
-      }
+      },
+      "sell_price": 4
     },
     "sunflower": {
       "name": "Sunflower",
@@ -178,7 +190,8 @@
       "negative_buffs": [],
       "drops": {
         "sunflower": 232
-      }
+      },
+      "sell_price": 4
     },
     "wild_rose": {
       "name": "Wild Rose",
@@ -191,7 +204,8 @@
       "negative_buffs": [],
       "drops": {
         "wild_rose": 200
-      }
+      },
+      "sell_price": 4
     },
     "fire": {
       "name": "Fire",
@@ -200,7 +214,8 @@
       "growth_stages": null,
       "positive_buffs": [],
       "negative_buffs": [],
-      "drops": {}
+      "drops": {},
+      "sell_price": 0
     },
     "dead_plant": {
       "name": "Dead Plant",
@@ -209,7 +224,8 @@
       "growth_stages": null,
       "positive_buffs": [],
       "negative_buffs": [],
-      "drops": {}
+      "drops": {},
+      "sell_price": 0
     },
     "fermento": {
       "name": "Fermento",
@@ -218,7 +234,8 @@
       "growth_stages": null,
       "positive_buffs": [],
       "negative_buffs": [],
-      "drops": {}
+      "drops": {},
+      "sell_price": 0
     }
   },
   "mutations": {
@@ -248,7 +265,8 @@
       "requires_watering": false,
       "drops": {
         "nether_wart": 180
-      }
+      },
+      "spawn_weight": 30
     },
     "choconut": {
       "name": "Choconut",
@@ -270,7 +288,8 @@
       "requires_watering": false,
       "drops": {
         "cocoa_beans": 200
-      }
+      },
+      "spawn_weight": 30
     },
     "dustgrain": {
       "name": "Dustgrain",
@@ -292,7 +311,8 @@
       "requires_watering": false,
       "drops": {
         "wheat": 100
-      }
+      },
+      "spawn_weight": 30
     },
     "gloomgourd": {
       "name": "Gloomgourd",
@@ -320,7 +340,8 @@
       "drops": {
         "pumpkin": 34,
         "melon": 160
-      }
+      },
+      "spawn_weight": 30
     },
     "lonelily": {
       "name": "Lonelily",
@@ -340,7 +361,8 @@
         "potato": 525,
         "carrot": 613,
         "pumpkin": 298
-      }
+      },
+      "spawn_weight": 6
     },
     "scourroot": {
       "name": "Scourroot",
@@ -368,7 +390,8 @@
       "drops": {
         "potato": 102,
         "carrot": 119
-      }
+      },
+      "spawn_weight": 30
     },
     "shadevine": {
       "name": "Shadevine",
@@ -398,7 +421,8 @@
       "drops": {
         "cactus": 78,
         "sugar_cane": 104
-      }
+      },
+      "spawn_weight": 30
     },
     "veilshroom": {
       "name": "Veilshroom",
@@ -427,7 +451,8 @@
       "drops": {
         "brown_mushroom": 28,
         "red_mushroom": 28
-      }
+      },
+      "spawn_weight": 30
     },
     "witherbloom": {
       "name": "Witherbloom",
@@ -449,7 +474,8 @@
       "requires_watering": false,
       "drops": {
         "wild_rose": 184
-      }
+      },
+      "spawn_weight": 30
     },
     "chocoberry": {
       "name": "Chocoberry",
@@ -477,7 +503,8 @@
         "cocoa_beans": 440,
         "pumpkin": 187,
         "melon": 1760
-      }
+      },
+      "spawn_weight": 25
     },
     "cindershade": {
       "name": "Cindershade",
@@ -507,7 +534,8 @@
       "drops": {
         "nether_wart": 1020,
         "wild_rose": 680
-      }
+      },
+      "spawn_weight": 25
     },
     "coalroot": {
       "name": "Coalroot",
@@ -535,7 +563,8 @@
         "potato": 510,
         "carrot": 1190,
         "nether_wart": 510
-      }
+      },
+      "spawn_weight": 25
     },
     "creambloom": {
       "name": "Creambloom",
@@ -557,7 +586,8 @@
       "requires_watering": true,
       "drops": {
         "cocoa_beans": 2240
-      }
+      },
+      "spawn_weight": 25
     },
     "duskbloom": {
       "name": "Duskbloom",
@@ -593,7 +623,8 @@
         "moonflower": 720,
         "sunflower": 720,
         "wheat": 360
-      }
+      },
+      "spawn_weight": 25
     },
     "thornshade": {
       "name": "Thornshade",
@@ -621,7 +652,8 @@
         "brown_mushroom": 190,
         "red_mushroom": 190,
         "wild_rose": 800
-      }
+      },
+      "spawn_weight": 25
     },
     "blastberry": {
       "name": "Blastberry",
@@ -653,7 +685,8 @@
       "drops": {
         "cocoa_beans": 800,
         "nether_wart": 1200
-      }
+      },
+      "spawn_weight": 25
     },
     "cheesebite": {
       "name": "Cheesebite",
@@ -685,7 +718,8 @@
         "red_mushroom": 253,
         "cactus": 800,
         "sugar_cane": 1067
-      }
+      },
+      "spawn_weight": 25
     },
     "chloronite": {
       "name": "Chloronite",
@@ -716,7 +750,8 @@
         "wild_rose": 540,
         "potato": 810,
         "carrot": 945
-      }
+      },
+      "spawn_weight": 25
     },
     "do_not_eat_shroom": {
       "name": "Do-not-eat-shroom",
@@ -748,7 +783,8 @@
         "red_mushroom": 200,
         "potato": 630,
         "carrot": 735
-      }
+      },
+      "spawn_weight": 25
     },
     "fleshtrap": {
       "name": "Fleshtrap",
@@ -778,7 +814,8 @@
         "pumpkin": 289,
         "potato": 510,
         "carrot": 595
-      }
+      },
+      "spawn_weight": 25
     },
     "magic_jellybean": {
       "name": "Magic Jellybean",
@@ -809,7 +846,8 @@
         "moonflower": 600,
         "sunflower": 600,
         "sugar_cane": 1200
-      }
+      },
+      "spawn_weight": 25
     },
     "noctilume": {
       "name": "Noctilume",
@@ -840,7 +878,8 @@
       "drops": {
         "cactus": 1590,
         "wild_rose": 2120
-      }
+      },
+      "spawn_weight": 25
     },
     "snoozling": {
       "name": "Snoozling",
@@ -882,7 +921,8 @@
         "sunflower": 4200,
         "cactus": 3150,
         "sugar_cane": 4200
-      }
+      },
+      "spawn_weight": 25
     },
     "soggybud": {
       "name": "Soggybud",
@@ -909,7 +949,8 @@
       "requires_watering": true,
       "drops": {
         "melon": 1920
-      }
+      },
+      "spawn_weight": 25
     },
     "chorus_fruit": {
       "name": "Chorus Fruit",
@@ -940,7 +981,8 @@
         "potato": 1050,
         "carrot": 1225,
         "sugar_cane": 1400
-      }
+      },
+      "spawn_weight": 25
     },
     "plantboy_advance": {
       "name": "PlantBoy Advance",
@@ -969,7 +1011,8 @@
         "moonflower": 4600,
         "sunflower": 4600,
         "wheat": 4600
-      }
+      },
+      "spawn_weight": 25
     },
     "puffercloud": {
       "name": "Puffercloud",
@@ -1001,7 +1044,8 @@
         "red_mushroom": 570,
         "moonflower": 1200,
         "sunflower": 1200
-      }
+      },
+      "spawn_weight": 25
     },
     "shellfruit": {
       "name": "Shellfruit",
@@ -1021,7 +1065,8 @@
       "requires_watering": false,
       "drops": {
         "cocoa_beans": 400
-      }
+      },
+      "spawn_weight": 0
     },
     "startlevine": {
       "name": "Startlevine",
@@ -1052,7 +1097,8 @@
       "drops": {
         "cactus": 2250,
         "sugar_cane": 3000
-      }
+      },
+      "spawn_weight": 25
     },
     "stoplight_petal": {
       "name": "Stoplight Petal",
@@ -1083,7 +1129,8 @@
       "drops": {
         "cactus": 7500,
         "wild_rose": 10000
-      }
+      },
+      "spawn_weight": 25
     },
     "thunderling": {
       "name": "Thunderling",
@@ -1113,7 +1160,8 @@
         "cactus": 1650,
         "melon": 4400,
         "wild_rose": 4400
-      }
+      },
+      "spawn_weight": 25
     },
     "turtlellini": {
       "name": "Turtlellini",
@@ -1140,7 +1188,8 @@
       "requires_watering": false,
       "drops": {
         "melon": 800
-      }
+      },
+      "spawn_weight": 25
     },
     "zombud": {
       "name": "Zombud",
@@ -1174,7 +1223,8 @@
       "drops": {
         "pumpkin": 765,
         "wild_rose": 1800
-      }
+      },
+      "spawn_weight": 25
     },
     "all_in_aloe": {
       "name": "All-in Aloe",
@@ -1204,7 +1254,8 @@
         "moonflower": 140,
         "sunflower": 140,
         "wheat": 140
-      }
+      },
+      "spawn_weight": 25
     },
     "devourer": {
       "name": "Devourer",
@@ -1237,7 +1288,8 @@
         "brown_mushroom": 1805,
         "red_mushroom": 1805,
         "pumpkin": 3230
-      }
+      },
+      "spawn_weight": 20
     },
     "glasscorn": {
       "name": "Glasscorn",
@@ -1268,7 +1320,8 @@
       "drops": {
         "potato": 4800,
         "cactus": 7200
-      }
+      },
+      "spawn_weight": 20
     },
     "godseed": {
       "name": "Godseed",
@@ -1305,7 +1358,8 @@
         "nether_wart": 738,
         "red_mushroom": 117,
         "wild_rose": 492
-      }
+      },
+      "spawn_weight": 5
     },
     "jerryflower": {
       "name": "Jerryflower",
@@ -1320,7 +1374,8 @@
       "negative_buffs": [],
       "growing_info": "Obtain a Unfulfilled Jerryseed from a Jerry Visitor and take it to Xalx in the Crystal Hollows with a Mysterious Crop. He will give you back an Unripe Jerryseed that you have to reforge to a Dirty Unripe Jerryseed and take to Dirt in the Dwarven Mines. Dirt will give you the Fertilized Jerryseed in return. When growing, Jerryflower will stop at Stage 5 until it is fed 10x Move Jerry.",
       "requires_watering": false,
-      "drops": {}
+      "drops": {},
+      "spawn_weight": 0
     },
     "phantomleaf": {
       "name": "Phantomleaf",
@@ -1349,7 +1404,8 @@
       "drops": {
         "potato": 3000,
         "carrot": 3500
-      }
+      },
+      "spawn_weight": 20
     },
     "timestalk": {
       "name": "Timestalk",
@@ -1385,7 +1441,8 @@
       "drops": {
         "cactus": 2700,
         "sugar_cane": 3600
-      }
+      },
+      "spawn_weight": 20
     }
   },
   "effects": {

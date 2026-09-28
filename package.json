@@ -14,7 +14,10 @@
     "deploy:gh-pages": "cross-env GITHUB_PAGES=true pnpm run build && gh-pages -d dist",
     "deploy:surge": "pnpm run build && surge dist --domain skyshards-fusion-calculator.surge.sh",
     "deploy:netlify": "pnpm run build && netlify deploy --prod --dir dist",
-    "deploy:vercel": "pnpm run build && vercel --prod"
+    "deploy:vercel": "pnpm run build && vercel --prod",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sync:data": "node scripts/sync-data.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",
@@ -25,7 +28,6 @@
     "framer-motion": "^12.23.22",
     "gif.js": "^0.2.0",
     "gifenc": "^1.0.3",
-    "gifuct-js": "^2.1.2",
     "html-to-image": "^1.11.13",
     "lucide-react": "^0.525.0",
     "pako": "^2.1.0",
@@ -51,12 +53,14 @@
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
+    "fast-check": "^4.10.2",
     "gh-pages": "^6.3.0",
     "globals": "^16.3.0",
     "terser": "^5.43.1",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.39.1",
-    "vite": "7.1.11"
+    "vite": "7.1.11",
+    "vitest": "^3.2.7"
   },
   "packageManager": "pnpm@10.18.1"
 }
