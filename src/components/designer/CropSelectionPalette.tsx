@@ -7,6 +7,8 @@ import { SegmentedControl } from "../ui";
 import { useCropFiltering } from "../../hooks/shared/useCropFiltering";
 import type { CropDefinition, MutationDefinition } from "../../types/greenhouse";
 import type { DesignerMode } from "../../context";
+import { GROUND_TYPES } from "../../utilities/designEncoding";
+import { getGroundImagePath } from "../../types/greenhouse";
 
 interface CropSelectionPaletteProps {
   className?: string;
@@ -72,6 +74,9 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
     setMode,
     inputPlacements,
     targetPlacements,
+    groundTiles,
+    selectedGround,
+    setSelectedGround,
   } = useDesigner();
 
   // Use shared filtering hook with mode-based additional filter
@@ -115,7 +120,11 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
           <Palette className="w-4 h-4 text-emerald-400 flex-shrink-0" />
           <h3 className="text-sm font-medium text-slate-200 truncate">Palette</h3>
         </div>
-        {selectedCropForPlacement ? (
+        {selectedGround ? (
+          <button onClick={() => setSelectedGround(null)} className="text-xs text-yellow-400 hover:text-yellow-300 flex items-center gap-1 cursor-pointer" title="Stop painting (Esc)">
+            <X className="w-3 h-3" /> Painting {selectedGround.replace(/_/g, " ")}
+          </button>
+        ) : selectedCropForPlacement ? (
           <button
             onClick={() => setSelectedCropForPlacement(null)}
             className="text-xs text-yellow-400 hover:text-yellow-300 flex items-center gap-1 cursor-pointer"
@@ -156,6 +165,24 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
           ? "Pick a crop or mutation below, then click grid cells to place it as an input."
           : "Pick a mutation below, then click the grid to mark where it should spawn."}
       </p>
+
+      {/* Ground paints only bare cells. Placement over it clears the tile. */}
+      <div className="mb-3 flex-shrink-0">
+        <div className="flex justify-between text-xs text-slate-400 mb-1.5">
+          <span>Ground · {groundTiles.length} painted</span>
+          <span>Right-click to erase</span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {GROUND_TYPES.map(ground => (
+            <button key={ground} type="button" onClick={() => setSelectedGround(selectedGround === ground ? null : ground)}
+              title={`Paint ${ground.replace(/_/g, " ")} on bare cells`}
+              className={`flex items-center gap-1.5 min-w-0 rounded-md border p-1 text-xs text-slate-200 cursor-pointer ${selectedGround === ground ? "border-yellow-400 ring-1 ring-yellow-400 bg-yellow-500/20" : "border-slate-600/50 bg-slate-800/60 hover:bg-slate-700/60"}`}>
+              <img src={getGroundImagePath(ground)} alt="" className="w-6 h-6 rounded-sm flex-shrink-0" />
+              <span className="truncate">{ground.replace(/_/g, " ")}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Search and Filter Row */}
       <SearchFilterHeader

@@ -6,7 +6,7 @@ const SHARE_BASE_URL = "https://api.skyshards.com/share";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDesigner, useGreenhouseData } from "../../context";
 import { useToast } from "../ui/toastContext";
-import { encodeDesign, decodeDesign } from "../../utilities";
+import { encodeDesign, decodeDesign, extractLayoutCode } from "../../utilities";
 import { 
   loadLayouts, 
   saveLayouts,
@@ -46,6 +46,8 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   const {
     inputPlacements,
     targetPlacements,
+    groundTiles,
+    clearGroundTiles,
     clearInputPlacements,
     clearTargetPlacements,
     clearAllPlacements,
@@ -86,11 +88,11 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   
   // Open save modal
   const handleOpenSave = useCallback(() => {
-    if (inputPlacements.length === 0 && targetPlacements.length === 0) {
+    if (inputPlacements.length === 0 && targetPlacements.length === 0 && groundTiles.length === 0) {
       return; // Button is disabled, but just in case
     }
     setIsSaveModalOpen(true);
-  }, [inputPlacements.length, targetPlacements.length]);
+  }, [inputPlacements.length, targetPlacements.length, groundTiles.length]);
   
   // Save layout
   const handleSaveLayout = useCallback((name: string, overwriteId?: string) => {
@@ -101,6 +103,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       const success = updateLayout(overwriteId, {
         name,
         modifiedAt: now,
+        groundTiles,
         inputs: inputPlacements.map(p => ({
           cropId: p.cropId,
           position: p.position,
@@ -133,6 +136,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         name,
         savedAt: now,
         modifiedAt: now,
+        groundTiles,
         inputs: inputPlacements.map(p => ({
           cropId: p.cropId,
           position: p.position,
@@ -155,7 +159,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         duration: 3000,
       });
     }
-  }, [inputPlacements, targetPlacements, toast]);
+  }, [inputPlacements, targetPlacements, groundTiles, toast]);
   
   // Open load modal
   const handleOpenLoad = useCallback(() => {
@@ -200,7 +204,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       };
     });
     
-    loadFromSolverResult(crops, mutations);
+    loadFromSolverResult(crops, mutations, layout.groundTiles ?? []);
     setIsLoadModalOpen(false);
     
     toast({
@@ -257,7 +261,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   // Export design as shareable URL to clipboard
   const handleExportCode = useCallback(() => {
     try {
-      const encoded = encodeDesign(inputPlacements, targetPlacements);
+      const encoded = encodeDesign(inputPlacements, targetPlacements, groundTiles);
       const shareUrl = `${SHARE_BASE_URL}/${encoded}`;
       navigator.clipboard.writeText(shareUrl);
       
@@ -285,39 +289,12 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         duration: 5000,
       });
     }
-  }, [inputPlacements, targetPlacements, toast]);
+  }, [inputPlacements, targetPlacements, groundTiles, toast]);
   
   // Open import modal
   const handleOpenImport = useCallback(() => {
     setImportText("");
     setIsImportModalOpen(true);
-  }, []);
-  
-  // Helper to extract layout code from URL or raw code
-  const extractLayoutCode = useCallback((input: string): string => {
-    const trimmed = input.trim();
-    
-    // Check if it's a URL with ?layout= parameter (greenhouse.skyshards.com/designer?layout=ABC)
-    if (trimmed.includes("?layout=")) {
-      try {
-        const url = new URL(trimmed);
-        const layoutParam = url.searchParams.get("layout");
-        if (layoutParam) return layoutParam;
-      } catch {
-        // Not a valid URL, try regex fallback
-        const match = trimmed.match(/[?&]layout=([^&]+)/);
-        if (match) return match[1];
-      }
-    }
-    
-    // Check if it's a share URL (api.skyshards.com/share/ABC)
-    if (trimmed.includes("/share/")) {
-      const match = trimmed.match(/\/share\/([^/?#]+)/);
-      if (match) return match[1];
-    }
-    
-    // Otherwise, assume it's a raw code
-    return trimmed;
   }, []);
   
   // Import design from URL or base64 gzipped string
@@ -334,7 +311,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     
     try {
       const layoutCode = extractLayoutCode(importText);
-      const { inputs, targets } = decodeDesign(layoutCode);
+      const { inputs, targets, groundTiles: importedGround } = decodeDesign(layoutCode);
       
       // Get size info from crop definitions
       const crops = inputs.map(p => {
@@ -361,7 +338,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         };
       });
       
-      loadFromSolverResult(crops, mutations);
+      loadFromSolverResult(crops, mutations, importedGround);
       setIsImportModalOpen(false);
       setImportText("");
       
@@ -379,7 +356,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         duration: 5000,
       });
     }
-  }, [importText, extractLayoutCode, loadFromSolverResult, getCropDef, getMutationDef, toast]);
+  }, [importText, loadFromSolverResult, getCropDef, getMutationDef, toast]);
   
   // Clear one kind of placement
   const handleClearInputs = useCallback(() => {
@@ -391,6 +368,11 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     clearTargetPlacements();
     toast({ title: "Target placements cleared", variant: "success", duration: 2000 });
   }, [clearTargetPlacements, toast]);
+
+  const handleClearGround = useCallback(() => {
+    clearGroundTiles();
+    toast({ title: "Ground tiles cleared", variant: "success", duration: 2000 });
+  }, [clearGroundTiles, toast]);
   
   // Clear all placements
   const handleClearAll = useCallback(() => {
@@ -400,7 +382,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
     clearAllPlacements();
     setShowDeleteAllConfirm(false);
-    toast({ title: "All placements cleared", variant: "success", duration: 2000 });
+    toast({ title: "Layout cleared", variant: "success", duration: 2000 });
   }, [showDeleteAllConfirm, clearAllPlacements, toast]);
   
   // Get export options
@@ -530,7 +512,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [currentExportBlob, toast, resetExportState, handleDownload]);
   
-  const totalPlacements = inputPlacements.length + targetPlacements.length;
+  const totalPlacements = inputPlacements.length + targetPlacements.length + groundTiles.length;
   
   // Animation variants for button transitions
   const buttonVariants = {
@@ -736,7 +718,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       {/* Clear Buttons */}
       <div className="space-y-2">
         <div className="text-xs text-slate-400 uppercase tracking-wider">Clear</div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
         <button
           onClick={handleClearInputs}
           disabled={inputPlacements.length === 0}
@@ -756,6 +738,14 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
           Targets
         </button>
         
+        <button
+          onClick={handleClearGround}
+          disabled={groundTiles.length === 0}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="Erase all painted ground tiles"
+        >
+          <RotateCcw className="w-4 h-4" /> Ground
+        </button>
         <button
           onClick={handleClearAll}
           onBlur={() => setShowDeleteAllConfirm(false)}

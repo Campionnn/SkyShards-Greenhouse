@@ -1,16 +1,17 @@
 import { toPng } from 'html-to-image';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { parseGIF, decompressFrames } from 'gifuct-js';
+import { decodeApngFrames } from './apng';
 
-// List of animated crops with their frame counts
-// These are GIF files disguised as .png files
-export const ANIMATED_CROPS: Record<string, number> = {
-  'all_in_aloe': 5,
-  'fire': 5,
-  'noctilume': 2,
-  'shellfruit': 2,
-  'startlevine': 2,
-};
+// Crops whose icon is an animated PNG (APNG). Each frame is shown for 1s, which
+// matches the 1 fps of exported GIFs. Frame counts are read from the files
+// themselves, so editing an icon's frames needs no code change here.
+export const ANIMATED_CROPS: ReadonlySet<string> = new Set([
+  'all_in_aloe',
+  'fire',
+  'noctilume',
+  'shellfruit',
+  'startlevine',
+]);
 
 export interface CropInfo {
   cropId: string;
@@ -39,8 +40,8 @@ export interface ExportResult {
 // Image cache for crop icons
 const cropImageCache = new Map<string, HTMLImageElement>();
 
-// Cache for extracted GIF frames
-const gifFrameCache = new Map<string, HTMLCanvasElement[]>();
+// Cache for decoded animated-icon frames
+const animatedFrameCache = new Map<string, HTMLCanvasElement[]>();
 
 /**
  * Loads a crop image and caches it
@@ -92,76 +93,18 @@ async function _preloadCropImages(cropInfos: CropInfo[]): Promise<Map<string, HT
 void _preloadCropImages;
 
 /**
- * Extracts all frames from a GIF file as canvas elements
+ * Extracts all frames from an animated PNG as canvas elements
  */
-async function extractGifFrames(url: string): Promise<HTMLCanvasElement[]> {
-  // Check cache first
-  if (gifFrameCache.has(url)) {
-    return gifFrameCache.get(url)!;
-  }
-  
+async function extractAnimatedFrames(url: string): Promise<HTMLCanvasElement[]> {
+  const cached = animatedFrameCache.get(url);
+  if (cached) return cached;
+
   try {
-    // Fetch the GIF file
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    
-    // Parse the GIF
-    const gif = parseGIF(arrayBuffer);
-    const frames = decompressFrames(gif, true);
-    
-    if (frames.length === 0) {
-      return [];
-    }
-    
-    // Convert each frame to a canvas
-    const canvases: HTMLCanvasElement[] = [];
-    
-    // Create a temporary canvas for compositing frames
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = gif.lsd.width;
-    tempCanvas.height = gif.lsd.height;
-    const tempCtx = tempCanvas.getContext('2d')!;
-    
-    for (const frame of frames) {
-      // Create ImageData from frame patch
-      const imageData = new ImageData(
-        new Uint8ClampedArray(frame.patch),
-        frame.dims.width,
-        frame.dims.height
-      );
-      
-      // Handle disposal method
-      if (frame.disposalType === 2) {
-        // Restore to background
-        tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
-      }
-      
-      // Create a small canvas for the patch
-      const patchCanvas = document.createElement('canvas');
-      patchCanvas.width = frame.dims.width;
-      patchCanvas.height = frame.dims.height;
-      const patchCtx = patchCanvas.getContext('2d')!;
-      patchCtx.putImageData(imageData, 0, 0);
-      
-      // Draw the patch onto the temp canvas at the correct position
-      tempCtx.drawImage(patchCanvas, frame.dims.left, frame.dims.top);
-      
-      // Create a copy of the current state
-      const frameCanvas = document.createElement('canvas');
-      frameCanvas.width = gif.lsd.width;
-      frameCanvas.height = gif.lsd.height;
-      const frameCtx = frameCanvas.getContext('2d')!;
-      frameCtx.drawImage(tempCanvas, 0, 0);
-      
-      canvases.push(frameCanvas);
-    }
-    
-    // Cache the result
-    gifFrameCache.set(url, canvases);
-    
+    const canvases = await decodeApngFrames(url);
+    animatedFrameCache.set(url, canvases);
     return canvases;
   } catch (error) {
-    console.error('Failed to extract GIF frames:', error);
+    console.error('Failed to extract animated frames:', error);
     return [];
   }
 }
@@ -290,10 +233,7 @@ async function addOverlay(
     if (animatedFrames && frameIndex !== undefined) {
       const frames = animatedFrames.get(crop.cropId);
       if (frames && frames.length > 0) {
-        const cropFrameCount = ANIMATED_CROPS[crop.cropId] || 1;
-        const cropFrameIndex = frameIndex % cropFrameCount;
-        const actualFrameIndex = Math.min(cropFrameIndex, frames.length - 1);
-        cropImages.set(crop.cropId, frames[actualFrameIndex]);
+        cropImages.set(crop.cropId, frames[frameIndex % frames.length]);
         continue;
       }
     }
@@ -509,22 +449,16 @@ export async function captureGridAsPng(
  * Checks if any placements contain animated crops
  */
 export function hasAnimatedCrops(cropIds: string[]): boolean {
-  return cropIds.some(id => id in ANIMATED_CROPS);
+  return cropIds.some(id => ANIMATED_CROPS.has(id));
 }
 
 /**
- * Gets the least common multiple of all frame counts for animated crops
+ * Least common multiple of the given frame counts, so every animation
+ * completes a whole number of loops in the exported GIF.
  */
-function getLcmFrameCount(cropIds: string[]): number {
-  const frameCounts = cropIds
-    .filter(id => id in ANIMATED_CROPS)
-    .map(id => ANIMATED_CROPS[id]);
-  
-  if (frameCounts.length === 0) return 1;
-  
+export function getLcmFrameCount(frameCounts: number[]): number {
   const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
   const lcm = (a: number, b: number): number => (a * b) / gcd(a, b);
-  
   return frameCounts.reduce((acc, val) => lcm(acc, val), 1);
 }
 
@@ -532,15 +466,14 @@ function getLcmFrameCount(cropIds: string[]): number {
  * Pre-loads all animated crop frames for the given crop IDs
  */
 async function preloadAnimatedFrames(cropIds: string[]): Promise<Map<string, HTMLCanvasElement[]>> {
-  const animatedCropIds = cropIds.filter(id => id in ANIMATED_CROPS);
-  const uniqueIds = [...new Set(animatedCropIds)];
+  const uniqueIds = [...new Set(cropIds.filter(id => ANIMATED_CROPS.has(id)))];
   
   const frameMap = new Map<string, HTMLCanvasElement[]>();
   
   await Promise.all(
     uniqueIds.map(async (cropId) => {
       const url = `/greenhouse/crops/${cropId}.png`;
-      const frames = await extractGifFrames(url);
+      const frames = await extractAnimatedFrames(url);
       if (frames.length > 0) {
         frameMap.set(cropId, frames);
       }
@@ -595,12 +528,11 @@ export async function captureGridAsGif(
 ): Promise<ExportResult> {
   const { scale } = options;
   
-  const totalFrames = getLcmFrameCount(cropIds);
-  
   onProgress?.(5);
   
-  // Pre-load all animated GIF frames
+  // Pre-load all animated icon frames
   const animatedFrames = await preloadAnimatedFrames(cropIds);
+  const totalFrames = getLcmFrameCount([...animatedFrames.values()].map(f => f.length));
   
   onProgress?.(15);
   
@@ -614,7 +546,7 @@ export async function captureGridAsGif(
   const imgs = Array.from(element.querySelectorAll('img'));
   for (const img of imgs) {
     const src = img.src;
-    for (const cropId of Object.keys(ANIMATED_CROPS)) {
+    for (const cropId of ANIMATED_CROPS) {
       if (src.includes(`/${cropId}.png`) && animatedFrames.has(cropId)) {
         animatedImgInfo.push({ img, cropId, originalSrc: src });
         break;
@@ -650,10 +582,7 @@ export async function captureGridAsGif(
     for (const info of animatedImgInfo) {
       const frames = animatedFrames.get(info.cropId);
       if (frames && frames.length > 0) {
-        const cropFrameCount = ANIMATED_CROPS[info.cropId];
-        const cropFrameIndex = frameIndex % cropFrameCount;
-        const actualFrameIndex = Math.min(cropFrameIndex, frames.length - 1);
-        info.img.src = frames[actualFrameIndex].toDataURL('image/png');
+        info.img.src = frames[frameIndex % frames.length].toDataURL('image/png');
       }
     }
     

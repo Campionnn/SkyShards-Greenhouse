@@ -1,8 +1,19 @@
 import { useCallback, useEffect } from "react";
-import { useDesigner } from "../context";
+import { useDesigner, type DesignerPlacement } from "../context";
 import { useToast } from "../components/ui/toastContext";
 import { useGridInteractionCore, type DragState, type PaintState, type HoverInfo } from "./shared/useGridInteractionCore";
 import { getPlacementPosition, findNearestValidPosition } from "../utilities";
+
+/** Ground can be painted over existing ground, but never over crop or target footprints. */
+export function getPaintableGroundPreviewPosition(
+  cell: [number, number] | null,
+  isGroundSelected: boolean,
+  isInteracting: boolean,
+  getPlacementAt: (row: number, col: number) => DesignerPlacement | undefined
+): [number, number] | null {
+  if (!cell || !isGroundSelected || isInteracting || getPlacementAt(cell[0], cell[1])) return null;
+  return cell;
+}
 
 export interface UseDesignerGridPlacementOptions {
   cellSize: number;
@@ -20,6 +31,7 @@ export interface UseDesignerGridPlacementReturn {
   
   // Computed values
   previewPosition: [number, number] | null;
+  groundPreviewPosition: [number, number] | null;
   previewValidation: { valid: boolean; error?: string } | null;
   dragValidation: { valid: boolean; error?: string } | null;
   
@@ -48,20 +60,25 @@ export function useDesignerGridPlacement({
     isValidPlacement,
     isValidPlacementPosition,
     isPlacementMode,
+    selectedGround,
+    setSelectedGround,
+    paintGround,
+    removeGround,
   } = useDesigner();
   const { toast } = useToast();
 
   // ESC key handler to deselect crop
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && selectedCropForPlacement) {
+      if (e.key === "Escape") {
         setSelectedCropForPlacement(null);
+        setSelectedGround(null);
       }
     };
     
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedCropForPlacement, setSelectedCropForPlacement]);
+  }, [setSelectedCropForPlacement, setSelectedGround]);
 
   // Adapter functions to match the core hook's expected interface
   const handleAddPlacement = useCallback((
@@ -69,6 +86,10 @@ export function useDesignerGridPlacement({
     offsetX: number,
     offsetY: number
   ): [number, number] | null => {
+    if (selectedGround) {
+      paintGround(cell, selectedGround);
+      return cell;
+    }
     if (!selectedCropForPlacement) return null;
     
     // Calculate position
@@ -95,14 +116,16 @@ export function useDesignerGridPlacement({
     }
     
     return adjustedPos;
-  }, [selectedCropForPlacement, addPlacement, toast, isValidPlacementPosition]);
+  }, [selectedCropForPlacement, selectedGround, paintGround, addPlacement, toast, isValidPlacementPosition]);
   
   const handleRemovePlacement = useCallback((cell: [number, number]) => {
     const placement = getPlacementAt(cell[0], cell[1]);
     if (placement) {
       removePlacement(placement.id);
+    } else {
+      removeGround(cell);
     }
-  }, [getPlacementAt, removePlacement]);
+  }, [getPlacementAt, removePlacement, removeGround]);
   
   const handleShowToast = useCallback((title: string, description?: string, variant?: "success" | "error" | "warning") => {
     toast({
@@ -114,17 +137,17 @@ export function useDesignerGridPlacement({
   }, [toast]);
   
   const getSelectedItemSize = useCallback(() => {
-    return selectedCropForPlacement?.size || 1;
-  }, [selectedCropForPlacement]);
+    return selectedGround ? 1 : selectedCropForPlacement?.size || 1;
+  }, [selectedCropForPlacement, selectedGround]);
   
-  // Use the core hook
-  return useGridInteractionCore({
+  // Keep ground hover visual-only; use the shared core for its existing paint/drag behavior.
+  const interaction = useGridInteractionCore({
     cellSize,
     gap,
     gridRef,
     placements: allPlacements,
-    selectedItem: selectedCropForPlacement,
-    isPlacementMode,
+    selectedItem: selectedGround ?? selectedCropForPlacement,
+    isPlacementMode: isPlacementMode || selectedGround !== null,
     isValidPlacement,
     isValidPlacementPosition,
     onAddPlacement: handleAddPlacement,
@@ -133,6 +156,16 @@ export function useDesignerGridPlacement({
     showToast: handleShowToast,
     getSelectedItemSize,
   });
+
+  return {
+    ...interaction,
+    groundPreviewPosition: getPaintableGroundPreviewPosition(
+      interaction.hoverInfo?.cell ?? null,
+      selectedGround !== null,
+      interaction.dragState !== null || interaction.paintState !== null,
+      getPlacementAt
+    ),
+  };
 }
 
 // Re-export types

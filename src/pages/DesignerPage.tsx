@@ -139,7 +139,7 @@ export const DesignerPage: React.FC = () => {
     setLayoutLoadState('pending');
     
     try {
-      const { inputs, targets } = decodeDesign(layoutCode);
+      const { inputs, targets, groundTiles } = decodeDesign(layoutCode);
       
       // Convert to the format expected by loadFromSolverResult
       const crops = inputs.map(p => {
@@ -166,7 +166,7 @@ export const DesignerPage: React.FC = () => {
         };
       });
       
-      loadFromSolverResult(crops, mutations);
+      loadFromSolverResult(crops, mutations, groundTiles);
       setLayoutLoadState('loaded');
       
       return { inputs: crops, targets: mutations };

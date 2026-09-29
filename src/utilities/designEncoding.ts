@@ -4,6 +4,12 @@ import { CROP_IDS, MUTATION_IDS, CROP_TO_INDEX, MUTATION_TO_INDEX } from "../con
 const GRID_SIZE = 10;
 const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
 
+// Ground digits occupy otherwise empty cells; existing plant/target letters stay unchanged.
+// Keep this order stable so previously shared designs always decode the same way.
+export const GROUND_TYPES = ["farmland", "sand", "soul_sand", "mycelium", "netherrack", "end_stone"] as const;
+export type GroundType = typeof GROUND_TYPES[number];
+export type GroundTile = { ground: GroundType; position: [number, number] };
+
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 const MAX_SINGLE_CROPS = 26; // a-z
 const MAX_DOUBLE_CROPS = 26 * 26; // aa-zz = 676
@@ -55,7 +61,8 @@ function groupPlacements(
 
 function encodeGridString(
   inputs: GroupedPlacements,
-  targets: GroupedPlacements
+  targets: GroupedPlacements,
+  groundTiles: GroundTile[]
 ): string {
   const inputCrops = Object.keys(inputs);
   const targetCrops = Object.keys(targets);
@@ -103,6 +110,18 @@ function encodeGridString(
   // Build grid using local indices
   const grid = new Array<string>(TOTAL_CELLS).fill(emptyChar);
 
+  // A doubled grid uses a doubled digit for each tile, preserving its cell width.
+  for (const { ground, position: [row, col] } of groundTiles) {
+    const digit = GROUND_TYPES.indexOf(ground);
+    if (digit < 0) throw new Error(`Unknown ground type: ${ground}`);
+    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) {
+      throw new Error(`Ground tile (${row},${col}) is outside the grid`);
+    }
+    const pos = row * GRID_SIZE + col;
+    if (grid[pos] !== emptyChar) throw new Error(`Duplicate ground tile at (${row},${col})`);
+    grid[pos] = String(digit).repeat(useDouble ? 2 : 1);
+  }
+
   // Assign characters to input crops
   inputCropsList.forEach((crop, localIdx) => {
     const chars = useDouble ? indexToDouble(localIdx) : LETTERS[localIdx];
@@ -119,6 +138,11 @@ function encodeGridString(
     }
   });
 
+  for (const { position: [row, col] } of groundTiles) {
+    const pos = row * GRID_SIZE + col;
+    if (/^[a-z]+$/i.test(grid[pos])) throw new Error(`Ground tile at (${row},${col}) overlaps a plant or target`);
+  }
+
   const inputIdx = inputIndices.map((i) => i.toString(36)).join(",");
   const targetIdx = targetIndices.map((i) => i.toString(36)).join(",");
   return inputIdx + "|" + targetIdx + "|" + grid.join("");
@@ -127,6 +151,7 @@ function encodeGridString(
 function decodeGridString(str: string): {
   inputs: GroupedPlacements;
   targets: GroupedPlacements;
+  groundTiles: GroundTile[];
 } {
   const parts = str.split("|");
   if (parts.length !== 3) {
@@ -169,6 +194,7 @@ function decodeGridString(str: string): {
 
   const inputs: GroupedPlacements = {};
   const targets: GroupedPlacements = {};
+  const groundTiles: GroundTile[] = [];
 
   // Initialize empty arrays for each crop
   inputCrops.forEach((crop) => {
@@ -182,6 +208,11 @@ function decodeGridString(str: string): {
   for (let pos = 0; pos < TOTAL_CELLS; pos++) {
     const chars = gridStr.slice(pos * charWidth, (pos + 1) * charWidth);
     if (chars === emptyChar) continue;
+    if (useDouble ? /^([0-5])\1$/.test(chars) : /^[0-5]$/.test(chars)) {
+      groundTiles.push({ ground: GROUND_TYPES[Number(chars[0])], position: [Math.floor(pos / GRID_SIZE), pos % GRID_SIZE] });
+      continue;
+    }
+    if (/\d/.test(chars)) throw new Error(`Invalid ground tile at cell ${pos}: ${chars}`);
 
     // All uppercase = target, all lowercase = input
     const isTarget = chars === chars.toUpperCase() && chars !== chars.toLowerCase();
@@ -205,7 +236,7 @@ function decodeGridString(str: string): {
     }
   }
 
-  return { inputs, targets };
+  return { inputs, targets, groundTiles };
 }
 
 function ungroupPlacements(
@@ -224,14 +255,15 @@ function ungroupPlacements(
 
 export function encodeDesign(
   inputPlacements: Array<{ cropId: string; position: [number, number] }>,
-  targetPlacements: Array<{ cropId: string; position: [number, number] }>
+  targetPlacements: Array<{ cropId: string; position: [number, number] }>,
+  groundTiles: GroundTile[] = []
 ): string {
   // Group placements by crop
   const inputs = groupPlacements(inputPlacements);
   const targets = groupPlacements(targetPlacements);
 
   // Encode to grid string format
-  const gridString = encodeGridString(inputs, targets);
+  const gridString = encodeGridString(inputs, targets, groundTiles);
 
   // Compress with deflate (max compression)
   const compressed = deflateRaw(gridString, { level: 9 });
@@ -240,9 +272,40 @@ export function encodeDesign(
   return toUrlSafeBase64(compressed);
 }
 
+/**
+ * Pull the layout code out of whatever the user pasted: a designer URL
+ * (`...designer?layout=ABC`), a share URL (`.../share/ABC`), or a raw code.
+ */
+export function extractLayoutCode(input: string): string {
+  const trimmed = input.trim();
+
+  // Check if it's a URL with ?layout= parameter (greenhouse.skyshards.com/designer?layout=ABC)
+  if (trimmed.includes("?layout=")) {
+    try {
+      const url = new URL(trimmed);
+      const layoutParam = url.searchParams.get("layout");
+      if (layoutParam) return layoutParam;
+    } catch {
+      // Not a valid URL, try regex fallback
+      const match = trimmed.match(/[?&]layout=([^&]+)/);
+      if (match) return match[1];
+    }
+  }
+
+  // Check if it's a share URL (api.skyshards.com/share/ABC)
+  if (trimmed.includes("/share/")) {
+    const match = trimmed.match(/\/share\/([^/?#]+)/);
+    if (match) return match[1];
+  }
+
+  // Otherwise, assume it's a raw code
+  return trimmed;
+}
+
 export function decodeDesign(encoded: string): {
   inputs: Array<{ cropId: string; position: [number, number] }>;
   targets: Array<{ cropId: string; position: [number, number] }>;
+  groundTiles: GroundTile[];
 } {
   try {
     // Decode from URL-safe base64
@@ -252,12 +315,13 @@ export function decodeDesign(encoded: string): {
     const gridString = inflateRaw(compressed, { to: "string" });
 
     // Decode grid string
-    const { inputs, targets } = decodeGridString(gridString);
+    const { inputs, targets, groundTiles } = decodeGridString(gridString);
 
     // Convert back to placement arrays
     return {
       inputs: ungroupPlacements(inputs),
       targets: ungroupPlacements(targets),
+      groundTiles,
     };
   } catch (err) {
     if (err instanceof Error) {

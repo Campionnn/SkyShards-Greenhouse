@@ -8,6 +8,8 @@
 import type { SelectedMutation } from "../types/greenhouse";
 import type { LockedPlacement } from "../types/greenhouse";
 import type { DesignerPlacement } from "../context";
+import type { Scenario } from "../simulator";
+import type { GroundTile } from "./designEncoding";
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -15,9 +17,11 @@ const STORAGE_KEYS = {
   PRIORITIES: "skyshards-priorities",
   DESIGNER_INPUTS: "skyshards-designer-inputs",
   DESIGNER_TARGETS: "skyshards-designer-targets",
+  DESIGNER_GROUND: "skyshards-designer-ground",
   LOCKED_PLACEMENTS: "skyshards-locked-placements",
   MUTATION_TARGETS: "skyshards-mutation-targets",
   EFFECT_WEIGHTS: "skyshards-effect-weights",
+  SIMULATOR_SCENARIO: "skyshards-simulator-scenario",
 } as const;
 
 // Type Definitions
@@ -212,6 +216,21 @@ export class LocalStorageManager {
   static clearAllDesignerPlacements(): void {
     this.clearDesignerInputs();
     this.clearDesignerTargets();
+    this.clearDesignerGroundTiles();
+  }
+
+  // Bare-cell ground tiles in the Designer
+  static saveDesignerGroundTiles(tiles: GroundTile[]): boolean {
+    return this.save(STORAGE_KEYS.DESIGNER_GROUND, { tiles });
+  }
+
+  static loadDesignerGroundTiles(): GroundTile[] | null {
+    const data = this.load<{ tiles: GroundTile[] }>(STORAGE_KEYS.DESIGNER_GROUND);
+    return Array.isArray(data?.tiles) ? data.tiles : null;
+  }
+
+  static clearDesignerGroundTiles(): void {
+    this.remove(STORAGE_KEYS.DESIGNER_GROUND);
   }
 
   // Locked Placements (Calculator)
@@ -305,6 +324,26 @@ export class LocalStorageManager {
     this.remove(STORAGE_KEYS.EFFECT_WEIGHTS);
   }
 
+  /**
+   * Save the simulator scenario (plots, flows, starting inventory, settings)
+   */
+  static saveSimulatorScenario(scenario: Scenario): boolean {
+    return this.save(STORAGE_KEYS.SIMULATOR_SCENARIO, scenario);
+  }
+
+  /**
+   * Load the simulator scenario; the caller validates it before use
+   */
+  static loadSimulatorScenario(): Scenario | null {
+    const data = this.load<Scenario>(STORAGE_KEYS.SIMULATOR_SCENARIO);
+    if (!data || typeof data !== "object" || !Array.isArray(data.plots)) return null;
+    return data;
+  }
+
+  static clearSimulatorScenario(): void {
+    this.remove(STORAGE_KEYS.SIMULATOR_SCENARIO);
+  }
+
   // Utility Methods
 
   /**
@@ -315,6 +354,7 @@ export class LocalStorageManager {
     this.clearPriorities();
     this.clearDesignerInputs();
     this.clearDesignerTargets();
+    this.clearDesignerGroundTiles();
     this.clearLockedPlacements();
     this.clearMutationTargets();
     this.clearEffectWeights();
@@ -329,7 +369,7 @@ export class LocalStorageManager {
       localStorage.setItem(test, test);
       localStorage.removeItem(test);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

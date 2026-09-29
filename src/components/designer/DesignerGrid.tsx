@@ -29,7 +29,13 @@ const StatusMessage: React.FC<{
   hoveredPlacementId: string | null;
   isPlacementMode: boolean;
   hoverInfo: { cell: [number, number] } | null;
-}> = ({ hoveredPlacementId, isPlacementMode, hoverInfo }) => {
+  selectedGround: string | null;
+}> = ({ hoveredPlacementId, isPlacementMode, hoverInfo, selectedGround }) => {
+  if (selectedGround) return (
+    <div className="text-center py-2 text-slate-500 text-sm">
+      Paint {selectedGround.replace(/_/g, " ")} on bare cells; right-click to erase ground or remove a crop. Esc stops painting.
+    </div>
+  );
   const getMessage = () => {
     if (hoveredPlacementId && isPlacementMode) {
       return (
@@ -277,6 +283,8 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
     setHoveredTargetId,
     setHoveredInputId,
     effectSimulation,
+    groundTiles,
+    selectedGround,
   } = useDesigner();
   
   // Expose grid element via ref
@@ -304,6 +312,7 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
     paintState,
     hoverInfo,
     previewPosition,
+    groundPreviewPosition,
     previewValidation,
     dragValidation,
     handleMouseMove,
@@ -349,7 +358,7 @@ return (
         style={{
           width: gridWidth,
           height: gridHeight,
-          cursor: isPlacementMode ? "crosshair" : "default",
+          cursor: isPlacementMode || selectedGround ? "crosshair" : "default",
         }}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
@@ -359,6 +368,13 @@ return (
       >
       {/* Background grid cells */}
       <GridBackground cellSize={cellSize} gap={gap} unlockedCells={allCellsUnlocked} variant="gray" />
+      {/* Crop and target footprints render their own implicit ground. */}
+      {groundTiles.map(({ ground, position: [row, col] }) => {
+        const { top, left } = getCellPixelPosition(row, col, cellSize, gap);
+        return <div key={`${row},${col}`} aria-label={`${ground.replace(/_/g, " ")} ground at row ${row + 1}, column ${col + 1}`}
+          className="absolute rounded-sm pointer-events-none"
+          style={{ top, left, width: cellSize, height: cellSize, backgroundImage: `url(${getGroundImagePath(ground)})`, backgroundSize: "cover" }} />;
+      })}
       
       {/* Input placements */}
       {inputPlacements.map((placement) => {
@@ -464,6 +480,18 @@ return (
         />
       )}
       
+      {/* Ground hover preview on paintable bare cells; never intercept grid interactions. */}
+      {groundPreviewPosition && selectedGround && (() => {
+        const [row, col] = groundPreviewPosition;
+        const { top, left } = getCellPixelPosition(row, col, cellSize, gap);
+        return <div
+          aria-label={`${selectedGround.replace(/_/g, " ")} ground preview at row ${row + 1}, column ${col + 1}`}
+          className="absolute rounded-sm pointer-events-none"
+          style={{ top, left, width: cellSize, height: cellSize,
+            backgroundImage: `url(${getGroundImagePath(selectedGround)})`, backgroundSize: "cover",
+            opacity: 0.7, zIndex: 15 }} />;
+      })()}
+
       {/* Placement preview (when not dragging) */}
       {previewPosition && selectedCropForPlacement && !dragState?.isDragging && !paintState && (
         <DesignerPlacementPreview
@@ -481,6 +509,7 @@ return (
       
       <StatusMessage
         hoveredPlacementId={hoveredPlacementId}
+        selectedGround={selectedGround}
         isPlacementMode={isPlacementMode}
         hoverInfo={hoverInfo}
       />

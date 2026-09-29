@@ -11,6 +11,8 @@ export const usePageTitle = () => {
       switch (path) {
         case "/":
           return "Greenhouse · Grid";
+        case "/simulator":
+          return "Greenhouse · Simulator";
         case "/calculator":
           return "Greenhouse · Calculator";
         case "/about":

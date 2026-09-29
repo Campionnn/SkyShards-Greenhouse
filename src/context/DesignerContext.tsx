@@ -12,6 +12,7 @@ import {
   SPECIAL_EFFECT_SETS,
 } from "../utilities";
 import type { EffectSimulation } from "../utilities";
+import { GROUND_TYPES, type GroundTile, type GroundType } from "../utilities/designEncoding";
 
 export type DesignerMode = "inputs" | "targets";
 
@@ -62,6 +63,13 @@ interface DesignerContextType {
   // Placements
   inputPlacements: DesignerPlacement[];
   targetPlacements: DesignerPlacement[];
+  groundTiles: GroundTile[];
+  selectedGround: GroundType | null;
+  setSelectedGround: (ground: GroundType | null) => void;
+  paintGround: (position: [number, number], ground: GroundType) => void;
+  removeGround: (position: [number, number]) => void;
+  clearGroundTiles: () => void;
+  replaceGroundTiles: (tiles: GroundTile[]) => void;
   
   // Actions
   addPlacement: (placement: Omit<DesignerPlacement, "id">) => { success: boolean; error?: string };
@@ -96,7 +104,8 @@ interface DesignerContextType {
   // Load from calculator results
   loadFromSolverResult: (
     crops: Array<{ id: string; name: string; position: [number, number]; size: number }>,
-    mutations: Array<{ id: string; name: string; position: [number, number]; size: number }>
+    mutations: Array<{ id: string; name: string; position: [number, number]; size: number }>,
+    groundTiles?: GroundTile[]
   ) => void;
   
   // Get all placements for display
@@ -140,16 +149,55 @@ function resolveOverlaps(
   return { inputs: keptInputs, targets: keptTargets };
 }
 
-export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+function normalizeGroundTiles(tiles: GroundTile[], placements: DesignerPlacement[]): GroundTile[] {
+  const unique = new Map<string, GroundTile>();
+  for (const tile of tiles) {
+    const [row, col] = tile.position;
+    if (!GROUND_TYPES.includes(tile.ground) || !Number.isInteger(row) || !Number.isInteger(col) ||
+        row < 0 || row >= 10 || col < 0 || col >= 10 || getPlacementAtCell(row, col, placements)) continue;
+    unique.set(`${row},${col}`, { ground: tile.ground, position: [row, col] });
+  }
+  return [...unique.values()];
+}
+
+interface DesignerProviderProps {
+  children: React.ReactNode;
+  /**
+   * Starting placements. Without them the provider restores the designer's
+   * saved layout from localStorage.
+   */
+  initialPlacements?: { inputs: DesignerPlacement[]; targets: DesignerPlacement[]; groundTiles?: GroundTile[] };
+  /** Save to / restore from localStorage (the Designer page). Off for embedded editors. */
+  persist?: boolean;
+  /** Called whenever the placements change after mount. */
+  onChange?: (inputs: DesignerPlacement[], targets: DesignerPlacement[], groundTiles: GroundTile[]) => void;
+}
+
+export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, initialPlacements, persist = true, onChange }) => {
   const [mode, setMode] = useState<DesignerMode>("inputs");
   // Load both lists together so overlaps between them can be resolved
-  const [savedPlacements] = useState(() => resolveOverlaps(
-    LocalStorageManager.loadDesignerInputs() || [],
-    LocalStorageManager.loadDesignerTargets() || []
-  ));
+  const [savedPlacements] = useState(() => initialPlacements
+    ? resolveOverlaps(initialPlacements.inputs, initialPlacements.targets)
+    : resolveOverlaps(
+        (persist && LocalStorageManager.loadDesignerInputs()) || [],
+        (persist && LocalStorageManager.loadDesignerTargets()) || []
+      ));
   const [inputPlacements, setInputPlacements] = useState<DesignerPlacement[]>(savedPlacements.inputs);
   const [targetPlacements, setTargetPlacements] = useState<DesignerPlacement[]>(savedPlacements.targets);
-  const [selectedCropForPlacement, setSelectedCropForPlacement] = useState<SelectedCropForDesigner | null>(null);
+  const [groundTiles, setGroundTiles] = useState<GroundTile[]>(() => normalizeGroundTiles(
+    initialPlacements?.groundTiles ?? ((persist && LocalStorageManager.loadDesignerGroundTiles()) || []),
+    [...savedPlacements.inputs, ...savedPlacements.targets]
+  ));
+  const [selectedGround, setSelectedGroundState] = useState<GroundType | null>(null);
+  const [selectedCropForPlacement, setSelectedCropState] = useState<SelectedCropForDesigner | null>(null);
+  const setSelectedGround = useCallback((ground: GroundType | null) => {
+    setSelectedGroundState(ground);
+    if (ground) setSelectedCropState(null);
+  }, []);
+  const setSelectedCropForPlacement = useCallback((crop: SelectedCropForDesigner | null) => {
+    setSelectedCropState(crop);
+    if (crop) setSelectedGroundState(null);
+  }, []);
   const [hoveredTargetId, setHoveredTargetId] = useState<string | null>(null);
   const [hoveredInputId, setHoveredInputId] = useState<string | null>(null);
   const isInitialInputsMount = useRef(true);
@@ -157,6 +205,7 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   // Save input placements to localStorage when they change (but not empty defaults)
   useEffect(() => {
+    if (!persist) return;
     if (isInitialInputsMount.current) {
       const saved = LocalStorageManager.loadDesignerInputs();
       isInitialInputsMount.current = false;
@@ -165,10 +214,11 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
     LocalStorageManager.saveDesignerInputs(inputPlacements);
-  }, [inputPlacements]);
+  }, [inputPlacements, persist]);
   
   // Save target placements to localStorage when they change (but not empty defaults)
   useEffect(() => {
+    if (!persist) return;
     if (isInitialTargetsMount.current) {
       const saved = LocalStorageManager.loadDesignerTargets();
       isInitialTargetsMount.current = false;
@@ -177,8 +227,42 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
     LocalStorageManager.saveDesignerTargets(targetPlacements);
-  }, [targetPlacements]);
+  }, [targetPlacements, persist]);
+
+  useEffect(() => {
+    if (persist) LocalStorageManager.saveDesignerGroundTiles(groundTiles);
+  }, [groundTiles, persist]);
+
+  // Report edits to an embedding owner (not the initial state).
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const isInitialChangeMount = useRef(true);
+  useEffect(() => {
+    if (isInitialChangeMount.current) {
+      isInitialChangeMount.current = false;
+      return;
+    }
+    onChangeRef.current?.(inputPlacements, targetPlacements, groundTiles);
+  }, [inputPlacements, targetPlacements, groundTiles]);
   
+  const paintGround = useCallback((position: [number, number], ground: GroundType) => {
+    const [row, col] = position;
+    if (!GROUND_TYPES.includes(ground) || row < 0 || row >= 10 || col < 0 || col >= 10 ||
+        getPlacementAtCell(row, col, [...inputPlacements, ...targetPlacements])) return;
+    setGroundTiles(prev => {
+      const other = prev.filter(t => t.position[0] !== row || t.position[1] !== col);
+      return [...other, { ground, position: [row, col] }];
+    });
+  }, [inputPlacements, targetPlacements]);
+
+  const removeGround = useCallback((position: [number, number]) => {
+    setGroundTiles(prev => prev.filter(t => t.position[0] !== position[0] || t.position[1] !== position[1]));
+  }, []);
+  const clearGroundTiles = useCallback(() => setGroundTiles([]), []);
+  const replaceGroundTiles = useCallback((tiles: GroundTile[]) => {
+    setGroundTiles(normalizeGroundTiles(tiles, [...inputPlacements, ...targetPlacements]));
+  }, [inputPlacements, targetPlacements]);
+
   // Placements of the current mode get the new entry
   const setCurrentPlacements = mode === "inputs" ? setInputPlacements : setTargetPlacements;
   
@@ -269,6 +353,11 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setTargetPlacements(dropOverlapping);
     }
     setCurrentPlacements(prev => [...prev, newPlacement]);
+    // The crop or slot owns its ground over its entire footprint.
+    setGroundTiles(prev => prev.filter(t =>
+      t.position[0] < placement.position[0] || t.position[0] >= placement.position[0] + placement.size ||
+      t.position[1] < placement.position[1] || t.position[1] >= placement.position[1] + placement.size
+    ));
     
     return { success: true };
   }, [isValidPlacementPosition, getOverlappingPlacements, setCurrentPlacements]);
@@ -306,6 +395,10 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
     }
     
+    setGroundTiles(prev => prev.filter(t =>
+      t.position[0] < newPosition[0] || t.position[0] >= newPosition[0] + placement.size ||
+      t.position[1] < newPosition[1] || t.position[1] >= newPosition[1] + placement.size
+    ));
     return { success: true };
   }, [allPlacements, inputPlacements, isValidPlacement]);
   
@@ -321,6 +414,7 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const clearAllPlacements = useCallback(() => {
     setInputPlacements([]);
     setTargetPlacements([]);
+    setGroundTiles([]);
   }, []);
   
   // Get placement at position
@@ -334,7 +428,8 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Load from solver result
   const loadFromSolverResult = useCallback((
     crops: Array<{ id: string; name: string; position: [number, number]; size: number }>,
-    mutations: Array<{ id: string; name: string; position: [number, number]; size: number }>
+    mutations: Array<{ id: string; name: string; position: [number, number]; size: number }>,
+    tiles: GroundTile[] = []
   ) => {
     // Convert crops to input placements
     const newInputs: DesignerPlacement[] = crops.map(crop => ({
@@ -359,6 +454,9 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const resolved = resolveOverlaps(newInputs, newTargets);
     setInputPlacements(resolved.inputs);
     setTargetPlacements(resolved.targets);
+    setGroundTiles(normalizeGroundTiles(tiles, [...resolved.inputs, ...resolved.targets]));
+    setSelectedGroundState(null);
+    setSelectedCropState(null);
   }, []);
   
   // Get possible mutations based on current input placements
@@ -583,6 +681,13 @@ export const DesignerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setMode,
     inputPlacements,
     targetPlacements,
+    groundTiles,
+    selectedGround,
+    setSelectedGround,
+    paintGround,
+    removeGround,
+    clearGroundTiles,
+    replaceGroundTiles,
     addPlacement,
     removePlacement,
     movePlacement,

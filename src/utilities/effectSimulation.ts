@@ -82,12 +82,28 @@ export function relaySlot(position: [number, number], table: number): number {
 
 const buffCache = new Map<string, PlantBuffs | undefined>();
 
+/**
+ * Kinds that are inert scenery - mutation ingredients with no growth, no
+ * drops and no buffs of their own (Fire: "not a real crop", see
+ * simulator/spawn/multiplicity.ts NON_SUPPORTING). They must never hold or
+ * spread any effect: not their own (data.json already lists none for Fire),
+ * and not one received from a neighbour either - e.g. standing next to a
+ * Wild Rose must not let Fire pick up effect_spread and take a relay turn.
+ */
+const EFFECT_INERT_KINDS: ReadonlySet<string> = new Set(["fire"]);
+
+export function isEffectInert(id: string): boolean {
+  return EFFECT_INERT_KINDS.has(id);
+}
+
 export function getPlantBuffs(id: string): PlantBuffs | undefined {
   if (buffCache.has(id)) return buffCache.get(id);
   const entry = CROPS[id] || MUTATIONS[id];
   let out: PlantBuffs | undefined;
   if (entry) {
-    const listed = [...(entry.positive_buffs || []), ...(entry.negative_buffs || [])];
+    const listed = EFFECT_INERT_KINDS.has(id)
+      ? []
+      : [...(entry.positive_buffs || []), ...(entry.negative_buffs || [])];
     out = {
       intrinsic: new Set(listed),
       spreads: listed.includes(RELAY_EFFECT),
@@ -157,6 +173,8 @@ interface SimPlant {
   buffs: PlantBuffs;
   has: Set<string>;
   isSlot: boolean;
+  /** Fire and other inert scenery: never holds anything it's given, so it can never spread either. */
+  isInert: boolean;
 }
 
 export interface EffectSimulation {
@@ -197,7 +215,15 @@ export function simulateEffects(
         cells.push(`${r},${c}`);
       }
     }
-    const plant: SimPlant = { id: p.id, position: p.position, cells, buffs, has: new Set(), isSlot: !!p.isSlot };
+    const plant: SimPlant = {
+      id: p.id,
+      position: p.position,
+      cells,
+      buffs,
+      has: new Set(),
+      isSlot: !!p.isSlot,
+      isInert: isEffectInert(p.id),
+    };
     plants.push(plant);
     for (const cell of cells) cellToPlant.set(cell, plant);
   }
@@ -225,7 +251,12 @@ export function simulateEffects(
 
   const give = (plant: SimPlant, payload: Set<string>) => {
     const { plants: near, empty } = neighbours(plant);
-    for (const q of near) for (const e of payload) q.has.add(e);
+    // Inert scenery (Fire) never holds anything given to it, so it can
+    // neither carry an effect nor become a relay from one.
+    for (const q of near) {
+      if (q.isInert) continue;
+      for (const e of payload) q.has.add(e);
+    }
     for (const key of empty) {
       let set = received.get(key);
       if (!set) {
