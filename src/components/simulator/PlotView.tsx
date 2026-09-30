@@ -159,6 +159,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
       return { row, col, item };
     })
     .filter((m) => !occupied.has(`${m.row},${m.col}`));
+  const missingKeys = new Set(missing.map((m) => `${m.row},${m.col}`));
 
   return (
     <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 min-w-0 flex flex-col">
@@ -311,15 +312,20 @@ export const PlotView: React.FC<PlotViewProps> = ({
             const { top, left } = getCellPixelPosition(r, c, cellSize, gap);
             const span = cells * cellSize + (cells - 1) * gap;
             const style = MARK_STYLE[mark];
+            // A new shortfall also opens a "missing" overlay on the same cell, which already draws its own "!";
+            // keep the ring (it shows the shortfall is new this cycle) but drop the second glyph.
+            const showGlyph = !(mark === "debt" && missingKeys.has(key));
             return (
               <div
                 key={`mark-${key}`}
                 className="absolute rounded pointer-events-none flex items-start justify-end"
                 style={{ top, left, width: span, height: span, boxShadow: `0 0 0 2px ${style.ring}` }}
               >
-                <span className={`text-[10px] leading-none font-bold ${style.color} drop-shadow`} style={{ marginTop: 1, marginRight: 2 }}>
-                  {style.glyph}
-                </span>
+                {showGlyph && (
+                  <span className={`text-[10px] leading-none font-bold ${style.color} drop-shadow`} style={{ marginTop: 1, marginRight: 2 }}>
+                    {style.glyph}
+                  </span>
+                )}
               </div>
             );
           })}
