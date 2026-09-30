@@ -1,14 +1,15 @@
 import React, { useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Copy, ExternalLink, Eye, Link2, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, ExternalLink, Eye, FolderInput, Plus, Trash2, X } from "lucide-react";
 import { DesignerProvider } from "../../context";
 import { useFitCellSize } from "../../hooks";
 import type { FlowStage, Policies, PolicyOverrides, Scenario, ScenarioPlot, StageLayout, Trigger } from "../../simulator";
-import { extractLayoutCode, type LayoutTransform } from "../../utilities";
-import { CropSelectionPalette, DesignerGrid, LayoutClearControls, LayoutTransformControls, MutationValidator } from "../designer";
+import type { LayoutTransform } from "../../utilities";
+import { CropSelectionPalette, DesignerGrid, LayoutClearControls, LayoutHistoryControls, LayoutTransformControls, MutationValidator } from "../designer";
 import { CropImage } from "../shared";
 import { Panel, SectionLabel, useToast } from "../ui";
 import { CheckboxField, IdSelect, NumberInput, SelectField } from "./controls";
 import { ALL_KIND_IDS, ALL_MUTATION_IDS, allItemIds, describeTrigger, nameOf } from "./format";
+import { LayoutPickerDialog } from "./LayoutPicker";
 import {
   blankStage,
   defaultTrigger,
@@ -35,36 +36,18 @@ import { buttonClass, inputClass } from "./styles";
 const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: StageLayout, transform?: LayoutTransform) => void }> = ({ layout, onChange }) => {
   const { toast } = useToast();
   const [version, setVersion] = useState(0);
-  const [importText, setImportText] = useState("");
+  const [picking, setPicking] = useState(false);
   const fitRef = useRef<HTMLDivElement>(null);
   const { cellSize, gap } = useFitCellSize(fitRef, { max: 52 });
   const code = layoutCode(layout);
   // Re-read the layout only when the editor is (re)mounted, not on every keystroke it produced.
   const initial = useMemo(() => layoutToPlacements(layout), [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const importLink = () => {
-    try {
-      const next = extractLayoutCode(importText);
-      layoutToPlacements({ code: next }); // throws on a bad code
-      onChange({ code: next });
-      setImportText("");
-      setVersion((v) => v + 1);
-    } catch (err) {
-      toast({ title: "Could not read that link", description: err instanceof Error ? err.message : String(err), variant: "error" });
-    }
-  };
-
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <input
-          className={`${inputClass} flex-1 min-w-[200px]`}
-          placeholder="Paste a share link or code to replace this layout"
-          value={importText}
-          onChange={(e) => setImportText(e.target.value)}
-        />
-        <button className={buttonClass.neutral} onClick={importLink} disabled={!importText.trim()}>
-          <Link2 className="w-3.5 h-3.5" /> Import
+        <button className={buttonClass.primary} onClick={() => setPicking(true)} title="Replace this stage's layout with one from the Calculator, the Designer, your saved layouts or a share link">
+          <FolderInput className="w-3.5 h-3.5" /> Load layout...
         </button>
         <button
           className={buttonClass.neutral}
@@ -79,6 +62,32 @@ const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: Stag
           <ExternalLink className="w-3.5 h-3.5" /> Designer
         </a>
       </div>
+      {picking && (
+        <LayoutPickerDialog
+          title="Load a layout into this stage"
+          useLabel="Replace this stage's layout"
+          onClose={() => setPicking(false)}
+          onUse={(picked) => {
+            const before = layout;
+            onChange({ code: picked.code });
+            setVersion((v) => v + 1);
+            setPicking(false);
+            toast({
+              title: "Stage layout replaced",
+              description: picked.name,
+              variant: "success",
+              duration: 5000,
+              action: {
+                label: "Undo",
+                onClick: () => {
+                  onChange(before);
+                  setVersion((v) => v + 1);
+                },
+              },
+            });
+          }}
+        />
+      )}
       <DesignerProvider
         key={version}
         persist={false}
@@ -91,6 +100,7 @@ const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: Stag
             <CropSelectionPalette />
           </div>
           <div className="order-1 lg:col-start-1 lg:row-start-1 2xl:col-start-2 min-w-0 bg-slate-900/40 border border-slate-600/30 rounded-lg p-3">
+            <LayoutHistoryControls className="justify-end mb-2" />
             <div ref={fitRef} className="w-full flex flex-col items-center">
               <DesignerGrid cellSize={cellSize} gap={gap} showTargets />
             </div>
@@ -428,9 +438,11 @@ export const RotationEditor: React.FC<{
   plotId: number;
   onChange: (sc: Scenario) => void;
   onClose: () => void;
-}> = ({ scenario, plotId, onChange, onClose }) => {
+  /** Stage selected when the editor opens (e.g. one just added from another page). */
+  initialStage?: number;
+}> = ({ scenario, plotId, onChange, onClose, initialStage = 0 }) => {
   const plot = scenario.plots.find((p) => p.id === plotId);
-  const [selected, setSelected] = useState(0);
+  const [selected, setSelected] = useState(initialStage);
   if (!plot) return null;
   const { stages } = plot.flow;
   const index = Math.min(selected, stages.length - 1);

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ArrowDown,
   ArrowLeft,
@@ -6,9 +6,11 @@ import {
   ArrowUp,
   FlipHorizontal2,
   FlipVertical2,
+  Redo2,
   RotateCcw,
   RotateCw,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { useDesigner } from "../../context";
 import { useToast } from "../ui/toastContext";
@@ -31,6 +33,54 @@ interface LayoutToolsProps {
   /** Show a toast after each transform (off keeps rapid nudging quiet). */
   toastOnTransform?: boolean;
 }
+
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const MOD = IS_MAC ? "⌘" : "Ctrl";
+
+/** Typing somewhere keeps the browser's own text undo. */
+function isTextEntry(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+}
+
+const historyButton =
+  "flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-200 disabled:opacity-40 disabled:hover:bg-slate-700/30 disabled:hover:text-slate-300 disabled:cursor-not-allowed cursor-pointer";
+
+/**
+ * Undo / redo buttons for the nearest DesignerProvider, plus the keyboard
+ * shortcuts (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y). Mount one per provider.
+ */
+export const LayoutHistoryControls: React.FC<{ className?: string }> = ({ className = "" }) => {
+  const { undo, redo, canUndo, canRedo } = useDesigner();
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || isTextEntry(e.target)) return;
+      const key = e.key.toLowerCase();
+      const wantsRedo = (key === "z" && e.shiftKey) || (key === "y" && !e.shiftKey);
+      const wantsUndo = key === "z" && !e.shiftKey;
+      if (!wantsUndo && !wantsRedo) return;
+      e.preventDefault();
+      if (wantsRedo) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
+
+  return (
+    <div className={`flex items-center gap-1.5 ${className}`} role="group" aria-label="Undo and redo">
+      <button type="button" className={historyButton} disabled={!canUndo} onClick={undo} title={`Undo (${MOD}+Z)`} aria-label="Undo">
+        <Undo2 className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">Undo</span>
+      </button>
+      <button type="button" className={historyButton} disabled={!canRedo} onClick={redo} title={`Redo (${MOD}+Shift+Z)`} aria-label="Redo">
+        <Redo2 className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">Redo</span>
+      </button>
+    </div>
+  );
+};
 
 /** Nudge pad (arrows), rotate 90 degrees either way, mirror on either axis. */
 export const LayoutTransformControls: React.FC<LayoutToolsProps> = ({ className = "", toastOnTransform = false }) => {
@@ -111,9 +161,12 @@ export const LayoutClearControls: React.FC<LayoutToolsProps> = ({ className = ""
     clearTargetPlacements,
     clearGroundTiles,
     clearAllPlacements,
+    undo,
   } = useDesigner();
   const { toast } = useToast();
   const [confirmAll, setConfirmAll] = useState(false);
+  // Clearing by mistake is the easy one to regret: offer undo right on the toast.
+  const undoAction = { label: "Undo", onClick: () => { undo(); } };
   const total = inputPlacements.length + targetPlacements.length + groundTiles.length;
 
   const clearAll = () => {
@@ -123,7 +176,7 @@ export const LayoutClearControls: React.FC<LayoutToolsProps> = ({ className = ""
     }
     clearAllPlacements();
     setConfirmAll(false);
-    toast({ title: "Layout cleared", variant: "success", duration: 2000 });
+    toast({ title: "Layout cleared", variant: "success", duration: 4000, action: undoAction });
   };
 
   return (
@@ -135,7 +188,7 @@ export const LayoutClearControls: React.FC<LayoutToolsProps> = ({ className = ""
         title="Remove every input crop"
         onClick={() => {
           clearInputPlacements();
-          toast({ title: "Input placements cleared", variant: "success", duration: 2000 });
+          toast({ title: "Input placements cleared", variant: "success", duration: 4000, action: undoAction });
         }}
       >
         <RotateCcw className="w-4 h-4" /> Inputs
@@ -147,7 +200,7 @@ export const LayoutClearControls: React.FC<LayoutToolsProps> = ({ className = ""
         title="Remove every target mutation"
         onClick={() => {
           clearTargetPlacements();
-          toast({ title: "Target placements cleared", variant: "success", duration: 2000 });
+          toast({ title: "Target placements cleared", variant: "success", duration: 4000, action: undoAction });
         }}
       >
         <RotateCcw className="w-4 h-4" /> Targets
@@ -159,7 +212,7 @@ export const LayoutClearControls: React.FC<LayoutToolsProps> = ({ className = ""
         title="Erase all painted ground tiles"
         onClick={() => {
           clearGroundTiles();
-          toast({ title: "Ground tiles cleared", variant: "success", duration: 2000 });
+          toast({ title: "Ground tiles cleared", variant: "success", duration: 4000, action: undoAction });
         }}
       >
         <RotateCcw className="w-4 h-4" /> Ground

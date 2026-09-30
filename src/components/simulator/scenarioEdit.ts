@@ -43,14 +43,165 @@ export function updateStage(sc: Scenario, plotId: number, index: number, fn: (s:
   });
 }
 
-export function addPlot(sc: Scenario, layout: StageLayout = { code: EMPTY_LAYOUT_CODE }): Scenario {
+export function addPlot(sc: Scenario, layout: StageLayout = { code: EMPTY_LAYOUT_CODE }, label?: string): Scenario {
   if (sc.plots.length >= MAX_PLOTS) return sc;
-  const id = [1, 2, 3].find((n) => !sc.plots.some((p) => p.id === n))!;
+  const id = nextPlotId(sc)!;
   const plot: ScenarioPlot = {
     id,
-    flow: { stages: [{ id: "stage-1", label: `Plot ${id} layout`, layout, exit: [] }], loop: false, startIndex: 0 },
+    flow: { stages: [{ id: "stage-1", label: label || `Plot ${id} layout`, layout, exit: [] }], loop: false, startIndex: 0 },
   };
   return { ...sc, plots: [...sc.plots, plot].sort((a, b) => a.id - b.id) };
+}
+
+/** The id the next added plot gets, or null when every plot is in use. */
+export function nextPlotId(sc: Scenario): number | null {
+  if (sc.plots.length >= MAX_PLOTS) return null;
+  return [1, 2, 3].find((n) => !sc.plots.some((p) => p.id === n)) ?? null;
+}
+
+// ---- Placing a layout that came from elsewhere -------------------------------
+
+/** Where a layout from the Calculator, the Designer or a saved layout goes. */
+export type LayoutDestination =
+  | { kind: "newPlot" }
+  | { kind: "replacePlot"; plotId: number }
+  | { kind: "appendStage"; plotId: number };
+
+/** True for a layout with no plants, no targets and no painted ground. */
+export function isEmptyLayout(layout: StageLayout): boolean {
+  try {
+    const { inputs, targets, groundTiles } = layoutToPlacements(layout);
+    return inputs.length === 0 && targets.length === 0 && groundTiles.length === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Nothing worth keeping: every stage of every plot is an empty layout (e.g. the starter plot). */
+export function isBlankScenario(sc: Scenario): boolean {
+  return sc.plots.every((p) => p.flow.stages.every((s) => isEmptyLayout(s.layout)));
+}
+
+/**
+ * Put a layout into the scenario. A blank scenario is replaced outright, so
+ * the layout always lands on Plot 1 there. Returns where it went, so the
+ * caller can say so (and open the rotation editor on a new stage).
+ */
+export function placeLayout(
+  sc: Scenario,
+  dest: LayoutDestination,
+  layout: StageLayout,
+  label: string
+): { scenario: Scenario; plotId: number; stageIndex: number } | null {
+  if (isBlankScenario(sc)) {
+    const next = addPlot({ ...sc, plots: [] }, layout, label);
+    return { scenario: next, plotId: next.plots[0].id, stageIndex: 0 };
+  }
+  if (dest.kind === "newPlot") {
+    const id = nextPlotId(sc);
+    if (id === null) return null;
+    return { scenario: addPlot(sc, layout, label), plotId: id, stageIndex: 0 };
+  }
+  if (!sc.plots.some((p) => p.id === dest.plotId)) return null;
+  if (dest.kind === "replacePlot") {
+    // The whole rotation goes; the plot's own policy overrides stay.
+    const next = updatePlot(sc, dest.plotId, (p) => ({
+      ...p,
+      flow: { stages: [{ id: "stage-1", label, layout, exit: [] }], loop: false, startIndex: 0 },
+    }));
+    return { scenario: next, plotId: dest.plotId, stageIndex: 0 };
+  }
+  let stageIndex = 0;
+  const next = updatePlot(sc, dest.plotId, (p) => {
+    const stages = p.flow.stages;
+    // The old last stage never had to end; give it a default exit so the plot
+    // actually reaches the new stage (the rotation editor opens on it).
+    const last = stages[stages.length - 1];
+    if (last && last.exit.length === 0 && !p.flow.loop) stages[stages.length - 1] = { ...last, exit: [defaultTrigger("cycles")] };
+    const stage: FlowStage = { id: newStageId(stages), label, layout, exit: [] };
+    p.flow.stages = [...stages, stage];
+    stageIndex = p.flow.stages.length - 1;
+    return p;
+  });
+  return { scenario: next, plotId: dest.plotId, stageIndex };
+}
+
+export interface DestinationOption {
+  label: string;
+  hint: string;
+  dest: LayoutDestination;
+}
+
+/** The choices offered for an incoming or picked layout, most likely first. */
+export function layoutDestinations(sc: Scenario): DestinationOption[] {
+  if (isBlankScenario(sc)) return [{ label: "Load as Plot 1", hint: "The scenario is empty", dest: { kind: "newPlot" } }];
+  const out: DestinationOption[] = [];
+  const id = nextPlotId(sc);
+  if (id !== null) out.push({ label: `Add as Plot ${id}`, hint: "A new plot next to the ones you have", dest: { kind: "newPlot" } });
+  for (const p of sc.plots)
+    out.push({
+      label: `Replace Plot ${p.id}`,
+      hint: p.flow.stages.length > 1 ? `Drops its ${p.flow.stages.length}-stage rotation` : layoutSummary(p.flow.stages[0].layout),
+      dest: { kind: "replacePlot", plotId: p.id },
+    });
+  for (const p of sc.plots)
+    out.push({ label: `Next stage of Plot ${p.id}`, hint: `Becomes stage ${p.flow.stages.length + 1} of its rotation`, dest: { kind: "appendStage", plotId: p.id } });
+  return out;
+}
+
+// ---- Rotation files (export / import) -------------------------------------------
+
+export const ROTATIONS_FILE_KIND = "skyshards-greenhouse-rotations";
+
+/**
+ * The shareable part of a scenario: each plot's rotation (stages, layouts,
+ * exit triggers, loop, start stage, full clear, checked targets) and its plot
+ * and stage policy overrides. Nothing about the player: stats, online
+ * schedule, seed, Actions defaults, advanced config and starting inventory
+ * stay out.
+ */
+export interface RotationsFile {
+  kind: typeof ROTATIONS_FILE_KIND;
+  version: 1;
+  plots: ScenarioPlot[];
+}
+
+export function exportRotations(sc: Scenario): RotationsFile {
+  return { kind: ROTATIONS_FILE_KIND, version: 1, plots: structuredClone(sc.plots) };
+}
+
+/**
+ * Read a rotations file (or an older full scenario export, of which only the
+ * plots are used) into `sc`, replacing its plots and keeping everything else.
+ * Throws with a readable message when the file is not usable.
+ */
+export function importRotations(sc: Scenario, text: string): Scenario {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("That is not valid JSON.");
+  }
+  const plots = (parsed as { plots?: unknown } | null)?.plots;
+  if (!Array.isArray(plots) || plots.length === 0) throw new Error("No plots found. Expected an exported rotations file.");
+  if (plots.length > MAX_PLOTS) throw new Error(`At most ${MAX_PLOTS} plots; the file has ${plots.length}.`);
+  const seen = new Set<number>();
+  plots.forEach((p: Partial<ScenarioPlot>, i) => {
+    const where = `Plot ${i + 1}`;
+    if (!p || typeof p !== "object") throw new Error(`${where} is not an object.`);
+    if (![1, 2, 3].includes(p.id as number) || seen.has(p.id as number)) throw new Error(`${where}: id must be a unique 1, 2 or 3.`);
+    seen.add(p.id as number);
+    const stages = p.flow?.stages;
+    if (!Array.isArray(stages) || stages.length === 0) throw new Error(`${where}: no stages.`);
+    stages.forEach((s, j) => {
+      if (!s || typeof s.id !== "string" || !s.layout || !Array.isArray(s.exit)) throw new Error(`${where}, stage ${j + 1}: needs an id, a layout and an exit list.`);
+    });
+  });
+  const clean = (plots as ScenarioPlot[]).map((p) => ({
+    ...p,
+    flow: { stages: p.flow.stages, loop: !!p.flow.loop, startIndex: Math.min(Math.max(0, Math.floor(Number(p.flow.startIndex) || 0)), p.flow.stages.length - 1) },
+  }));
+  return { ...sc, plots: structuredClone(clean).sort((a, b) => a.id - b.id) };
 }
 
 export function removePlot(sc: Scenario, plotId: number): Scenario {

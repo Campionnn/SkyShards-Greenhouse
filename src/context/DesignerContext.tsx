@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { MutationDefinition } from "../types/greenhouse";
 import {
   isPositionOccupiedByPlacements,
@@ -11,122 +11,37 @@ import {
   simulateEffects,
   SPECIAL_EFFECT_SETS,
   transformLayout as applyLayoutTransform,
+  createEditRecorder,
+  emptyHistory,
+  invertTransform,
+  recordEdit,
+  redoStep,
+  undoStep,
 } from "../utilities";
-import type { EffectSimulation, LayoutTransform } from "../utilities";
+import type { LayoutHistory, LayoutSnapshot, LayoutTransform } from "../utilities";
 import { GROUND_TYPES, type GroundTile, type GroundType } from "../utilities/designEncoding";
+import {
+  DesignerContext,
+  type DesignerContextType,
+  type DesignerPlacement,
+  type EffectRequirementInfo,
+  type MutationValidationInfo,
+  type RequirementInfo,
+  type SelectedCropForDesigner,
+  type DesignerMode,
+} from "./designerContextValue";
 
-export type DesignerMode = "inputs" | "targets";
-
-export interface DesignerPlacement {
-  id: string;
-  cropId: string;
-  cropName: string;
-  size: number;
-  position: [number, number];
-  isMutation: boolean;
-}
-
-export interface SelectedCropForDesigner {
-  id: string;
-  name: string;
-  size: number;
-  isMutation: boolean;
-}
-
-// Requirement info with satisfaction status
-export interface RequirementInfo {
-  crop: string;
-  needed: number;
-  have: number;
-  satisfied: boolean;
-}
-
-// Effect requirement (godseed-style mutations: the spot must hold these effects)
-export interface EffectRequirementInfo {
-  effect: string;
-  satisfied: boolean;
-}
-
-// Mutation validation result
-export interface MutationValidationInfo {
-  isValid: boolean;
-  missingRequirements: Array<RequirementInfo>;
-  satisfiedRequirements: Array<RequirementInfo>;
-  // Only for mutations whose eligibility is an effect condition (godseed)
-  effectRequirements: Array<EffectRequirementInfo>;
-}
-
-interface DesignerContextType {
-  // Mode
-  mode: DesignerMode;
-  setMode: (mode: DesignerMode) => void;
-  
-  // Placements
-  inputPlacements: DesignerPlacement[];
-  targetPlacements: DesignerPlacement[];
-  groundTiles: GroundTile[];
-  selectedGround: GroundType | null;
-  setSelectedGround: (ground: GroundType | null) => void;
-  paintGround: (position: [number, number], ground: GroundType) => void;
-  removeGround: (position: [number, number]) => void;
-  clearGroundTiles: () => void;
-  replaceGroundTiles: (tiles: GroundTile[]) => void;
-  
-  // Actions
-  addPlacement: (placement: Omit<DesignerPlacement, "id">) => { success: boolean; error?: string };
-  removePlacement: (id: string) => void;
-  movePlacement: (id: string, newPosition: [number, number]) => { success: boolean; error?: string };
-  clearInputPlacements: () => void;
-  clearTargetPlacements: () => void;
-  clearAllPlacements: () => void;
-  /** Nudge, rotate or mirror the whole layout (inputs, targets and ground). */
-  transformLayout: (transform: LayoutTransform) => { success: boolean; error?: string; droppedGround?: number };
-  
-  // Validation helpers
-  isPositionOccupied: (position: [number, number], size: number, excludeId?: string) => boolean;
-  isValidPlacement: (position: [number, number], size: number, excludeId?: string) => { valid: boolean; error?: string };
-  isValidPlacementPosition: (position: [number, number], size: number) => { valid: boolean; error?: string };
-  getPlacementAt: (row: number, col: number) => DesignerPlacement | undefined;
-  
-  // Selection for placement
-  selectedCropForPlacement: SelectedCropForDesigner | null;
-  setSelectedCropForPlacement: (crop: SelectedCropForDesigner | null) => void;
-  isPlacementMode: boolean;
-  
-  // Hovered target for showing validation info
-  hoveredTargetId: string | null;
-  setHoveredTargetId: (id: string | null) => void;
-
-  // Hovered input crop (for showing its effects)
-  hoveredInputId: string | null;
-  setHoveredInputId: (id: string | null) => void;
-
-  // Effect propagation over the current design (inputs + targets)
-  effectSimulation: EffectSimulation;
-  
-  // Load from calculator results
-  loadFromSolverResult: (
-    crops: Array<{ id: string; name: string; position: [number, number]; size: number }>,
-    mutations: Array<{ id: string; name: string; position: [number, number]; size: number }>,
-    groundTiles?: GroundTile[]
-  ) => void;
-  
-  // Get all placements for display
-  allPlacements: DesignerPlacement[];
-  
-  // Mutation validation
-  getPossibleMutations: (
-    mutations: MutationDefinition[]
-  ) => Array<{ mutation: MutationDefinition; positions: [number, number][] }>;
-  
-  // Get validation info for a target placement (for showing missing requirements)
-  getTargetValidation: (
-    targetId: string,
-    mutations: MutationDefinition[]
-  ) => MutationValidationInfo;
-}
-
-const DesignerContext = createContext<DesignerContextType | null>(null);
+// The context object, its types and `useDesigner` live in designerContextValue.ts,
+// so this file only exports a component (React Fast Refresh needs that).
+export type {
+  DesignerContextType,
+  DesignerMode,
+  DesignerPlacement,
+  EffectRequirementInfo,
+  MutationValidationInfo,
+  RequirementInfo,
+  SelectedCropForDesigner,
+} from "./designerContextValue";
 
 function resolveOverlaps(
   inputs: DesignerPlacement[],
@@ -240,11 +155,62 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     if (persist) LocalStorageManager.saveDesignerGroundTiles(groundTiles);
   }, [groundTiles, persist]);
 
-  // Report edits to an embedding owner (not the initial state).
+  // ---- Edits and undo / redo -------------------------------------------------
+  // `layoutRef` is the source of truth: every edit reads the LATEST layout from
+  // it and writes the result back synchronously, then mirrors it into React
+  // state for rendering. A fast drag fires several edits before React renders
+  // once, so reading render-time state here would lose cells and split undo
+  // steps. History is recorded in the same synchronous call (not in an effect)
+  // so a whole paint / erase stroke is always exactly one undo step.
+  const layoutRef = useRef<LayoutSnapshot<DesignerPlacement>>({ inputs: inputPlacements, targets: targetPlacements, groundTiles });
+  const [history, setHistory] = useState<LayoutHistory<DesignerPlacement>>(emptyHistory);
+  const historyRef = useRef(history);
+  const strokeRef = useRef<number | null>(null);
+  const editCounterRef = useRef(0);
+  const [recorder] = useState(() => createEditRecorder<DesignerPlacement>((entry) => {
+    historyRef.current = recordEdit(historyRef.current, entry);
+    setHistory(historyRef.current);
+  }));
+  const beginEdit = useCallback(() => {
+    strokeRef.current = ++editCounterRef.current;
+  }, []);
+  const endEdit = useCallback(() => {
+    strokeRef.current = null;
+  }, []);
+
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const isInitialChangeMount = useRef(true);
   const pendingTransformRef = useRef<LayoutTransform | undefined>(undefined);
+
+  /** Put a layout on screen (only the lists that actually changed). */
+  const show = useCallback((next: LayoutSnapshot<DesignerPlacement>) => {
+    const prev = layoutRef.current;
+    layoutRef.current = next;
+    if (next.inputs !== prev.inputs) setInputPlacements(next.inputs);
+    if (next.targets !== prev.targets) setTargetPlacements(next.targets);
+    if (next.groundTiles !== prev.groundTiles) setGroundTiles(next.groundTiles);
+  }, []);
+
+  /**
+   * Apply one edit to the latest layout. `fn` returns the next layout, or
+   * null for "nothing to do". Edits inside a stroke share one undo step.
+   */
+  const apply = useCallback((
+    fn: (layout: LayoutSnapshot<DesignerPlacement>) => LayoutSnapshot<DesignerPlacement> | null,
+    transform?: LayoutTransform
+  ): boolean => {
+    const before = layoutRef.current;
+    const next = fn(before);
+    if (!next) return false;
+    recorder.touch(strokeRef.current ?? ++editCounterRef.current, before, transform);
+    if (transform) pendingTransformRef.current = transform;
+    show(next);
+    recorder.commit(next);
+    return true;
+  }, [recorder, show]);
+
+  // Report edits to an embedding owner (not the initial state).
+  const isInitialChangeMount = useRef(true);
   useEffect(() => {
     if (isInitialChangeMount.current) {
       isInitialChangeMount.current = false;
@@ -254,28 +220,59 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     pendingTransformRef.current = undefined;
     onChangeRef.current?.(inputPlacements, targetPlacements, groundTiles, transform);
   }, [inputPlacements, targetPlacements, groundTiles]);
-  
+
+  const restore = useCallback((snapshot: LayoutSnapshot<DesignerPlacement>, transform: LayoutTransform | undefined) => {
+    pendingTransformRef.current = transform;
+    show(snapshot);
+    setHoveredTargetId(null);
+    setHoveredInputId(null);
+  }, [show]);
+
+  const undo = useCallback((): boolean => {
+    recorder.close(layoutRef.current);
+    const step = undoStep(historyRef.current, layoutRef.current);
+    if (!step) return false;
+    historyRef.current = step.history;
+    setHistory(step.history);
+    // A transform is undone by its inverse, so cell-keyed owner data can follow.
+    restore(step.entry.snapshot, step.entry.transform && invertTransform(step.entry.transform));
+    return true;
+  }, [recorder, restore]);
+
+  const redo = useCallback((): boolean => {
+    recorder.close(layoutRef.current);
+    const step = redoStep(historyRef.current, layoutRef.current);
+    if (!step) return false;
+    historyRef.current = step.history;
+    setHistory(step.history);
+    restore(step.entry.snapshot, step.entry.transform);
+    return true;
+  }, [recorder, restore]);
+
   const paintGround = useCallback((position: [number, number], ground: GroundType) => {
     const [row, col] = position;
-    if (!GROUND_TYPES.includes(ground) || row < 0 || row >= 10 || col < 0 || col >= 10 ||
-        getPlacementAtCell(row, col, [...inputPlacements, ...targetPlacements])) return;
-    setGroundTiles(prev => {
-      const other = prev.filter(t => t.position[0] !== row || t.position[1] !== col);
-      return [...other, { ground, position: [row, col] }];
+    apply(l => {
+      if (!GROUND_TYPES.includes(ground) || row < 0 || row >= 10 || col < 0 || col >= 10 ||
+          getPlacementAtCell(row, col, [...l.inputs, ...l.targets])) return null;
+      if (l.groundTiles.some(t => t.position[0] === row && t.position[1] === col && t.ground === ground)) return null;
+      const other = l.groundTiles.filter(t => t.position[0] !== row || t.position[1] !== col);
+      return { ...l, groundTiles: [...other, { ground, position: [row, col] }] };
     });
-  }, [inputPlacements, targetPlacements]);
+  }, [apply]);
 
   const removeGround = useCallback((position: [number, number]) => {
-    setGroundTiles(prev => prev.filter(t => t.position[0] !== position[0] || t.position[1] !== position[1]));
-  }, []);
-  const clearGroundTiles = useCallback(() => setGroundTiles([]), []);
+    apply(l => {
+      const kept = l.groundTiles.filter(t => t.position[0] !== position[0] || t.position[1] !== position[1]);
+      return kept.length === l.groundTiles.length ? null : { ...l, groundTiles: kept };
+    });
+  }, [apply]);
+  const clearGroundTiles = useCallback(() => {
+    apply(l => (l.groundTiles.length ? { ...l, groundTiles: [] } : null));
+  }, [apply]);
   const replaceGroundTiles = useCallback((tiles: GroundTile[]) => {
-    setGroundTiles(normalizeGroundTiles(tiles, [...inputPlacements, ...targetPlacements]));
-  }, [inputPlacements, targetPlacements]);
+    apply(l => ({ ...l, groundTiles: normalizeGroundTiles(tiles, [...l.inputs, ...l.targets]) }));
+  }, [apply]);
 
-  // Placements of the current mode get the new entry
-  const setCurrentPlacements = mode === "inputs" ? setInputPlacements : setTargetPlacements;
-  
   // All placements combined (for overlap checking and display)
   const allPlacements = useMemo(() => {
     return [...inputPlacements, ...targetPlacements];
@@ -326,15 +323,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     return { valid: true };
   }, [isValidPlacementPosition, isPositionOccupied]);
   
-  // Find overlapping placements in either list
-  const getOverlappingPlacements = useCallback((
-    position: [number, number],
-    size: number,
-    excludeId?: string
-  ): DesignerPlacement[] => {
-    return findOverlappingPlacements(position, size, allPlacements, excludeId);
-  }, [allPlacements]);
-  
   // Add placement to current mode's list
   const addPlacement = useCallback((
     placement: Omit<DesignerPlacement, "id">
@@ -348,107 +336,117 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       ...placement,
       id: generatePlacementId("designer"),
     };
+    const [row, col] = placement.position;
+    const size = placement.size;
     
-    // Painting over an existing placement replaces it
-    const overlapping = getOverlappingPlacements(placement.position, placement.size);
-    const overlappingIds = new Set(overlapping.map(p => p.id));
-    
-    const dropOverlapping = (prev: DesignerPlacement[]) => {
-      const next = prev.filter(p => !overlappingIds.has(p.id));
-      return next.length === prev.length ? prev : next;
-    };
-    
-    if (overlappingIds.size > 0) {
-      setInputPlacements(dropOverlapping);
-      setTargetPlacements(dropOverlapping);
-    }
-    setCurrentPlacements(prev => [...prev, newPlacement]);
-    // The crop or slot owns its ground over its entire footprint.
-    setGroundTiles(prev => prev.filter(t =>
-      t.position[0] < placement.position[0] || t.position[0] >= placement.position[0] + placement.size ||
-      t.position[1] < placement.position[1] || t.position[1] >= placement.position[1] + placement.size
-    ));
+    apply(l => {
+      // Painting over an existing placement replaces it
+      const overlappingIds = new Set(findOverlappingPlacements(placement.position, size, [...l.inputs, ...l.targets]).map(p => p.id));
+      const dropOverlapping = (list: DesignerPlacement[]) => {
+        const next = list.filter(p => !overlappingIds.has(p.id));
+        return next.length === list.length ? list : next;
+      };
+      let inputs = dropOverlapping(l.inputs);
+      let targets = dropOverlapping(l.targets);
+      if (mode === "inputs") inputs = [...inputs, newPlacement];
+      else targets = [...targets, newPlacement];
+      // The crop or slot owns its ground over its entire footprint.
+      const ground = l.groundTiles.filter(t =>
+        t.position[0] < row || t.position[0] >= row + size || t.position[1] < col || t.position[1] >= col + size
+      );
+      return { inputs, targets, groundTiles: ground.length === l.groundTiles.length ? l.groundTiles : ground };
+    });
     
     return { success: true };
-  }, [isValidPlacementPosition, getOverlappingPlacements, setCurrentPlacements]);
+  }, [isValidPlacementPosition, apply, mode]);
   
   // Remove placement from either list
   const removePlacement = useCallback((id: string) => {
-    setInputPlacements(prev => prev.filter(p => p.id !== id));
-    setTargetPlacements(prev => prev.filter(p => p.id !== id));
-  }, []);
+    apply(l => {
+      const inputs = l.inputs.filter(p => p.id !== id);
+      const targets = l.targets.filter(p => p.id !== id);
+      if (inputs.length === l.inputs.length && targets.length === l.targets.length) return null;
+      return {
+        ...l,
+        inputs: inputs.length === l.inputs.length ? l.inputs : inputs,
+        targets: targets.length === l.targets.length ? l.targets : targets,
+      };
+    });
+  }, [apply]);
   
   // Move placement
   const movePlacement = useCallback((
     id: string,
     newPosition: [number, number]
   ): { success: boolean; error?: string } => {
-    const placement = allPlacements.find(p => p.id === id);
+    const l = layoutRef.current;
+    const all = [...l.inputs, ...l.targets];
+    const placement = all.find(p => p.id === id);
     if (!placement) {
       return { success: false, error: "Placement not found" };
     }
     
-    const validation = isValidPlacement(newPosition, placement.size, id);
-    if (!validation.valid) {
-      return { success: false, error: validation.error };
+    const positionValidation = validateGridBounds(newPosition, placement.size);
+    if (!positionValidation.valid) {
+      return { success: false, error: positionValidation.error };
+    }
+    if (isPositionOccupiedByPlacements(newPosition, placement.size, all, id)) {
+      return { success: false, error: "Position is occupied by another placement" };
     }
     
-    // Update in the correct list
-    const isInput = inputPlacements.some(p => p.id === id);
-    if (isInput) {
-      setInputPlacements(prev =>
-        prev.map(p => p.id === id ? { ...p, position: newPosition } : p)
-      );
-    } else {
-      setTargetPlacements(prev =>
-        prev.map(p => p.id === id ? { ...p, position: newPosition } : p)
-      );
-    }
-    
-    setGroundTiles(prev => prev.filter(t =>
-      t.position[0] < newPosition[0] || t.position[0] >= newPosition[0] + placement.size ||
-      t.position[1] < newPosition[1] || t.position[1] >= newPosition[1] + placement.size
-    ));
+    const size = placement.size;
+    const moveIn = (list: DesignerPlacement[]) =>
+      list.some(p => p.id === id) ? list.map(p => p.id === id ? { ...p, position: newPosition } : p) : list;
+    apply(cur => ({
+      inputs: moveIn(cur.inputs),
+      targets: moveIn(cur.targets),
+      groundTiles: cur.groundTiles.filter(t =>
+        t.position[0] < newPosition[0] || t.position[0] >= newPosition[0] + size ||
+        t.position[1] < newPosition[1] || t.position[1] >= newPosition[1] + size
+      ),
+    }));
     return { success: true };
-  }, [allPlacements, inputPlacements, isValidPlacement]);
+  }, [apply]);
   
   // Clear functions
   const clearInputPlacements = useCallback(() => {
-    setInputPlacements([]);
-  }, []);
+    apply(l => (l.inputs.length ? { ...l, inputs: [] } : null));
+  }, [apply]);
   
   const clearTargetPlacements = useCallback(() => {
-    setTargetPlacements([]);
-  }, []);
+    apply(l => (l.targets.length ? { ...l, targets: [] } : null));
+  }, [apply]);
   
   const clearAllPlacements = useCallback(() => {
-    setInputPlacements([]);
-    setTargetPlacements([]);
-    setGroundTiles([]);
-  }, []);
+    apply(l => (l.inputs.length || l.targets.length || l.groundTiles.length ? { inputs: [], targets: [], groundTiles: [] } : null));
+  }, [apply]);
 
   const transformLayout = useCallback((transform: LayoutTransform): { success: boolean; error?: string; droppedGround?: number } => {
-    if (inputPlacements.length === 0 && targetPlacements.length === 0 && groundTiles.length === 0) {
+    const l = layoutRef.current;
+    if (l.inputs.length === 0 && l.targets.length === 0 && l.groundTiles.length === 0) {
       return { success: false, error: "The layout is empty" };
     }
-    const next = applyLayoutTransform({ inputs: inputPlacements, targets: targetPlacements, groundTiles }, transform);
+    const next = applyLayoutTransform(l, transform);
     if (!next) {
       return { success: false, error: "Something would move off the grid" };
     }
-    pendingTransformRef.current = transform;
-    setInputPlacements(next.inputs);
-    setTargetPlacements(next.targets);
-    setGroundTiles(normalizeGroundTiles(next.groundTiles, [...next.inputs, ...next.targets]));
+    apply(() => ({
+      inputs: next.inputs,
+      targets: next.targets,
+      groundTiles: normalizeGroundTiles(next.groundTiles, [...next.inputs, ...next.targets]),
+    }), transform);
     return { success: true, droppedGround: next.droppedGround };
-  }, [inputPlacements, targetPlacements, groundTiles]);
+  }, [apply]);
   
   // Get placement at position
   const getPlacementAt = useCallback((
     row: number,
     col: number
   ): DesignerPlacement | undefined => {
-    return getPlacementAtCell(row, col, allPlacements);
-  }, [allPlacements]);
+    // The latest layout, so an erase stroke faster than React renders still finds each piece.
+    const l = layoutRef.current;
+    return getPlacementAtCell(row, col, [...l.inputs, ...l.targets]);
+  }, [allPlacements]); // eslint-disable-line react-hooks/exhaustive-deps -- new identity whenever the layout renders
   
   // Load from solver result
   const loadFromSolverResult = useCallback((
@@ -477,12 +475,15 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     }));
     
     const resolved = resolveOverlaps(newInputs, newTargets);
-    setInputPlacements(resolved.inputs);
-    setTargetPlacements(resolved.targets);
-    setGroundTiles(normalizeGroundTiles(tiles, [...resolved.inputs, ...resolved.targets]));
+    // Loading a layout by mistake can be undone too.
+    apply(() => ({
+      inputs: resolved.inputs,
+      targets: resolved.targets,
+      groundTiles: normalizeGroundTiles(tiles, [...resolved.inputs, ...resolved.targets]),
+    }));
     setSelectedGroundState(null);
     setSelectedCropState(null);
-  }, []);
+  }, [apply]);
   
   // Get possible mutations based on current input placements
   const getPossibleMutations = useCallback((
@@ -720,6 +721,12 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     clearTargetPlacements,
     clearAllPlacements,
     transformLayout,
+    undo,
+    redo,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+    beginEdit,
+    endEdit,
     isPositionOccupied,
     isValidPlacement,
     isValidPlacementPosition,
@@ -743,12 +750,4 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       {children}
     </DesignerContext.Provider>
   );
-};
-
-export const useDesigner = (): DesignerContextType => {
-  const context = useContext(DesignerContext);
-  if (!context) {
-    throw new Error("useDesigner must be used within a DesignerProvider");
-  }
-  return context;
 };

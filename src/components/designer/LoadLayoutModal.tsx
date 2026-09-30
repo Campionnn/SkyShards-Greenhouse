@@ -14,10 +14,9 @@ interface LoadLayoutModalProps {
   layouts: SavedLayout[];
 }
 
-// Mini grid preview component
-const LayoutPreview: React.FC<{ layout: SavedLayout }> = ({ layout }) => {
+/** Mini grid preview of a layout: inputs and targets as coloured cells. */
+export const LayoutPreview: React.FC<{ layout: Pick<SavedLayout, "inputs" | "targets">; cellSize?: number }> = ({ layout, cellSize = 14 }) => {
   const { getCropDef, getMutationDef } = useGreenhouseData();
-  const cellSize = 14; // pixels
   const gap = 1; // pixels
   const gridSize = 10;
 

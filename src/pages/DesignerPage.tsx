@@ -5,6 +5,7 @@ import {
   CropSelectionPalette,
   DesignerActions,
   DesignerGrid,
+  LayoutHistoryControls,
   MutationValidator,
   Panel,
 } from "../components";
@@ -250,6 +251,7 @@ export const DesignerPage: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center justify-between mb-4 gap-2">
               <h3 className="text-sm font-medium text-slate-200">Greenhouse Designer</h3>
               <div className="flex items-center gap-2 sm:gap-3">
+                <LayoutHistoryControls />
                 <button
                   onClick={() => setShowTargets(!showTargets)}
                   className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-200"

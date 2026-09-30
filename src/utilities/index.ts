@@ -47,3 +47,9 @@ export * from "./effectSimulation";
 
 // Whole-layout nudge / rotate / mirror
 export * from "./layoutTransform";
+
+// Designer undo / redo
+export * from "./layoutHistory";
+
+// Calculator / Designer -> Simulator layout handoff
+export * from "./layoutHandoff";

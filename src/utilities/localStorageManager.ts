@@ -10,6 +10,7 @@ import type { LockedPlacement } from "../types/greenhouse";
 import type { DesignerPlacement } from "../context";
 import type { Scenario } from "../simulator";
 import type { GroundTile } from "./designEncoding";
+import type { StoredSolverLayout } from "./layoutHandoff";
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -22,6 +23,7 @@ const STORAGE_KEYS = {
   MUTATION_TARGETS: "skyshards-mutation-targets",
   EFFECT_WEIGHTS: "skyshards-effect-weights",
   SIMULATOR_SCENARIO: "skyshards-simulator-scenario",
+  LAST_SOLVER_LAYOUT: "skyshards-last-solver-layout",
 } as const;
 
 // Type Definitions
@@ -344,6 +346,24 @@ export class LocalStorageManager {
     this.remove(STORAGE_KEYS.SIMULATOR_SCENARIO);
   }
 
+  /**
+   * The last finished Calculator result as a layout code, so the Simulator's
+   * layout picker can offer it without a trip through the Designer.
+   */
+  static saveLastSolverLayout(layout: StoredSolverLayout): boolean {
+    return this.save(STORAGE_KEYS.LAST_SOLVER_LAYOUT, layout);
+  }
+
+  static loadLastSolverLayout(): StoredSolverLayout | null {
+    const data = this.load<StoredSolverLayout>(STORAGE_KEYS.LAST_SOLVER_LAYOUT);
+    if (!data || typeof data.code !== "string" || !data.code) return null;
+    return { code: data.code, name: typeof data.name === "string" ? data.name : "Calculator result", savedAt: Number(data.savedAt) || 0 };
+  }
+
+  static clearLastSolverLayout(): void {
+    this.remove(STORAGE_KEYS.LAST_SOLVER_LAYOUT);
+  }
+
   // Utility Methods
 
   /**
@@ -358,6 +378,7 @@ export class LocalStorageManager {
     this.clearLockedPlacements();
     this.clearMutationTargets();
     this.clearEffectWeights();
+    this.clearLastSolverLayout();
   }
 
   /**

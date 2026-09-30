@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { ToastContext, type ToastContextValue } from "./toastContext";
+import { ToastContext, type ToastAction, type ToastContextValue } from "./toastContext";
 
 export type ToastVariant = "success" | "error" | "info" | "warning";
 
@@ -10,9 +10,10 @@ export type ToastOptions = {
   description?: string;
   variant?: ToastVariant;
   duration?: number; // ms
+  action?: ToastAction;
 };
 
-export type Toast = Required<Omit<ToastOptions, "id">> & { id: string };
+export type Toast = Required<Omit<ToastOptions, "id" | "action">> & { id: string; action?: ToastAction };
 
 const variantStyles: Record<ToastVariant, { container: string; badge: string }> = {
   success: {
@@ -69,10 +70,13 @@ export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       description: opts.description ?? "",
       variant,
       duration,
+      action: opts.action,
     };
 
+    // Re-using an id replaces that toast instead of stacking a duplicate.
+    clearTimer(id);
     setToasts((prev) => {
-      const arr = [...prev, entry];
+      const arr = [...prev.filter((t) => t.id !== id), entry];
       if (arr.length > 5) arr.shift();
       return arr;
     });
@@ -81,7 +85,7 @@ export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     timers.current.set(id, timeout);
 
     return id;
-  }, [dismiss]);
+  }, [dismiss, clearTimer]);
 
   const value = useMemo<ToastContextValue>(() => ({ toast, dismiss, dismissAll }), [toast, dismiss, dismissAll]);
 
@@ -107,6 +111,17 @@ export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) =
                   <div className="text-sm font-medium truncate">{t.title}</div>
                   {t.description && <div className="text-xs text-slate-300/90 mt-0.5 break-words whitespace-pre-wrap">{t.description}</div>}
                 </div>
+                {t.action && (
+                  <button
+                    onClick={() => {
+                      t.action!.onClick();
+                      dismiss(t.id);
+                    }}
+                    className="px-2 py-1 text-xs font-medium rounded-md border border-white/20 bg-white/10 hover:bg-white/20 self-center flex-shrink-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/30"
+                  >
+                    {t.action.label}
+                  </button>
+                )}
                 <button
                   onClick={() => dismiss(t.id)}
                   aria-label="Close"

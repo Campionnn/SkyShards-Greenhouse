@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useEffect, type RefObject } from "react";
-import { Save, FolderOpen, Share2, Clipboard, X, Image, Film, Download, ClipboardCopy, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Save, FolderOpen, Share2, Clipboard, X, Image, Film, Download, ClipboardCopy, Loader2, FlaskConical } from "lucide-react";
 import { LayoutClearControls, LayoutTransformControls } from "./LayoutTools";
 
 // API base URL for share links
@@ -7,7 +8,7 @@ const SHARE_BASE_URL = "https://api.skyshards.com/share";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDesigner, useGreenhouseData } from "../../context";
 import { useToast } from "../ui/toastContext";
-import { encodeDesign, decodeDesign, extractLayoutCode } from "../../utilities";
+import { encodeDesign, decodeDesign, extractLayoutCode, makeIncomingLayout, simulatorHandoffState } from "../../utilities";
 import { 
   loadLayouts, 
   saveLayouts,
@@ -52,6 +53,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   } = useDesigner();
   const { getCropDef, getMutationDef } = useGreenhouseData();
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   // State for modals
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
@@ -285,6 +287,13 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [inputPlacements, targetPlacements, groundTiles, toast]);
   
+  // Hand the layout straight to the Simulator (no share link needed)
+  const handleSimulate = useCallback(() => {
+    const nameOf = (id: string) => getMutationDef(id)?.name || getCropDef(id)?.name || id.replace(/_/g, " ");
+    const layout = makeIncomingLayout({ inputs: inputPlacements, targets: targetPlacements, groundTiles }, "designer", nameOf, "Designer layout");
+    navigate("/simulator", { state: simulatorHandoffState(layout) });
+  }, [inputPlacements, targetPlacements, groundTiles, getCropDef, getMutationDef, navigate]);
+
   // Open import modal
   const handleOpenImport = useCallback(() => {
     setImportText("");
@@ -526,6 +535,16 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         >
           <Clipboard className="w-4 h-4" />
           Paste Link
+        </button>
+
+        <button
+          onClick={handleSimulate}
+          disabled={totalPlacements === 0}
+          className="col-span-2 flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500/20 border border-amber-500/30 rounded-lg text-sm text-amber-300 hover:bg-amber-500/30 hover:border-amber-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="Run this layout in the Simulator"
+        >
+          <FlaskConical className="w-4 h-4" />
+          Simulate
         </button>
       </div>
       </div>

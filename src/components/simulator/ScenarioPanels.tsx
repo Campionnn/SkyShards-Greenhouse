@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Download, FileJson, Layers, Pencil, Plus, RotateCcw, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Download, FileJson, FolderInput, Layers, Pencil, Plus, RotateCcw, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import {
   ARMOR_SET_LABEL,
   ARMOR_SETS,
@@ -15,12 +15,11 @@ import {
   type ScenarioIssue,
   type SimConfig,
 } from "../../simulator";
-import { decodeDesign, extractLayoutCode } from "../../utilities";
 import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui";
 import { CheckboxField, NumberField, NumberInput, SelectField } from "./controls";
 import { nameOf, priceableItems } from "./format";
 import { PolicyDefaultsEditor } from "./RotationEditor";
-import { addPlot, layoutSummary, removePlot } from "./scenarioEdit";
+import { addPlot, exportRotations, importRotations, layoutSummary, removePlot } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
 
 // ---- Scenario: share links, plots, import/export ---------------------------
@@ -29,56 +28,42 @@ export const ScenarioPanel: React.FC<{
   scenario: Scenario;
   onChange: (sc: Scenario) => void;
   onEditRotation: (plotId: number) => void;
+  /** Open the layout picker (Calculator result, Designer layout, saved layouts, share links). */
+  onLoadLayout?: () => void;
   issues: ScenarioIssue[];
   warnings: ScenarioIssue[];
   error: string | null;
-}> = ({ scenario, onChange, onEditRotation, issues, warnings, error }) => {
+}> = ({ scenario, onChange, onEditRotation, onLoadLayout, issues, warnings, error }) => {
   const { toast } = useToast();
-  const [links, setLinks] = useState("");
   const [json, setJson] = useState<string | null>(null);
 
-  const loadLinks = () => {
-    const lines = links
-      .split(/\s+/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .slice(0, MAX_PLOTS);
-    const codes: string[] = [];
-    for (const line of lines) {
-      const code = extractLayoutCode(line);
-      try {
-        decodeDesign(code);
-        codes.push(code);
-      } catch (err) {
-        toast({ title: "Could not read a share link", description: err instanceof Error ? err.message : String(err), variant: "error" });
-        return;
-      }
-    }
-    if (!codes.length) return;
-    let next: Scenario = { ...scenario, plots: [] };
-    for (const code of codes) next = addPlot(next, { code });
-    onChange(next);
-    setLinks("");
-    toast({ title: `Loaded ${codes.length} plot${codes.length > 1 ? "s" : ""}`, description: "Uppercase cells are empty target slots; lowercase cells are planted.", variant: "success" });
-  };
-
+  // Rotations only: player stats, schedule, seed, Actions defaults, config and inventory stay out.
   const exportJson = () => {
-    const text = JSON.stringify(scenario, null, 2);
+    const text = JSON.stringify(exportRotations(scenario), null, 2);
     navigator.clipboard.writeText(text).catch(() => undefined);
     const blob = new Blob([text], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "greenhouse-scenario.json";
+    a.download = "greenhouse-rotations.json";
     a.click();
     URL.revokeObjectURL(a.href);
+    toast({ title: "Rotations exported", description: "Downloaded and copied. Your player settings and inventory are not included.", variant: "success" });
   };
 
   const importJson = () => {
     try {
-      const parsed = JSON.parse(json ?? "") as Scenario;
-      if (!Array.isArray(parsed.plots) || !parsed.settings) throw new Error("Not a scenario file");
-      onChange({ ...parsed, settings: { ...parsed.settings, config: { ...DEFAULT_CONFIG, ...parsed.settings.config } } });
+      const next = importRotations(scenario, json ?? "");
+      const before = scenario;
+      onChange(next);
       setJson(null);
+      toast({
+        id: "simulator-rotations-imported",
+        title: `Imported ${next.plots.length} plot${next.plots.length > 1 ? "s" : ""}`,
+        description: "Replaced your plots; your player settings and inventory are unchanged.",
+        variant: "success",
+        duration: 6000,
+        action: { label: "Undo", onClick: () => onChange(before) },
+      });
     } catch (err) {
       toast({ title: "Import failed", description: err instanceof Error ? err.message : String(err), variant: "error" });
     }
@@ -87,18 +72,7 @@ export const ScenarioPanel: React.FC<{
   const errors = issues.filter((i) => i.level === "error");
   return (
     <Panel title="Scenario" icon={<Layers />} description="Up to 3 plots, each with its own rotation, sharing one inventory and one clock.">
-      <SectionLabel>Share links</SectionLabel>
-      <textarea
-        className={`${inputClass} w-full h-16 resize-none`}
-        placeholder="Paste 1-3 SkyShards share links (one per line)"
-        value={links}
-        onChange={(e) => setLinks(e.target.value)}
-      />
-      <button className={`${buttonClass.primary} mt-1.5`} onClick={loadLinks} disabled={!links.trim()}>
-        Load as plots
-      </button>
-
-      <SectionLabel className="mt-4">Plots</SectionLabel>
+      <SectionLabel>Plots</SectionLabel>
       <div className="space-y-1.5">
         {scenario.plots.map((p) => (
           <div key={p.id} className="flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1.5">
@@ -117,9 +91,16 @@ export const ScenarioPanel: React.FC<{
             </button>
           </div>
         ))}
-        <button className={buttonClass.neutral} onClick={() => onChange(addPlot(scenario))} disabled={scenario.plots.length >= MAX_PLOTS}>
-          <Plus className="w-3.5 h-3.5" /> Add plot
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {onLoadLayout && (
+            <button className={buttonClass.primary} onClick={onLoadLayout} title="From the Calculator, the Designer, your saved layouts or a share link">
+              <FolderInput className="w-3.5 h-3.5" /> Load layout...
+            </button>
+          )}
+          <button className={buttonClass.neutral} onClick={() => onChange(addPlot(scenario))} disabled={scenario.plots.length >= MAX_PLOTS}>
+            <Plus className="w-3.5 h-3.5" /> Empty plot
+          </button>
+        </div>
       </div>
 
       {(errors.length > 0 || error) && (
@@ -138,16 +119,21 @@ export const ScenarioPanel: React.FC<{
       )}
 
       <div className="flex gap-2 mt-4">
-        <button className={buttonClass.neutral} onClick={exportJson} title="Download (and copy) the scenario as JSON">
-          <Download className="w-3.5 h-3.5" /> Export
+        <button
+          className={buttonClass.neutral}
+          onClick={exportJson}
+          title="Download (and copy) every plot's rotation as JSON: stages, layouts, exits, loop, checked targets and policy overrides. Player stats, schedule, seed, Actions defaults, Advanced settings and inventory are left out."
+        >
+          <Download className="w-3.5 h-3.5" /> Export rotations
         </button>
-        <button className={buttonClass.neutral} onClick={() => setJson(json === null ? "" : null)}>
-          <Upload className="w-3.5 h-3.5" /> Import
+        <button className={buttonClass.neutral} onClick={() => setJson(json === null ? "" : null)} title="Replace your plots with ones from an exported rotations file">
+          <Upload className="w-3.5 h-3.5" /> Import rotations
         </button>
       </div>
       {json !== null && (
         <div className="mt-2 space-y-1.5">
-          <textarea className={`${inputClass} w-full h-24 font-mono`} placeholder="Paste scenario JSON" value={json} onChange={(e) => setJson(e.target.value)} />
+          <p className="text-[11px] text-slate-500">Replaces your plots. Your player stats, schedule, Actions defaults, Advanced settings and inventory stay as they are.</p>
+          <textarea className={`${inputClass} w-full h-24 font-mono`} placeholder="Paste exported rotations JSON" value={json} onChange={(e) => setJson(e.target.value)} />
           <button className={buttonClass.primary} onClick={importJson}>
             <FileJson className="w-3.5 h-3.5" /> Load JSON
           </button>

@@ -7,6 +7,7 @@ import type { SimulationView } from "../../hooks/useSimulation";
 import { engine, flow, LAYOUT_A_CODE, LAYOUT_B_CODE, scenario, stage } from "../../simulator/testHelpers";
 import { ToastProvider } from "../ui";
 import { PlotMarkLegend, PlotView } from "./PlotView";
+import { LayoutPickerPanel } from "./LayoutPicker";
 import { InventoryPanel, MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
 import { RotationEditor, WatchPicker } from "./RotationEditor";
 import { EventLog, RunControls, StageTimeline } from "./RunPanels";
@@ -110,6 +111,18 @@ describe("simulator panels render", () => {
     expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1 rotation");
     expect(html).toContain("Leave this stage when");
     expect(html).toContain("checked targets");
+  });
+
+  it("the layout picker: an incoming layout asks where it goes", () => {
+    const incoming = { code: LAYOUT_A_CODE, name: "Chloronite x4", from: "calculator" as const };
+    const html = wrap(<LayoutPickerPanel title="t" incoming={incoming} scenario={sc} onPlace={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("From the Calculator");
+    expect(html).toContain("Chloronite x4");
+    expect(html).toContain("Where should it go?");
+    expect(html).toContain("Add as Plot 3");
+    expect(html).toContain("Next stage of Plot 2");
+    const one = wrap(<LayoutPickerPanel title="t" incoming={incoming} onUse={() => {}} useLabel="Replace this stage&#x27;s layout" onClose={() => {}} />);
+    expect(one).not.toContain("Where should it go?");
   });
 
   it("the uptime tree groups checked targets by plot, collapsed by default", () => {

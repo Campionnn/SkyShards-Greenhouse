@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { FlaskConical } from "lucide-react";
-import { InfoHint, SegmentedControl } from "../components/ui";
+import { InfoHint, SegmentedControl, useToast } from "../components/ui";
+import { LayoutPickerDialog } from "../components/simulator/LayoutPicker";
 import { InventoryPanel, MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
 import { EventLog, RunControls, StageTimeline } from "../components/simulator/RunPanels";
 import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
 import { RotationEditor } from "../components/simulator/RotationEditor";
 import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
-import { addPlot } from "../components/simulator/scenarioEdit";
+import { addPlot, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
 import { useSimulation } from "../hooks/useSimulation";
 import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, scenarioFromShareCodes, type Scenario } from "../simulator";
-import { extractLayoutCode, LocalStorageManager } from "../utilities";
+import { extractLayoutCode, LocalStorageManager, readIncomingLayout, SOURCE_LABEL, type IncomingLayout } from "../utilities";
 
 /** Saved scenarios from older versions may miss newer settings; fill them from the defaults. */
 function withDefaults(sc: Scenario): Scenario {
@@ -50,15 +51,69 @@ const ALL = "all";
 
 export const SimulatorPage: React.FC = () => {
   const [params] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const [scenario, setScenario] = useState<Scenario>(() => initialScenario(params));
-  const [editingPlot, setEditingPlot] = useState<number | null>(null);
+  const [editing, setEditing] = useState<{ plotId: number; stage: number } | null>(null);
+  const editingPlot = editing?.plotId ?? null;
+  const setEditingPlot = (plotId: number | null) => setEditing(plotId === null ? null : { plotId, stage: 0 });
   const [focus, setFocus] = useState<string>(ALL);
+  // A layout sent here by a Simulate button, or the picker opened from the Scenario panel.
+  const [incoming, setIncoming] = useState<IncomingLayout | null>(() => readIncomingLayout(location.state));
+  const [picking, setPicking] = useState(false);
   const settled = useDebounced(scenario, 300);
   const { view, run, step, stop, reset, addItems } = useSimulation(settled);
 
   useEffect(() => {
     LocalStorageManager.saveSimulatorScenario(settled);
   }, [settled]);
+
+  // Take the handoff out of the history entry, so a reload or Back does not offer it again.
+  useEffect(() => {
+    const fresh = readIncomingLayout(location.state);
+    if (!fresh) return;
+    setIncoming(fresh);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.state, location.pathname, location.search, navigate]);
+
+  const place = (layout: IncomingLayout, dest: LayoutDestination) => {
+    const before = scenario;
+    const r = placeLayout(before, dest, { code: layout.code }, layout.name);
+    setIncoming(null);
+    setPicking(false);
+    if (!r) {
+      toast({ title: "Could not add the layout", description: "All three plots are in use.", variant: "warning" });
+      return;
+    }
+    setScenario(r.scenario);
+    setFocus(ALL);
+    const where =
+      dest.kind === "appendStage" && !isBlankScenario(before) ? `Stage ${r.stageIndex + 1} of Plot ${r.plotId}` : `Plot ${r.plotId}`;
+    toast({
+      id: "simulator-layout-placed",
+      title: `Loaded into ${where}`,
+      description: dest.kind === "appendStage" && !isBlankScenario(before) ? "Set when the plot should move on to it in the rotation." : layout.name,
+      variant: "success",
+      duration: 6000,
+      action: { label: "Undo", onClick: () => setScenario(before) },
+    });
+    if (dest.kind === "appendStage" && !isBlankScenario(before)) setEditing({ plotId: r.plotId, stage: r.stageIndex });
+  };
+
+  const loadMany = (codes: string[]) => {
+    const before = scenario;
+    setScenario(scenarioFromShareCodes(codes, scenario.settings));
+    setPicking(false);
+    toast({
+      id: "simulator-layout-placed",
+      title: `Loaded ${codes.length} plots`,
+      description: "Uppercase cells are empty target slots; lowercase cells are planted.",
+      variant: "success",
+      duration: 6000,
+      action: { label: "Undo", onClick: () => setScenario(before) },
+    });
+  };
 
   // The rotation editor is a full-screen overlay; lock the page behind it.
   useEffect(() => {
@@ -167,6 +222,7 @@ export const SimulatorPage: React.FC = () => {
               scenario={scenario}
               onChange={setScenario}
               onEditRotation={setEditingPlot}
+              onLoadLayout={() => setPicking(true)}
               issues={view.issues}
               warnings={view.warnings}
               error={view.status === "error" ? view.error : null}
@@ -179,10 +235,31 @@ export const SimulatorPage: React.FC = () => {
         <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true">
           <div className="container mx-auto max-w-screen-2xl px-2 sm:px-4 py-6">
             <div className="bg-slate-900 rounded-lg shadow-2xl">
-              <RotationEditor scenario={scenario} plotId={editingPlot} onChange={setScenario} onClose={() => setEditingPlot(null)} />
+              <RotationEditor
+                key={`${editing!.plotId}-${editing!.stage}`}
+                scenario={scenario}
+                plotId={editingPlot}
+                initialStage={editing!.stage}
+                onChange={setScenario}
+                onClose={() => setEditingPlot(null)}
+              />
             </div>
           </div>
         </div>
+      )}
+
+      {(incoming || picking) && (
+        <LayoutPickerDialog
+          title={incoming ? `${SOURCE_LABEL[incoming.from]}: add it to the simulation` : "Load a layout"}
+          incoming={incoming}
+          scenario={scenario}
+          onPlace={place}
+          onLoadMany={loadMany}
+          onClose={() => {
+            setIncoming(null);
+            setPicking(false);
+          }}
+        />
       )}
     </div>
   );

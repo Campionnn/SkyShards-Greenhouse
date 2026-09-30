@@ -64,8 +64,20 @@ export function useDesignerGridPlacement({
     setSelectedGround,
     paintGround,
     removeGround,
+    beginEdit,
+    endEdit,
   } = useDesigner();
   const { toast } = useToast();
+
+  // A paint / erase stroke (mouse down -> drag -> up) is one undo step.
+  const startStroke = useCallback(() => {
+    beginEdit();
+    const finish = () => {
+      window.removeEventListener("mouseup", finish);
+      endEdit();
+    };
+    window.addEventListener("mouseup", finish);
+  }, [beginEdit, endEdit]);
 
   // ESC key handler to deselect crop
   useEffect(() => {
@@ -157,8 +169,20 @@ export function useDesignerGridPlacement({
     getSelectedItemSize,
   });
 
+  const { handleMouseDown: coreMouseDown, handlePlacementMouseDown: corePlacementMouseDown } = interaction;
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 0 || e.button === 2) startStroke();
+    coreMouseDown(e);
+  }, [coreMouseDown, startStroke]);
+  const handlePlacementMouseDown = useCallback((placementId: string, e: React.MouseEvent) => {
+    if (e.button === 2) startStroke();
+    corePlacementMouseDown(placementId, e);
+  }, [corePlacementMouseDown, startStroke]);
+
   return {
     ...interaction,
+    handleMouseDown,
+    handlePlacementMouseDown,
     groundPreviewPosition: getPaintableGroundPreviewPosition(
       interaction.hoverInfo?.cell ?? null,
       selectedGround !== null,

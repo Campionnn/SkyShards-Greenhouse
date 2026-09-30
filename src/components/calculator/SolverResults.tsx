@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useRef, useCallback } from "react";
-import { CheckCircle2, AlertTriangle, Grid3X3, Eye, EyeOff, RotateCcw, Paintbrush, Info, Loader2 } from "lucide-react";
+import React, { useMemo, useState, useRef, useCallback, useEffect } from "react";
+import { CheckCircle2, AlertTriangle, Grid3X3, Eye, EyeOff, RotateCcw, Paintbrush, Info, Loader2, FlaskConical } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { GRID_SIZE } from "../../constants";
 import { useGreenhouseData, useGridState, useLockedPlacements, useDesigner, useInfoModal } from "../../context";
@@ -9,6 +9,10 @@ import {
   simulateEffects,
   effectiveEffects,
   effectsGivenBy,
+  LocalStorageManager,
+  makeIncomingLayout,
+  simulatorHandoffState,
+  solverResultCells,
 } from "../../utilities";
 import {
   GridBackground,
@@ -233,6 +237,34 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     toast({ title: "Sent to Designer", description: `Loaded ${inputs.length} inputs and ${targets.length} targets`, variant: "success", duration: 3000 });
     navigate("/designer");
   }, [lockedPlacements, result, getCropDef, getMutationDef, loadFromSolverResult, toast, navigate]);
+
+  const nameOf = useCallback(
+    (id: string) => getMutationDef(id)?.name || getCropDef(id)?.name || id.replace(/_/g, " "),
+    [getCropDef, getMutationDef]
+  );
+
+  // The layout on screen (locks + solver result) as a Simulator handoff.
+  const currentLayout = useMemo(() => {
+    const cells = solverResultCells(result, lockedPlacements);
+    if (!cells.inputs.length && !cells.targets.length) return null;
+    return makeIncomingLayout(cells, "calculator", nameOf, "Calculator result");
+  }, [result, lockedPlacements, nameOf]);
+
+  // Remember each finished result, so the Simulator's layout picker can offer it later.
+  const isFinalResult = !!result && !session && result.status !== "SOLVING";
+  useEffect(() => {
+    if (isFinalResult && currentLayout) {
+      LocalStorageManager.saveLastSolverLayout({ code: currentLayout.code, name: currentLayout.name, savedAt: Date.now() });
+    }
+  }, [isFinalResult, currentLayout]);
+
+  const handleSendToSimulator = useCallback(() => {
+    if (!currentLayout) {
+      toast({ title: "Nothing to simulate", description: "Place some locked crops or solve first", variant: "warning", duration: 3000 });
+      return;
+    }
+    navigate("/simulator", { state: simulatorHandoffState(currentLayout) });
+  }, [currentLayout, navigate, toast]);
 
   const {
     hoveredPlacementId,
@@ -480,14 +512,24 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
         <h3 className="text-sm font-medium text-slate-200">{headerText}</h3>
         <div className="ml-auto flex items-center gap-2">
           {(hasResult || lockedPlacements.length > 0) && !isSolving && (
-            <button
-              onClick={handleSendToDesigner}
-              className="px-2 py-1 text-xs bg-purple-500/40 hover:bg-purple-500/60 border border-purple-500/30 rounded text-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
-              title="Open this layout in the Designer"
-            >
-              <Paintbrush className="w-3 h-3" />
-              Designer
-            </button>
+            <>
+              <button
+                onClick={handleSendToDesigner}
+                className="px-2 py-1 text-xs bg-purple-500/40 hover:bg-purple-500/60 border border-purple-500/30 rounded text-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
+                title="Open this layout in the Designer"
+              >
+                <Paintbrush className="w-3 h-3" />
+                Designer
+              </button>
+              <button
+                onClick={handleSendToSimulator}
+                className="px-2 py-1 text-xs bg-amber-500/30 hover:bg-amber-500/50 border border-amber-500/30 rounded text-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
+                title="Run this layout in the Simulator"
+              >
+                <FlaskConical className="w-3 h-3" />
+                Simulate
+              </button>
+            </>
           )}
           {(hasResult || error) && !isSolving && onClear && (
             <button
