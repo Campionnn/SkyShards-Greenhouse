@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { engine, flow, inject, layout, NEVER_ACTIVE, scenario, singlePlot, stage, start } from "../testHelpers";
+import { engine, flow, inject, layout, NEVER_ACTIVE, scenario, singlePlot, step, start } from "../testHelpers";
 import type { LayoutSpec } from "../flow/types";
 
 const slotsOnly = { spawnCells: "slotsOnly" as const };
@@ -83,10 +83,10 @@ describe("mutation ground eligibility", () => {
     expect(s.plots[0].groundTiles).toEqual(before); // run never mutates its input
   });
 
-  it("a stage transition replaces paint and clears Chorus ground without erasing identical plants", () => {
+  it("a step transition replaces paint and clears Chorus ground without erasing identical plants", () => {
     const first = painted(layout([["wheat", 1, 1]]), "sand", 5, 5);
     const second = painted(layout([["wheat", 1, 1]]), "mycelium", 6, 6);
-    const sc = scenario([flow([stage("one", first, [{ kind: "cycles", n: 1 }]), stage("two", second)], false)], { config: slotsOnly });
+    const sc = scenario([flow([step("one", first, [{ kind: "cycles", n: 1 }]), step("two", second)], false)], { config: slotsOnly });
     const s = start(sc);
     const plantId = s.plots[0].plants[0].id;
     s.plots[0].groundOverrides["0,0"] = "end_stone";

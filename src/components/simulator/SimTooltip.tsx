@@ -54,9 +54,9 @@ export const SimTooltip: React.FC<{
   gap: number;
   gridWidth: number;
   gridHeight: number;
-  stageSeconds: number;
+  cycleSeconds: number;
   config: SimConfig;
-}> = ({ target, cellSize, gap, gridWidth, gridHeight, stageSeconds, config }) => {
+}> = ({ target, cellSize, gap, gridWidth, gridHeight, cycleSeconds, config }) => {
   const row = target.kind === "plant" ? target.plant.row : target.kind === "slot" ? target.slot.row : target.row;
   const col = target.kind === "plant" ? target.plant.col : target.kind === "slot" ? target.slot.col : target.col;
   const size = target.kind === "plant" ? target.plant.size : target.kind === "slot" ? target.slot.size : kindData(target.item)?.size ?? 1;
@@ -108,7 +108,7 @@ export const SimTooltip: React.FC<{
             <p className="text-amber-300">Requirements not met for the last {target.ineligibleCycles} cycles.</p>
           )}
           {target.watched === false ? (
-            <p className="text-slate-500">Not checked for sustainability (pick checked targets in the rotation editor).</p>
+            <p className="text-slate-500">Not checked for sustainability (pick checked targets in the flow editor).</p>
           ) : (
             <p className={target.watchStatus === "requirements" ? "text-red-300" : "text-cyan-300"}>
               Checked for sustainability
@@ -130,15 +130,15 @@ export const SimTooltip: React.FC<{
         </p>
       )}
 
-      {target.kind === "plant" && <PlantDetails p={target.plant} m={m} stageSeconds={stageSeconds} config={config} />}
+      {target.kind === "plant" && <PlantDetails p={target.plant} m={m} cycleSeconds={cycleSeconds} config={config} />}
     </div>
   );
 };
 
-const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; stageSeconds: number; config: SimConfig }> = ({
+const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleSeconds: number; config: SimConfig }> = ({
   p,
   m,
-  stageSeconds,
+  cycleSeconds,
   config,
 }) => {
   const status = statusOf(p, m);
@@ -147,7 +147,7 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; stageS
   const cancelled = sortEffects(p.held.filter((e) => !effective.has(e)));
   const gives = p.isDeadPlant || p.kindId === "devourer_root" ? [] : effectsGivenBy(p.kindId);
   const needsWater = p.origin === "planted" || !!m?.requiresWatering;
-  const cycles = (s: number) => Math.max(0, Math.ceil(s / stageSeconds - 1e-9));
+  const cycles = (s: number) => Math.max(0, Math.ceil(s / cycleSeconds - 1e-9));
 
   return (
     <div className="space-y-2">

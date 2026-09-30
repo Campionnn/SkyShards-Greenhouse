@@ -69,7 +69,7 @@ function turnIntoShellfruit(plot: PlotState, q: PlantState, ctx: CycleCtx): void
   q.readyStage = m.growthStages;
   q.fullyGrownAtCycle = null;
   // It is a fresh natural spawn: its decay timer runs from now.
-  q.decaySecondsRemaining = spawnedDecaySeconds(m, ctx.config, ctx.stageSeconds);
+  q.decaySecondsRemaining = spawnedDecaySeconds(m, ctx.config, ctx.cycleSeconds);
   // A 0-stage Shellfruit is fully grown as it appears: latch what it holds now.
   q.lockedEffects = q.stage >= q.readyStage ? effectiveList(q.held) : null;
   if (q.lockedEffects) q.fullyGrownAtCycle = ctx.cycle;

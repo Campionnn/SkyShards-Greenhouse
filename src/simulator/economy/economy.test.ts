@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { defaultGameData } from "../data/default";
-import { stageSeconds, uniqueCropYieldBonus, upgradeTerm } from "../stage/clock";
+import { cycleSeconds, uniqueCropYieldBonus, upgradeTerm } from "../growth/clock";
 import { npcPriceSource, valueOf } from "./prices";
 import { chloroniteDropCount, farmingFortuneMultiplier, greenhouseYieldSum, harvestYield, jellybeanMultiplier, yieldScaledCount } from "./yield";
 
@@ -83,10 +83,10 @@ describe("growth stage clock", () => {
   });
 
   it("the wiki formula at every maximum gives 6167 s (Q2: not the prose 6063 s)", () => {
-    expect(stageSeconds({ cropGrowth: 210, speedAttribute: 10, growthUpgradeTier: 9 }, 12, 14400)).toBeCloseTo(6167, 0);
+    expect(cycleSeconds({ cropGrowth: 210, speedAttribute: 10, growthUpgradeTier: 9 }, 12, 14400)).toBeCloseTo(6167, 0);
   });
 
   it("unique crops count 12 at most", () => {
-    expect(stageSeconds({ cropGrowth: 0, speedAttribute: 0, growthUpgradeTier: 0 }, 14, 14400)).toBeCloseTo(14400 / 1.3);
+    expect(cycleSeconds({ cropGrowth: 0, speedAttribute: 0, growthUpgradeTier: 0 }, 14, 14400)).toBeCloseTo(14400 / 1.3);
   });
 });

@@ -1,6 +1,6 @@
-import { endStageOrHold } from "../flow/runner";
+import { endStepOrHold } from "../flow/runner";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
-import type { CycleCtx, SubStep, TickScratch } from "./context";
+import type { CycleCtx, Phase, TickScratch } from "./context";
 import { harvestPlant } from "./harvest";
 import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
 import { layoutInputAt, maintainLayout } from "./placement";
@@ -11,7 +11,7 @@ function decaysBeforeNextSession(p: PlantState, ctx: CycleCtx): boolean {
   if (p.decaySecondsRemaining === null) return false;
   const k = ctx.cyclesUntilNextActive();
   if (!Number.isFinite(k)) return true;
-  return p.decaySecondsRemaining - k * ctx.stageSeconds <= 1e-6;
+  return p.decaySecondsRemaining - k * ctx.cycleSeconds <= 1e-6;
 }
 
 function water(plot: PlotState, ctx: CycleCtx): void {
@@ -45,7 +45,7 @@ function clearRoots(plot: PlotState, ctx: CycleCtx): void {
  * Natural spawns. All-in Aloe (any stage) and Magic Jellybean (from 12) drop
  * if taken early, but the player waits for their target stage (Aloe:
  * aloeHarvestStage; Jellybean: fully grown at 120). A spawn the current layout uses as an input
- * (hybrid rotations) is left standing under `layoutInputSpawns: "keep"`
+ * (hybrid flows) is left standing under `layoutInputSpawns: "keep"`
  * unless it would decay before the next session.
  */
 function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
@@ -69,7 +69,7 @@ function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
   }
 }
 
-/** Base-crop upkeep: harvest and replant in the same step, so the ring never breaks. */
+/** Base-crop upkeep: harvest and replant in the same phase, so the ring never breaks. */
 function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const upkeep = ctx.policiesFor(plot.id).baseCropUpkeep;
   if (upkeep === "leaveUntilDecay") return;
@@ -78,25 +78,25 @@ function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
     if (upkeep === "harvestBeforeDecay" && !decaysBeforeNextSession(p, ctx)) continue;
     const { kindId, row, col } = p;
     if (harvestPlant(plot, p, ctx, scratch) !== "harvested") continue;
-    const replant = newPlant(ctx.state, ctx.env.data, ctx.config, kindId, row, col, "planted", ctx.cycle, ctx.stageSeconds);
+    const replant = newPlant(ctx.state, ctx.env.data, ctx.config, kindId, row, col, "planted", ctx.cycle, ctx.cycleSeconds);
     insertPlant(plot, replant);
     ctx.emit(plot.id, { kind: "placed", plantId: replant.id, kindId, row, col, origin: "planted", replacement: false });
   }
 }
 
 /**
- * The rotation: a stage change that became due while the player was away
- * happens now; otherwise the current stage's exit triggers are checked and,
+ * The flow: a step change that became due while the player was away
+ * happens now; otherwise the current step's exit triggers are checked and,
  * if they all hold, the plot moves on (the new layout is laid out).
  */
-function stageChange(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
+function stepChange(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { def, runner } = ctx.flowFor(plot.id);
-  scratch.stageChanged = endStageOrHold(plot, def, runner, ctx, scratch, true);
+  scratch.stepChanged = endStepOrHold(plot, def, runner, ctx, scratch, true);
 }
 
 /** Clear Dead Plants, take spawns off layout cells and re-place what the layout is missing. */
 function maintain(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
-  if (scratch.stageChanged) return; // entering the stage just laid the whole layout out
+  if (scratch.stepChanged) return; // entering the step just laid the whole layout out
   if (!ctx.policiesFor(plot.id).replaceDecayed) return;
   maintainLayout(plot, ctx.layoutFor(plot.id), ctx, scratch);
 }
@@ -106,7 +106,7 @@ function maintain(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
  * ground. Where the ground has been changed in play (Chorus Fruit leaves End
  * Stone), the player swaps the block back. Only free cells can be fixed - a
  * plant standing on a wrong block has to go first (harvest / maintain run
- * before this step). Ground blocks are not tracked in the inventory, so this
+ * before this phase). Ground blocks are not tracked in the inventory, so this
  * costs nothing.
  */
 function fixGround(plot: PlotState, ctx: CycleCtx): void {
@@ -138,10 +138,10 @@ function fixGround(plot: PlotState, ctx: CycleCtx): void {
  * inventory in that order.
  *
  * To change what the player does or when, edit this list. Policies are read
- * per sub-step, so a stage change mid-session applies the new stage's
- * policies to the sub-steps after it.
+ * per phase, so a step change mid-session applies the new step's
+ * policies to the phases after it.
  */
-export const PLAYER_STEPS: readonly SubStep[] = [
+export const PLAYER_PHASES: readonly Phase[] = [
   {
     id: "session",
     summary: "Mark the session in the event log.",
@@ -152,12 +152,12 @@ export const PLAYER_STEPS: readonly SubStep[] = [
   { id: "roots", summary: "Break Devourer roots (clearRoots).", run: clearRoots },
   { id: "harvest", summary: "Harvest natural spawns (spawnedHarvest, layoutInputSpawns).", run: harvestSpawns },
   { id: "baseCrops", summary: "Harvest and replant base crops (baseCropUpkeep).", run: tendBaseCrops },
-  { id: "stageChange", summary: "Apply a pending stage change, or check exit triggers and move on.", run: stageChange },
+  { id: "stepChange", summary: "Apply a pending step change, or check exit triggers and move on.", run: stepChange },
   {
-    id: "harvestAfterStageChange",
-    summary: "After a stage change, harvest spawns the new layout no longer uses as inputs.",
+    id: "harvestAfterStepChange",
+    summary: "After a step change, harvest spawns the new layout no longer uses as inputs.",
     run: (plot, ctx, scratch) => {
-      if (scratch.stageChanged) harvestSpawns(plot, ctx, scratch);
+      if (scratch.stepChanged) harvestSpawns(plot, ctx, scratch);
     },
   },
   { id: "maintain", summary: "Clear Dead Plants and re-place missing layout plants (replaceDecayed).", run: maintain },
@@ -166,5 +166,5 @@ export const PLAYER_STEPS: readonly SubStep[] = [
 
 /** One plot's player session. INTERNAL - only sim/run.ts calls it, on active cycles. */
 export function runPlayerSession(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
-  for (const step of PLAYER_STEPS) step.run(plot, ctx, scratch);
+  for (const phase of PLAYER_PHASES) phase.run(plot, ctx, scratch);
 }

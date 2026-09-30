@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { defaultSettings, type Scenario } from "../../simulator";
+import { defaultSettings, migrateScenario, type Scenario } from "../../simulator";
 import { LAYOUT_A_CODE, LAYOUT_B_CODE } from "../../simulator/testHelpers";
 import { decodeDesign } from "../../utilities/designEncoding";
 import { readIncomingLayout, solverResultCells, summarizeTargets } from "../../utilities/layoutHandoff";
 import {
   addPlot,
   duplicatePlot,
-  exportRotations,
-  importRotations,
+  exportFlows,
+  importFlows,
   isBlankScenario,
   layoutCode,
   layoutDestinations,
@@ -27,14 +27,14 @@ describe("placing a layout from the Calculator / Designer / saved layouts", () =
     const r = placeLayout(sc, { kind: "newPlot" }, { code: LAYOUT_A_CODE }, "From the Calculator")!;
     expect(r.scenario.plots).toHaveLength(1);
     expect(r.plotId).toBe(1);
-    expect(r.scenario.plots[0].flow.stages[0]).toMatchObject({ label: "From the Calculator", layout: { code: LAYOUT_A_CODE } });
+    expect(r.scenario.plots[0].flow.steps[0]).toMatchObject({ label: "From the Calculator", layout: { code: LAYOUT_A_CODE } });
     expect(layoutDestinations(sc).map((d) => d.label)).toEqual(["Load as Plot 1"]);
     expect(layoutDestinations(withPlots(LAYOUT_A_CODE, LAYOUT_B_CODE)).map((d) => d.label)).toEqual([
       "Add as Plot 3",
       "Replace Plot 1",
       "Replace Plot 2",
-      "Next stage of Plot 1",
-      "Next stage of Plot 2",
+      "Next step of Plot 1",
+      "Next step of Plot 2",
     ]);
   });
 
@@ -49,47 +49,47 @@ describe("placing a layout from the Calculator / Designer / saved layouts", () =
     expect(layoutDestinations(full).some((d) => d.dest.kind === "newPlot")).toBe(false);
   });
 
-  it("replacing a plot drops its rotation but keeps its policy overrides", () => {
+  it("replacing a plot drops its flow but keeps its policy overrides", () => {
     const sc = withPlots(LAYOUT_A_CODE, LAYOUT_A_CODE);
     sc.plots[1].policies = { baseCropUpkeep: "harvestWhenGrown" };
-    sc.plots[1].flow.stages.push({ id: "stage-2", layout: { code: LAYOUT_A_CODE }, exit: [] });
+    sc.plots[1].flow.steps.push({ id: "step-2", layout: { code: LAYOUT_A_CODE }, exit: [] });
     const r = placeLayout(sc, { kind: "replacePlot", plotId: 2 }, { code: LAYOUT_B_CODE }, "B")!;
     const p2 = r.scenario.plots.find((p) => p.id === 2)!;
-    expect(p2.flow.stages).toHaveLength(1);
-    expect(p2.flow.stages[0].layout).toEqual({ code: LAYOUT_B_CODE });
+    expect(p2.flow.steps).toHaveLength(1);
+    expect(p2.flow.steps[0].layout).toEqual({ code: LAYOUT_B_CODE });
     expect(p2.policies).toEqual({ baseCropUpkeep: "harvestWhenGrown" });
     expect(r.scenario.plots[0]).toBe(sc.plots[0]);
   });
 
-  it("appending a stage gives the old last stage an exit so the plot reaches it", () => {
+  it("appending a step gives the old last step an exit so the plot reaches it", () => {
     const sc = withPlots(LAYOUT_A_CODE);
-    const r = placeLayout(sc, { kind: "appendStage", plotId: 1 }, { code: LAYOUT_B_CODE }, "B")!;
-    const stages = r.scenario.plots[0].flow.stages;
-    expect(r.stageIndex).toBe(1);
-    expect(stages).toHaveLength(2);
-    expect(stages[0].exit).toEqual([{ kind: "cycles", n: 20 }]);
-    expect(stages[1]).toMatchObject({ id: "stage-2", label: "B", layout: { code: LAYOUT_B_CODE }, exit: [] });
-    expect(sc.plots[0].flow.stages).toHaveLength(1); // input untouched
+    const r = placeLayout(sc, { kind: "appendStep", plotId: 1 }, { code: LAYOUT_B_CODE }, "B")!;
+    const steps = r.scenario.plots[0].flow.steps;
+    expect(r.stepIndex).toBe(1);
+    expect(steps).toHaveLength(2);
+    expect(steps[0].exit).toEqual([{ kind: "cycles", n: 20 }]);
+    expect(steps[1]).toMatchObject({ id: "step-2", label: "B", layout: { code: LAYOUT_B_CODE }, exit: [] });
+    expect(sc.plots[0].flow.steps).toHaveLength(1); // input untouched
   });
 });
 
 describe("duplicating a plot", () => {
-  it("copies the whole rotation and policy overrides under the next free id", () => {
+  it("copies the whole flow and policy overrides under the next free id", () => {
     const sc = withPlots(LAYOUT_A_CODE, LAYOUT_B_CODE);
     sc.plots = sc.plots.filter((p) => p.id !== 1); // only Plot 2 left; the copy fills id 1
     const p2 = sc.plots[0];
     p2.policies = { baseCropUpkeep: "harvestWhenGrown" };
-    p2.flow.stages[0].exit = [{ kind: "cycles", n: 7 }];
-    p2.flow.stages[0].watch = [];
-    p2.flow.stages.push({ id: "stage-2", label: "Two", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "cycles", n: 3 }], next: "stage-1" });
+    p2.flow.steps[0].exit = [{ kind: "cycles", n: 7 }];
+    p2.flow.steps[0].watch = [];
+    p2.flow.steps.push({ id: "step-2", label: "Two", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "cycles", n: 3 }], next: "step-1" });
     p2.flow.loop = true;
     p2.flow.startIndex = 1;
     const next = duplicatePlot(sc, 2);
     expect(next.plots.map((p) => p.id)).toEqual([1, 2]);
     const copy = next.plots[0];
     expect({ ...copy, id: 2 }).toEqual(p2);
-    copy.flow.stages[0].exit.push({ kind: "cycles", n: 1 });
-    expect(p2.flow.stages[0].exit).toHaveLength(1); // a deep copy, not shared
+    copy.flow.steps[0].exit.push({ kind: "cycles", n: 1 });
+    expect(p2.flow.steps[0].exit).toHaveLength(1); // a deep copy, not shared
   });
 
   it("does nothing when all plots are in use or the plot is unknown", () => {
@@ -100,16 +100,16 @@ describe("duplicating a plot", () => {
   });
 });
 
-describe("rotation export / import", () => {
+describe("flow export / import", () => {
   const rich = (): Scenario => {
     const sc = withPlots(LAYOUT_A_CODE, LAYOUT_B_CODE);
     sc.plots[0].policies = { baseCropUpkeep: "harvestWhenGrown" };
     sc.plots[0].flow = {
       loop: true,
       startIndex: 1,
-      stages: [
-        { id: "stage-1", label: "grow", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "cycles", n: 7 }], watch: ["0,0"], fullClear: true, policies: { watering: "never" } },
-        { id: "stage-2", label: "harvest", layout: { code: LAYOUT_B_CODE }, exit: [{ kind: "targetsFilled", count: 0 }] },
+      steps: [
+        { id: "step-1", label: "grow", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "cycles", n: 7 }], watch: ["0,0"], fullClear: true, policies: { watering: "never" } },
+        { id: "step-2", label: "harvest", layout: { code: LAYOUT_B_CODE }, exit: [{ kind: "targetsFilled", count: 0 }] },
       ],
     };
     sc.startingInventory = { chloronite: 9 };
@@ -118,20 +118,20 @@ describe("rotation export / import", () => {
     return sc;
   };
 
-  it("exports every rotation detail and nothing about the player", () => {
+  it("exports every flow detail and nothing about the player", () => {
     const sc = rich();
-    const file = exportRotations(sc);
+    const file = exportFlows(sc);
     expect(Object.keys(file).sort()).toEqual(["kind", "plots", "version"]);
     expect(file.plots).toEqual(sc.plots);
     const text = JSON.stringify(file);
     for (const leaked of ["playerStats", "startingInventory", "seed", "activity", "config", "rareDropValues"]) expect(text).not.toContain(leaked);
   });
 
-  it("imports rotations into the current scenario, keeping its player settings", () => {
+  it("imports flows into the current scenario, keeping its player settings", () => {
     const mine = withPlots(LAYOUT_B_CODE);
     mine.settings.seed = 1;
     mine.startingInventory = { magic_jellybean: 2 };
-    const next = importRotations(mine, JSON.stringify(exportRotations(rich())));
+    const next = importFlows(mine, JSON.stringify(exportFlows(rich())));
     expect(next.plots).toEqual(rich().plots);
     expect(next.settings).toBe(mine.settings);
     expect(next.startingInventory).toBe(mine.startingInventory);
@@ -139,18 +139,56 @@ describe("rotation export / import", () => {
 
   it("still reads an old full scenario export, taking only its plots", () => {
     const old = rich();
-    const next = importRotations(withPlots(LAYOUT_B_CODE), JSON.stringify(old));
+    const next = importFlows(withPlots(LAYOUT_B_CODE), JSON.stringify(old));
     expect(next.plots).toEqual(old.plots);
     expect(next.settings.seed).not.toBe(777);
     expect(next.startingInventory).toEqual({});
   });
 
+  it("reads a file exported before the stage -> step rename", () => {
+    const visits = { kind: "stageVisits", count: 3, sinceStage: "stage-1" };
+    const old = {
+      kind: "skyshards-greenhouse-rotations",
+      version: 1,
+      plots: [
+        {
+          id: 1,
+          flow: {
+            loop: true,
+            startIndex: 0,
+            stages: [
+              { id: "stage-1", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "group", match: "any", of: [visits] }], routes: [{ to: "stage-2", when: [visits] }] },
+              { id: "stage-2", layout: { code: LAYOUT_B_CODE }, exit: [{ kind: "cycles", n: 2 }] },
+            ],
+          },
+        },
+      ],
+    };
+    const flow = importFlows(withPlots(LAYOUT_B_CODE), JSON.stringify(old)).plots[0].flow;
+    expect(flow.steps.map((s) => s.id)).toEqual(["stage-1", "stage-2"]); // ids are user data and stay as they are
+    expect(flow).not.toHaveProperty("stages");
+    const renamed = { kind: "stepVisits", count: 3, sinceStep: "stage-1" };
+    expect(flow.steps[0].exit).toEqual([{ kind: "group", match: "any", of: [renamed] }]);
+    expect(flow.steps[0].routes).toEqual([{ to: "stage-2", when: [renamed] }]);
+  });
+
+  it("upgrades a scenario saved before the rename, config keys included", () => {
+    const saved = { ...withPlots(LAYOUT_A_CODE), plots: [{ id: 1, flow: { stages: [{ id: "a", layout: { code: LAYOUT_A_CODE }, exit: [] }], loop: false, startIndex: 0 } }] };
+    (saved.settings.config as unknown as Record<string, unknown>) = { stageBaselineSeconds: 7200, keepIdenticalOnStageChange: false };
+    const up = migrateScenario(saved) as unknown as Scenario;
+    expect(up.plots[0].flow.steps).toHaveLength(1);
+    expect(up.settings.config).toEqual({ cycleBaselineSeconds: 7200, keepIdenticalOnStepChange: false });
+    expect(saved.plots[0].flow).toHaveProperty("stages"); // input untouched
+    const current = rich();
+    expect(migrateScenario(current)).toEqual(current); // already current: unchanged
+  });
+
   it("rejects files it cannot use, with a readable reason", () => {
     const sc = withPlots(LAYOUT_A_CODE);
-    expect(() => importRotations(sc, "nope")).toThrow("not valid JSON");
-    expect(() => importRotations(sc, "{}")).toThrow("No plots");
-    expect(() => importRotations(sc, JSON.stringify({ plots: [{ id: 1, flow: { stages: [] } }] }))).toThrow("Plot 1: no stages");
-    expect(() => importRotations(sc, JSON.stringify({ plots: [{ id: 1, flow: { stages: [{ id: "s", layout: { code: "x" }, exit: [] }] } }, { id: 1, flow: { stages: [{ id: "s", layout: { code: "x" }, exit: [] }] } }] }))).toThrow("unique");
+    expect(() => importFlows(sc, "nope")).toThrow("not valid JSON");
+    expect(() => importFlows(sc, "{}")).toThrow("No plots");
+    expect(() => importFlows(sc, JSON.stringify({ plots: [{ id: 1, flow: { steps: [] } }] }))).toThrow("Plot 1: no steps");
+    expect(() => importFlows(sc, JSON.stringify({ plots: [{ id: 1, flow: { steps: [{ id: "s", layout: { code: "x" }, exit: [] }] } }, { id: 1, flow: { steps: [{ id: "s", layout: { code: "x" }, exit: [] }] } }] }))).toThrow("unique");
   });
 });
 
@@ -189,7 +227,7 @@ const tiles = [
   { ground: "end_stone" as const, position: [7, 8] as [number, number] },
 ];
 
-describe("simulator stage layout editor ground roundtrip", () => {
+describe("simulator step layout editor ground roundtrip", () => {
   it("keeps bare ground through an embedded editor edit", () => {
     const code = placementsToCode([], [], tiles);
     const initial = layoutToPlacements({ code });
@@ -214,10 +252,10 @@ describe("watched targets follow a layout transform", () => {
       { id: "a", cropId: "chloronite", cropName: "", size: 1, position: [0, 0], isMutation: true },
       { id: "b", cropId: "chloronite", cropName: "", size: 1, position: [3, 4], isMutation: true },
     ]);
-    const stage = { id: "s", layout: { code }, exit: [], watch: ["3,4"] };
-    expect(transformWatch(stage, { kind: "rotate", direction: "cw" }).watch).toEqual(["4,6"]);
-    expect(transformWatch(stage, { kind: "mirror", axis: "horizontal" }).watch).toEqual(["3,5"]);
-    expect(transformWatch(stage, { kind: "nudge", dRow: 1, dCol: 0 }).watch).toEqual(["4,4"]);
+    const step = { id: "s", layout: { code }, exit: [], watch: ["3,4"] };
+    expect(transformWatch(step, { kind: "rotate", direction: "cw" }).watch).toEqual(["4,6"]);
+    expect(transformWatch(step, { kind: "mirror", axis: "horizontal" }).watch).toEqual(["3,5"]);
+    expect(transformWatch(step, { kind: "nudge", dRow: 1, dCol: 0 }).watch).toEqual(["4,4"]);
     const all = { id: "s", layout: { code }, exit: [] };
     expect(transformWatch(all, { kind: "rotate", direction: "cw" })).toBe(all);
   });

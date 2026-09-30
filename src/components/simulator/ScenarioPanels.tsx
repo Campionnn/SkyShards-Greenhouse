@@ -18,8 +18,8 @@ import {
 import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui";
 import { CheckboxField, NumberField, NumberInput, SelectField } from "./controls";
 import { nameOf, priceableItems } from "./format";
-import { PolicyDefaultsEditor } from "./RotationEditor";
-import { addPlot, duplicatePlot, exportRotations, importRotations, layoutSummary, nextPlotId, removePlot } from "./scenarioEdit";
+import { PolicyDefaultsEditor } from "./FlowEditor";
+import { addPlot, duplicatePlot, exportFlows, importFlows, layoutSummary, nextPlotId, removePlot } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
 
 // ---- Scenario: share links, plots, import/export ---------------------------
@@ -27,37 +27,37 @@ import { buttonClass, inputClass } from "./styles";
 export const ScenarioPanel: React.FC<{
   scenario: Scenario;
   onChange: (sc: Scenario) => void;
-  onEditRotation: (plotId: number) => void;
+  onEditFlow: (plotId: number) => void;
   /** Open the layout picker (Calculator result, Designer layout, saved layouts, share links). */
   onLoadLayout?: () => void;
   issues: ScenarioIssue[];
   warnings: ScenarioIssue[];
   error: string | null;
-}> = ({ scenario, onChange, onEditRotation, onLoadLayout, issues, warnings, error }) => {
+}> = ({ scenario, onChange, onEditFlow, onLoadLayout, issues, warnings, error }) => {
   const { toast } = useToast();
   const [json, setJson] = useState<string | null>(null);
 
-  // Rotations only: player stats, schedule, seed, Actions defaults, config and inventory stay out.
+  // Flows only: player stats, schedule, seed, Actions defaults, config and inventory stay out.
   const exportJson = () => {
-    const text = JSON.stringify(exportRotations(scenario), null, 2);
+    const text = JSON.stringify(exportFlows(scenario), null, 2);
     navigator.clipboard.writeText(text).catch(() => undefined);
     const blob = new Blob([text], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "greenhouse-rotations.json";
+    a.download = "greenhouse-flows.json";
     a.click();
     URL.revokeObjectURL(a.href);
-    toast({ title: "Rotations exported", description: "Downloaded and copied. Your player settings and inventory are not included.", variant: "success" });
+    toast({ title: "Flows exported", description: "Downloaded and copied. Your player settings and inventory are not included.", variant: "success" });
   };
 
   const importJson = () => {
     try {
-      const next = importRotations(scenario, json ?? "");
+      const next = importFlows(scenario, json ?? "");
       const before = scenario;
       onChange(next);
       setJson(null);
       toast({
-        id: "simulator-rotations-imported",
+        id: "simulator-flows-imported",
         title: `Imported ${next.plots.length} plot${next.plots.length > 1 ? "s" : ""}`,
         description: "Replaced your plots; your player settings and inventory are unchanged.",
         variant: "success",
@@ -77,7 +77,7 @@ export const ScenarioPanel: React.FC<{
     toast({
       id: "simulator-plot-duplicated",
       title: `Duplicated Plot ${plotId} as Plot ${id}`,
-      description: "Same stages, layouts, exits, checked targets and policy overrides.",
+      description: "Same steps, layouts, exits, checked targets and policy overrides.",
       variant: "success",
       duration: 6000,
       action: { label: "Undo", onClick: () => onChange(before) },
@@ -86,7 +86,7 @@ export const ScenarioPanel: React.FC<{
 
   const errors = issues.filter((i) => i.level === "error");
   return (
-    <Panel title="Scenario" icon={<Layers />} description="Up to 3 plots, each with its own rotation, sharing one inventory and one clock.">
+    <Panel title="Scenario" icon={<Layers />} description="Up to 3 plots, each with its own flow, sharing one inventory and one clock.">
       <SectionLabel>Plots</SectionLabel>
       <div className="space-y-1.5">
         {scenario.plots.map((p) => (
@@ -94,18 +94,18 @@ export const ScenarioPanel: React.FC<{
             <div className="min-w-0 flex-1">
               <div className="text-xs text-slate-200">Plot {p.id}</div>
               <div className="text-[11px] text-slate-500 truncate">
-                {p.flow.stages.length} stage{p.flow.stages.length > 1 ? "s" : ""}
-                {p.flow.loop ? ", looping" : ""} · {layoutSummary(p.flow.stages[p.flow.startIndex]?.layout ?? { code: "" })}
+                {p.flow.steps.length} step{p.flow.steps.length > 1 ? "s" : ""}
+                {p.flow.loop ? ", looping" : ""} · {layoutSummary(p.flow.steps[p.flow.startIndex]?.layout ?? { code: "" })}
               </div>
             </div>
-            <button className={buttonClass.icon} onClick={() => onEditRotation(p.id)} title="Edit rotation">
+            <button className={buttonClass.icon} onClick={() => onEditFlow(p.id)} title="Edit flow">
               <Pencil className="w-3.5 h-3.5" />
             </button>
             <button
               className={buttonClass.icon}
               onClick={() => duplicate(p.id)}
               disabled={scenario.plots.length >= MAX_PLOTS}
-              title={scenario.plots.length >= MAX_PLOTS ? "All three plots are in use" : "Duplicate this plot with its whole rotation"}
+              title={scenario.plots.length >= MAX_PLOTS ? "All three plots are in use" : "Duplicate this plot with its whole flow"}
             >
               <Copy className="w-3.5 h-3.5" />
             </button>
@@ -145,18 +145,18 @@ export const ScenarioPanel: React.FC<{
         <button
           className={buttonClass.neutral}
           onClick={exportJson}
-          title="Download (and copy) every plot's rotation as JSON: stages, layouts, exits, loop, checked targets and policy overrides. Player stats, schedule, seed, Actions defaults, Advanced settings and inventory are left out."
+          title="Download (and copy) every plot's flow as JSON: steps, layouts, exits, loop, checked targets and policy overrides. Player stats, schedule, seed, Actions defaults, Advanced settings and inventory are left out."
         >
-          <Download className="w-3.5 h-3.5" /> Export rotations
+          <Download className="w-3.5 h-3.5" /> Export flows
         </button>
-        <button className={buttonClass.neutral} onClick={() => setJson(json === null ? "" : null)} title="Replace your plots with ones from an exported rotations file">
-          <Upload className="w-3.5 h-3.5" /> Import rotations
+        <button className={buttonClass.neutral} onClick={() => setJson(json === null ? "" : null)} title="Replace your plots with ones from an exported flows file">
+          <Upload className="w-3.5 h-3.5" /> Import flows
         </button>
       </div>
       {json !== null && (
         <div className="mt-2 space-y-1.5">
           <p className="text-[11px] text-slate-500">Replaces your plots. Your player stats, schedule, Actions defaults, Advanced settings and inventory stay as they are.</p>
-          <textarea className={`${inputClass} w-full h-24 font-mono`} placeholder="Paste exported rotations JSON" value={json} onChange={(e) => setJson(e.target.value)} />
+          <textarea className={`${inputClass} w-full h-24 font-mono`} placeholder="Paste exported flows JSON" value={json} onChange={(e) => setJson(e.target.value)} />
           <button className={buttonClass.primary} onClick={importJson}>
             <FileJson className="w-3.5 h-3.5" /> Load JSON
           </button>
@@ -212,7 +212,7 @@ export const SettingsPanel: React.FC<{ scenario: Scenario; onChange: (sc: Scenar
               Player actions
               <InfoHint title="Player actions" width={260}>
                 Master switch. Off: the player never comes online, whatever the Online schedule says - no harvesting, watering, upkeep, re-placing, ground fixing, gate
-                interactions or stage changes. The greenhouse only grows, spawns and decays on its own.
+                interactions or step changes. The greenhouse only grows, spawns and decays on its own.
               </InfoHint>
             </span>
           }
@@ -374,7 +374,7 @@ const ScheduleEditor: React.FC<{
 }> = ({ value, startTime, onChange }) => (
   <div className="space-y-2">
     <p className="text-[11px] text-slate-500">
-      Harvesting, watering, upkeep, re-placing, ground fixing, stage changes and gate interactions (waking Snoozling, vacuuming rats, Noctilume) only happen while you are online.
+      Harvesting, watering, upkeep, re-placing, ground fixing, step changes and gate interactions (waking Snoozling, vacuuming rats, Noctilume) only happen while you are online.
     </p>
     <SegmentedControl
       size="xs"

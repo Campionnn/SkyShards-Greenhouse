@@ -5,13 +5,13 @@ import { useFitCellSize } from "../../hooks";
 import type {
   Condition,
   ConditionMatch,
-  FlowStage,
+  FlowStep,
   Policies,
   PolicyOverrides,
   Scenario,
   ScenarioPlot,
-  StageLayout,
-  StageRoute,
+  StepLayout,
+  StepRoute,
   Trigger,
 } from "../../simulator";
 import type { LayoutTransform } from "../../utilities";
@@ -22,10 +22,10 @@ import { CheckboxField, IdSelect, NumberInput, SelectField } from "./controls";
 import { ALL_KIND_IDS, ALL_MUTATION_IDS, allItemIds, describeConditions, nameOf } from "./format";
 import { LayoutPickerDialog } from "./LayoutPicker";
 import {
-  blankStage,
+  blankStep,
   defaultGroup,
   defaultTrigger,
-  deleteStage,
+  deleteStep,
   layoutCode,
   layoutSummary,
   layoutToPlacements,
@@ -34,7 +34,7 @@ import {
   transformWatch,
   TRIGGER_KINDS,
   updatePlot,
-  updateStage,
+  updateStep,
   withWatch,
 } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
@@ -43,10 +43,10 @@ import { buttonClass, inputClass } from "./styles";
 
 /**
  * The Designer's own grid and palette, mounted on a private, non-persisted
- * DesignerProvider so editing a stage never touches the Designer page's saved
+ * DesignerProvider so editing a step never touches the Designer page's saved
  * layout. Lowercase inputs are planted; targets are EMPTY labelled cells.
  */
-const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: StageLayout, transform?: LayoutTransform) => void }> = ({ layout, onChange }) => {
+const StepLayoutEditor: React.FC<{ layout: StepLayout; onChange: (layout: StepLayout, transform?: LayoutTransform) => void }> = ({ layout, onChange }) => {
   const { toast } = useToast();
   const [version, setVersion] = useState(0);
   const [picking, setPicking] = useState(false);
@@ -59,7 +59,7 @@ const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: Stag
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button className={buttonClass.primary} onClick={() => setPicking(true)} title="Replace this stage's layout with one from the Calculator, the Designer, your saved layouts or a share link">
+        <button className={buttonClass.primary} onClick={() => setPicking(true)} title="Replace this step's layout with one from the Calculator, the Designer, your saved layouts or a share link">
           <FolderInput className="w-3.5 h-3.5" /> Load layout...
         </button>
         <button
@@ -77,8 +77,8 @@ const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: Stag
       </div>
       {picking && (
         <LayoutPickerDialog
-          title="Load a layout into this stage"
-          useLabel="Replace this stage's layout"
+          title="Load a layout into this step"
+          useLabel="Replace this step's layout"
           onClose={() => setPicking(false)}
           onUse={(picked) => {
             const before = layout;
@@ -86,7 +86,7 @@ const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: Stag
             setVersion((v) => v + 1);
             setPicking(false);
             toast({
-              title: "Stage layout replaced",
+              title: "Step layout replaced",
               description: picked.name,
               variant: "success",
               duration: 5000,
@@ -145,23 +145,23 @@ const PICK_CELL = 26;
 const PICK_GAP = 2;
 
 /**
- * Pick which of this stage's target cells the sustainability check records.
+ * Pick which of this step's target cells the sustainability check records.
  * `watch` undefined = every target (and it follows layout edits); a list pins
  * the choice to those anchors.
  */
-export const WatchPicker: React.FC<{ stage: FlowStage; onChange: (watch: string[] | undefined) => void }> = ({ stage, onChange }) => {
+export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] | undefined) => void }> = ({ step, onChange }) => {
   const placements = useMemo(() => {
     try {
-      return layoutToPlacements(stage.layout);
+      return layoutToPlacements(step.layout);
     } catch {
       return null;
     }
-  }, [stage.layout]);
-  if (!placements) return <p className="text-xs text-red-300">This stage's layout could not be read.</p>;
+  }, [step.layout]);
+  if (!placements) return <p className="text-xs text-red-300">This step's layout could not be read.</p>;
 
   const targets = placements.targets.map((t) => ({ key: `${t.position[0]},${t.position[1]}`, id: t.cropId, row: t.position[0], col: t.position[1], size: t.size }));
   const all = targets.map((t) => t.key);
-  const watched = new Set(stage.watch ?? all);
+  const watched = new Set(step.watch ?? all);
   const count = targets.filter((t) => watched.has(t.key)).length;
   const toggle = (key: string) => {
     const next = all.filter((k) => (k === key ? !watched.has(k) : watched.has(k)));
@@ -171,7 +171,7 @@ export const WatchPicker: React.FC<{ stage: FlowStage; onChange: (watch: string[
   const at = (n: number) => n * (PICK_CELL + PICK_GAP);
 
   if (targets.length === 0) {
-    return <p className="text-xs text-slate-500">This stage has no target cells. Add targets in the layout below to check their uptime.</p>;
+    return <p className="text-xs text-slate-500">This step has no target cells. Add targets in the layout below to check their uptime.</p>;
   }
 
   return (
@@ -182,9 +182,9 @@ export const WatchPicker: React.FC<{ stage: FlowStage; onChange: (watch: string[
       </p>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-slate-300">
-          {count} of {targets.length} checked{stage.watch === undefined && <span className="text-slate-500"> (all, the default)</span>}
+          {count} of {targets.length} checked{step.watch === undefined && <span className="text-slate-500"> (all, the default)</span>}
         </span>
-        <button className={buttonClass.neutral} disabled={stage.watch === undefined} onClick={() => onChange(undefined)}>
+        <button className={buttonClass.neutral} disabled={step.watch === undefined} onClick={() => onChange(undefined)}>
           All
         </button>
         <button className={buttonClass.neutral} disabled={count === 0} onClick={() => onChange([])}>
@@ -235,15 +235,15 @@ export const WatchPicker: React.FC<{ stage: FlowStage; onChange: (watch: string[
 
 // ---- Triggers --------------------------------------------------------------
 
-/** A stage choice for pickers: its id and "N. label". */
-interface StageOption {
+/** A step choice for pickers: its id and "N. label". */
+interface StepOption {
   id: string;
   name: string;
 }
 
-const TriggerRow: React.FC<{ trigger: Trigger; stages: StageOption[]; onChange: (t: Trigger) => void; onRemove: () => void }> = ({
+const TriggerRow: React.FC<{ trigger: Trigger; steps: StepOption[]; onChange: (t: Trigger) => void; onRemove: () => void }> = ({
   trigger,
-  stages,
+  steps,
   onChange,
   onRemove,
 }) => (
@@ -283,7 +283,7 @@ const TriggerRow: React.FC<{ trigger: Trigger; stages: StageOption[]; onChange: 
           integer
           min={0}
           className={`${inputClass} w-16`}
-          title="0 = every target in this stage's layout"
+          title="0 = every target in this step's layout"
           value={trigger.count}
           onChange={(count) => onChange({ ...trigger, count })}
         />
@@ -297,7 +297,7 @@ const TriggerRow: React.FC<{ trigger: Trigger; stages: StageOption[]; onChange: 
         <span className="text-xs text-slate-500">cycles</span>
       </>
     )}
-    {trigger.kind === "stageVisits" && (
+    {trigger.kind === "stepVisits" && (
       <>
         <NumberInput
           integer
@@ -310,17 +310,17 @@ const TriggerRow: React.FC<{ trigger: Trigger; stages: StageOption[]; onChange: 
         <span className="text-xs text-slate-500">times since</span>
         <select
           className={inputClass}
-          value={trigger.sinceStage ?? ""}
-          title="Restart the count each time the plot enters this stage"
+          value={trigger.sinceStep ?? ""}
+          title="Restart the count each time the plot enters this step"
           onChange={(e) => {
             const next = { ...trigger };
-            if (e.target.value) next.sinceStage = e.target.value;
-            else delete next.sinceStage;
+            if (e.target.value) next.sinceStep = e.target.value;
+            else delete next.sinceStep;
             onChange(next);
           }}
         >
           <option value="">the start of the run</option>
-          {stages.map((s) => (
+          {steps.map((s) => (
             <option key={s.id} value={s.id}>
               entering {s.name}
             </option>
@@ -334,7 +334,7 @@ const TriggerRow: React.FC<{ trigger: Trigger; stages: StageOption[]; onChange: 
   </div>
 );
 
-/** Select value for "the following stage" (no `next`). Not a valid stage id, since ids are never empty. */
+/** Select value for "the following step" (no `next`). Not a valid step id, since ids are never empty. */
 const NEXT_DEFAULT = "";
 
 /** Nesting depth at which "Add group" stops being offered. */
@@ -366,10 +366,10 @@ export const ConditionListEditor: React.FC<{
   list: Condition[];
   match: ConditionMatch;
   onChange: (list: Condition[], match: ConditionMatch) => void;
-  stages: StageOption[];
+  steps: StepOption[];
   empty?: string;
   depth?: number;
-}> = ({ list, match, onChange, stages, empty, depth = 0 }) => {
+}> = ({ list, match, onChange, steps, empty, depth = 0 }) => {
   const set = (i: number, c: Condition) => onChange(list.map((x, j) => (j === i ? c : x)), match);
   const remove = (i: number) => onChange(list.filter((_, j) => j !== i), match);
   return (
@@ -394,14 +394,14 @@ export const ConditionListEditor: React.FC<{
               <ConditionListEditor
                 list={c.of}
                 match={c.match}
-                stages={stages}
+                steps={steps}
                 depth={depth + 1}
                 empty="An empty group never holds."
                 onChange={(of, m) => set(i, { ...c, of, match: m })}
               />
             </div>
           ) : (
-            <TriggerRow trigger={c} stages={stages} onChange={(t) => set(i, t)} onRemove={() => remove(i)} />
+            <TriggerRow trigger={c} steps={steps} onChange={(t) => set(i, t)} onRemove={() => remove(i)} />
           )}
         </React.Fragment>
       ))}
@@ -423,26 +423,26 @@ export const ConditionListEditor: React.FC<{
   );
 };
 
-/** Routes: conditional jumps to chosen stages, checked in order before the normal exit. */
-const RoutesEditor: React.FC<{ routes: StageRoute[]; stages: StageOption[]; currentId: string; onChange: (routes: StageRoute[]) => void }> = ({
+/** Routes: conditional jumps to chosen steps, checked in order before the normal exit. */
+const RoutesEditor: React.FC<{ routes: StepRoute[]; steps: StepOption[]; currentId: string; onChange: (routes: StepRoute[]) => void }> = ({
   routes,
-  stages,
+  steps,
   currentId,
   onChange,
 }) => {
-  const set = (i: number, r: StageRoute) => onChange(routes.map((x, j) => (j === i ? r : x)));
+  const set = (i: number, r: StepRoute) => onChange(routes.map((x, j) => (j === i ? r : x)));
   const move = (from: number, to: number) => {
     const next = [...routes];
     const [r] = next.splice(from, 1);
     next.splice(to, 0, r);
     onChange(next);
   };
-  const defaultTarget = stages.find((s) => s.id !== currentId)?.id ?? currentId;
+  const defaultTarget = steps.find((s) => s.id !== currentId)?.id ?? currentId;
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-slate-500">
-        Checked in order before the normal exit; the first route whose conditions hold sends the plot to its stage. Use them to go somewhere other than the
-        next stage, e.g. usually swap between stages 1 and 2, but go to stage 3 every 5th visit or once an item runs low.
+        Checked in order before the normal exit; the first route whose conditions hold sends the plot to its step. Use them to go somewhere other than the
+        next step, e.g. usually swap between steps 1 and 2, but go to step 3 every 5th visit or once an item runs low.
       </p>
       {routes.map((r, i) => (
         <div key={i} className="rounded-md border border-sky-500/30 bg-sky-500/5 p-2 space-y-1.5">
@@ -450,11 +450,11 @@ const RoutesEditor: React.FC<{ routes: StageRoute[]; stages: StageOption[]; curr
             <span className="text-slate-500 w-4">{i + 1}</span>
             Go to
             <select className={inputClass} value={r.to} onChange={(e) => set(i, { ...r, to: e.target.value })}>
-              {!stages.some((s) => s.id === r.to) && <option value={r.to}>missing stage "{r.to}"</option>}
-              {stages.map((s) => (
+              {!steps.some((s) => s.id === r.to) && <option value={r.to}>missing step "{r.to}"</option>}
+              {steps.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
-                  {s.id === currentId ? " (restart this stage)" : ""}
+                  {s.id === currentId ? " (restart this step)" : ""}
                 </option>
               ))}
             </select>
@@ -473,10 +473,10 @@ const RoutesEditor: React.FC<{ routes: StageRoute[]; stages: StageOption[]; curr
           <ConditionListEditor
             list={r.when}
             match={r.match ?? "all"}
-            stages={stages}
+            steps={steps}
             empty="No conditions: this route never fires."
             onChange={(when, m) => {
-              const next: StageRoute = { ...r, when };
+              const next: StepRoute = { ...r, when };
               if (m === "any") next.match = "any";
               else delete next.match;
               set(i, next);
@@ -491,17 +491,17 @@ const RoutesEditor: React.FC<{ routes: StageRoute[]; stages: StageOption[]; curr
   );
 };
 
-/** "N. label" for a stage id, or the raw id if it no longer exists. */
-function stageNamer(stages: FlowStage[]): (id: string) => string {
+/** "N. label" for a step id, or the raw id if it no longer exists. */
+function stepNamer(steps: FlowStep[]): (id: string) => string {
   return (id) => {
-    const i = stages.findIndex((s) => s.id === id);
-    return i < 0 ? `"${id}"` : `${i + 1}. ${stages[i].label || stages[i].id}`;
+    const i = steps.findIndex((s) => s.id === id);
+    return i < 0 ? `"${id}"` : `${i + 1}. ${steps[i].label || steps[i].id}`;
   };
 }
 
-/** One-line summary of where a stage goes and when, for the stage list. */
-function stageExitSummary(s: FlowStage, stages: FlowStage[]): string {
-  const name = stageNamer(stages);
+/** One-line summary of where a step goes and when, for the step list. */
+function stepExitSummary(s: FlowStep, steps: FlowStep[]): string {
+  const name = stepNamer(steps);
   const parts = (s.routes ?? []).map((r) => `→ ${name(r.to)} if ${r.when.length ? describeConditions(r.when, r.match, name) : "never"}`);
   if (s.exit.length) parts.push(`${s.next ? `→ ${name(s.next)} ` : ""}when ${describeConditions(s.exit, s.exitMatch, name)}`);
   return parts.length ? parts.join(" · ") : "no exit";
@@ -559,7 +559,7 @@ const GATE_FIELDS: { key: keyof Policies["gateInteractions"]; label: string }[] 
 /** Full policies (scenario defaults). */
 export const PolicyDefaultsEditor: React.FC<{ value: Policies; onChange: (p: Policies) => void }> = ({ value, onChange }) => (
   <div className="space-y-2">
-    <p className="text-[11px] text-slate-500">What the player does while online. Plots and stages can override these.</p>
+    <p className="text-[11px] text-slate-500">What the player does while online. Plots and steps can override these.</p>
     {POLICY_FIELDS.map((f) => (
       <SelectField
         key={f.key}
@@ -587,7 +587,7 @@ export const PolicyDefaultsEditor: React.FC<{ value: Policies; onChange: (p: Pol
   </div>
 );
 
-/** Partial policies (plot / stage overrides): each field inherits unless set. */
+/** Partial policies (plot / step overrides): each field inherits unless set. */
 const PolicyOverridesEditor: React.FC<{ value: PolicyOverrides | undefined; onChange: (p: PolicyOverrides | undefined) => void }> = ({ value, onChange }) => {
   const v = value ?? {};
   const set = (next: PolicyOverrides) => onChange(Object.keys(next).length ? next : undefined);
@@ -641,55 +641,55 @@ const PolicyOverridesEditor: React.FC<{ value: PolicyOverrides | undefined; onCh
   );
 };
 
-// ---- Rotation editor -------------------------------------------------------
+// ---- Flow editor -------------------------------------------------------
 
-export const RotationEditor: React.FC<{
+export const FlowEditor: React.FC<{
   scenario: Scenario;
   plotId: number;
   onChange: (sc: Scenario) => void;
   onClose: () => void;
-  /** Stage selected when the editor opens (e.g. one just added from another page). */
-  initialStage?: number;
-}> = ({ scenario, plotId, onChange, onClose, initialStage = 0 }) => {
+  /** Step selected when the editor opens (e.g. one just added from another page). */
+  initialStep?: number;
+}> = ({ scenario, plotId, onChange, onClose, initialStep = 0 }) => {
   const plot = scenario.plots.find((p) => p.id === plotId);
-  const [selected, setSelected] = useState(initialStage);
+  const [selected, setSelected] = useState(initialStep);
   if (!plot) return null;
-  const { stages } = plot.flow;
-  const index = Math.min(selected, stages.length - 1);
-  const stage = stages[index];
-  const stageOptions: StageOption[] = stages.map((s, i) => ({ id: s.id, name: `${i + 1}. ${s.label || s.id}` }));
-  const isLast = index === stages.length - 1;
+  const { steps } = plot.flow;
+  const index = Math.min(selected, steps.length - 1);
+  const step = steps[index];
+  const stepOptions: StepOption[] = steps.map((s, i) => ({ id: s.id, name: `${i + 1}. ${s.label || s.id}` }));
+  const isLast = index === steps.length - 1;
   const defaultNextLabel = isLast
     ? plot.flow.loop
-      ? `the next stage (1. ${stages[0].label || stages[0].id})`
-      : "nowhere: hold this final stage"
-    : `the next stage (${stageOptions[index + 1].name})`;
+      ? `the next step (1. ${steps[0].label || steps[0].id})`
+      : "nowhere: hold this final step"
+    : `the next step (${stepOptions[index + 1].name})`;
 
   const editPlot = (fn: (p: ScenarioPlot) => ScenarioPlot) => onChange(updatePlot(scenario, plotId, fn));
-  const editStage = (fn: (s: FlowStage) => FlowStage) => onChange(updateStage(scenario, plotId, index, fn));
+  const editStep = (fn: (s: FlowStep) => FlowStep) => onChange(updateStep(scenario, plotId, index, fn));
   const move = (from: number, to: number) =>
     editPlot((p) => {
-      const [s] = p.flow.stages.splice(from, 1);
-      p.flow.stages.splice(to, 0, s);
-      p.flow.startIndex = Math.min(p.flow.startIndex, p.flow.stages.length - 1);
+      const [s] = p.flow.steps.splice(from, 1);
+      p.flow.steps.splice(to, 0, s);
+      p.flow.startIndex = Math.min(p.flow.startIndex, p.flow.steps.length - 1);
       return p;
     });
 
   return (
     <Panel
-      title={`Plot ${plotId} rotation`}
+      title={`Plot ${plotId} flow`}
       actions={
         <button className={buttonClass.primary} onClick={onClose}>
           Done
         </button>
       }
-      description="This plot's own stage sequence. It runs on the shared clock and shared inventory; no stage can reference another plot."
+      description="This plot's own step sequence. It runs on the shared clock and shared inventory; no step can reference another plot."
     >
       <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] gap-6">
         <div className="space-y-3">
-          <SectionLabel>Stages</SectionLabel>
+          <SectionLabel>Steps</SectionLabel>
           <ol className="space-y-1">
-            {stages.map((s, i) => (
+            {steps.map((s, i) => (
               <li key={s.id}>
                 <div
                   className={`flex items-center gap-1 rounded-md border px-2 py-1.5 cursor-pointer ${
@@ -703,8 +703,8 @@ export const RotationEditor: React.FC<{
                       {s.label || s.id}
                       {i === plot.flow.startIndex && <span className="text-emerald-400"> · start</span>}
                     </div>
-                    <div className="text-[11px] text-slate-500 truncate" title={stageExitSummary(s, stages)}>
-                      {layoutSummary(s.layout)} · {stageExitSummary(s, stages)}
+                    <div className="text-[11px] text-slate-500 truncate" title={stepExitSummary(s, steps)}>
+                      {layoutSummary(s.layout)} · {stepExitSummary(s, steps)}
                     </div>
                   </div>
                   <button className={buttonClass.icon} disabled={i === 0} onClick={(e) => {
@@ -716,7 +716,7 @@ export const RotationEditor: React.FC<{
                   </button>
                   <button
                     className={buttonClass.icon}
-                    disabled={i === stages.length - 1}
+                    disabled={i === steps.length - 1}
                     onClick={(e) => {
                       e.stopPropagation();
                       move(i, i + 1);
@@ -735,20 +735,20 @@ export const RotationEditor: React.FC<{
               className={buttonClass.neutral}
               onClick={() => {
                 editPlot((p) => {
-                  p.flow.stages = [...p.flow.stages, blankStage(p.flow.stages)];
+                  p.flow.steps = [...p.flow.steps, blankStep(p.flow.steps)];
                   return p;
                 });
-                setSelected(stages.length);
+                setSelected(steps.length);
               }}
             >
-              <Plus className="w-3.5 h-3.5" /> Stage
+              <Plus className="w-3.5 h-3.5" /> Step
             </button>
             <button
               className={buttonClass.neutral}
               onClick={() => {
                 editPlot((p) => {
-                  const copy = { ...structuredClone(stage), id: blankStage(p.flow.stages).id, label: `${stage.label || stage.id} (copy)` };
-                  p.flow.stages.splice(index + 1, 0, copy);
+                  const copy = { ...structuredClone(step), id: blankStep(p.flow.steps).id, label: `${step.label || step.id} (copy)` };
+                  p.flow.steps.splice(index + 1, 0, copy);
                   return p;
                 });
                 setSelected(index + 1);
@@ -758,9 +758,9 @@ export const RotationEditor: React.FC<{
             </button>
             <button
               className={buttonClass.danger}
-              disabled={stages.length <= 1}
+              disabled={steps.length <= 1}
               onClick={() => {
-                editPlot((p) => deleteStage(p, index));
+                editPlot((p) => deleteStep(p, index));
                 setSelected(Math.max(0, index - 1));
               }}
             >
@@ -769,11 +769,11 @@ export const RotationEditor: React.FC<{
           </div>
 
           <SectionLabel className="pt-2">Flow</SectionLabel>
-          <CheckboxField label="Loop back to the first stage" checked={plot.flow.loop} onChange={(v) => editPlot((p) => ({ ...p, flow: { ...p.flow, loop: v } }))} />
+          <CheckboxField label="Loop back to the first step" checked={plot.flow.loop} onChange={(v) => editPlot((p) => ({ ...p, flow: { ...p.flow, loop: v } }))} />
           <SelectField
-            label="Start on stage"
+            label="Start on step"
             value={String(plot.flow.startIndex)}
-            options={stages.map((s, i) => ({ value: String(i), label: `${i + 1}. ${s.label || s.id}` }))}
+            options={steps.map((s, i) => ({ value: String(i), label: `${i + 1}. ${s.label || s.id}` }))}
             onChange={(v) => editPlot((p) => ({ ...p, flow: { ...p.flow, startIndex: Number(v) } }))}
           />
           <SectionLabel className="pt-2">Plot policy overrides</SectionLabel>
@@ -783,25 +783,25 @@ export const RotationEditor: React.FC<{
         <div className="min-w-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <SectionLabel>Stage {index + 1}</SectionLabel>
+              <SectionLabel>Step {index + 1}</SectionLabel>
               <label className="flex items-center gap-2 text-xs text-slate-300">
                 Label
-                <input className={`${inputClass} flex-1`} value={stage.label ?? ""} onChange={(e) => editStage((s) => ({ ...s, label: e.target.value }))} />
+                <input className={`${inputClass} flex-1`} value={step.label ?? ""} onChange={(e) => editStep((s) => ({ ...s, label: e.target.value }))} />
               </label>
               <CheckboxField
                 label="Full clear on entry (otherwise identical plants are kept)"
-                checked={!!stage.fullClear}
-                onChange={(v) => editStage((s) => ({ ...s, fullClear: v || undefined }))}
+                checked={!!step.fullClear}
+                onChange={(v) => editStep((s) => ({ ...s, fullClear: v || undefined }))}
               />
-              <SectionLabel className="pt-1">Leave this stage when</SectionLabel>
+              <SectionLabel className="pt-1">Leave this step when</SectionLabel>
               <ConditionListEditor
-                list={stage.exit}
-                match={stage.exitMatch ?? "all"}
-                stages={stageOptions}
-                empty={stage.routes?.length ? "No normal exit: the plot only leaves through a route." : "No exit conditions: the plot stays on this stage."}
+                list={step.exit}
+                match={step.exitMatch ?? "all"}
+                steps={stepOptions}
+                empty={step.routes?.length ? "No normal exit: the plot only leaves through a route." : "No exit conditions: the plot stays on this step."}
                 onChange={(exit, m) =>
-                  editStage((s) => {
-                    const next: FlowStage = { ...s, exit };
+                  editStep((s) => {
+                    const next: FlowStep = { ...s, exit };
                     if (m === "any") next.exitMatch = "any";
                     else delete next.exitMatch;
                     return next;
@@ -810,14 +810,14 @@ export const RotationEditor: React.FC<{
               />
               <SelectField
                 label="then go to"
-                value={stage.next ?? NEXT_DEFAULT}
+                value={step.next ?? NEXT_DEFAULT}
                 options={[
                   { value: NEXT_DEFAULT, label: defaultNextLabel },
-                  ...(stage.next !== undefined && !stages.some((s) => s.id === stage.next) ? [{ value: stage.next, label: `missing stage "${stage.next}"` }] : []),
-                  ...stageOptions.map((s) => ({ value: s.id, label: s.id === stage.id ? `${s.name} (restart)` : s.name })),
+                  ...(step.next !== undefined && !steps.some((s) => s.id === step.next) ? [{ value: step.next, label: `missing step "${step.next}"` }] : []),
+                  ...stepOptions.map((s) => ({ value: s.id, label: s.id === step.id ? `${s.name} (restart)` : s.name })),
                 ]}
                 onChange={(v) =>
-                  editStage((s) => {
+                  editStep((s) => {
                     const next = { ...s };
                     if (v === NEXT_DEFAULT) delete next.next;
                     else next.next = v;
@@ -825,13 +825,13 @@ export const RotationEditor: React.FC<{
                   })
                 }
               />
-              <SectionLabel className="pt-2">Routes to other stages</SectionLabel>
+              <SectionLabel className="pt-2">Routes to other steps</SectionLabel>
               <RoutesEditor
-                routes={stage.routes ?? []}
-                stages={stageOptions}
-                currentId={stage.id}
+                routes={step.routes ?? []}
+                steps={stepOptions}
+                currentId={step.id}
                 onChange={(routes) =>
-                  editStage((s) => {
+                  editStep((s) => {
                     const next = { ...s };
                     if (routes.length) next.routes = routes;
                     else delete next.routes;
@@ -841,12 +841,12 @@ export const RotationEditor: React.FC<{
               />
             </div>
             <div className="space-y-2">
-              <SectionLabel>Stage policy overrides</SectionLabel>
-              <PolicyOverridesEditor value={stage.policies} onChange={(pol) => editStage((s) => ({ ...s, policies: pol }))} />
+              <SectionLabel>Step policy overrides</SectionLabel>
+              <PolicyOverridesEditor value={step.policies} onChange={(pol) => editStep((s) => ({ ...s, policies: pol }))} />
             </div>
             <div className="space-y-2 md:col-span-2">
               <SectionLabel>Sustainability: checked targets</SectionLabel>
-              <WatchPicker stage={stage} onChange={(watch) => editStage((s) => withWatch(s, watch))} />
+              <WatchPicker step={step} onChange={(watch) => editStep((s) => withWatch(s, watch))} />
             </div>
           </div>
         </div>
@@ -854,13 +854,13 @@ export const RotationEditor: React.FC<{
 
       <div className="mt-6 border-t border-slate-700/60 pt-4">
         <SectionLabel>
-          Stage {index + 1} layout · {stage.label || stage.id}
+          Step {index + 1} layout · {step.label || step.id}
         </SectionLabel>
         <p className="text-[11px] text-slate-500 mb-3">
           Inputs are planted (base crops free; mutation items come from inventory after setup). Targets are EMPTY cells labelled with the mutation expected to spawn there.
         </p>
-        <StageLayoutEditor key={`${plotId}-${stage.id}`} layout={stage.layout} onChange={(layout, transform) =>
-            editStage((s) => pruneWatch({ ...(transform ? transformWatch(s, transform) : s), layout }))
+        <StepLayoutEditor key={`${plotId}-${step.id}`} layout={step.layout} onChange={(layout, transform) =>
+            editStep((s) => pruneWatch({ ...(transform ? transformWatch(s, transform) : s), layout }))
           }
         />
       </div>

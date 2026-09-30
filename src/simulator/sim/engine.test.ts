@@ -7,9 +7,9 @@ import {
   plantAt,
   singlePlot,
   start,
-  stepN,
+  runCycles,
 } from "../testHelpers";
-import { stageSeconds } from "../stage/clock";
+import { cycleSeconds } from "../growth/clock";
 import { CONFIG_META, DEFAULT_CONFIG } from "../config";
 import type { SimulationState, TimedEvent } from "./state";
 
@@ -24,8 +24,8 @@ const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
 /** Pumpkin + melon either side of an empty Gloomgourd target; only the target rolls. */
 const gloomLayout = () => layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]);
 const slotsOnly = { spawnCells: "slotsOnly" as const };
-/** Stage length with default stats and `unique` unique crop groups standing. */
-const stageLen = (unique: number) => stageSeconds({ cropGrowth: 0, speedAttribute: 0, growthUpgradeTier: 0 }, unique, 14400);
+/** Cycle length with default stats and `unique` unique crop groups standing. */
+const cycleLen = (unique: number) => cycleSeconds({ cropGrowth: 0, speedAttribute: 0, growthUpgradeTier: 0 }, unique, 14400);
 /** Yield with default stats: only the unique-crop bonus (+3% per group) applies. */
 const yieldOf = (base: number, unique: number) => Math.floor(base * (1 + 0.03 * unique) + 1e-9);
 
@@ -129,7 +129,7 @@ describe("run: batched and stepped are one path", () => {
 
   it("#22 run(s,100) equals 100 successive run(_,1) calls", () => {
     const s = start(busy());
-    expect(json(stepN(s, 100).state)).toBe(json(engine.run(s, 100).state));
+    expect(json(runCycles(s, 100).state)).toBe(json(engine.run(s, 100).state));
   });
 
   it("#23 a stepped result feeds straight back in; events carry cycle and plot", () => {
@@ -142,7 +142,7 @@ describe("run: batched and stepped are one path", () => {
 
   it("#24 summary is cumulative across calls and equals the sum of per-step deltas", () => {
     const s = start(busy());
-    const { state, results } = stepN(s, 30);
+    const { state, results } = runCycles(s, 30);
     const batch = engine.run(s, 30);
     expect(state.summary.profit).toBe(batch.summary.profit);
     let prev = 0;
@@ -372,7 +372,7 @@ describe("decay and placed items", () => {
     const mid = engine.run(s, 10).state;
     const p = plantAt(mid, 1, 5, 5)!;
     expect(p).toMatchObject({ stage: 11, lockedEffects: null }); // spawned at 1, still growing
-    expect(p.decaySecondsRemaining).toBeCloseTo(5 * 86400 - 10 * stageLen(0));
+    expect(p.decaySecondsRemaining).toBeCloseTo(5 * 86400 - 10 * cycleLen(0));
   });
 
   it("a spawn whose timer is shorter than its growth decays before it is ever harvestable", () => {
@@ -394,7 +394,7 @@ describe("decay and placed items", () => {
 
   it("#11 decay leaves a Dead Plant; the player clears it (a dead_plant item) and re-places from stock", () => {
     const sc = singlePlot(layout([["chloronite", 5, 5]]), { inventory: { chloronite: 2 }, config: slotsOnly });
-    const r = engine.run(start(sc), 18); // 3 days at 4 h stages
+    const r = engine.run(start(sc), 18); // 3 days at 4 h cycles
     expect(r.summary.decayed.chloronite).toBe(1);
     expect(r.state.inventory.dead_plant).toBe(1);
     expect(r.state.inventory.chloronite).toBe(1); // setup was free; the re-placement cost one
@@ -528,7 +528,7 @@ describe("player activity", () => {
   });
 
   it("time windows: the player is online only while the cycle fires inside a window", () => {
-    // No crops standing, so stages are exactly 4 h from midnight: cycles fire at 04:00, 08:00, ... 20:00, 24:00.
+    // No crops standing, so cycles are exactly 4 h long from midnight: cycles fire at 04:00, 08:00, ... 20:00, 24:00.
     const sc = singlePlot(layout(), { config: slotsOnly, activity: { kind: "windows", windows: [{ from: 18, to: 22 }] } });
     const r = engine.run(start(sc), 60);
     const sessions = ofKind(r.events, "playerSession").map((e) => e.cycle);
@@ -564,8 +564,8 @@ describe("player activity", () => {
     expect(r.state.inventory.wheat).toBe(2 * yieldOf(72, 1));
   });
 
-  it("default upkeep leaves base crops until decay (72 h of stages), then replants for free", () => {
-    const cycles = Math.ceil((72 * 3600) / stageLen(1));
+  it("default upkeep leaves base crops until decay (72 h of cycles), then replants for free", () => {
+    const cycles = Math.ceil((72 * 3600) / cycleLen(1));
     const r = engine.run(start(singlePlot(layout([["wheat", 5, 5]]), { config: slotsOnly })), cycles);
     expect(r.summary.harvested.wheat).toBeUndefined();
     expect(r.summary.decayed.wheat).toBe(1);

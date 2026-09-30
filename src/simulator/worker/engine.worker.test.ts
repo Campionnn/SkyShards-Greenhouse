@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { LAYOUT_A_CODE, LAYOUT_B_CODE, flow, scenario, stage } from "../testHelpers";
+import { LAYOUT_A_CODE, LAYOUT_B_CODE, flow, scenario, step } from "../testHelpers";
 import type { WorkerRequest, WorkerResponse } from "./protocol";
 
 // Drives the real worker module through its message protocol, with a fake
@@ -21,7 +21,7 @@ afterAll(() => vi.unstubAllGlobals());
 const last = <T extends WorkerResponse["type"]>(type: T) =>
   [...posted].reverse().find((m): m is Extract<WorkerResponse, { type: T }> => m.type === type)!;
 
-const sc = scenario([LAYOUT_A_CODE, LAYOUT_B_CODE, LAYOUT_B_CODE].map((code) => flow([stage("s", { code })])));
+const sc = scenario([LAYOUT_A_CODE, LAYOUT_B_CODE, LAYOUT_B_CODE].map((code) => flow([step("s", { code })])));
 
 describe("session worker", () => {
   it("init -> ready with a snapshot; the starting layouts are placed free", async () => {

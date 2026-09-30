@@ -2,7 +2,7 @@ import type { ActivitySchedule } from "../sim/state";
 import { hourOfDay } from "./clock";
 
 // When is the player online? Every player action - harvesting, watering,
-// upkeep, re-placing, waking Snoozling, vacuuming rats, stage changes - only
+// upkeep, re-placing, waking Snoozling, vacuuming rats, step changes - only
 // happens on active cycles. A cycle "fires" at `firesAt` seconds of simulated
 // time (the end of its growth stage).
 
@@ -25,14 +25,14 @@ export function isActive(schedule: ActivitySchedule, cycle: number, firesAt: num
 
 /**
  * Cycles from `cycle` until the next active cycle (>= 1), estimating future
- * fire times with the current stage length. Infinity if none within the
+ * fire times with the current cycle length. Infinity if none within the
  * lookahead - the player never returns.
  */
 export function cyclesUntilNextActive(
   schedule: ActivitySchedule,
   cycle: number,
   firesAt: number,
-  stageSeconds: number,
+  cycleSeconds: number,
   startTimeOfDay: number
 ): number {
   if (schedule.kind === "everyN") {
@@ -41,7 +41,7 @@ export function cyclesUntilNextActive(
     return Infinity;
   }
   for (let j = 1; j <= LOOKAHEAD_LIMIT; j++) {
-    if (isActive(schedule, cycle + j, firesAt + j * stageSeconds, startTimeOfDay)) return j;
+    if (isActive(schedule, cycle + j, firesAt + j * cycleSeconds, startTimeOfDay)) return j;
   }
   return Infinity;
 }

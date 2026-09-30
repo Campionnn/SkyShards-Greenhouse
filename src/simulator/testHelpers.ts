@@ -2,7 +2,7 @@
 
 import type { SimConfig } from "./config";
 import { createEngine } from "./engine";
-import type { Condition, Flow, FlowStage, LayoutSpec, PolicyOverrides, StageLayout } from "./flow/types";
+import type { Condition, Flow, FlowStep, LayoutSpec, PolicyOverrides, StepLayout } from "./flow/types";
 import { defaultSettings } from "./scenario";
 import { DEVOURER_ROOT, insertPlant, newPlant, newRoot } from "./sim/plants";
 import type { ActivitySchedule, Origin, PlantState, PlayerStats, Scenario, SimulationState } from "./sim/state";
@@ -23,12 +23,12 @@ export function layout(plants: Cellish[] = [], slots: Cellish[] = []): LayoutSpe
   };
 }
 
-export function stage(id: string, spec: StageLayout, exit: Condition[] = [], extra: Partial<FlowStage> = {}): FlowStage {
+export function step(id: string, spec: StepLayout, exit: Condition[] = [], extra: Partial<FlowStep> = {}): FlowStep {
   return { id, label: id, layout: spec, exit, ...extra };
 }
 
-export function flow(stages: FlowStage[], loop = false, startIndex = 0): Flow {
-  return { stages, loop, startIndex };
+export function flow(steps: FlowStep[], loop = false, startIndex = 0): Flow {
+  return { steps, loop, startIndex };
 }
 
 export interface ScenarioOptions {
@@ -41,7 +41,7 @@ export interface ScenarioOptions {
 }
 
 /**
- * Mechanics tests run against a zeroed player (4 h stages, 1x yields) so their
+ * Mechanics tests run against a zeroed player (4 h steps, 1x yields) so their
  * expected numbers stay independent of the app's max-stat defaults.
  */
 export const BASELINE_TEST_STATS: PlayerStats = {
@@ -77,7 +77,7 @@ export function scenario(flows: Flow[], opts: ScenarioOptions = {}): Scenario {
 
 /** One plot holding one static layout. */
 export function singlePlot(spec: LayoutSpec, opts: ScenarioOptions = {}): Scenario {
-  return scenario([flow([stage("only", spec)])], opts);
+  return scenario([flow([step("only", spec)])], opts);
 }
 
 export function start(sc: Scenario): SimulationState {
@@ -98,7 +98,7 @@ export function inject(
   const p =
     kindId === DEVOURER_ROOT
       ? newRoot(state, state.scenario.settings.config, row, col, state.cycle)
-      : newPlant(state, engine.data, state.scenario.settings.config, kindId, row, col, origin, state.cycle, state.lastStageSeconds);
+      : newPlant(state, engine.data, state.scenario.settings.config, kindId, row, col, origin, state.cycle, state.lastCycleSeconds);
   Object.assign(p, patch);
   insertPlant(plot, p);
   return p;
@@ -111,7 +111,7 @@ export const plantAt = (state: SimulationState, plotId: number, row: number, col
 export const NEVER_ACTIVE: ActivitySchedule = { kind: "windows", windows: [] };
 
 /** Cycle-by-cycle stepping helper: the only loop tests use is over run(state, 1). */
-export function stepN(state: SimulationState, n: number) {
+export function runCycles(state: SimulationState, n: number) {
   let s = state;
   const results = [];
   for (let i = 0; i < n; i++) {

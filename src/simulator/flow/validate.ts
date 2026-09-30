@@ -2,7 +2,7 @@ import { kindDef } from "../data/load";
 import type { GameData } from "../data/types";
 import { RARE_DROP_ITEMS } from "../economy/bounty";
 import { RARE_CROP_ITEMS } from "../economy/rareCrops";
-import { ALOE_FRAGMENT } from "../stage/aloe";
+import { ALOE_FRAGMENT } from "../growth/aloe";
 import type { Scenario } from "../sim/state";
 import { resolveLayout } from "./layout";
 import type { Condition, Trigger } from "./types";
@@ -36,7 +36,7 @@ function isKnownItem(data: GameData, item: string): boolean {
 
 /**
  * Reject scenarios that cannot run, and warn about flows that can never
- * leave a stage - that class of mistake is otherwise invisible until a run
+ * leave a step - that class of mistake is otherwise invisible until a run
  * just sits there. Validation never changes the scenario.
  */
 export function validateScenario(scenario: Scenario, data: GameData): ScenarioIssue[] {
@@ -64,41 +64,41 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
 
   scenario.plots.forEach((plot, pi) => {
     const base = `plots[${pi}] (plot ${plot.id})`;
-    const { stages } = plot.flow;
-    if (stages.length === 0) {
-      err(base, "a flow needs at least one stage");
+    const { steps } = plot.flow;
+    if (steps.length === 0) {
+      err(base, "a flow needs at least one step");
       return;
     }
-    if (plot.flow.startIndex < 0 || plot.flow.startIndex >= stages.length) err(`${base}.flow.startIndex`, "out of range");
-    const stageIds = stages.map((s) => s.id);
-    if (new Set(stageIds).size !== stageIds.length) err(`${base}.flow`, "stage ids must be unique");
+    if (plot.flow.startIndex < 0 || plot.flow.startIndex >= steps.length) err(`${base}.flow.startIndex`, "out of range");
+    const stepIds = steps.map((s) => s.id);
+    if (new Set(stepIds).size !== stepIds.length) err(`${base}.flow`, "step ids must be unique");
 
-    stages.forEach((stage, si) => {
-      const path = `${base}.stages[${si}] "${stage.label || stage.id}"`;
-      const { resolved, issues: layoutIssues } = resolveLayout(stage.layout, data);
+    steps.forEach((step, si) => {
+      const path = `${base}.steps[${si}] "${step.label || step.id}"`;
+      const { resolved, issues: layoutIssues } = resolveLayout(step.layout, data);
       for (const m of layoutIssues) err(`${path}.layout`, m);
       const kinds = new Set(resolved.plants.map((p) => p.kindId));
 
-      const isLast = si === stages.length - 1;
-      const routes = stage.routes ?? [];
-      if (stage.exit.length === 0 && routes.length === 0 && (!isLast || plot.flow.loop) && stages.length > 1) {
-        warn(`${path}.exit`, "no exit triggers: the plot will stay on this stage forever");
+      const isLast = si === steps.length - 1;
+      const routes = step.routes ?? [];
+      if (step.exit.length === 0 && routes.length === 0 && (!isLast || plot.flow.loop) && steps.length > 1) {
+        warn(`${path}.exit`, "no exit triggers: the plot will stay on this step forever");
       }
-      const known = (id: string) => stageIds.includes(id);
-      if (stage.next !== undefined && !known(stage.next)) err(`${path}.next`, `goes to stage "${stage.next}", which does not exist`);
+      const known = (id: string) => stepIds.includes(id);
+      if (step.next !== undefined && !known(step.next)) err(`${path}.next`, `goes to step "${step.next}", which does not exist`);
       const checkList = (list: Condition[], where: string) => {
         for (const c of list) checkCondition(c, where, kinds, resolved.slots.length, known);
       };
-      checkList(stage.exit, `${path}.exit`);
+      checkList(step.exit, `${path}.exit`);
       routes.forEach((route, ri) => {
         const where = `${path}.routes[${ri}]`;
-        if (!known(route.to)) err(where, `goes to stage "${route.to}", which does not exist`);
+        if (!known(route.to)) err(where, `goes to step "${route.to}", which does not exist`);
         if (route.when.length === 0) warn(where, "has no conditions, so it never fires");
         checkList(route.when, where);
       });
-      if (stage.watch && layoutIssues.length === 0) {
+      if (step.watch && layoutIssues.length === 0) {
         const slotKeys = new Set(resolved.slots.map((s) => `${s.row},${s.col}`));
-        const stale = stage.watch.filter((k) => !slotKeys.has(k));
+        const stale = step.watch.filter((k) => !slotKeys.has(k));
         if (stale.length) warn(`${path}.watch`, `watched cell${stale.length === 1 ? "" : "s"} ${stale.join(" ")} ${stale.length === 1 ? "is" : "are"} not a target in this layout and will be ignored`);
       }
     });
@@ -110,15 +110,15 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
       for (const inner of c.of) checkCondition(inner, path, kinds, slotCount, known);
       return;
     }
-    if (c.kind === "stageVisits") {
-      if (!(c.count >= 1)) err(path, "stage visits count must be >= 1");
-      if (c.sinceStage !== undefined && !known(c.sinceStage)) err(path, `counts since stage "${c.sinceStage}", which does not exist`);
+    if (c.kind === "stepVisits") {
+      if (!(c.count >= 1)) err(path, "step visits count must be >= 1");
+      if (c.sinceStep !== undefined && !known(c.sinceStep)) err(path, `counts since step "${c.sinceStep}", which does not exist`);
       return;
     }
     checkTrigger(c, path, kinds, slotCount);
   }
 
-  function checkTrigger(t: Exclude<Trigger, { kind: "stageVisits" }>, path: string, kinds: Set<string>, slotCount: number) {
+  function checkTrigger(t: Exclude<Trigger, { kind: "stepVisits" }>, path: string, kinds: Set<string>, slotCount: number) {
     switch (t.kind) {
       case "cycles":
         if (!(t.n >= 1)) err(path, "cycles trigger needs n >= 1");
@@ -136,7 +136,7 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
         break;
       case "targetsFilled":
         if (!(t.count >= 0)) err(path, "count must be >= 0 (0 = every target)");
-        else if (slotCount === 0) warn(path, "this stage's layout has no targets, so this trigger can never fire");
+        else if (slotCount === 0) warn(path, "this step's layout has no targets, so this trigger can never fire");
         else if (t.count > slotCount) warn(path, `the layout has only ${slotCount} targets, so ${t.count} can never be filled`);
         break;
       case "fullyGrown":
@@ -155,7 +155,7 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
         }
         const missing = m.requirements.filter((r) => !kinds.has(r.crop)).map((r) => r.crop);
         if (missing.length && m.special !== "requires_zero_adjacent") {
-          warn(path, `this stage's layout has no ${missing.join(", ")}, so ${m.name} can only appear if they spawn first`);
+          warn(path, `this step's layout has no ${missing.join(", ")}, so ${m.name} can only appear if they spawn first`);
         }
         break;
       }

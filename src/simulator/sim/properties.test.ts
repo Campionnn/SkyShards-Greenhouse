@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { footprint } from "../grid/cells";
-import { engine, flow, layout, scenario, stage } from "../testHelpers";
+import { engine, flow, layout, scenario, step } from "../testHelpers";
 import type { Scenario, SimulationState } from "./state";
 
 // Invariants over random small scenarios. Each run is short; fast-check
@@ -21,7 +21,7 @@ const arbScenario: fc.Arbitrary<Scenario> = fc
   })
   .map(({ cells, kinds, seed, n, stock, upkeep, plots }) => {
     const spec = layout(cells.map((c, i) => [kinds[i], Math.floor(c / 10), c % 10]));
-    const f = flow([stage("a", spec, [{ kind: "cycles", n: 5 }]), stage("b", layout(spec.plants.slice(0, 3).map((p) => [p.kindId, p.row, p.col])), [{ kind: "cycles", n: 4 }])], true);
+    const f = flow([step("a", spec, [{ kind: "cycles", n: 5 }]), step("b", layout(spec.plants.slice(0, 3).map((p) => [p.kindId, p.row, p.col])), [{ kind: "cycles", n: 4 }])], true);
     return scenario(Array.from({ length: plots }, () => f), {
       seed,
       activity: { kind: "everyN", n, offset: 0 },
@@ -100,7 +100,7 @@ describe("properties", () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 6 }), fc.integer({ min: 0, max: 6 }), (low, extra) => {
         const build = (stock: number) =>
-          scenario([flow([stage("a", layout([["chloronite", 1, 1], ["chloronite", 1, 3], ["chloronite", 3, 1]]))])], {
+          scenario([flow([step("a", layout([["chloronite", 1, 1], ["chloronite", 1, 3], ["chloronite", 3, 1]]))])], {
             config: { spawnCells: "slotsOnly" },
             inventory: { chloronite: stock },
           });
@@ -115,7 +115,7 @@ describe("properties", () => {
 it("a 500-cycle, 3-plot run stays fast enough for the worker", () => {
   const busy = scenario(
     [1, 2, 3].map(() =>
-      flow([stage("a", layout(KINDS.slice(0, 8).flatMap((k, i) => [[k, 2, i] as [string, number, number], [k, 6, i] as [string, number, number]])))])
+      flow([step("a", layout(KINDS.slice(0, 8).flatMap((k, i) => [[k, 2, i] as [string, number, number], [k, 6, i] as [string, number, number]])))])
     ),
     { inventory: {} }
   );

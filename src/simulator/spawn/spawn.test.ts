@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../config";
 import { defaultGameData } from "../data/default";
 import { seedRng } from "../rng";
-import { engine, flow, layout, scenario, stage, start } from "../testHelpers";
+import { engine, flow, layout, scenario, step, start } from "../testHelpers";
 import { candidateMutations } from "./candidates";
 import { effectiveWeight, fullWeightMultiplicity, multiplicity } from "./multiplicity";
 import { applyMutationChanceBonus, buildPool, poolDenominator, rollPool, spawnProbability, type SpawnPool } from "./pool";
@@ -172,7 +172,7 @@ describe("Bioanalysis accessory (mutation chance bonus)", () => {
     // each session (the defaults), which frees the slot again.
     const spec = layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]);
     const spawned = (bonus: number) => {
-      const sc = scenario([flow([stage("only", spec)])], {
+      const sc = scenario([flow([step("only", spec)])], {
         seed: 3,
         config: { spawnCells: "slotsOnly" },
         stats: { mutationChanceBonus: bonus },

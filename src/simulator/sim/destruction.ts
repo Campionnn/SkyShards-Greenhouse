@@ -15,19 +15,19 @@ function willGrow(p: PlantState): boolean {
 }
 
 /**
- * Game-tick sub-step "destruction" - gate side effects that reshape the plot,
+ * Game-tick phase "destruction" - gate side effects that reshape the plot,
  * applied FIRST in the tick (before effects and growth):
  * - Devourer: while growing, 40% per tick to grow a root into one of its 8
  *   neighbouring cells (destroying what is there). Every root then has its own
  *   40% per tick to spread another. Roots are separate entities the player
  *   breaks while online; a fully grown Devourer makes no new roots.
  * - Chorus Fruit: teleports every tick it starts still growing to any other
- *   cell (AIR included), turning the landing cell into End Stone, then advances in the growth step. So a stage-11 Chorus Fruit (of
+ *   cell (AIR included), turning the landing cell into End Stone, then advances in the growth phase. So a stage-11 Chorus Fruit (of
  *   12) teleports one last time on the tick it becomes fully grown, and a
  *   fully grown one never teleports.
  * Blastberry explosions happen the moment one breaks (sim/explosion.ts).
  */
-export function stepDestruction(plot: PlotState, ctx: CycleCtx): void {
+export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
   const { config } = ctx;
   const rng = ctx.state.rng;
 

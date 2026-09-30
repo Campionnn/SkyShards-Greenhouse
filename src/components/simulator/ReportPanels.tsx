@@ -18,9 +18,9 @@ const perDay = (value: number, summary: RunSummary) => (summary.elapsedSeconds >
 export const MoneyPanel: React.FC<{
   summary: RunSummary;
   previous: RunSummary | null;
-  /** Current growth-stage (cycle) length in seconds; it depends on the unique crops standing. */
-  stageSeconds?: number;
-}> = ({ summary, previous, stageSeconds }) => {
+  /** Current cycle length in seconds (one growth stage); it depends on the unique crops standing. */
+  cycleSeconds?: number;
+}> = ({ summary, previous, cycleSeconds }) => {
   const [showPlots, setShowPlots] = useState(false);
   const rows: { label: string; get: (s: RunSummary) => number; strong?: boolean; negative?: boolean; hint?: string }[] = [
     { label: "Crops", get: (s) => s.revenue.crops, hint: "Base-crop drops (incl. mutation bundles), valued at NPC price when harvested." },
@@ -69,14 +69,14 @@ export const MoneyPanel: React.FC<{
       <div className="border-t border-slate-700/60 mt-3 pt-2">
         <Stat label="Cycles run" value={formatCount(summary.cyclesRun)} />
         <Stat label="Simulated time" value={formatDuration(summary.elapsedSeconds)} />
-        {stageSeconds !== undefined && stageSeconds > 0 && (
+        {cycleSeconds !== undefined && cycleSeconds > 0 && (
           <>
             <Stat
               label="Time per cycle"
-              value={`${formatDuration(stageSeconds)} ${Math.round(stageSeconds % 60)}s`}
+              value={`${formatDuration(cycleSeconds)} ${Math.round(cycleSeconds % 60)}s`}
               title="One growth stage at the current stats and unique crops standing. It changes if the unique-crop count changes."
             />
-            <Stat label="Cycles per day" value={`~${(86400 / stageSeconds).toFixed(1)}`} title="24 h / time per cycle, at the current cycle length." />
+            <Stat label="Cycles per day" value={`~${(86400 / cycleSeconds).toFixed(1)}`} title="24 h / time per cycle, at the current cycle length." />
           </>
         )}
         <Stat label="Mutations spawned" value={`${formatCount(spawned)} (${summary.mutationsPerDay.toFixed(1)}/day)`} />
@@ -122,7 +122,7 @@ const UptimeBar: React.FC<{ u: UptimeCounts }> = ({ u }) => {
   );
 };
 
-// ---- Uptime tree: plot > rotation stage > mutation > cell ------------------
+// ---- Uptime tree: plot > flow step > mutation > cell ------------------
 
 interface UptimeNode {
   key: string;
@@ -177,11 +177,11 @@ function buildUptimeTree(spots: SpotReport[]): UptimeNode[] {
   return groupBy(spots, (s) => String(s.plotId))
     .sort((a, b) => Number(a[0]) - Number(b[0]))
     .map(([plotId, plotSpots]) => {
-      const stages = groupBy(plotSpots, (s) => s.stageId)
-        .sort((a, b) => (a[1][0].stageIndex < 0 ? 1e9 : a[1][0].stageIndex) - (b[1][0].stageIndex < 0 ? 1e9 : b[1][0].stageIndex))
-        .map(([stageId, stageSpots]) => {
-          const first = stageSpots[0];
-          const mutations = groupBy(stageSpots, (s) => s.mutationId)
+      const steps = groupBy(plotSpots, (s) => s.stepId)
+        .sort((a, b) => (a[1][0].stepIndex < 0 ? 1e9 : a[1][0].stepIndex) - (b[1][0].stepIndex < 0 ? 1e9 : b[1][0].stepIndex))
+        .map(([stepId, stepSpots]) => {
+          const first = stepSpots[0];
+          const mutations = groupBy(stepSpots, (s) => s.mutationId)
             .map(([mutationId, mSpots]) => {
               const cells = mSpots
                 .sort((a, b) => a.row - b.row || a.col - b.col)
@@ -202,12 +202,12 @@ function buildUptimeTree(spots: SpotReport[]): UptimeNode[] {
             .sort(worstFirst);
           const label = (
             <span className="text-slate-300 break-words">
-              {first.stageIndex >= 0 && <span className="text-slate-500">Stage {first.stageIndex + 1} · </span>}
-              {first.stageLabel}
-              {first.stageIndex < 0 && <span className="text-slate-500"> (removed)</span>}
+              {first.stepIndex >= 0 && <span className="text-slate-500">Step {first.stepIndex + 1} · </span>}
+              {first.stepLabel}
+              {first.stepIndex < 0 && <span className="text-slate-500"> (removed)</span>}
             </span>
           );
-          return node(stageId, label, stageSpots, mutations);
+          return node(stepId, label, stepSpots, mutations);
         });
       return node(
         plotId,
@@ -216,11 +216,11 @@ function buildUptimeTree(spots: SpotReport[]): UptimeNode[] {
           <span className="text-slate-500 font-normal">
             {" "}
             · {plotSpots.length} target{plotSpots.length === 1 ? "" : "s"}
-            {stages.length > 1 ? ` in ${stages.length} stages` : ""}
+            {steps.length > 1 ? ` in ${steps.length} steps` : ""}
           </span>
         </span>,
         plotSpots,
-        stages
+        steps
       );
     });
 }
@@ -277,7 +277,7 @@ const UptimeRow: React.FC<{ n: UptimeNode; depth: number; open: Set<string>; tog
   );
 };
 
-/** Checked-target uptime, grouped by plot; expand a plot for its rotation stages, a stage for its mutations, a mutation for its cells. */
+/** Checked-target uptime, grouped by plot; expand a plot for its flow steps, a step for its mutations, a mutation for its cells. */
 export const UptimeTree: React.FC<{ spots: SpotReport[] }> = ({ spots }) => {
   const tree = useMemo(() => buildUptimeTree(spots), [spots]);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
@@ -310,7 +310,7 @@ export const UptimeTree: React.FC<{ spots: SpotReport[] }> = ({ spots }) => {
         </button>
       </div>
       <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.5rem] gap-x-3 pb-1 text-slate-500">
-        <span className="pl-[18px]">plot / stage / mutation</span>
+        <span className="pl-[18px]">plot / step / mutation</span>
         <span className="text-right">uptime</span>
         <span className="text-right" title="Cycles a checked cell sat empty without its requirements">no req.</span>
         <span className="text-right" title="Cycles something else blocked a checked cell">blocked</span>
@@ -340,7 +340,7 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
     <Panel
       title="Sustainability"
       icon={report.sustainable ? <ShieldCheck /> : <ShieldAlert />}
-      description="Uptime of the target cells you check (every target unless you pick some in a stage's rotation editor). A checked cell is up while its mutation stands there or could spawn there now. It is down while something else blocks it, or while it sits empty without the requirements to grow its mutation - that last one means the rotation is not sustainable."
+      description="Uptime of the target cells you check (every target unless you pick some for a step in the flow editor). A checked cell is up while its mutation stands there or could spawn there now. It is down while something else blocks it, or while it sits empty without the requirements to grow its mutation - that last one means the flow is not sustainable."
       actions={
         <InfoHint title="How uptime is counted" width={300}>
           Every cycle, at the spawn roll, each checked target cell is one of: growing (its mutation is there), ready (empty and its requirements hold),
@@ -351,7 +351,7 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
     >
       {t.watched === 0 ? (
         <div className="rounded-md bg-slate-700/30 border border-slate-600/40 px-3 py-2 text-xs text-slate-300">
-          No target cells checked yet. Add targets to a stage's layout, or pick which to check in the rotation editor.
+          No target cells checked yet. Add targets to a step's layout, or pick which to check in the flow editor.
         </div>
       ) : report.sustainable ? (
         <div className="rounded-md bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-xs text-emerald-200 space-y-1.5">
@@ -584,7 +584,7 @@ export const InventoryPanel: React.FC<{
             {busy
               ? "Stop the run to change the inventory."
               : atStart
-                ? "This is what you start with. It is saved with the scenario and used again on every Reset. Placing the starting layouts is free; this stock pays for mutation items, fire, fermento and dead plants placed later (re-placing after decay, or a later stage)."
+                ? "This is what you start with. It is saved with the scenario and used again on every Reset. Placing the starting layouts is free; this stock pays for mutation items, fire, fermento and dead plants placed later (re-placing after decay, or a later step)."
                 : "The run has started: changes apply to it from now on (not revenue, not produced). Reset goes back to the starting inventory."}
           </p>
         </div>

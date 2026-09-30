@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ALOE_FRAGMENT, aloeHarvestItems, aloeRow } from "../stage/aloe";
-import { engine, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, stage, start } from "../testHelpers";
+import { ALOE_FRAGMENT, aloeHarvestItems, aloeRow } from "../growth/aloe";
+import { engine, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, step, start } from "../testHelpers";
 import type { ActivitySchedule, TimedEvent } from "./state";
 
 const slotsOnly = { spawnCells: "slotsOnly" as const };
 const blank = (activity: ActivitySchedule = NEVER_ACTIVE, config: Record<string, unknown> = {}) =>
-  start(scenario([flow([stage("a", layout())])], { config: { ...slotsOnly, ...config }, activity }));
+  start(scenario([flow([step("a", layout())])], { config: { ...slotsOnly, ...config }, activity }));
 const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
 
@@ -85,7 +85,7 @@ describe("All-in Aloe", () => {
 
   it("fragments in the inventory turn into All-in Aloe automatically, 9 at a time", async () => {
     const { convertAloeFragments } = await import("./inventory");
-    const s = start(scenario([flow([stage("a", layout())])], { inventory: { all_in_aloe_fragment: 12 } }));
+    const s = start(scenario([flow([step("a", layout())])], { inventory: { all_in_aloe_fragment: 12 } }));
     expect(s.inventory.all_in_aloe).toBe(1); // converted at setup
     expect(s.inventory.all_in_aloe_fragment).toBe(3);
     s.inventory.all_in_aloe_fragment += 6;
@@ -106,7 +106,7 @@ describe("All-in Aloe", () => {
   it("the online player harvests it at the target stage for fragments + crops", () => {
     // Find a seed where the aloe survives 8 -> 9 without resetting (18% reset chance at 9).
     for (let seed = 1; seed < 40; seed++) {
-      const s = start(scenario([flow([stage("a", layout())])], { seed, config: { ...slotsOnly, aloeHarvestStage: 9 } }));
+      const s = start(scenario([flow([step("a", layout())])], { seed, config: { ...slotsOnly, aloeHarvestStage: 9 } }));
       inject(s, 1, "all_in_aloe", 5, 5, "spawned", { stage: 8 });
       const r = engine.run(s, 1);
       const h = ofKind(r.events, "harvested")[0];
@@ -119,8 +119,8 @@ describe("All-in Aloe", () => {
     throw new Error("no seed without a reset");
   });
 
-  it("can be harvested at any stage: a stage change takes it at its current stage", () => {
-    const f = flow([stage("a", layout(), [{ kind: "cycles", n: 1 }]), stage("b", layout(), [], { fullClear: true })], false);
+  it("can be harvested at any stage: a step change takes it at its current stage", () => {
+    const f = flow([step("a", layout(), [{ kind: "cycles", n: 1 }]), step("b", layout(), [], { fullClear: true })], false);
     const s = start(scenario([f], { config: slotsOnly }));
     inject(s, 1, "all_in_aloe", 5, 5, "spawned", { stage: 2 });
     const r = engine.run(s, 1);
@@ -133,7 +133,7 @@ describe("All-in Aloe", () => {
 describe("Magic Jellybean", () => {
   // Zeroed stats, no base crops standing: yield sum 1, FF x1, so drops are the raw multiplier.
   const online = (config: Record<string, unknown> = {}) =>
-    start(scenario([flow([stage("a", layout())])], { config: { ...slotsOnly, ...config }, activity: { kind: "everyN", n: 1, offset: 0 } }));
+    start(scenario([flow([step("a", layout())])], { config: { ...slotsOnly, ...config }, activity: { kind: "everyN", n: 1, offset: 0 } }));
   const jellyHarvest = (events: TimedEvent[]) => ofKind(events, "harvested").find((e) => e.kindId === "magic_jellybean");
 
   it("the player only harvests it at stage 120: 10x jellybeans and 10x the stage-12 crop bundle", () => {
@@ -147,8 +147,8 @@ describe("Magic Jellybean", () => {
     expect(h.drops).toMatchObject({ magic_jellybean: 10, moonflower: 6000, sunflower: 6000, sugar_cane: 12000 });
   });
 
-  it("broken early by a stage change, it still drops at its current stage (60 = 5x / 5x); below 12 nothing", () => {
-    const f = flow([stage("a", layout(), [{ kind: "cycles", n: 1 }]), stage("b", layout(), [], { fullClear: true })], false);
+  it("broken early by a step change, it still drops at its current stage (60 = 5x / 5x); below 12 nothing", () => {
+    const f = flow([step("a", layout(), [{ kind: "cycles", n: 1 }]), step("b", layout(), [], { fullClear: true })], false);
     const s = start(scenario([f], { config: slotsOnly }));
     inject(s, 1, "magic_jellybean", 5, 5, "spawned", { stage: 59 }); // 60 after the tick
     inject(s, 1, "magic_jellybean", 7, 7, "spawned", { stage: 5 });
@@ -162,7 +162,7 @@ describe("Magic Jellybean", () => {
 describe("harvest yield", () => {
   const harvestAshwreath = (seed: number) => {
     // No base crops standing: yield sum = 1 + 0.5 upgrade = 1.5. FF 0, Evergreen 0.6.
-    const s = start(scenario([flow([stage("a", layout())])], { seed, config: slotsOnly, stats: { plantYieldUpgrade: 0.5, evergreenChip: 0.6 } }));
+    const s = start(scenario([flow([step("a", layout())])], { seed, config: slotsOnly, stats: { plantYieldUpgrade: 0.5, evergreenChip: 0.6 } }));
     inject(s, 1, "ashwreath", 5, 5, "spawned", { lockedEffects: [], fullyGrownAtCycle: 0 });
     return ofKind(engine.run(s, 1).events, "harvested").find((e) => e.kindId === "ashwreath")!;
   };
@@ -183,7 +183,7 @@ describe("harvest yield", () => {
 describe("Zombud", () => {
   const grown = { stage: 16, lockedEffects: [], fullyGrownAtCycle: 0 };
   const online = (inventory: Record<string, number> = {}, stats: Record<string, number> = {}) =>
-    start(scenario([flow([stage("a", layout())])], { config: slotsOnly, activity: { kind: "everyN", n: 1, offset: 0 }, inventory, stats }));
+    start(scenario([flow([step("a", layout())])], { config: slotsOnly, activity: { kind: "everyN", n: 1, offset: 0 }, inventory, stats }));
 
   it("fills empty ring cells with dead plants from stock, then gives 1 Zombud per adjacent dead plant and consumes them", () => {
     const s = online({ dead_plant: 3 }, { plantYieldUpgrade: 0.9 });
@@ -249,7 +249,7 @@ describe("Zombud", () => {
 describe("Timestalk", () => {
   it("gives exactly 1 Timestalk per harvest, with no yield scaling", () => {
     for (let seed = 1; seed <= 20; seed++) {
-      const s = start(scenario([flow([stage("a", layout())])], { seed, config: slotsOnly, stats: { plantYieldUpgrade: 0.9 } }));
+      const s = start(scenario([flow([step("a", layout())])], { seed, config: slotsOnly, stats: { plantYieldUpgrade: 0.9 } }));
       inject(s, 1, "timestalk", 5, 5, "spawned", { stage: 14, lockedEffects: [], fullyGrownAtCycle: 0 });
       const h = ofKind(engine.run(s, 1).events, "harvested").find((e) => e.kindId === "timestalk")!;
       expect(h.drops.timestalk).toBe(1);

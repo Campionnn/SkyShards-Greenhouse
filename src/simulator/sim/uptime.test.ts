@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { FlowStage, LayoutSpec } from "../flow/types";
-import { engine, flow, inject, layout, NEVER_ACTIVE, scenario, stage, start } from "../testHelpers";
+import type { FlowStep, LayoutSpec } from "../flow/types";
+import { engine, flow, inject, layout, NEVER_ACTIVE, scenario, step, start } from "../testHelpers";
 
 // Sustainability = uptime of watched target cells: a watched cell counts as
 // up while its target stands there or could spawn there now. Sitting empty
@@ -16,8 +16,8 @@ const ASHWREATH_RING: [string, number, number][] = [
   ["fire", 4, 5],
 ];
 
-const one = (spec: LayoutSpec, extra: Partial<FlowStage> = {}, config = {}) =>
-  start(scenario([flow([stage("only", spec, [], extra)])], { config: { ...slotsOnly, ...config }, activity: NEVER_ACTIVE }));
+const one = (spec: LayoutSpec, extra: Partial<FlowStep> = {}, config = {}) =>
+  start(scenario([flow([step("only", spec, [], extra)])], { config: { ...slotsOnly, ...config }, activity: NEVER_ACTIVE }));
 
 describe("target uptime", () => {
   it("a target whose requirements hold is up, and the run is sustainable", () => {
@@ -29,7 +29,7 @@ describe("target uptime", () => {
     expect(report.uptime).toBe(1);
     expect(report.sustainable).toBe(true);
     expect(report.spots).toHaveLength(1);
-    expect(report.spots[0]).toMatchObject({ plotId: 1, stageId: "only", mutationId: "ashwreath", row: 4, col: 4 });
+    expect(report.spots[0]).toMatchObject({ plotId: 1, stepId: "only", mutationId: "ashwreath", row: 4, col: 4 });
   });
 
   it("an empty target without its requirements loses uptime and fails the check", () => {
@@ -59,7 +59,7 @@ describe("target uptime", () => {
     expect(report.sustainable).toBe(true);
   });
 
-  it("watch: [] turns the check off for a stage; a subset watches only those targets", () => {
+  it("watch: [] turns the check off for a step; a subset watches only those targets", () => {
     const spec = layout([], [
       ["ashwreath", 4, 4],
       ["ashwreath", 7, 7],
@@ -77,26 +77,26 @@ describe("target uptime", () => {
     expect(engine.analyse(all).totals.watched).toBe(6);
   });
 
-  it("records each stage of a rotation separately", () => {
+  it("records each step of a flow separately", () => {
     const a = layout([], [["ashwreath", 4, 4]]);
     const b = layout(ASHWREATH_RING, [["ashwreath", 4, 4]]);
     const sc = (inventory: Record<string, number>) =>
-      scenario([flow([stage("bare", a, [{ kind: "cycles", n: 2 }]), stage("ringed", b)], false)], { config: slotsOnly, inventory });
+      scenario([flow([step("bare", a, [{ kind: "cycles", n: 2 }]), step("ringed", b)], false)], { config: slotsOnly, inventory });
     const r = engine.run(start(sc({ fire: 2 })), 5);
     const report = engine.analyse(r.state);
-    const byStage = Object.fromEntries(report.spots.map((s) => [s.stageId, s]));
-    expect(byStage.bare.requirements).toBe(2);
-    expect(byStage.ringed.requirements).toBe(0);
-    expect(byStage.ringed.watched).toBe(3);
+    const byStep = Object.fromEntries(report.spots.map((s) => [s.stepId, s]));
+    expect(byStep.bare.requirements).toBe(2);
+    expect(byStep.ringed.requirements).toBe(0);
+    expect(byStep.ringed.watched).toBe(3);
 
-    // Without the fire to lay the second stage out, it goes into debt and its target loses uptime too.
+    // Without the fire to lay the second step out, it goes into debt and its target loses uptime too.
     const broke = engine.analyse(engine.run(start(sc({})), 5).state);
     expect(broke.debtCount).toBeGreaterThan(0);
-    expect(broke.spots.find((s) => s.stageId === "ringed")!.requirements).toBe(3);
+    expect(broke.spots.find((s) => s.stepId === "ringed")!.requirements).toBe(3);
   });
 
   it("warns about watched cells that are not targets in the layout", () => {
-    const sc = scenario([flow([stage("only", layout([], [["ashwreath", 4, 4]]), [], { watch: ["4,4", "1,1"] })])]);
+    const sc = scenario([flow([step("only", layout([], [["ashwreath", 4, 4]]), [], { watch: ["4,4", "1,1"] })])]);
     expect(engine.validate(sc).some((i) => i.level === "warning" && i.message.includes("1,1"))).toBe(true);
   });
 

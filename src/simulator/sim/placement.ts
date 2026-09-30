@@ -32,10 +32,10 @@ export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, sc
  * Why plants are being placed:
  * - setup:   the scenario's starting layouts. Always placed, free - the run
  *            starts from the layout as entered, not from the starting inventory.
- * - stage:   a later stage of a rotation laying its layout out.
+ * - step:   a later step of a flow laying its layout out.
  * - replace: re-placing what decayed or was destroyed (a recurring cost).
  */
-export type PlacementMode = "setup" | "stage" | "replace";
+export type PlacementMode = "setup" | "step" | "replace";
 
 /**
  * Place every layout plant that is missing and whose cells are free. Base
@@ -56,7 +56,7 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
     } else if (replacement) {
       ctx.state.summary.replacements += 1;
     }
-    const p = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, d.origin, ctx.cycle, ctx.stageSeconds);
+    const p = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, d.origin, ctx.cycle, ctx.cycleSeconds);
     insertPlant(plot, p);
     for (const idx of footprint(d.row, d.col, d.size)) occ[idx] = p;
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, origin: p.origin, replacement });
@@ -67,7 +67,7 @@ const matches = (p: PlantState, d: ResolvedLayout["plants"][number]) =>
   p.kindId === d.kindId && p.row === d.row && p.col === d.col && p.size === d.size && p.origin === d.origin;
 
 /**
- * Hybrid rotations: is this natural spawn standing exactly where the layout
+ * Hybrid flows: is this natural spawn standing exactly where the layout
  * places the same mutation? Then it IS that layout input - growing or fully
  * grown, it counts toward its neighbours' requirements - and nothing needs
  * to be spent to put one there (`spawnsFillLayoutInputs`).
@@ -78,23 +78,23 @@ export function layoutInputAt(p: PlantState, layout: ResolvedLayout, config: Sim
 }
 
 /**
- * Enter a stage: diff the plot against the new layout. Unless it is a full
+ * Enter a step: diff the plot against the new layout. Unless it is a full
  * clear:
  * - a plant identical to the layout's (kind, anchor, origin) is kept with its timers;
  * - a natural spawn standing where the layout places the same mutation is
- *   kept as that input (hybrid rotations, `spawnsFillLayoutInputs`);
+ *   kept as that input (hybrid flows, `spawnsFillLayoutInputs`);
  * - a natural spawn entirely outside the new layout's plant cells is left alone.
  * Everything else is removed by the player; then the new plants are placed.
  */
-export function applyStageLayout(
+export function applyStepLayout(
   plot: PlotState,
   layout: ResolvedLayout,
   ctx: CycleCtx,
   scratch: TickScratch,
   fullClear: boolean,
-  mode: "setup" | "stage" = "stage"
+  mode: "setup" | "step" = "step"
 ): void {
-  const keepIdentical = ctx.config.keepIdenticalOnStageChange && !fullClear;
+  const keepIdentical = ctx.config.keepIdenticalOnStepChange && !fullClear;
   const desiredAt = new Map(layout.plants.map((d) => [cellIndex(d.row, d.col), d]));
   const desiredCells = new Set(layout.plants.flatMap((d) => footprint(d.row, d.col, d.size)));
 
@@ -105,12 +105,12 @@ export function applyStageLayout(
     if (!fullClear && layoutInputAt(p, layout, ctx.config)) continue;
     const growingOutsideLayout = p.origin === "spawned" && !footprint(p.row, p.col, p.size).some((c) => desiredCells.has(c));
     if (!fullClear && growingOutsideLayout) continue;
-    removeByPlayer(plot, p, ctx, scratch, "stage change");
+    removeByPlayer(plot, p, ctx, scratch, "step change");
   }
 
   plot.slots = layout.slots.map((s) => ({ ...s }));
   plot.groundTiles = { ...layout.groundTiles };
-  plot.groundOverrides = {}; // Chorus changes persist only within the stage being exited.
+  plot.groundOverrides = {}; // Chorus changes persist only within the step being exited.
   plot.slotIneligibleCycles = {};
   plot.watchStatus = {};
   closePlotDebts(ctx.state, plot.id);

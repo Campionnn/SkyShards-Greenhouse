@@ -20,7 +20,7 @@ export function ringCounts(occ: Occupancy, row: number, col: number, size: numbe
 /**
  * The ground is checked per cell, not just at the anchor: a 2×2 or 3×3
  * mutation must stand entirely on its required ground. Chorus conversion wins
- * over the stage's painted ground until the next stage.
+ * over the step's painted ground until the next step.
  */
 export function groundFits(plot: PlotState, row: number, col: number, m: MutationDef): boolean {
   return footprint(row, col, m.size).every((c) => {

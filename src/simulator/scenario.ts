@@ -42,12 +42,12 @@ export function defaultSettings(): Settings {
   };
 }
 
-/** A one-stage flow: a static layout. */
+/** A one-step flow: a static layout. */
 export function staticFlow(code: string, label = "Layout"): Flow {
-  return { stages: [{ id: "stage-1", label, layout: { code }, exit: [] }], loop: false, startIndex: 0 };
+  return { steps: [{ id: "step-1", label, layout: { code }, exit: [] }], loop: false, startIndex: 0 };
 }
 
-/** One plot per share code, each holding its layout as a single stage. */
+/** One plot per share code, each holding its layout as a single step. */
 export function scenarioFromShareCodes(codes: string[], settings: Settings = defaultSettings()): Scenario {
   return {
     plots: codes.slice(0, 3).map((code, i) => ({ id: i + 1, flow: staticFlow(code, `Plot ${i + 1} layout`) })),

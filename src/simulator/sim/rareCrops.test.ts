@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { armorRareCrops, overbloomMultiplier, rollRareCount } from "../economy/rareCrops";
 import { npcPriceSource } from "../economy/prices";
 import { seedRng } from "../rng";
-import { engine, flow, inject, layout, scenario, stage, start } from "../testHelpers";
+import { engine, flow, inject, layout, scenario, step, start } from "../testHelpers";
 import type { PlayerStats, TimedEvent } from "./state";
 
 const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
@@ -10,7 +10,7 @@ const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
 
 /** Harvest one fully grown spawned Ashwreath (common) with the given stats. */
 function harvestOne(seed: number, stats: Partial<PlayerStats>, config: Record<string, unknown> = {}) {
-  const s = start(scenario([flow([stage("a", layout())])], { seed, config: { spawnCells: "slotsOnly", ...config }, stats }));
+  const s = start(scenario([flow([step("a", layout())])], { seed, config: { spawnCells: "slotsOnly", ...config }, stats }));
   inject(s, 1, "ashwreath", 5, 5, "spawned", { lockedEffects: [], fullyGrownAtCycle: 0 });
   const r = engine.run(s, 1);
   return { h: ofKind(r.events, "harvested").find((e) => e.kindId === "ashwreath")!, r };
@@ -110,7 +110,7 @@ describe("NPC prices", () => {
 
 describe("adding items to a live run", () => {
   it("changes the inventory without moving time, is not produced or revenue, and never goes below 0", () => {
-    const s = engine.run(start(scenario([flow([stage("a", layout([["wheat", 0, 0]]))])])), 3).state;
+    const s = engine.run(start(scenario([flow([step("a", layout([["wheat", 0, 0]]))])])), 3).state;
     const next = engine.addItems(s, { chloronite: 5, fermento: -3 });
     expect(next.cycle).toBe(s.cycle);
     expect(next.inventory.chloronite).toBe(5);

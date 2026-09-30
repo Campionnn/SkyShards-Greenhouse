@@ -4,13 +4,13 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { GreenhouseDataProvider, InfoModalProvider } from "../../context";
 import type { SimulationView } from "../../hooks/useSimulation";
-import { engine, flow, LAYOUT_A_CODE, LAYOUT_B_CODE, scenario, stage } from "../../simulator/testHelpers";
+import { engine, flow, LAYOUT_A_CODE, LAYOUT_B_CODE, scenario, step } from "../../simulator/testHelpers";
 import { ToastProvider } from "../ui";
 import { PlotMarkLegend, PlotView } from "./PlotView";
 import { LayoutPickerPanel } from "./LayoutPicker";
 import { InventoryPanel, MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
-import { RotationEditor, WatchPicker } from "./RotationEditor";
-import { EventLog, RunControls, StageTimeline } from "./RunPanels";
+import { FlowEditor, WatchPicker } from "./FlowEditor";
+import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
 import { ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 
 // Server-render every simulator panel against a real simulation, to catch
@@ -18,7 +18,7 @@ import { ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 
 const sc = scenario(
   [LAYOUT_A_CODE, LAYOUT_B_CODE].map((code, i) =>
-    flow([stage("a", { code }, [{ kind: "cycles", n: 10 }]), stage("b", { code }, [])], i === 0)
+    flow([step("a", { code }, [{ kind: "cycles", n: 10 }]), step("b", { code }, [])], i === 0)
   ),
   { inventory: { chloronite: 30, magic_jellybean: 20 } }
 );
@@ -58,14 +58,14 @@ describe("simulator panels render", () => {
     const html = wrap(
       <>
         {state.plots.map((p) => (
-          <PlotView key={p.id} plot={p} runner={state.flows.find((f) => f.plotId === p.id)} def={state.scenario.plots.find((d) => d.id === p.id)} events={after.events} stageSeconds={state.lastStageSeconds} config={state.scenario.settings.config} />
+          <PlotView key={p.id} plot={p} runner={state.flows.find((f) => f.plotId === p.id)} def={state.scenario.plots.find((d) => d.id === p.id)} events={after.events} cycleSeconds={state.lastCycleSeconds} config={state.scenario.settings.config} />
         ))}
         <PlotMarkLegend />
       </>
     );
     // SSR puts a <!-- --> marker between adjacent text nodes.
     expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1");
-    expect(html).toContain("Stage");
+    expect(html).toContain("Step");
   });
 
   it("the legend omits freezing and does not promise eligibility before evaluation", () => {
@@ -107,7 +107,7 @@ describe("simulator panels render", () => {
           onSeedChange={() => {}}
         />
         <EventLog log={view.log} plotIds={[1, 2]} />
-        <StageTimeline flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} />
+        <FlowTimeline flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} />
       </>
     );
     const text = html.replace(/<!-- -->/g, "");
@@ -135,38 +135,38 @@ describe("simulator panels render", () => {
     expect(html.replace(/<!-- -->/g, "")).toContain("Undid a run of 40 cycles");
   });
 
-  it("scenario, settings and the rotation editor (embedded designer)", () => {
+  it("scenario, settings and the flow editor (embedded designer)", () => {
     const html = wrap(
       <>
-        <ScenarioPanel scenario={sc} onChange={() => {}} onEditRotation={() => {}} issues={[]} warnings={[]} error={null} />
+        <ScenarioPanel scenario={sc} onChange={() => {}} onEditFlow={() => {}} issues={[]} warnings={[]} error={null} />
         <SettingsPanel scenario={sc} onChange={() => {}} />
-        <RotationEditor scenario={sc} plotId={1} onChange={() => {}} onClose={() => {}} />
+        <FlowEditor scenario={sc} plotId={1} onChange={() => {}} onClose={() => {}} />
       </>
     );
-    expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1 rotation");
-    expect(html).toContain("Leave this stage when");
+    expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1 flow");
+    expect(html).toContain("Leave this step when");
     expect(html).toContain("checked targets");
   });
 
-  it("the rotation editor with routes, a chosen next stage and AND/OR groups", () => {
+  it("the flow editor with routes, a chosen next step and AND/OR groups", () => {
     const routed = scenario([
       flow(
         [
-          stage("s1", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 2 }]),
-          stage("s2", { code: LAYOUT_B_CODE }, [{ kind: "group", match: "any", of: [{ kind: "cycles", n: 3 }, { kind: "inventoryBelow", item: "chloronite", qty: 4 }] }, { kind: "cycles", n: 1 }], {
+          step("s1", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 2 }]),
+          step("s2", { code: LAYOUT_B_CODE }, [{ kind: "group", match: "any", of: [{ kind: "cycles", n: 3 }, { kind: "inventoryBelow", item: "chloronite", qty: 4 }] }, { kind: "cycles", n: 1 }], {
             next: "s1",
-            routes: [{ to: "s3", when: [{ kind: "stageVisits", count: 3, sinceStage: "s3" }] }],
+            routes: [{ to: "s3", when: [{ kind: "stepVisits", count: 3, sinceStep: "s3" }] }],
           }),
-          stage("s3", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 5 }], { next: "s1" }),
+          step("s3", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 5 }], { next: "s1" }),
         ],
         false
       ),
     ]);
-    const html = wrap(<RotationEditor scenario={routed} plotId={1} initialStage={1} onChange={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");
-    expect(html).toContain("Routes to other stages");
+    const html = wrap(<FlowEditor scenario={routed} plotId={1} initialStep={1} onChange={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("Routes to other steps");
     expect(html).toContain("ANY (OR)");
     expect(html).toContain("then go to");
-    expect(html).toContain("→ 3. s3 if entered this stage 3+ times since 3. s3");
+    expect(html).toContain("→ 3. s3 if entered this step 3+ times since 3. s3");
   });
 
   it("the layout picker: an incoming layout asks where it goes", () => {
@@ -176,26 +176,26 @@ describe("simulator panels render", () => {
     expect(html).toContain("Chloronite x4");
     expect(html).toContain("Where should it go?");
     expect(html).toContain("Add as Plot 3");
-    expect(html).toContain("Next stage of Plot 2");
-    const one = wrap(<LayoutPickerPanel title="t" incoming={incoming} onUse={() => {}} useLabel="Replace this stage&#x27;s layout" onClose={() => {}} />);
+    expect(html).toContain("Next step of Plot 2");
+    const one = wrap(<LayoutPickerPanel title="t" incoming={incoming} onUse={() => {}} useLabel="Replace this step&#x27;s layout" onClose={() => {}} />);
     expect(one).not.toContain("Where should it go?");
   });
 
   it("the uptime tree groups checked targets by plot, collapsed by default", () => {
     const report = view.snapshot!.report;
     expect(report.spots.length).toBeGreaterThan(0);
-    expect(report.spots.every((s) => s.stageIndex >= 0)).toBe(true);
+    expect(report.spots.every((s) => s.stepIndex >= 0)).toBe(true);
     const html = wrap(<UptimeTree spots={report.spots} />).replace(/<!-- -->/g, "");
     expect(html).toContain("Plot 1");
     expect(html).toContain("Plot 2");
     expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain("Stage 1 · "); // stages stay hidden until a plot is expanded
+    expect(html).not.toContain("Step 1 · "); // steps stay hidden until a plot is expanded
   });
 
   it("the checked-target picker lists a layout's targets", () => {
-    const html = wrap(<WatchPicker stage={stage("a", { code: LAYOUT_A_CODE })} onChange={() => {}} />).replace(/<!-- -->/g, "");
+    const html = wrap(<WatchPicker step={step("a", { code: LAYOUT_A_CODE })} onChange={() => {}} />).replace(/<!-- -->/g, "");
     expect(html).toContain("18 of 18 checked");
-    const some = wrap(<WatchPicker stage={stage("a", { code: LAYOUT_A_CODE }, [], { watch: [] })} onChange={() => {}} />).replace(/<!-- -->/g, "");
+    const some = wrap(<WatchPicker step={step("a", { code: LAYOUT_A_CODE }, [], { watch: [] })} onChange={() => {}} />).replace(/<!-- -->/g, "");
     expect(some).toContain("0 of 18 checked");
   });
 });

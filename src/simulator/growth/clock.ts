@@ -12,7 +12,7 @@ export function upgradeTerm(tier: number): number {
  *   T = baseline / (1 + 0.025c + 0.0025g + 0.001a + u)
  * c = unique crop groups across ALL plots, g = Crop Growth, a = Speed Attribute.
  */
-export function stageSeconds(
+export function cycleSeconds(
   stats: Pick<PlayerStats, "cropGrowth" | "speedAttribute" | "growthUpgradeTier">,
   uniqueCrops: number,
   baselineSeconds: number

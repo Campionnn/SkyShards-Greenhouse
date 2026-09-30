@@ -25,7 +25,7 @@ export const SOURCE_LABEL: Record<HandoffSource, string> = {
 /** A layout sent to the Simulator, as a share code. */
 export interface IncomingLayout {
   code: string;
-  /** Short human name, used as the stage label. */
+  /** Short human name, used as the step label. */
   name: string;
   from: HandoffSource;
 }

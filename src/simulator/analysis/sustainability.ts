@@ -25,13 +25,13 @@ export interface ItemReport {
   permanent: boolean;
 }
 
-/** One watched target cell in one stage of one plot's rotation. */
+/** One watched target cell in one step of one plot's flow. */
 export interface SpotReport extends UptimeCounts {
   plotId: PlotId;
-  stageId: string;
-  /** Position in the plot's rotation (-1 if the stage no longer exists). */
-  stageIndex: number;
-  stageLabel: string;
+  stepId: string;
+  /** Position in the plot's flow (-1 if the step no longer exists). */
+  stepIndex: number;
+  stepLabel: string;
   mutationId: MutationId;
   row: number;
   col: number;
@@ -48,7 +48,7 @@ export interface SustainabilityReport {
    * Plant) lower uptime but are not a sustainability failure.
    */
   sustainable: boolean;
-  /** Watched cell-cycles across every plot and stage. */
+  /** Watched cell-cycles across every plot and step. */
   totals: UptimeCounts;
   /** totals as a ratio; 1 when nothing has been watched yet. */
   uptime: number;
@@ -68,7 +68,7 @@ export interface SustainabilityReport {
 /**
  * Sustainability is "do the target cells you care about always stay able to
  * grow their mutation?" - measured, never fixed. Which cells count is chosen
- * per stage (`FlowStage.watch`, default every target).
+ * per step (`FlowStep.watch`, default every target).
  */
 export function analyseSustainability(state: SimulationState, data: GameData): SustainabilityReport {
   const items: ItemReport[] = Object.entries(state.ledger)
@@ -97,17 +97,17 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
     .sort((a, b) => a.item.localeCompare(b.item));
 
   const spots: SpotReport[] = [];
-  for (const [plotKey, byStage] of Object.entries(state.uptime ?? {})) {
+  for (const [plotKey, byStep] of Object.entries(state.uptime ?? {})) {
     const def = state.scenario.plots.find((p) => String(p.id) === plotKey);
-    for (const [stageId, byCell] of Object.entries(byStage)) {
-      const stageIndex = def?.flow.stages.findIndex((s) => s.id === stageId) ?? -1;
-      const stage = def?.flow.stages[stageIndex];
+    for (const [stepId, byCell] of Object.entries(byStep)) {
+      const stepIndex = def?.flow.steps.findIndex((s) => s.id === stepId) ?? -1;
+      const step = def?.flow.steps[stepIndex];
       for (const s of Object.values(byCell)) {
         spots.push({
           plotId: Number(plotKey),
-          stageId,
-          stageIndex,
-          stageLabel: stage?.label || stageId,
+          stepId,
+          stepIndex,
+          stepLabel: step?.label || stepId,
           mutationId: s.mutationId,
           row: s.row,
           col: s.col,
@@ -123,7 +123,7 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
       }
     }
   }
-  spots.sort((a, b) => a.uptime - b.uptime || a.plotId - b.plotId || a.stageId.localeCompare(b.stageId) || a.row - b.row || a.col - b.col);
+  spots.sort((a, b) => a.uptime - b.uptime || a.plotId - b.plotId || a.stepId.localeCompare(b.stepId) || a.row - b.row || a.col - b.col);
 
   const failures = spots.filter((s) => s.firstRequirementsCycle !== null);
   const firstFailure = failures.reduce<SpotReport | null>(
@@ -151,7 +151,7 @@ export function describeDebt(d: DebtEvent, name: (id: string) => string): string
   return `Ran out of ${name(d.item)} at cycle ${d.cycle} on plot ${d.plotId} (needed ${d.needed}, had ${d.available})`;
 }
 
-/** "Chloronite at (4,5) on plot 2, stage Growing, first lacked its requirements at cycle 31". */
+/** "Chloronite at (4,5) on plot 2, step Growing, first lacked its requirements at cycle 31". */
 export function describeSpotFailure(s: SpotReport, name: (id: string) => string): string {
-  return `${name(s.mutationId)} at (${s.row},${s.col}) on plot ${s.plotId}, stage ${s.stageLabel}, first lacked its requirements at cycle ${s.firstRequirementsCycle}`;
+  return `${name(s.mutationId)} at (${s.row},${s.col}) on plot ${s.plotId}, step ${s.stepLabel}, first lacked its requirements at cycle ${s.firstRequirementsCycle}`;
 }

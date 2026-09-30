@@ -3,7 +3,7 @@ import type { GameData, Size } from "../data/types";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import { layoutFromShareCode } from "../share/layoutFromShare";
 import type { ResolvedLayout } from "../sim/context";
-import type { LayoutSpec, StageLayout } from "./types";
+import type { LayoutSpec, StepLayout } from "./types";
 
 export class LayoutError extends Error {
   readonly issues: string[];
@@ -14,7 +14,7 @@ export class LayoutError extends Error {
   }
 }
 
-export function layoutSpecOf(layout: StageLayout, data: GameData): { layout: LayoutSpec; issues: string[] } {
+export function layoutSpecOf(layout: StepLayout, data: GameData): { layout: LayoutSpec; issues: string[] } {
   if ("code" in layout) {
     try {
       return layoutFromShareCode(layout.code, data);
@@ -26,11 +26,11 @@ export function layoutSpecOf(layout: StageLayout, data: GameData): { layout: Lay
 }
 
 /**
- * Resolve a stage layout against game data. Base crops are `planted` (free,
+ * Resolve a step layout against game data. Base crops are `planted` (free,
  * they grow); everything else - mutation items, fire, fermento, dead plants -
  * is `placed` from inventory (costs 1, goes in fully grown).
  */
-export function resolveLayout(layout: StageLayout, data: GameData): { resolved: ResolvedLayout; issues: string[] } {
+export function resolveLayout(layout: StepLayout, data: GameData): { resolved: ResolvedLayout; issues: string[] } {
   const { layout: spec, issues } = layoutSpecOf(layout, data);
   const resolved: ResolvedLayout = { plants: [], slots: [], groundTiles: {} };
   for (const p of spec.plants) {
@@ -58,7 +58,7 @@ export function resolveLayout(layout: StageLayout, data: GameData): { resolved: 
   // Unpainted cells are air. A target or a layout plant implies physical
   // ground across its footprint, including old share codes without paint.
   // Keep that ground when a plant is harvested, destroyed, or moved; only
-  // entering another stage replaces the layout's ground.
+  // entering another step replaces the layout's ground.
   const knownGround = new Set(["farmland", "sand", "soul_sand", "mycelium", "netherrack", "end_stone"]);
   for (const t of spec.groundTiles ?? []) {
     if (!Number.isInteger(t.row) || !Number.isInteger(t.col) || !footprintFits(t.row, t.col, 1)) {
@@ -116,7 +116,7 @@ function geometryIssues(layout: ResolvedLayout): string[] {
 }
 
 /** Memoising resolver for one engine (layouts are immutable inputs). */
-export function createLayoutResolver(data: GameData): (layout: StageLayout) => ResolvedLayout {
+export function createLayoutResolver(data: GameData): (layout: StepLayout) => ResolvedLayout {
   const cache = new Map<string, ResolvedLayout>();
   return (layout) => {
     const key = "code" in layout ? `c:${layout.code}` : `s:${JSON.stringify(layout)}`;

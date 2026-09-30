@@ -8,7 +8,7 @@ export interface TriggerView {
   runner: FlowRunnerState;
   /** The SHARED inventory. No trigger may look at another plot. */
   inventory: Readonly<Record<string, number>>;
-  stageSeconds: number;
+  cycleSeconds: number;
 }
 
 /** Plants whose ripeness a trigger can talk about: base crops and natural spawns. */
@@ -18,7 +18,7 @@ const growable = (plot: PlotState) => plot.plants.filter((p) => !p.isDeadPlant &
 export function triggerHolds(t: Trigger, v: TriggerView): boolean {
   switch (t.kind) {
     case "cycles":
-      return v.runner.cyclesInStage >= t.n;
+      return v.runner.cyclesInStep >= t.n;
     case "inventoryAtLeast":
       return (v.inventory[t.item] ?? 0) >= t.qty;
     case "inventoryBelow":
@@ -34,7 +34,7 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
       return n >= Math.max(1, t.count ?? 1);
     }
     case "mutationHarvested":
-      return (v.runner.harvestedInStage?.[t.mutationId] ?? 0) >= t.count;
+      return (v.runner.harvestedInStep?.[t.mutationId] ?? 0) >= t.count;
     case "targetsFilled": {
       const slots = v.plot.slots;
       if (slots.length === 0) return false;
@@ -47,30 +47,30 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
     }
     case "decayImminent":
       return v.plot.plants.some(
-        (p) => !p.isDeadPlant && p.decaySecondsRemaining !== null && p.decaySecondsRemaining <= t.withinCycles * v.stageSeconds + 1e-6
+        (p) => !p.isDeadPlant && p.decaySecondsRemaining !== null && p.decaySecondsRemaining <= t.withinCycles * v.cycleSeconds + 1e-6
       );
     case "plantDecayed":
-      return (v.runner.decayedInStage[t.kindId] ?? 0) >= 1;
+      return (v.runner.decayedInStep[t.kindId] ?? 0) >= 1;
     case "mutationSpawned":
-      return (v.runner.spawnedInStage[t.mutationId] ?? 0) >= t.count;
-    case "stageVisits":
-      return stageVisits(v.runner, t.sinceStage) >= Math.max(1, t.count);
+      return (v.runner.spawnedInStep[t.mutationId] ?? 0) >= t.count;
+    case "stepVisits":
+      return stepVisits(v.runner, t.sinceStep) >= Math.max(1, t.count);
   }
 }
 
 /**
- * How many times the plot has entered its current stage (this visit
- * included), counting back to the last time it entered `sinceStage`, or to
+ * How many times the plot has entered its current step (this visit
+ * included), counting back to the last time it entered `sinceStep`, or to
  * the start of the run. Read from the runner's history, so it needs no
  * extra state.
  */
-export function stageVisits(runner: FlowRunnerState, sinceStage?: string): number {
+export function stepVisits(runner: FlowRunnerState, sinceStep?: string): number {
   const h = runner.history;
-  const current = h[h.length - 1]?.stageId;
+  const current = h[h.length - 1]?.stepId;
   let n = 0;
   for (let i = h.length - 1; i >= 0; i--) {
-    if (h[i].stageId === current) n++;
-    if (sinceStage !== undefined && h[i].stageId === sinceStage) break;
+    if (h[i].stepId === current) n++;
+    if (sinceStep !== undefined && h[i].stepId === sinceStep) break;
   }
   return n;
 }
@@ -87,28 +87,28 @@ export function conditionsHold(list: readonly Condition[], match: ConditionMatch
   return match === "any" ? list.some((c) => conditionHolds(c, v)) : list.every((c) => conditionHolds(c, v));
 }
 
-/** A stage's normal exit. An empty exit list holds the stage forever. */
-export function stageExitHolds(exit: readonly Condition[], v: TriggerView, match?: ConditionMatch): boolean {
+/** A step's normal exit. An empty exit list holds the step forever. */
+export function stepExitHolds(exit: readonly Condition[], v: TriggerView, match?: ConditionMatch): boolean {
   return conditionsHold(exit, match, v);
 }
 
-/** Resolves a stage id to a display name; defaults to the id itself. */
-export type StageNamer = (stageId: string) => string;
+/** Resolves a step id to a display name; defaults to the id itself. */
+export type StepNamer = (stepId: string) => string;
 
-export function describeConditions(list: readonly Condition[], match?: ConditionMatch, stageName?: StageNamer): string {
+export function describeConditions(list: readonly Condition[], match?: ConditionMatch, stepName?: StepNamer): string {
   const joiner = match === "any" ? " or " : " and ";
-  return list.map((c) => describeCondition(c, stageName)).join(joiner);
+  return list.map((c) => describeCondition(c, stepName)).join(joiner);
 }
 
-export function describeCondition(c: Condition, stageName?: StageNamer): string {
-  if (c.kind === "group") return c.of.length === 0 ? "(empty group)" : `(${describeConditions(c.of, c.match, stageName)})`;
-  return describeTrigger(c, stageName);
+export function describeCondition(c: Condition, stepName?: StepNamer): string {
+  if (c.kind === "group") return c.of.length === 0 ? "(empty group)" : `(${describeConditions(c.of, c.match, stepName)})`;
+  return describeTrigger(c, stepName);
 }
 
-export function describeTrigger(t: Trigger, stageName: StageNamer = (id) => id): string {
+export function describeTrigger(t: Trigger, stepName: StepNamer = (id) => id): string {
   switch (t.kind) {
     case "cycles":
-      return `${t.n} cycles in stage`;
+      return `${t.n} cycles in step`;
     case "inventoryAtLeast":
       return `inventory ${t.item} >= ${t.qty}`;
     case "inventoryBelow":
@@ -129,7 +129,7 @@ export function describeTrigger(t: Trigger, stageName: StageNamer = (id) => id):
       return `a ${t.kindId} decayed`;
     case "mutationSpawned":
       return `${t.count} x ${t.mutationId} spawned`;
-    case "stageVisits":
-      return `entered this stage ${t.count}+ times${t.sinceStage !== undefined ? ` since ${stageName(t.sinceStage)}` : ""}`;
+    case "stepVisits":
+      return `entered this step ${t.count}+ times${t.sinceStep !== undefined ? ` since ${stepName(t.sinceStep)}` : ""}`;
   }
 }

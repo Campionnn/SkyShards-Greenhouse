@@ -19,8 +19,8 @@ export interface SimConfig {
   deathWater: number;
   waterLossMin: number;
   waterLossMax: number;
-  /** Growth stage baseline, 4 h. */
-  stageBaselineSeconds: number;
+  /** Cycle length (one growth stage) before speed bonuses, 4 h. */
+  cycleBaselineSeconds: number;
   /** Base-crop decay timer (added 2026-08-20). */
   baseCropDecayHours: number;
 
@@ -68,10 +68,10 @@ export interface SimConfig {
   supportCap: number;
   /** Which empty cells roll for a spawn each cycle. */
   spawnCells: SpawnCells;
-  /** Stage change keeps a plant when the new layout has the same kind at the same anchor. */
-  keepIdenticalOnStageChange: boolean;
+  /** A step change keeps a plant when the new layout has the same kind at the same anchor. */
+  keepIdenticalOnStepChange: boolean;
   /**
-   * Hybrid rotations: a natural spawn standing where a layout places the same
+   * Hybrid flows: a natural spawn standing where a layout places the same
    * mutation (same anchor) is kept and used as that input - growing or fully
    * grown - instead of being broken and re-placed from inventory.
    */
@@ -85,7 +85,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   deathWater: -100,
   waterLossMin: 2,
   waterLossMax: 3,
-  stageBaselineSeconds: 14400,
+  cycleBaselineSeconds: 14400,
   baseCropDecayHours: 72,
 
   maxWater: 100,
@@ -114,7 +114,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   supportPerCell: 0.25,
   supportCap: 1,
   spawnCells: "allEmpty",
-  keepIdenticalOnStageChange: true,
+  keepIdenticalOnStepChange: true,
   spawnsFillLayoutInputs: true,
   plotOrder: [1, 2, 3],
 };
@@ -140,7 +140,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "deathWater", label: "Death water level", group: "verified", ref: "Q3", input: { type: "number", max: 0 }, description: "A plant dies at or below this water level." },
   { key: "waterLossMin", label: "Water loss min", group: "verified", input: { type: "number", min: 0 }, description: "Minimum water lost per growth stage, before retain/drain." },
   { key: "waterLossMax", label: "Water loss max", group: "verified", input: { type: "number", min: 0 }, description: "Maximum water lost per growth stage, before retain/drain." },
-  { key: "stageBaselineSeconds", label: "Stage baseline (s)", group: "verified", ref: "Q2", input: { type: "number", min: 1 }, description: "Growth stage length before speed bonuses (4 h)." },
+  { key: "cycleBaselineSeconds", label: "Cycle baseline (s)", group: "verified", ref: "Q2", input: { type: "number", min: 1 }, description: "Cycle length (one growth stage) before speed bonuses (4 h)." },
   { key: "baseCropDecayHours", label: "Base crop decay (h)", group: "verified", input: { type: "number", min: 0 }, description: "Base crops decay this long after planting. 0 = never." },
 
   { key: "maxWater", label: "Max water", group: "unpublished", ref: "Q3", input: { type: "number", min: 0 }, description: "Water level after watering." },
@@ -167,8 +167,8 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "armorRareCropBug", label: "Armor Rare Crop bug", group: "model", input: { type: "boolean" }, description: "Wiki-reported bug: in the Greenhouse, Cropie and Squash do not drop while wearing Fermento or Helianthus Armor (only Fermento and Helianthus roll). Off = the set bonus as written." },
   { key: "capRareCropChance", label: "Cap Rare Crop chance at 100%", group: "model", input: { type: "boolean" }, description: "Overbloom can push a Rare Crop chance past 100%. Off: 175% = 1 guaranteed + a 75% roll for a 2nd. On: at most one item per roll." },
   { key: "spawnCells", label: "Spawn cells", group: "model", input: { type: "select", options: ["allEmpty", "slotsOnly"] }, description: "allEmpty: every empty cell rolls. slotsOnly: only target slots roll." },
-  { key: "keepIdenticalOnStageChange", label: "Keep identical plants on stage change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a stage change untouched." },
-  { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid rotations work: grow Magic Jellybeans in one stage, then use them as inputs in the next while they finish growing." },
+  { key: "keepIdenticalOnStepChange", label: "Keep identical plants on step change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a step change untouched." },
+  { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid flows work: grow Magic Jellybeans in one step, then use them as inputs in the next while they finish growing." },
 ];
 
 export function withConfigDefaults(partial?: Partial<SimConfig>): SimConfig {

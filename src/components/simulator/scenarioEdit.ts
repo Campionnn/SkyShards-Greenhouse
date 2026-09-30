@@ -3,14 +3,15 @@ import {
   defaultGameData,
   kindDef,
   MAX_PLOTS,
-  type FlowStage,
+  migrateScenario,
+  type FlowStep,
   type LayoutSpec,
   type Scenario,
   type ScenarioPlot,
   type Condition,
   type ConditionGroup,
   type ConditionMatch,
-  type StageLayout,
+  type StepLayout,
   type Trigger,
   type TriggerKind,
 } from "../../simulator";
@@ -24,42 +25,42 @@ const data = defaultGameData();
 
 export const EMPTY_LAYOUT_CODE = encodeDesign([], []);
 
-export function newStageId(stages: FlowStage[]): string {
-  let n = stages.length + 1;
-  while (stages.some((s) => s.id === `stage-${n}`)) n++;
-  return `stage-${n}`;
+export function newStepId(steps: FlowStep[]): string {
+  let n = steps.length + 1;
+  while (steps.some((s) => s.id === `step-${n}`)) n++;
+  return `step-${n}`;
 }
 
-export function blankStage(stages: FlowStage[]): FlowStage {
-  const id = newStageId(stages);
-  return { id, label: `Stage ${stages.length + 1}`, layout: { code: EMPTY_LAYOUT_CODE }, exit: [{ kind: "cycles", n: 20 }] };
+export function blankStep(steps: FlowStep[]): FlowStep {
+  const id = newStepId(steps);
+  return { id, label: `Step ${steps.length + 1}`, layout: { code: EMPTY_LAYOUT_CODE }, exit: [{ kind: "cycles", n: 20 }] };
 }
 
 export function updatePlot(sc: Scenario, plotId: number, fn: (p: ScenarioPlot) => ScenarioPlot): Scenario {
   return { ...sc, plots: sc.plots.map((p) => (p.id === plotId ? fn(structuredClone(p)) : p)) };
 }
 
-export function updateStage(sc: Scenario, plotId: number, index: number, fn: (s: FlowStage) => FlowStage): Scenario {
+export function updateStep(sc: Scenario, plotId: number, index: number, fn: (s: FlowStep) => FlowStep): Scenario {
   return updatePlot(sc, plotId, (p) => {
-    p.flow.stages[index] = fn(p.flow.stages[index]);
+    p.flow.steps[index] = fn(p.flow.steps[index]);
     return p;
   });
 }
 
-export function addPlot(sc: Scenario, layout: StageLayout = { code: EMPTY_LAYOUT_CODE }, label?: string): Scenario {
+export function addPlot(sc: Scenario, layout: StepLayout = { code: EMPTY_LAYOUT_CODE }, label?: string): Scenario {
   if (sc.plots.length >= MAX_PLOTS) return sc;
   const id = nextPlotId(sc)!;
   const plot: ScenarioPlot = {
     id,
-    flow: { stages: [{ id: "stage-1", label: label || `Plot ${id} layout`, layout, exit: [] }], loop: false, startIndex: 0 },
+    flow: { steps: [{ id: "step-1", label: label || `Plot ${id} layout`, layout, exit: [] }], loop: false, startIndex: 0 },
   };
   return { ...sc, plots: [...sc.plots, plot].sort((a, b) => a.id - b.id) };
 }
 
 /**
- * Add a copy of a plot: its whole rotation (every stage, layout, exit,
- * route, loop, start stage, checked targets) and its policy overrides, under
- * the next free plot id. Stage ids and routes are per plot, so they carry
+ * Add a copy of a plot: its whole flow (every step, layout, exit,
+ * route, loop, start step, checked targets) and its policy overrides, under
+ * the next free plot id. Step ids and routes are per plot, so they carry
  * over as they are. Returns the scenario unchanged when every plot is in use.
  */
 export function duplicatePlot(sc: Scenario, plotId: number): Scenario {
@@ -82,10 +83,10 @@ export function nextPlotId(sc: Scenario): number | null {
 export type LayoutDestination =
   | { kind: "newPlot" }
   | { kind: "replacePlot"; plotId: number }
-  | { kind: "appendStage"; plotId: number };
+  | { kind: "appendStep"; plotId: number };
 
 /** True for a layout with no plants, no targets and no painted ground. */
-export function isEmptyLayout(layout: StageLayout): boolean {
+export function isEmptyLayout(layout: StepLayout): boolean {
   try {
     const { inputs, targets, groundTiles } = layoutToPlacements(layout);
     return inputs.length === 0 && targets.length === 0 && groundTiles.length === 0;
@@ -94,53 +95,53 @@ export function isEmptyLayout(layout: StageLayout): boolean {
   }
 }
 
-/** Nothing worth keeping: every stage of every plot is an empty layout (e.g. the starter plot). */
+/** Nothing worth keeping: every step of every plot is an empty layout (e.g. the starter plot). */
 export function isBlankScenario(sc: Scenario): boolean {
-  return sc.plots.every((p) => p.flow.stages.every((s) => isEmptyLayout(s.layout)));
+  return sc.plots.every((p) => p.flow.steps.every((s) => isEmptyLayout(s.layout)));
 }
 
 /**
  * Put a layout into the scenario. A blank scenario is replaced outright, so
  * the layout always lands on Plot 1 there. Returns where it went, so the
- * caller can say so (and open the rotation editor on a new stage).
+ * caller can say so (and open the flow editor on a new step).
  */
 export function placeLayout(
   sc: Scenario,
   dest: LayoutDestination,
-  layout: StageLayout,
+  layout: StepLayout,
   label: string
-): { scenario: Scenario; plotId: number; stageIndex: number } | null {
+): { scenario: Scenario; plotId: number; stepIndex: number } | null {
   if (isBlankScenario(sc)) {
     const next = addPlot({ ...sc, plots: [] }, layout, label);
-    return { scenario: next, plotId: next.plots[0].id, stageIndex: 0 };
+    return { scenario: next, plotId: next.plots[0].id, stepIndex: 0 };
   }
   if (dest.kind === "newPlot") {
     const id = nextPlotId(sc);
     if (id === null) return null;
-    return { scenario: addPlot(sc, layout, label), plotId: id, stageIndex: 0 };
+    return { scenario: addPlot(sc, layout, label), plotId: id, stepIndex: 0 };
   }
   if (!sc.plots.some((p) => p.id === dest.plotId)) return null;
   if (dest.kind === "replacePlot") {
-    // The whole rotation goes; the plot's own policy overrides stay.
+    // The whole flow goes; the plot's own policy overrides stay.
     const next = updatePlot(sc, dest.plotId, (p) => ({
       ...p,
-      flow: { stages: [{ id: "stage-1", label, layout, exit: [] }], loop: false, startIndex: 0 },
+      flow: { steps: [{ id: "step-1", label, layout, exit: [] }], loop: false, startIndex: 0 },
     }));
-    return { scenario: next, plotId: dest.plotId, stageIndex: 0 };
+    return { scenario: next, plotId: dest.plotId, stepIndex: 0 };
   }
-  let stageIndex = 0;
+  let stepIndex = 0;
   const next = updatePlot(sc, dest.plotId, (p) => {
-    const stages = p.flow.stages;
-    // The old last stage never had to end; give it a default exit so the plot
-    // actually reaches the new stage (the rotation editor opens on it).
-    const last = stages[stages.length - 1];
-    if (last && last.exit.length === 0 && !p.flow.loop) stages[stages.length - 1] = { ...last, exit: [defaultTrigger("cycles")] };
-    const stage: FlowStage = { id: newStageId(stages), label, layout, exit: [] };
-    p.flow.stages = [...stages, stage];
-    stageIndex = p.flow.stages.length - 1;
+    const steps = p.flow.steps;
+    // The old last step never had to end; give it a default exit so the plot
+    // actually reaches the new step (the flow editor opens on it).
+    const last = steps[steps.length - 1];
+    if (last && last.exit.length === 0 && !p.flow.loop) steps[steps.length - 1] = { ...last, exit: [defaultTrigger("cycles")] };
+    const step: FlowStep = { id: newStepId(steps), label, layout, exit: [] };
+    p.flow.steps = [...steps, step];
+    stepIndex = p.flow.steps.length - 1;
     return p;
   });
-  return { scenario: next, plotId: dest.plotId, stageIndex };
+  return { scenario: next, plotId: dest.plotId, stepIndex };
 }
 
 export interface DestinationOption {
@@ -158,49 +159,49 @@ export function layoutDestinations(sc: Scenario): DestinationOption[] {
   for (const p of sc.plots)
     out.push({
       label: `Replace Plot ${p.id}`,
-      hint: p.flow.stages.length > 1 ? `Drops its ${p.flow.stages.length}-stage rotation` : layoutSummary(p.flow.stages[0].layout),
+      hint: p.flow.steps.length > 1 ? `Drops its ${p.flow.steps.length}-step flow` : layoutSummary(p.flow.steps[0].layout),
       dest: { kind: "replacePlot", plotId: p.id },
     });
   for (const p of sc.plots)
-    out.push({ label: `Next stage of Plot ${p.id}`, hint: `Becomes stage ${p.flow.stages.length + 1} of its rotation`, dest: { kind: "appendStage", plotId: p.id } });
+    out.push({ label: `Next step of Plot ${p.id}`, hint: `Becomes step ${p.flow.steps.length + 1} of its flow`, dest: { kind: "appendStep", plotId: p.id } });
   return out;
 }
 
-// ---- Rotation files (export / import) -------------------------------------------
+// ---- Flow files (export / import) -------------------------------------------
 
-export const ROTATIONS_FILE_KIND = "skyshards-greenhouse-rotations";
+export const FLOWS_FILE_KIND = "skyshards-greenhouse-flows";
 
 /**
- * The shareable part of a scenario: each plot's rotation (stages, layouts,
- * exit triggers, loop, start stage, full clear, checked targets) and its plot
- * and stage policy overrides. Nothing about the player: stats, online
+ * The shareable part of a scenario: each plot's flow (steps, layouts,
+ * exit triggers, loop, start step, full clear, checked targets) and its plot
+ * and step policy overrides. Nothing about the player: stats, online
  * schedule, seed, Actions defaults, advanced config and starting inventory
  * stay out.
  */
-export interface RotationsFile {
-  kind: typeof ROTATIONS_FILE_KIND;
+export interface FlowsFile {
+  kind: typeof FLOWS_FILE_KIND;
   version: 1;
   plots: ScenarioPlot[];
 }
 
-export function exportRotations(sc: Scenario): RotationsFile {
-  return { kind: ROTATIONS_FILE_KIND, version: 1, plots: structuredClone(sc.plots) };
+export function exportFlows(sc: Scenario): FlowsFile {
+  return { kind: FLOWS_FILE_KIND, version: 1, plots: structuredClone(sc.plots) };
 }
 
 /**
- * Read a rotations file (or an older full scenario export, of which only the
+ * Read a flows file (or an older full scenario export, of which only the
  * plots are used) into `sc`, replacing its plots and keeping everything else.
  * Throws with a readable message when the file is not usable.
  */
-export function importRotations(sc: Scenario, text: string): Scenario {
+export function importFlows(sc: Scenario, text: string): Scenario {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
     throw new Error("That is not valid JSON.");
   }
-  const plots = (parsed as { plots?: unknown } | null)?.plots;
-  if (!Array.isArray(plots) || plots.length === 0) throw new Error("No plots found. Expected an exported rotations file.");
+  const plots = (migrateScenario(parsed) as { plots?: unknown } | null)?.plots;
+  if (!Array.isArray(plots) || plots.length === 0) throw new Error("No plots found. Expected an exported flows file.");
   if (plots.length > MAX_PLOTS) throw new Error(`At most ${MAX_PLOTS} plots; the file has ${plots.length}.`);
   const seen = new Set<number>();
   plots.forEach((p: Partial<ScenarioPlot>, i) => {
@@ -208,15 +209,15 @@ export function importRotations(sc: Scenario, text: string): Scenario {
     if (!p || typeof p !== "object") throw new Error(`${where} is not an object.`);
     if (![1, 2, 3].includes(p.id as number) || seen.has(p.id as number)) throw new Error(`${where}: id must be a unique 1, 2 or 3.`);
     seen.add(p.id as number);
-    const stages = p.flow?.stages;
-    if (!Array.isArray(stages) || stages.length === 0) throw new Error(`${where}: no stages.`);
-    stages.forEach((s, j) => {
-      if (!s || typeof s.id !== "string" || !s.layout || !Array.isArray(s.exit)) throw new Error(`${where}, stage ${j + 1}: needs an id, a layout and an exit list.`);
+    const steps = p.flow?.steps;
+    if (!Array.isArray(steps) || steps.length === 0) throw new Error(`${where}: no steps.`);
+    steps.forEach((s, j) => {
+      if (!s || typeof s.id !== "string" || !s.layout || !Array.isArray(s.exit)) throw new Error(`${where}, step ${j + 1}: needs an id, a layout and an exit list.`);
     });
   });
   const clean = (plots as ScenarioPlot[]).map((p) => ({
     ...p,
-    flow: { stages: p.flow.stages, loop: !!p.flow.loop, startIndex: Math.min(Math.max(0, Math.floor(Number(p.flow.startIndex) || 0)), p.flow.stages.length - 1) },
+    flow: { steps: p.flow.steps, loop: !!p.flow.loop, startIndex: Math.min(Math.max(0, Math.floor(Number(p.flow.startIndex) || 0)), p.flow.steps.length - 1) },
   }));
   return { ...sc, plots: structuredClone(clean).sort((a, b) => a.id - b.id) };
 }
@@ -247,7 +248,7 @@ export function defaultTrigger(kind: TriggerKind): Trigger {
       return { kind, mutationId: "chorus_fruit", count: 9 };
     case "targetsFilled":
       return { kind, count: 0 };
-    case "stageVisits":
+    case "stepVisits":
       return { kind, count: 3 };
   }
 }
@@ -257,13 +258,13 @@ export function defaultGroup(match: ConditionMatch = "any"): ConditionGroup {
   return { kind: "group", match, of: [defaultTrigger("cycles")] };
 }
 
-/** Drop conditions that name `stageId` (stage visits since it), inside groups too. */
-function dropStageConditions(list: Condition[], stageId: string): Condition[] {
+/** Drop conditions that name `stepId` (step visits since it), inside groups too. */
+function dropStepConditions(list: Condition[], stepId: string): Condition[] {
   return list.flatMap((c): Condition[] => {
-    if (c.kind === "group") return [{ ...c, of: dropStageConditions(c.of, stageId) }];
-    if (c.kind === "stageVisits" && c.sinceStage === stageId) {
+    if (c.kind === "group") return [{ ...c, of: dropStepConditions(c.of, stepId) }];
+    if (c.kind === "stepVisits" && c.sinceStep === stepId) {
       const rest = { ...c };
-      delete rest.sinceStage;
+      delete rest.sinceStep;
       return [rest];
     }
     return [c];
@@ -271,30 +272,30 @@ function dropStageConditions(list: Condition[], stageId: string): Condition[] {
 }
 
 /**
- * Delete a stage and every reference to it: routes to it go, a `next` to it
- * falls back to the following stage, and "stage visits since it" counts
+ * Delete a step and every reference to it: routes to it go, a `next` to it
+ * falls back to the following step, and "step visits since it" counts
  * since the start of the run instead.
  */
-export function deleteStage(p: ScenarioPlot, index: number): ScenarioPlot {
-  const gone = p.flow.stages[index];
-  if (!gone || p.flow.stages.length <= 1) return p;
-  const stages = p.flow.stages
+export function deleteStep(p: ScenarioPlot, index: number): ScenarioPlot {
+  const gone = p.flow.steps[index];
+  if (!gone || p.flow.steps.length <= 1) return p;
+  const steps = p.flow.steps
     .filter((_, i) => i !== index)
     .map((s) => {
-      const next: FlowStage = { ...s, exit: dropStageConditions(s.exit, gone.id) };
+      const next: FlowStep = { ...s, exit: dropStepConditions(s.exit, gone.id) };
       if (next.next === gone.id) delete next.next;
       if (s.routes) {
-        const routes = s.routes.filter((r) => r.to !== gone.id).map((r) => ({ ...r, when: dropStageConditions(r.when, gone.id) }));
+        const routes = s.routes.filter((r) => r.to !== gone.id).map((r) => ({ ...r, when: dropStepConditions(r.when, gone.id) }));
         if (routes.length) next.routes = routes;
         else delete next.routes;
       }
       return next;
     });
-  return { ...p, flow: { ...p.flow, stages, startIndex: Math.min(p.flow.startIndex, stages.length - 1) } };
+  return { ...p, flow: { ...p.flow, steps, startIndex: Math.min(p.flow.startIndex, steps.length - 1) } };
 }
 
 export const TRIGGER_KINDS: { value: TriggerKind; label: string }[] = [
-  { value: "cycles", label: "cycles in stage >=" },
+  { value: "cycles", label: "cycles in step >=" },
   { value: "mutationSpawned", label: "mutation spawned x" },
   { value: "targetsFilled", label: "targets filled (0 = all)" },
   { value: "mutationHarvested", label: "mutation harvested x" },
@@ -305,7 +306,7 @@ export const TRIGGER_KINDS: { value: TriggerKind; label: string }[] = [
   { value: "fullyGrown", label: "mutation fully grown" },
   { value: "allFullyGrown", label: "everything fully grown" },
   { value: "noneFullyGrown", label: "nothing fully grown" },
-  { value: "stageVisits", label: "times this stage entered >=" },
+  { value: "stepVisits", label: "times this step entered >=" },
 ];
 
 // ---- Layout <-> designer placements ----------------------------------------
@@ -328,7 +329,7 @@ function specGroundTiles(spec: LayoutSpec): GroundTile[] {
   ).map(({ ground, row, col }) => ({ ground, position: [row, col] }));
 }
 
-export function layoutToPlacements(layout: StageLayout): { inputs: DesignerPlacement[]; targets: DesignerPlacement[]; groundTiles: GroundTile[] } {
+export function layoutToPlacements(layout: StepLayout): { inputs: DesignerPlacement[]; targets: DesignerPlacement[]; groundTiles: GroundTile[] } {
   if ("code" in layout) {
     const { inputs, targets, groundTiles } = decodeDesign(layout.code);
     return {
@@ -352,7 +353,7 @@ export function placementsToCode(inputs: DesignerPlacement[], targets: DesignerP
   );
 }
 
-export function layoutCode(layout: StageLayout): string {
+export function layoutCode(layout: StepLayout): string {
   if ("code" in layout) return layout.code;
   const spec = layout as LayoutSpec;
   return encodeDesign(
@@ -362,50 +363,50 @@ export function layoutCode(layout: StageLayout): string {
   );
 }
 
-/** Set a stage's watched targets; undefined (every target) drops the field. */
-export function withWatch(stage: FlowStage, watch: string[] | undefined): FlowStage {
-  const next = { ...stage };
+/** Set a step's watched targets; undefined (every target) drops the field. */
+export function withWatch(step: FlowStep, watch: string[] | undefined): FlowStep {
+  const next = { ...step };
   if (watch === undefined) delete next.watch;
   else next.watch = watch;
   return next;
 }
 
 /**
- * Move a stage's watched target keys through a whole-layout transform, so a
+ * Move a step's watched target keys through a whole-layout transform, so a
  * nudged / rotated / mirrored layout keeps checking the same targets. Uses the
- * stage's layout from BEFORE the transform to know each target's size.
+ * step's layout from BEFORE the transform to know each target's size.
  */
-export function transformWatch(stage: FlowStage, t: LayoutTransform): FlowStage {
-  if (!stage.watch) return stage;
+export function transformWatch(step: FlowStep, t: LayoutTransform): FlowStep {
+  if (!step.watch) return step;
   try {
-    const sizes = new Map(layoutToPlacements(stage.layout).targets.map((p) => [`${p.position[0]},${p.position[1]}`, p.size]));
-    const watch = stage.watch.flatMap((key) => {
+    const sizes = new Map(layoutToPlacements(step.layout).targets.map((p) => [`${p.position[0]},${p.position[1]}`, p.size]));
+    const watch = step.watch.flatMap((key) => {
       const size = sizes.get(key);
       if (size === undefined) return [];
       const [r, c] = key.split(",").map(Number);
       const [nr, nc] = transformAnchor([r, c], size, t);
       return [`${nr},${nc}`];
     });
-    return { ...stage, watch };
+    return { ...step, watch };
   } catch {
-    return stage;
+    return step;
   }
 }
 
 /** Drop watched keys that are no longer targets after a layout edit. */
-export function pruneWatch(stage: FlowStage): FlowStage {
-  if (!stage.watch) return stage;
+export function pruneWatch(step: FlowStep): FlowStep {
+  if (!step.watch) return step;
   try {
-    const keys = new Set(layoutToPlacements(stage.layout).targets.map((t) => `${t.position[0]},${t.position[1]}`));
-    const kept = stage.watch.filter((k) => keys.has(k));
-    return kept.length === stage.watch.length ? stage : { ...stage, watch: kept };
+    const keys = new Set(layoutToPlacements(step.layout).targets.map((t) => `${t.position[0]},${t.position[1]}`));
+    const kept = step.watch.filter((k) => keys.has(k));
+    return kept.length === step.watch.length ? step : { ...step, watch: kept };
   } catch {
-    return stage;
+    return step;
   }
 }
 
 /** "12 plants, 4 targets" */
-export function layoutSummary(layout: StageLayout): string {
+export function layoutSummary(layout: StepLayout): string {
   try {
     const { inputs, targets } = layoutToPlacements(layout);
     return `${inputs.length} plants, ${targets.length} targets`;

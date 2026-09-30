@@ -1,11 +1,11 @@
 import { newRunner } from "../flow/runner";
 import { ScenarioError, validateScenario } from "../flow/validate";
 import { seedRng } from "../rng";
-import { countUniqueCropGroups, stageSeconds } from "../stage/clock";
+import { countUniqueCropGroups, cycleSeconds } from "../growth/clock";
 import { newScratch, type Env } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { convertAloeFragments, ledgerRow } from "./inventory";
-import { applyStageLayout } from "./placement";
+import { applyStepLayout } from "./placement";
 import { zeroSummary } from "./summary";
 import type { PlotState, Scenario, SimulationState, TimedEvent } from "./state";
 
@@ -20,9 +20,9 @@ export function uniqueCropsAcross(state: SimulationState, env: Env): number {
 
 /**
  * Build the starting state from a scenario. The player's setup session
- * happens here: every plot's starting stage is laid out exactly as entered.
+ * happens here: every plot's starting step is laid out exactly as entered.
  * Setup is free and always succeeds - the starting inventory is only drawn on
- * once the run has to re-place something or a later stage lays out.
+ * once the run has to re-place something or a later step lays out.
  */
 export function initState(env: Env, scenario: Scenario): { state: SimulationState; events: TimedEvent[] } {
   const issues = validateScenario(scenario, env.data);
@@ -56,7 +56,7 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
     summary: zeroSummary(input.plots.map((p) => p.id)),
     nextPlantId: 1,
     uniqueCropCount: 0,
-    lastStageSeconds: input.settings.config.stageBaselineSeconds,
+    lastCycleSeconds: input.settings.config.cycleBaselineSeconds,
     lastCycleActive: true,
   };
   for (const item of Object.keys(state.inventory)) ledgerRow(state, item);
@@ -66,16 +66,16 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
   const ctx = makeCycleCtx(
     env,
     state,
-    { cycle: 0, active: true, stageSeconds: state.lastStageSeconds, firesAt: 0, uniqueCropCount: 0 },
+    { cycle: 0, active: true, cycleSeconds: state.lastCycleSeconds, firesAt: 0, uniqueCropCount: 0 },
     events
   );
   for (const id of input.settings.config.plotOrder) {
     const plot = state.plots.find((p) => p.id === id);
     if (!plot) continue;
-    applyStageLayout(plot, ctx.layoutFor(id), ctx, newScratch(), true, "setup");
+    applyStepLayout(plot, ctx.layoutFor(id), ctx, newScratch(), true, "setup");
   }
 
   state.uniqueCropCount = uniqueCropsAcross(state, env);
-  state.lastStageSeconds = stageSeconds(input.settings.playerStats, state.uniqueCropCount, input.settings.config.stageBaselineSeconds);
+  state.lastCycleSeconds = cycleSeconds(input.settings.playerStats, state.uniqueCropCount, input.settings.config.cycleBaselineSeconds);
   return { state, events };
 }

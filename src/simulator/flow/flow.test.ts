@@ -10,7 +10,7 @@ import {
   NEVER_ACTIVE,
   plantAt,
   scenario,
-  stage,
+  step,
   start,
 } from "../testHelpers";
 import type { TimedEvent } from "../sim/state";
@@ -19,27 +19,27 @@ const slotsOnly = { spawnCells: "slotsOnly" as const };
 const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
 const history = (s: ReturnType<typeof start>, plotId: number) =>
-  s.flows.find((f) => f.plotId === plotId)!.history.map((h) => [h.stageId, h.startCycle]);
+  s.flows.find((f) => f.plotId === plotId)!.history.map((h) => [h.stepId, h.startCycle]);
 
 describe("multi-plot: spatially independent, temporally shared", () => {
-  it("unique crops aggregate across plots, and one plot's crops speed up another's stages", () => {
+  it("unique crops aggregate across plots, and one plot's crops speed up another's cycles", () => {
     const crops = ["wheat", "potato", "carrot", "pumpkin", "melon", "cocoa_beans"];
     const others = ["sugar_cane", "cactus", "nether_wart", "wild_rose", "red_mushroom", "sunflower"];
-    const alone = start(scenario([flow([stage("a", layout(crops.map((k, i) => [k, 0, i])))])], { config: slotsOnly }));
+    const alone = start(scenario([flow([step("a", layout(crops.map((k, i) => [k, 0, i])))])], { config: slotsOnly }));
     const together = start(
       scenario(
-        [flow([stage("a", layout(crops.map((k, i) => [k, 0, i])))]), flow([stage("b", layout(others.map((k, i) => [k, 0, i])))])],
+        [flow([step("a", layout(crops.map((k, i) => [k, 0, i])))]), flow([step("b", layout(others.map((k, i) => [k, 0, i])))])],
         { config: slotsOnly }
       )
     );
     expect(alone.uniqueCropCount).toBe(6);
     expect(together.uniqueCropCount).toBe(12);
-    expect(together.lastStageSeconds).toBeLessThan(alone.lastStageSeconds);
+    expect(together.lastCycleSeconds).toBeLessThan(alone.lastCycleSeconds);
   });
 
   it("#20 effects never cross a plot boundary", () => {
     const s = start(
-      scenario([flow([stage("a", layout([["wild_rose", 0, 9], ["nether_wart", 0, 8]]))]), flow([stage("b", layout([["wheat", 0, 0]]))])], {
+      scenario([flow([step("a", layout([["wild_rose", 0, 9], ["nether_wart", 0, 8]]))]), flow([step("b", layout([["wheat", 0, 0]]))])], {
         config: slotsOnly,
       })
     );
@@ -51,8 +51,8 @@ describe("multi-plot: spatially independent, temporally shared", () => {
     // Plot 1 grows Gloomgourds; plot 2 wants a Gloomgourd placed, starting with none.
     const sc = scenario(
       [
-        flow([stage("grow", layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]))]),
-        flow([stage("use", layout([["gloomgourd", 2, 2]]))]),
+        flow([step("grow", layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]))]),
+        flow([step("use", layout([["gloomgourd", 2, 2]]))]),
       ],
       { config: slotsOnly, seed: 5 }
     );
@@ -71,7 +71,7 @@ describe("multi-plot: spatially independent, temporally shared", () => {
     const two = (order: number[]) =>
       engine.run(
         start(
-          scenario([flow([stage("a", layout([["chloronite", 1, 1]]))]), flow([stage("b", layout([["chloronite", 1, 1]]))])], {
+          scenario([flow([step("a", layout([["chloronite", 1, 1]]))]), flow([step("b", layout([["chloronite", 1, 1]]))])], {
             config: { ...slotsOnly, plotOrder: order },
             inventory: { chloronite: 1 },
           })
@@ -83,7 +83,7 @@ describe("multi-plot: spatially independent, temporally shared", () => {
   });
 
   it("profit is one aggregate, with a per-plot breakdown that sums to it", () => {
-    const grow = () => flow([stage("g", layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]))]);
+    const grow = () => flow([step("g", layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]))]);
     const r = engine.run(start(scenario([grow(), grow(), grow()], { config: slotsOnly })), 150, { retainEvents: "none" });
     const perPlot = Object.values(r.summary.perPlot).reduce((a, p) => a + p.revenue, 0);
     expect(perPlot).toBe(r.summary.coinsRealised);
@@ -91,36 +91,36 @@ describe("multi-plot: spatially independent, temporally shared", () => {
   });
 });
 
-describe("per-plot rotations", () => {
-  const twoStage = (n: number) => flow([stage("s1", layout([["wheat", 0, 0]]), [{ kind: "cycles", n }]), stage("s2", layout([["potato", 0, 0]]), [{ kind: "cycles", n }])], true);
+describe("per-plot flows", () => {
+  const twoStep = (n: number) => flow([step("s1", layout([["wheat", 0, 0]]), [{ kind: "cycles", n }]), step("s2", layout([["potato", 0, 0]]), [{ kind: "cycles", n }])], true);
 
-  it("plots desynchronise: each follows its own stage list on the shared clock", () => {
-    const r = engine.run(start(scenario([twoStage(2), twoStage(5)], { config: slotsOnly })), 12);
+  it("plots desynchronise: each follows its own step list on the shared clock", () => {
+    const r = engine.run(start(scenario([twoStep(2), twoStep(5)], { config: slotsOnly })), 12);
     expect(history(r.state, 1).length).toBeGreaterThan(history(r.state, 2).length);
     expect(history(r.state, 1)[1]).toEqual(["s2", 1]);
     expect(history(r.state, 2)[1]).toEqual(["s2", 4]);
   });
 
-  it("startIndex offsets a plot without changing its stages", () => {
-    const f = twoStage(3);
+  it("startIndex offsets a plot without changing its steps", () => {
+    const f = twoStep(3);
     const s = start(scenario([f, { ...f, startIndex: 1 }], { config: slotsOnly }));
     expect(plantAt(s, 1, 0, 0)?.kindId).toBe("wheat");
     expect(plantAt(s, 2, 0, 0)?.kindId).toBe("potato");
   });
 
-  it("a non-looping flow holds its final stage while the others keep going", () => {
-    const once = flow([stage("only", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 2 }])], false);
-    const r = engine.run(start(scenario([once, twoStage(2)], { config: slotsOnly })), 10);
+  it("a non-looping flow holds its final step while the others keep going", () => {
+    const once = flow([step("only", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 2 }])], false);
+    const r = engine.run(start(scenario([once, twoStep(2)], { config: slotsOnly })), 10);
     expect(r.state.flows[0].finished).toBe(true);
     expect(history(r.state, 1)).toHaveLength(1);
     expect(history(r.state, 2).length).toBeGreaterThan(3);
   });
 
-  it("AND semantics: one unsatisfied trigger holds the stage", () => {
+  it("AND semantics: one unsatisfied trigger holds the step", () => {
     const f = flow(
       [
-        stage("s1", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 2 }, { kind: "inventoryAtLeast", item: "chloronite", qty: 1 }]),
-        stage("s2", layout([["potato", 0, 0]]), []),
+        step("s1", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 2 }, { kind: "inventoryAtLeast", item: "chloronite", qty: 1 }]),
+        step("s2", layout([["potato", 0, 0]]), []),
       ],
       false
     );
@@ -133,42 +133,42 @@ describe("per-plot rotations", () => {
   it("mutationSpawned fires only on the named mutation", () => {
     const f = flow(
       [
-        stage("grow", layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]), [{ kind: "mutationSpawned", mutationId: "gloomgourd", count: 2 }]),
-        stage("next", layout(), []),
+        step("grow", layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]), [{ kind: "mutationSpawned", mutationId: "gloomgourd", count: 2 }]),
+        step("next", layout(), []),
       ],
       false
     );
     const r = engine.run(start(scenario([f], { config: slotsOnly, seed: 8 })), 100);
-    const change = ofKind(r.events, "stageChanged")[0];
+    const change = ofKind(r.events, "stepChanged")[0];
     const spawnedBefore = ofKind(r.events, "spawned").filter((e) => e.cycle <= change.cycle && e.mutationId === "gloomgourd");
     expect(spawnedBefore).toHaveLength(2);
   });
 
   it("decayImminent / plantDecayed drive the 'grow until the inputs decay' tactic", () => {
     const f = flow(
-      [stage("wheat", layout([["wheat", 0, 0]]), [{ kind: "plantDecayed", kindId: "wheat" }]), stage("potato", layout([["potato", 0, 0]]), [])],
+      [step("wheat", layout([["wheat", 0, 0]]), [{ kind: "plantDecayed", kindId: "wheat" }]), step("potato", layout([["potato", 0, 0]]), [])],
       false
     );
     const r = engine.run(start(scenario([f], { config: slotsOnly })), 25);
-    const change = ofKind(r.events, "stageChanged")[0];
+    const change = ofKind(r.events, "stepChanged")[0];
     const decay = ofKind(r.events, "decayed")[0];
     expect(change.cycle).toBe(decay.cycle);
     expect(plantAt(r.state, 1, 0, 0)?.kindId).toBe("potato");
   });
 
   it("a trigger that fires while the player is away waits for the next session", () => {
-    const f = flow([stage("a", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 1 }]), stage("b", layout([["potato", 0, 0]]), [])], false);
+    const f = flow([step("a", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 1 }]), step("b", layout([["potato", 0, 0]]), [])], false);
     // Online on cycles 3, 7, ...: the trigger holds at the end of cycle 0, the change happens at cycle 3.
     const r = engine.run(start(scenario([f], { config: slotsOnly, activity: { kind: "everyN", n: 4, offset: 3 } })), 6);
-    expect(r.state.flows[0].history[1]).toMatchObject({ stageId: "b", startCycle: 3 });
-    expect(ofKind(r.events, "stageChanged")[0].cycle).toBe(3);
+    expect(r.state.flows[0].history[1]).toMatchObject({ stepId: "b", startCycle: 3 });
+    expect(ofKind(r.events, "stepChanged")[0].cycle).toBe(3);
   });
 
-  it("identical plants survive a stage change untouched; nothing is spent again", () => {
+  it("identical plants survive a step change untouched; nothing is spent again", () => {
     const f = flow(
       [
-        stage("a", layout([["chloronite", 1, 1], ["wheat", 3, 3]]), [{ kind: "cycles", n: 2 }]),
-        stage("b", layout([["chloronite", 1, 1], ["potato", 3, 3]]), []),
+        step("a", layout([["chloronite", 1, 1], ["wheat", 3, 3]]), [{ kind: "cycles", n: 2 }]),
+        step("b", layout([["chloronite", 1, 1], ["potato", 3, 3]]), []),
       ],
       false
     );
@@ -180,29 +180,29 @@ describe("per-plot rotations", () => {
     expect(plantAt(r.state, 1, 3, 3)?.kindId).toBe("potato");
   });
 
-  it("a full-clear stage breaks everything; placed items drop nothing", () => {
+  it("a full-clear step breaks everything; placed items drop nothing", () => {
     const f = flow(
       [
-        stage("a", layout([["chloronite", 1, 1]]), [{ kind: "cycles", n: 1 }]),
-        stage("b", layout([["chloronite", 1, 1]]), [], { fullClear: true }),
+        step("a", layout([["chloronite", 1, 1]]), [{ kind: "cycles", n: 1 }]),
+        step("b", layout([["chloronite", 1, 1]]), [], { fullClear: true }),
       ],
       false
     );
     const r = engine.run(start(scenario([f], { config: slotsOnly, inventory: { chloronite: 1 } })), 3);
     expect(r.summary.destroyed.chloronite).toBe(1);
-    expect(r.state.inventory.chloronite ?? 0).toBe(0); // the later stage spent the spare
+    expect(r.state.inventory.chloronite ?? 0).toBe(0); // the later step spent the spare
     expect(r.summary.debtEvents).toBe(0);
   });
 
-  it("only the starting layout is free: a later stage places from inventory", () => {
-    const f = flow([stage("a", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 1 }]), stage("b", layout([["chloronite", 1, 1]]), [])], false);
+  it("only the starting layout is free: a later step places from inventory", () => {
+    const f = flow([step("a", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 1 }]), step("b", layout([["chloronite", 1, 1]]), [])], false);
     const r = engine.run(start(scenario([f], { config: slotsOnly })), 2);
     expect(r.state.debts[0]).toMatchObject({ cycle: 0, item: "chloronite" });
     expect(plantAt(r.state, 1, 1, 1)).toBeUndefined();
   });
 
-  it("stage policies override the plot and scenario defaults", () => {
-    const f = flow([stage("a", layout([["wheat", 0, 0]]), [], { policies: { baseCropUpkeep: "harvestWhenGrown" } })]);
+  it("step policies override the plot and scenario defaults", () => {
+    const f = flow([step("a", layout([["wheat", 0, 0]]), [], { policies: { baseCropUpkeep: "harvestWhenGrown" } })]);
     const r = engine.run(start(scenario([f], { config: slotsOnly })), 9);
     expect(r.summary.harvested.wheat).toBe(1);
   });
@@ -210,19 +210,19 @@ describe("per-plot rotations", () => {
 
 describe("validation", () => {
   it("rejects a trigger that can never fire", () => {
-    const f = flow([stage("a", layout(), [{ kind: "mutationSpawned", mutationId: "jerryflower", count: 1 }]), stage("b", layout())]);
+    const f = flow([step("a", layout(), [{ kind: "mutationSpawned", mutationId: "jerryflower", count: 1 }]), step("b", layout())]);
     expect(() => start(scenario([f]))).toThrow(ScenarioError);
   });
 
   it("rejects more than 3 plots and bad layouts", () => {
-    const f = flow([stage("a", layout())]);
+    const f = flow([step("a", layout())]);
     expect(engine.validate(scenario([f, f, f, f])).some((i) => i.level === "error")).toBe(true);
-    const overlap = flow([stage("a", layout([["noctilume", 0, 0], ["wheat", 1, 1]]))]);
+    const overlap = flow([step("a", layout([["noctilume", 0, 0], ["wheat", 1, 1]]))]);
     expect(() => start(scenario([overlap]))).toThrow(/overlaps/);
   });
 
-  it("warns about a stage that can never be left", () => {
-    const f = flow([stage("a", layout()), stage("b", layout())], true);
+  it("warns about a step that can never be left", () => {
+    const f = flow([step("a", layout()), step("b", layout())], true);
     expect(engine.validate(scenario([f])).some((i) => i.level === "warning" && /forever/.test(i.message))).toBe(true);
   });
 });
@@ -231,7 +231,7 @@ describe("the reference scenario: 1 plot of Layout A feeding 2 plots of Layout B
   const codes = [LAYOUT_A_CODE, LAYOUT_B_CODE, LAYOUT_B_CODE];
   const sc = (inventory: Record<string, number> = {}) =>
     scenario(
-      codes.map((code) => flow([stage("static", { code })])),
+      codes.map((code) => flow([step("static", { code })])),
       { inventory }
     );
 
@@ -267,7 +267,7 @@ describe("the reference scenario: 1 plot of Layout A feeding 2 plots of Layout B
 
 describe("destruction", () => {
   const blank = (config: Record<string, unknown> = {}, activity = NEVER_ACTIVE) =>
-    start(scenario([flow([stage("a", layout())])], { config: { ...slotsOnly, ...config }, activity }));
+    start(scenario([flow([step("a", layout())])], { config: { ...slotsOnly, ...config }, activity }));
 
   it("a growing Devourer grows a root into a neighbouring cell, destroying what was there", () => {
     const s = blank({ devourerRootChance: 1, rootSpreadChance: 0 });
@@ -317,7 +317,7 @@ describe("destruction", () => {
     const wheat: [string, number, number][] = [];
     for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) if (r !== 5 || c !== 5) wheat.push(["wheat", r, c]);
     const full = (mode: "emptyOnly" | "anyCell") => {
-      const s = start(scenario([flow([stage("a", layout(wheat))])], { config: { ...slotsOnly, chorusTeleportTargets: mode }, activity: NEVER_ACTIVE }));
+      const s = start(scenario([flow([step("a", layout(wheat))])], { config: { ...slotsOnly, chorusTeleportTargets: mode }, activity: NEVER_ACTIVE }));
       inject(s, 1, "chorus_fruit", 5, 5, "spawned");
       return engine.run(s, 1);
     };
@@ -357,8 +357,8 @@ describe("destruction", () => {
   });
 
   it("destruction is the first tick step, so a new spawn does nothing destructive on its spawn tick", async () => {
-    const { TICK_STEPS } = await import("../sim/tick");
-    const ids = TICK_STEPS.map((s) => s.id);
+    const { TICK_PHASES } = await import("../sim/tick");
+    const ids = TICK_PHASES.map((s) => s.id);
     expect(ids[0]).toBe("destruction");
     expect(ids.indexOf("destruction")).toBeLessThan(ids.indexOf("growth"));
     expect(ids.indexOf("destruction")).toBeLessThan(ids.indexOf("spawn"));
@@ -371,7 +371,7 @@ describe("destruction", () => {
 });
 
 describe("blastberry", () => {
-  const blank = (activity = NEVER_ACTIVE) => start(scenario([flow([stage("a", layout())])], { config: slotsOnly, activity }));
+  const blank = (activity = NEVER_ACTIVE) => start(scenario([flow([step("a", layout())])], { config: slotsOnly, activity }));
 
   it("a natural Blastberry primes when fully grown; harvesting it drops its items and explodes", () => {
     const s = blank({ kind: "everyN", n: 1, offset: 0 });
@@ -398,15 +398,15 @@ describe("blastberry", () => {
   it("a placed Blastberry starts unprimed and primes at the next tick; primed ones chain-explode", () => {
     const f = flow(
       [
-        stage("a", layout([["blastberry", 5, 5], ["blastberry", 5, 6]]), [{ kind: "cycles", n: 1 }]),
-        stage("b", layout(), [], { fullClear: true }),
+        step("a", layout([["blastberry", 5, 5], ["blastberry", 5, 6]]), [{ kind: "cycles", n: 1 }]),
+        step("b", layout(), [], { fullClear: true }),
       ],
       false
     );
     const s = start(scenario([f], { config: slotsOnly }));
     expect(s.plots[0].plants.find((p) => p.kindId === "blastberry")?.gate.primed).toBe(false);
-    const r = engine.run(s, 1); // tick 0 primes them; the stage change at its end breaks them
-    // One broken by the player at the stage change, the other set off by the first blast.
+    const r = engine.run(s, 1); // tick 0 primes them; the step change at its end breaks them
+    // One broken by the player at the step change, the other set off by the first blast.
     expect(ofKind(r.events, "exploded").map((e) => [e.row, e.col])).toEqual([
       [5, 5],
       [5, 6],

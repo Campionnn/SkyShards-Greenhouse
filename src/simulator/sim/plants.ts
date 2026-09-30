@@ -42,8 +42,8 @@ export function readyStageOf(m: MutationDef, config: SimConfig): number {
  * mutation spawns - it does NOT wait until it is fully grown, so the stages it
  * spends growing come out of the same timer. null = it never decays.
  */
-export function spawnedDecaySeconds(m: MutationDef, config: SimConfig, stageSeconds: number): number | null {
-  if (config.harvestWindowCycles > 0) return config.harvestWindowCycles * stageSeconds;
+export function spawnedDecaySeconds(m: MutationDef, config: SimConfig, cycleSeconds: number): number | null {
+  if (config.harvestWindowCycles > 0) return config.harvestWindowCycles * cycleSeconds;
   const days = decayDaysOf(m, config);
   return days > 0 ? days * 86400 : null;
 }
@@ -58,11 +58,11 @@ export function initialDecaySeconds(
   config: SimConfig,
   kindId: KindId,
   origin: Origin,
-  stageSeconds: number
+  cycleSeconds: number
 ): number | null {
   const m = data.mutations[kindId];
   // A natural spawn decays from the tick it appears, even while it grows.
-  if (origin === "spawned") return m ? spawnedDecaySeconds(m, config, stageSeconds) : null;
+  if (origin === "spawned") return m ? spawnedDecaySeconds(m, config, cycleSeconds) : null;
   if (m) {
     const days = decayDaysOf(m, config);
     return days > 0 ? days * 86400 : null;
@@ -81,8 +81,8 @@ export function newPlant(
   col: number,
   origin: Origin,
   cycle: number,
-  /** Stage length now, for a spawn's `harvestWindowCycles` timer. */
-  stageSeconds: number
+  /** Cycle length now, for a spawn's `harvestWindowCycles` timer. */
+  cycleSeconds: number
 ): PlantState {
   const def = kindDef(data, kindId);
   if (!def) throw new Error(`Unknown kind "${kindId}"`);
@@ -98,7 +98,7 @@ export function newPlant(
     growthStages: 0,
     readyStage: 0,
     fullyGrownAtCycle: null,
-    decaySecondsRemaining: initialDecaySeconds(data, config, kindId, origin, stageSeconds),
+    decaySecondsRemaining: initialDecaySeconds(data, config, kindId, origin, cycleSeconds),
     water: config.maxWater,
     held: [],
     lockedEffects: null,
@@ -209,7 +209,7 @@ export const isFullyGrown = (p: PlantState): boolean => !p.isDeadPlant && p.stag
  * Does taking this plant off give its drops (rather than just breaking it)?
  * Only natural spawns and base crops. All-in Aloe drops at any stage, Magic
  * Jellybean from stage 12 - before the stage the player normally waits for
- * (e.g. when a stage change removes it).
+ * (e.g. when a step change removes it).
  */
 export const isHarvestable = (p: PlantState): boolean =>
   (p.origin === "spawned" || p.origin === "planted") &&

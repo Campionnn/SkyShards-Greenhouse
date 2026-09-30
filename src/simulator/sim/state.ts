@@ -67,13 +67,13 @@ export interface PlotState {
   /** Sorted by (row, col). Every iteration over plants uses this order. */
   plants: PlantState[];
   slots: SlotLabel[];
-  /** Physical layout ground (paint and inferred plant/target footprints). Missing cells are AIR. Reset on stage change. */
+  /** Physical layout ground (paint and inferred plant/target footprints). Missing cells are AIR. Reset on step change. */
   groundTiles: Record<string, string>;
   /** Ground changed in play (Chorus Fruit converts landing cells to end_stone). */
   groundOverrides: Record<string, string>;
   /** Slot anchor key -> consecutive cycles its target has been ineligible. */
   slotIneligibleCycles: Record<string, number>;
-  /** Watched slot anchor key -> what the uptime check saw there this cycle. Reset on stage change. */
+  /** Watched slot anchor key -> what the uptime check saw there this cycle. Reset on step change. */
   watchStatus: Record<string, WatchStatus>;
 }
 
@@ -112,23 +112,23 @@ export interface SpotUptime extends UptimeCounts {
 
 export interface FlowRunnerState {
   plotId: PlotId;
-  stageIndex: number;
-  cyclesInStage: number;
-  /** Counters since entering the current stage. */
-  spawnedInStage: Record<MutationId, number>;
-  decayedInStage: Record<KindId, number>;
-  /** Natural spawns harvested since entering the stage (optional: states saved before it existed). */
-  harvestedInStage?: Record<MutationId, number>;
+  stepIndex: number;
+  cyclesInStep: number;
+  /** Counters since entering the current step. */
+  spawnedInStep: Record<MutationId, number>;
+  decayedInStep: Record<KindId, number>;
+  /** Natural spawns harvested since entering the step (optional: states saved before it existed). */
+  harvestedInStep?: Record<MutationId, number>;
   /** Triggers fired on an inactive cycle; the layout is applied at the next player session. */
   pendingTransition: boolean;
   /**
-   * Stage index the pending change goes to (a route's target or the exit's
-   * `next`). Optional: states saved before routes existed go to the next stage.
+   * Step index the pending change goes to (a route's target or the exit's
+   * `next`). Optional: states saved before routes existed go to the next step.
    */
   pendingTarget?: number;
-  /** A non-looping flow that reached its last stage's exit: the plot holds that stage. */
+  /** A non-looping flow that reached its last step's exit: the plot holds that step. */
   finished: boolean;
-  history: { stageId: string; stageIndex: number; startCycle: number; endCycle: number | null }[];
+  history: { stepId: string; stepIndex: number; startCycle: number; endCycle: number | null }[];
 }
 
 export interface PlayerStats {
@@ -171,7 +171,7 @@ export interface Settings {
   /**
    * Master switch for the player. Off = the player never comes online: no
    * harvesting, watering, upkeep, re-placing, ground fixing, gate interaction
-   * or stage changes, whatever the activity schedule says. Optional so states
+   * or step changes, whatever the activity schedule says. Optional so states
    * saved before it existed still load (missing = on).
    */
   playerActions?: boolean;
@@ -253,7 +253,7 @@ export interface RunSummary {
   replacements: number;
   debtEvents: number;
   unfilledCellCycles: number;
-  /** Watched target cells, all plots and stages together (cell-cycles). */
+  /** Watched target cells, all plots and steps together (cell-cycles). */
   uptime: UptimeCounts;
   perPlot: Record<string, PerPlotSummary>;
 }
@@ -272,13 +272,13 @@ export interface SimulationState {
   debts: DebtEvent[];
   /** "plot:row,col:item" -> an unresolved shortfall episode. */
   openDebts: Record<string, true>;
-  /** Per watched spot: plot id -> stage id -> slot anchor key -> counters. */
+  /** Per watched spot: plot id -> step id -> slot anchor key -> counters. */
   uptime: Record<string, Record<string, Record<string, SpotUptime>>>;
   summary: RunSummary;
   nextPlantId: number;
   /** Shared, recomputed every cycle across all plots. */
   uniqueCropCount: number;
-  lastStageSeconds: number;
+  lastCycleSeconds: number;
   lastCycleActive: boolean;
 }
 
@@ -305,7 +305,7 @@ export type TickEvent =
   | { kind: "destroyed"; plantId: number; kindId: KindId; row: number; col: number; by: string }
   | { kind: "teleported"; plantId: number; kindId: KindId; fromRow: number; fromCol: number; row: number; col: number }
   | { kind: "debt"; item: ItemId; row: number; col: number; needed: number; available: number }
-  | { kind: "stageChanged"; fromStage: string; toStage: string; stageIndex: number }
+  | { kind: "stepChanged"; fromStep: string; toStep: string; stepIndex: number }
   | { kind: "playerSession" };
 
 export type TickEventKind = TickEvent["kind"];

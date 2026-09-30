@@ -4,17 +4,18 @@ import { FlaskConical } from "lucide-react";
 import { InfoHint, SegmentedControl, useToast } from "../components/ui";
 import { LayoutPickerDialog } from "../components/simulator/LayoutPicker";
 import { InventoryPanel, MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
-import { EventLog, RunControls, StageTimeline } from "../components/simulator/RunPanels";
+import { EventLog, RunControls, FlowTimeline } from "../components/simulator/RunPanels";
 import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
-import { RotationEditor } from "../components/simulator/RotationEditor";
+import { FlowEditor } from "../components/simulator/FlowEditor";
 import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
 import { addPlot, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
 import { useSimulation } from "../hooks/useSimulation";
-import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, scenarioFromShareCodes, type Scenario } from "../simulator";
+import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, migrateScenario, scenarioFromShareCodes, type Scenario } from "../simulator";
 import { extractLayoutCode, LocalStorageManager, readIncomingLayout, SOURCE_LABEL, type IncomingLayout } from "../utilities";
 
-/** Saved scenarios from older versions may miss newer settings; fill them from the defaults. */
-function withDefaults(sc: Scenario): Scenario {
+/** Saved scenarios from older versions may use old names or miss newer settings; upgrade them and fill from the defaults. */
+function withDefaults(saved: Scenario): Scenario {
+  const sc = migrateScenario(saved);
   const base = defaultSettings();
   return {
     ...sc,
@@ -55,9 +56,9 @@ export const SimulatorPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [scenario, setScenario] = useState<Scenario>(() => initialScenario(params));
-  const [editing, setEditing] = useState<{ plotId: number; stage: number } | null>(null);
+  const [editing, setEditing] = useState<{ plotId: number; step: number } | null>(null);
   const editingPlot = editing?.plotId ?? null;
-  const setEditingPlot = (plotId: number | null) => setEditing(plotId === null ? null : { plotId, stage: 0 });
+  const setEditingPlot = (plotId: number | null) => setEditing(plotId === null ? null : { plotId, step: 0 });
   const [focus, setFocus] = useState<string>(ALL);
   // A layout sent here by a Simulate button, or the picker opened from the Scenario panel.
   const [incoming, setIncoming] = useState<IncomingLayout | null>(() => readIncomingLayout(location.state));
@@ -89,16 +90,16 @@ export const SimulatorPage: React.FC = () => {
     setScenario(r.scenario);
     setFocus(ALL);
     const where =
-      dest.kind === "appendStage" && !isBlankScenario(before) ? `Stage ${r.stageIndex + 1} of Plot ${r.plotId}` : `Plot ${r.plotId}`;
+      dest.kind === "appendStep" && !isBlankScenario(before) ? `Step ${r.stepIndex + 1} of Plot ${r.plotId}` : `Plot ${r.plotId}`;
     toast({
       id: "simulator-layout-placed",
       title: `Loaded into ${where}`,
-      description: dest.kind === "appendStage" && !isBlankScenario(before) ? "Set when the plot should move on to it in the rotation." : layout.name,
+      description: dest.kind === "appendStep" && !isBlankScenario(before) ? "Set when the plot should move on to it in the flow." : layout.name,
       variant: "success",
       duration: 6000,
       action: { label: "Undo", onClick: () => setScenario(before) },
     });
-    if (dest.kind === "appendStage" && !isBlankScenario(before)) setEditing({ plotId: r.plotId, stage: r.stageIndex });
+    if (dest.kind === "appendStep" && !isBlankScenario(before)) setEditing({ plotId: r.plotId, step: r.stepIndex });
   };
 
   const loadMany = (codes: string[]) => {
@@ -115,7 +116,7 @@ export const SimulatorPage: React.FC = () => {
     });
   };
 
-  // The rotation editor is a full-screen overlay; lock the page behind it.
+  // The flow editor is a full-screen overlay; lock the page behind it.
   useEffect(() => {
     if (editingPlot === null) return;
     const prev = document.body.style.overflow;
@@ -179,10 +180,10 @@ export const SimulatorPage: React.FC = () => {
                       runner={state.flows.find((f) => f.plotId === plot.id)}
                       def={state.scenario.plots.find((p) => p.id === plot.id)}
                       events={eventsFor(plot.id)}
-                      onEditRotation={() => setEditingPlot(plot.id)}
+                      onEditFlow={() => setEditingPlot(plot.id)}
                       maxCell={focused !== null ? 72 : 52}
                       openDebts={Object.keys(state.openDebts)}
-                      stageSeconds={state.lastStageSeconds}
+                      cycleSeconds={state.lastCycleSeconds}
                       config={state.scenario.settings.config}
                     />
                   </div>
@@ -199,7 +200,7 @@ export const SimulatorPage: React.FC = () => {
           {snapshot && state && (
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                <MoneyPanel summary={state.summary} previous={view.previousSummary} stageSeconds={state.lastStageSeconds} />
+                <MoneyPanel summary={state.summary} previous={view.previousSummary} cycleSeconds={state.lastCycleSeconds} />
                 <SustainabilityPanel report={snapshot.report} summary={state.summary} />
               </div>
               <InventoryPanel
@@ -215,7 +216,7 @@ export const SimulatorPage: React.FC = () => {
           {state && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
               <EventLog log={view.log} plotIds={plotIds} />
-              <StageTimeline flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} />
+              <FlowTimeline flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} />
             </div>
           )}
 
@@ -223,7 +224,7 @@ export const SimulatorPage: React.FC = () => {
             <ScenarioPanel
               scenario={scenario}
               onChange={setScenario}
-              onEditRotation={setEditingPlot}
+              onEditFlow={setEditingPlot}
               onLoadLayout={() => setPicking(true)}
               issues={view.issues}
               warnings={view.warnings}
@@ -237,11 +238,11 @@ export const SimulatorPage: React.FC = () => {
         <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true">
           <div className="container mx-auto max-w-screen-2xl px-2 sm:px-4 py-6">
             <div className="bg-slate-900 rounded-lg shadow-2xl">
-              <RotationEditor
-                key={`${editing!.plotId}-${editing!.stage}`}
+              <FlowEditor
+                key={`${editing!.plotId}-${editing!.step}`}
                 scenario={scenario}
                 plotId={editingPlot}
-                initialStage={editing!.stage}
+                initialStep={editing!.step}
                 onChange={setScenario}
                 onClose={() => setEditingPlot(null)}
               />

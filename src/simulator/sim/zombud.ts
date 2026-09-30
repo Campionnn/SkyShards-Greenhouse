@@ -32,7 +32,7 @@ export function zombudHarvest(plot: PlotState, p: PlantState, ctx: CycleCtx): nu
     const col = cellCol(idx);
     const req = { cycle: ctx.cycle, plotId: plot.id, row, col, action: "fill for Zombud", replacement: false };
     if (!spend(ctx.state, DEAD_PLANT, 1, req, ctx.prices, ctx.emit)) break;
-    const d = newPlant(ctx.state, ctx.env.data, ctx.config, DEAD_PLANT, row, col, "placed", ctx.cycle, ctx.stageSeconds);
+    const d = newPlant(ctx.state, ctx.env.data, ctx.config, DEAD_PLANT, row, col, "placed", ctx.cycle, ctx.cycleSeconds);
     insertPlant(plot, d);
     ctx.emit(plot.id, { kind: "placed", plantId: d.id, kindId: DEAD_PLANT, row, col, origin: "placed", replacement: false });
   }

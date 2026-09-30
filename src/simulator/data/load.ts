@@ -8,7 +8,7 @@ import type { CropDef, GameData, KindDef, MutationDef, Size } from "./types";
 export const KNOWN_SPECIALS: Record<string, string> = {
   requires_zero_adjacent: "spawn/multiplicity (Lonelily: empty 8-way ring)",
   all_positive_crop_effects: "spawn/multiplicity (Godseed: effect superset)",
-  explode_turtlellini_with_blastberry: "stage/gates (Shellfruit: Blastberry destruction)",
+  explode_turtlellini_with_blastberry: "growth/gates (Shellfruit: Blastberry destruction)",
   grow_the_jerryseed: "never spawns (weight 0; the Jerryseed item is out of scope)",
 };
 

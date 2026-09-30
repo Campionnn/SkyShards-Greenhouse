@@ -1,27 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { engine, flow, layout, scenario, stage, start } from "../testHelpers";
-import type { Condition, FlowStage, StageRoute } from "./types";
+import { engine, flow, layout, scenario, step, start } from "../testHelpers";
+import type { Condition, FlowStep, StepRoute } from "./types";
 import { describeConditions } from "./triggers";
-import { deleteStage } from "../../components/simulator/scenarioEdit";
+import { deleteStep } from "../../components/simulator/scenarioEdit";
 
-// Choosing which stage to go to: routes (conditional jumps), `next`, AND / OR
-// condition groups and the stageVisits condition.
+// Choosing which step to go to: routes (conditional jumps), `next`, AND / OR
+// condition groups and the stepVisits condition.
 
 const slotsOnly = { spawnCells: "slotsOnly" as const };
-const ids = (s: ReturnType<typeof start>, plotId = 1) => s.flows.find((f) => f.plotId === plotId)!.history.map((h) => h.stageId);
-const at = (id: string, crop: string, exit: Condition[] = [], extra: Partial<FlowStage> = {}) => stage(id, layout([[crop, 0, 0]]), exit, extra);
+const ids = (s: ReturnType<typeof start>, plotId = 1) => s.flows.find((f) => f.plotId === plotId)!.history.map((h) => h.stepId);
+const at = (id: string, crop: string, exit: Condition[] = [], extra: Partial<FlowStep> = {}) => step(id, layout([[crop, 0, 0]]), exit, extra);
 const cycles = (n: number): Condition => ({ kind: "cycles", n });
 
-describe("choosing the next stage", () => {
-  it("next sends the normal exit to a chosen stage instead of the following one", () => {
-    // 1 -> 2 -> 1 -> 2 ... ; stage 3 is never reached.
+describe("choosing the next step", () => {
+  it("next sends the normal exit to a chosen step instead of the following one", () => {
+    // 1 -> 2 -> 1 -> 2 ... ; step 3 is never reached.
     const f = flow([at("s1", "wheat", [cycles(1)]), at("s2", "potato", [cycles(1)], { next: "s1" }), at("s3", "carrot")], false);
     const r = engine.run(start(scenario([f], { config: slotsOnly })), 6);
     expect(ids(r.state)).toEqual(["s1", "s2", "s1", "s2", "s1", "s2", "s1"]);
   });
 
-  it("a route jumps to its stage once its conditions hold, before the normal exit is looked at", () => {
-    const route: StageRoute = { to: "s3", when: [{ kind: "inventoryAtLeast", item: "chloronite", qty: 1 }] };
+  it("a route jumps to its step once its conditions hold, before the normal exit is looked at", () => {
+    const route: StepRoute = { to: "s3", when: [{ kind: "inventoryAtLeast", item: "chloronite", qty: 1 }] };
     const f = flow([at("s1", "wheat", [cycles(1)], { routes: [route] }), at("s2", "potato"), at("s3", "carrot")], false);
     expect(ids(engine.run(start(scenario([f], { config: slotsOnly })), 3).state)).toEqual(["s1", "s2"]);
     expect(ids(engine.run(start(scenario([f], { config: slotsOnly, inventory: { chloronite: 1 } })), 3).state)).toEqual(["s1", "s3"]);
@@ -35,13 +35,13 @@ describe("choosing the next stage", () => {
     expect(ids(engine.run(start(scenario([f], { config: slotsOnly })), 2).state)).toEqual(["s1", "s3"]);
   });
 
-  it("the user's example: swap between 1 and 2, and go to 3 every 3rd time through stage 2", () => {
+  it("the user's example: swap between 1 and 2, and go to 3 every 3rd time through step 2", () => {
     const f = flow(
       [
         at("s1", "wheat", [cycles(1)]),
         at("s2", "potato", [cycles(1)], {
           next: "s1",
-          routes: [{ to: "s3", when: [{ kind: "stageVisits", count: 3, sinceStage: "s3" }] }],
+          routes: [{ to: "s3", when: [{ kind: "stepVisits", count: 3, sinceStep: "s3" }] }],
         }),
         at("s3", "carrot", [cycles(1)], { next: "s1" }),
       ],
@@ -51,7 +51,7 @@ describe("choosing the next stage", () => {
     expect(ids(r.state)).toEqual(["s1", "s2", "s1", "s2", "s1", "s2", "s3", "s1", "s2", "s1", "s2", "s1", "s2", "s3", "s1"]);
   });
 
-  it("a non-looping plot holding its final stage can still leave through a route", () => {
+  it("a non-looping plot holding its final step can still leave through a route", () => {
     const f = flow(
       [at("s1", "wheat", [cycles(1)]), at("s2", "potato", [cycles(1)], { routes: [{ to: "s1", when: [{ kind: "inventoryAtLeast", item: "wheat", qty: 1 }] }] })],
       false
@@ -75,18 +75,18 @@ describe("choosing the next stage", () => {
     expect(later.flows[0].pendingTarget).toBeUndefined();
   });
 
-  it("a stage can route to itself: the layout is re-applied and its counters restart", () => {
+  it("a step can route to itself: the layout is re-applied and its counters restart", () => {
     const f = flow([at("s1", "wheat", [], { routes: [{ to: "s1", when: [cycles(2)] }] })], false);
     const r = engine.run(start(scenario([f], { config: slotsOnly })), 5);
     expect(ids(r.state)).toEqual(["s1", "s1", "s1"]);
-    expect(r.state.flows[0].cyclesInStage).toBe(1);
+    expect(r.state.flows[0].cyclesInStep).toBe(1);
   });
 
   it("routes keep runs deterministic and splittable", () => {
     const f = flow(
       [
         at("s1", "wheat", [cycles(2)]),
-        at("s2", "potato", [cycles(1)], { next: "s1", routes: [{ to: "s3", when: [{ kind: "stageVisits", count: 2, sinceStage: "s3" }] }] }),
+        at("s2", "potato", [cycles(1)], { next: "s1", routes: [{ to: "s3", when: [{ kind: "stepVisits", count: 2, sinceStep: "s3" }] }] }),
         at("s3", "carrot", [cycles(1)]),
       ],
       true
@@ -113,7 +113,7 @@ describe("AND / OR conditions", () => {
   it("nested groups: (blocked or 2 cycles) and 3 cycles", () => {
     const exit: Condition[] = [{ kind: "group", match: "any", of: [blocked, cycles(2)] }, cycles(3)];
     const r = engine.run(start(scenario([two(exit)], { config: slotsOnly })), 5).state;
-    expect(r.flows[0].history[1]).toMatchObject({ stageId: "s2", startCycle: 2 });
+    expect(r.flows[0].history[1]).toMatchObject({ stepId: "s2", startCycle: 2 });
   });
 
   it("an empty group never holds", () => {
@@ -121,21 +121,21 @@ describe("AND / OR conditions", () => {
     expect(ids(r)).toEqual(["s1"]);
   });
 
-  it("describes groups with brackets and stage names", () => {
+  it("describes groups with brackets and step names", () => {
     const text = describeConditions(
-      [{ kind: "group", match: "any", of: [cycles(2), { kind: "stageVisits", count: 3, sinceStage: "s3" }] }, blocked],
+      [{ kind: "group", match: "any", of: [cycles(2), { kind: "stepVisits", count: 3, sinceStep: "s3" }] }, blocked],
       "all",
-      (id) => `Stage ${id}`
+      (id) => `Step ${id}`
     );
-    expect(text).toBe("(2 cycles in stage or entered this stage 3+ times since Stage s3) and inventory chloronite >= 1");
+    expect(text).toBe("(2 cycles in step or entered this step 3+ times since Step s3) and inventory chloronite >= 1");
   });
 });
 
 describe("validation of routes", () => {
-  it("rejects a route, next or stageVisits naming a stage that does not exist", () => {
+  it("rejects a route, next or stepVisits naming a step that does not exist", () => {
     const f = flow(
       [
-        at("s1", "wheat", [{ kind: "stageVisits", count: 2, sinceStage: "gone" }], { next: "nope", routes: [{ to: "missing", when: [cycles(1)] }] }),
+        at("s1", "wheat", [{ kind: "stepVisits", count: 2, sinceStep: "gone" }], { next: "nope", routes: [{ to: "missing", when: [cycles(1)] }] }),
         at("s2", "potato"),
       ],
       true
@@ -153,17 +153,17 @@ describe("validation of routes", () => {
     expect(issues.some((i) => i.level === "warning" && /empty AND\/OR group/.test(i.message))).toBe(true);
   });
 
-  it("a stage that only leaves through a route is not warned about", () => {
+  it("a step that only leaves through a route is not warned about", () => {
     const f = flow([at("s1", "wheat", [], { routes: [{ to: "s2", when: [cycles(1)] }] }), at("s2", "potato", [cycles(1)])], true);
     expect(engine.validate(scenario([f])).some((i) => /forever/.test(i.message))).toBe(false);
   });
 });
 
-describe("deleting a stage", () => {
-  it("drops routes to it, resets a next to it and un-anchors stageVisits since it", () => {
+describe("deleting a step", () => {
+  it("drops routes to it, resets a next to it and un-anchors stepVisits since it", () => {
     const f = flow(
       [
-        at("s1", "wheat", [{ kind: "group", match: "any", of: [{ kind: "stageVisits", count: 2, sinceStage: "s3" }] }], {
+        at("s1", "wheat", [{ kind: "group", match: "any", of: [{ kind: "stepVisits", count: 2, sinceStep: "s3" }] }], {
           next: "s3",
           routes: [{ to: "s3", when: [cycles(1)] }, { to: "s2", when: [cycles(5)] }],
         }),
@@ -172,12 +172,12 @@ describe("deleting a stage", () => {
       ],
       true
     );
-    const p = deleteStage({ id: 1, flow: f }, 2);
-    const s1 = p.flow.stages[0];
-    expect(p.flow.stages.map((s) => s.id)).toEqual(["s1", "s2"]);
+    const p = deleteStep({ id: 1, flow: f }, 2);
+    const s1 = p.flow.steps[0];
+    expect(p.flow.steps.map((s) => s.id)).toEqual(["s1", "s2"]);
     expect(s1.next).toBeUndefined();
     expect(s1.routes).toEqual([{ to: "s2", when: [cycles(5)] }]);
-    expect(s1.exit).toEqual([{ kind: "group", match: "any", of: [{ kind: "stageVisits", count: 2 }] }]);
+    expect(s1.exit).toEqual([{ kind: "group", match: "any", of: [{ kind: "stepVisits", count: 2 }] }]);
     expect(engine.validate(scenario([p.flow])).filter((i) => i.level === "error")).toEqual([]);
   });
 });

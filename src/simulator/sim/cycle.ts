@@ -1,7 +1,7 @@
 import { mergePolicies } from "../flow/policies";
-import { countStageEvent } from "../flow/runner";
+import { countStepEvent } from "../flow/runner";
 import { npcPriceSource } from "../economy/prices";
-import { cyclesUntilNextActive } from "../stage/activity";
+import { cyclesUntilNextActive } from "../growth/activity";
 import type { CycleCtx, Env } from "./context";
 import type { PlotId, ScenarioPlot, SimulationState, TickEvent, TimedEvent } from "./state";
 
@@ -9,7 +9,7 @@ import type { PlotId, ScenarioPlot, SimulationState, TickEvent, TimedEvent } fro
 export function makeCycleCtx(
   env: Env,
   state: SimulationState,
-  opts: { cycle: number; active: boolean; stageSeconds: number; firesAt: number; uniqueCropCount: number },
+  opts: { cycle: number; active: boolean; cycleSeconds: number; firesAt: number; uniqueCropCount: number },
   sink: TimedEvent[]
 ): CycleCtx {
   const { settings } = state.scenario;
@@ -21,9 +21,9 @@ export function makeCycleCtx(
     if (!def || !runner) throw new Error(`No flow for plot ${id}`);
     return { def, runner };
   };
-  const stageOf = (id: PlotId) => {
+  const stepOf = (id: PlotId) => {
     const { def, runner } = flowOf(id);
-    return def.flow.stages[runner.stageIndex];
+    return def.flow.steps[runner.stepIndex];
   };
 
   const ctx: CycleCtx = {
@@ -34,30 +34,30 @@ export function makeCycleCtx(
     prices: npcPriceSource(env.data, settings.config.rareDropValues),
     cycle: opts.cycle,
     active: opts.active,
-    stageSeconds: opts.stageSeconds,
+    cycleSeconds: opts.cycleSeconds,
     firesAt: opts.firesAt,
     uniqueCropCount: opts.uniqueCropCount,
     emit(plotId: PlotId, event: TickEvent) {
       sink.push({ ...event, cycle: opts.cycle, plotId });
       const runner = runnerOf(plotId);
-      if (runner) countStageEvent(runner, event);
+      if (runner) countStepEvent(runner, event);
     },
     policiesFor(plotId) {
       const { def } = flowOf(plotId);
-      return mergePolicies(settings.policies, def.policies, stageOf(plotId).policies);
+      return mergePolicies(settings.policies, def.policies, stepOf(plotId).policies);
     },
     layoutFor(plotId) {
-      return env.resolveLayout(stageOf(plotId).layout);
+      return env.resolveLayout(stepOf(plotId).layout);
     },
-    stageFor(plotId) {
-      return stageOf(plotId);
+    stepFor(plotId) {
+      return stepOf(plotId);
     },
     flowFor(plotId) {
       return flowOf(plotId);
     },
     cyclesUntilNextActive() {
       if (settings.playerActions === false) return Infinity;
-      return cyclesUntilNextActive(settings.activity, opts.cycle, opts.firesAt, opts.stageSeconds, settings.playerStats.startTimeOfDay);
+      return cyclesUntilNextActive(settings.activity, opts.cycle, opts.firesAt, opts.cycleSeconds, settings.playerStats.startTimeOfDay);
     },
   };
   return ctx;

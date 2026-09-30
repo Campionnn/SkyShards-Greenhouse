@@ -10,7 +10,7 @@ export const DEFAULT_POLICIES: Policies = {
   fixGround: true,
 };
 
-/** Scenario defaults, then plot overrides, then stage overrides. */
+/** Scenario defaults, then plot overrides, then step overrides. */
 export function mergePolicies(base: Policies, ...layers: (PolicyOverrides | undefined)[]): Policies {
   let out: Policies = { ...base, gateInteractions: { ...base.gateInteractions } };
   for (const layer of layers) {

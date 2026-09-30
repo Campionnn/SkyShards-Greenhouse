@@ -9,7 +9,7 @@ export { GameDataError, isHarvestableCrop, kindDef, loadGameData } from "./data/
 export type * from "./data/types";
 export type * from "./flow/types";
 export { DEFAULT_POLICIES, mergePolicies } from "./flow/policies";
-export { describeCondition, describeConditions, describeTrigger, type StageNamer } from "./flow/triggers";
+export { describeCondition, describeConditions, describeTrigger, type StepNamer } from "./flow/triggers";
 export { LayoutError, resolveLayout } from "./flow/layout";
 export { MAX_PLOTS, ScenarioError, validateScenario, type ScenarioIssue } from "./flow/validate";
 export { analyseSustainability, describeDebt, describeSpotFailure } from "./analysis/sustainability";
@@ -17,6 +17,7 @@ export type { ItemReport, ItemStatus, SpotReport, SustainabilityReport } from ".
 export { uptimeRatio } from "./sim/summary";
 export { layoutFromDecoded, layoutFromShareCode } from "./share/layoutFromShare";
 export { DEFAULT_PLAYER_STATS, defaultSettings, scenarioFromShareCodes, staticFlow } from "./scenario";
+export { migrateScenario } from "./migrate";
 export { ETHEREAL_VINE_BY_RARITY, HARVEST_BOUNTY, RARE_DROP_ITEMS } from "./economy/bounty";
 export { defaultNpcPrice, npcPriceSource, WIKI_NPC_PRICES, type PriceSource } from "./economy/prices";
 export { jellybeanMultiplier } from "./economy/yield";
@@ -31,6 +32,6 @@ export {
   RARE_CROP_ITEMS,
   type ArmorSet,
 } from "./economy/rareCrops";
-export { UNMODELLED_RULES } from "./stage/gates";
-export { ALOE_FRAGMENT, ALOE_OPTIMAL_STAGE, aloeHarvestItems, aloeRow } from "./stage/aloe";
+export { UNMODELLED_RULES } from "./growth/gates";
+export { ALOE_FRAGMENT, ALOE_OPTIMAL_STAGE, aloeHarvestItems, aloeRow } from "./growth/aloe";
 export type * from "./sim/state";

@@ -25,7 +25,7 @@ type Preview = { inputs: { cropId: string; position: [number, number] }[]; targe
 
 interface LayoutSource extends IncomingLayout {
   key: string;
-  /** Card heading; `name` is what the stage gets called. */
+  /** Card heading; `name` is what the step gets called. */
   title: string;
   detail: string;
   preview: Preview;
@@ -159,8 +159,8 @@ function useDialogChrome(onClose: () => void) {
 
 /**
  * The layout picker. With `scenario` it ends in a choice of where the layout
- * goes (new plot / replace / next stage); with `onUse` it ends in one button
- * (used by the rotation editor for the current stage). `incoming` skips the
+ * goes (new plot / replace / next step); with `onUse` it ends in one button
+ * (used by the flow editor for the current step). `incoming` skips the
  * list: the layout was already chosen on another page.
  */
 type PickerProps = {

@@ -111,13 +111,13 @@ export interface PlotViewProps {
   runner: FlowRunnerState | undefined;
   def: ScenarioPlot | undefined;
   events: TimedEvent[];
-  onEditRotation?: () => void;
+  onEditFlow?: () => void;
   /** Largest cell size in px (the focused single-plot view uses a bigger one). */
   maxCell?: number;
   /** Unresolved shortfalls ("plot:row,col:item"): layout plants the player could not afford to re-place. */
   openDebts?: string[];
-  /** For the hover cards: current stage length and the scenario's config. */
-  stageSeconds: number;
+  /** For the hover cards: current cycle length and the scenario's config. */
+  cycleSeconds: number;
   config: SimConfig;
 }
 
@@ -127,10 +127,10 @@ export const PlotView: React.FC<PlotViewProps> = ({
   runner,
   def,
   events,
-  onEditRotation,
+  onEditFlow,
   maxCell = 48,
   openDebts = [],
-  stageSeconds,
+  cycleSeconds,
   config,
 }) => {
   const fitRef = useRef<HTMLDivElement>(null);
@@ -139,8 +139,8 @@ export const PlotView: React.FC<PlotViewProps> = ({
   const { width, height } = getGridDimensions(cellSize, gap);
   const marks = useMemo(() => marksFrom(events), [events]);
 
-  const stage = def && runner ? def.flow.stages[runner.stageIndex] : undefined;
-  const watchedKeys = new Set(stage?.watch ?? plot.slots.map((s) => `${s.row},${s.col}`));
+  const step = def && runner ? def.flow.steps[runner.stepIndex] : undefined;
+  const watchedKeys = new Set(step?.watch ?? plot.slots.map((s) => `${s.row},${s.col}`));
   const occupied = new Set<string>();
   for (const p of plot.plants) {
     for (let dr = 0; dr < p.size; dr++) for (let dc = 0; dc < p.size; dc++) occupied.add(`${p.row + dr},${p.col + dc}`);
@@ -166,22 +166,22 @@ export const PlotView: React.FC<PlotViewProps> = ({
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0">
           <h3 className="text-sm font-medium text-slate-200">Plot {plot.id}</h3>
-          {stage && (
+          {step && (
             <p className="text-xs text-slate-400 break-words">
               <span className="text-slate-500">
-                Stage {runner!.stageIndex + 1}/{def!.flow.stages.length}
+                Step {runner!.stepIndex + 1}/{def!.flow.steps.length}
               </span>{" "}
-              {stage.label || stage.id}
-              <span className="text-slate-500"> · {runner!.cyclesInStage} cycles in</span>
+              {step.label || step.id}
+              <span className="text-slate-500"> · {runner!.cyclesInStep} cycles in</span>
               {runner!.pendingTransition && <span className="text-amber-300"> · change pending</span>}
-              {runner!.finished && <span className="text-slate-500"> · holding final stage</span>}
+              {runner!.finished && <span className="text-slate-500"> · holding final step</span>}
             </p>
           )}
         </div>
-        {onEditRotation && (
-          <button className={`${buttonClass.neutral} flex-shrink-0`} onClick={onEditRotation} title="Edit this plot's rotation">
+        {onEditFlow && (
+          <button className={`${buttonClass.neutral} flex-shrink-0`} onClick={onEditFlow} title="Edit this plot's flow">
             <Pencil className="w-3 h-3" />
-            Rotation
+            Flow
           </button>
         )}
       </div>
@@ -337,7 +337,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
               gap={gap}
               gridWidth={width}
               gridHeight={height}
-              stageSeconds={stageSeconds}
+              cycleSeconds={cycleSeconds}
               config={config}
             />
           )}

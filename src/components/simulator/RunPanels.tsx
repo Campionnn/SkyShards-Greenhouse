@@ -210,13 +210,13 @@ export const EventLog: React.FC<{ log: TimedEvent[]; plotIds: number[] }> = ({ l
   );
 };
 
-// ---- Stage timeline -------------------------------------------------------
+// ---- Step timeline -------------------------------------------------------
 
-export const StageTimeline: React.FC<{ flows: FlowRunnerState[]; defs: ScenarioPlot[]; cycle: number }> = ({ flows, defs, cycle }) => {
+export const FlowTimeline: React.FC<{ flows: FlowRunnerState[]; defs: ScenarioPlot[]; cycle: number }> = ({ flows, defs, cycle }) => {
   const span = Math.max(1, cycle);
   const colours = ["bg-emerald-500/50", "bg-blue-500/50", "bg-purple-500/50", "bg-amber-500/50", "bg-cyan-500/50", "bg-pink-500/50"];
   return (
-    <Panel title="Stage timeline" icon={<History />} description="Each plot runs its own rotation on the shared clock.">
+    <Panel title="Step timeline" icon={<History />} description="Each plot runs its own flow on the shared clock.">
       <div className="space-y-2">
         <div className="flex justify-between text-[10px] text-slate-500 pl-14">
           <span>cycle 0</span>
@@ -232,15 +232,15 @@ export const StageTimeline: React.FC<{ flows: FlowRunnerState[]; defs: ScenarioP
                   const end = h.endCycle ?? cycle;
                   const left = (h.startCycle / span) * 100;
                   const width = Math.max(0.5, ((end - h.startCycle) / span) * 100);
-                  const label = def?.flow.stages[h.stageIndex]?.label || h.stageId;
+                  const label = def?.flow.steps[h.stepIndex]?.label || h.stepId;
                   return (
                     <div
                       key={i}
-                      className={`absolute top-0 bottom-0 ${colours[h.stageIndex % colours.length]} border-r border-slate-900/60 text-[10px] text-slate-100 flex items-center justify-center overflow-hidden`}
+                      className={`absolute top-0 bottom-0 ${colours[h.stepIndex % colours.length]} border-r border-slate-900/60 text-[10px] text-slate-100 flex items-center justify-center overflow-hidden`}
                       style={{ left: `${left}%`, width: `${width}%` }}
                       title={`${label}: cycles ${h.startCycle}-${h.endCycle ?? "now"}`}
                     >
-                      {width >= 2.5 ? h.stageIndex + 1 : null}
+                      {width >= 2.5 ? h.stepIndex + 1 : null}
                     </div>
                   );
                 })}
@@ -250,7 +250,7 @@ export const StageTimeline: React.FC<{ flows: FlowRunnerState[]; defs: ScenarioP
         })}
         <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1">
           {defs.map((d) =>
-            d.flow.stages.map((s, i) => (
+            d.flow.steps.map((s, i) => (
               <span key={`${d.id}-${s.id}`} className="flex items-center gap-1.5 text-[11px] text-slate-400">
                 <span className={`inline-flex w-4 h-4 items-center justify-center rounded text-[10px] text-slate-100 ${colours[i % colours.length]}`}>{i + 1}</span>
                 Plot {d.id}: {s.label || s.id}

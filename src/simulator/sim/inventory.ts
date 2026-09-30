@@ -1,6 +1,6 @@
 import type { PriceSource } from "../economy/prices";
 import type { ItemId } from "../data/types";
-import { ALOE_FRAGMENT, FRAGMENTS_PER_ALOE } from "../stage/aloe";
+import { ALOE_FRAGMENT, FRAGMENTS_PER_ALOE } from "../growth/aloe";
 import { bump } from "./summary";
 import type { LedgerRow, PlotId, SimulationState, TickEvent } from "./state";
 
