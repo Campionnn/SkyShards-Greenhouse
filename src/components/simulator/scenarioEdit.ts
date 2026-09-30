@@ -56,6 +56,20 @@ export function addPlot(sc: Scenario, layout: StageLayout = { code: EMPTY_LAYOUT
   return { ...sc, plots: [...sc.plots, plot].sort((a, b) => a.id - b.id) };
 }
 
+/**
+ * Add a copy of a plot: its whole rotation (every stage, layout, exit,
+ * route, loop, start stage, checked targets) and its policy overrides, under
+ * the next free plot id. Stage ids and routes are per plot, so they carry
+ * over as they are. Returns the scenario unchanged when every plot is in use.
+ */
+export function duplicatePlot(sc: Scenario, plotId: number): Scenario {
+  const source = sc.plots.find((p) => p.id === plotId);
+  const id = nextPlotId(sc);
+  if (!source || id === null) return sc;
+  const copy: ScenarioPlot = { ...structuredClone(source), id: id as ScenarioPlot["id"] };
+  return { ...sc, plots: [...sc.plots, copy].sort((a, b) => a.id - b.id) };
+}
+
 /** The id the next added plot gets, or null when every plot is in use. */
 export function nextPlotId(sc: Scenario): number | null {
   if (sc.plots.length >= MAX_PLOTS) return null;

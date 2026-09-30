@@ -36,6 +36,8 @@ const view: SimulationView = {
   error: null,
   issues: [],
   warnings: [],
+  history: { canStepBack: true, lastAction: { kind: "run", fromCycle: 40, cycles: 1 } },
+  rewound: null,
 };
 
 const wrap = (node: React.ReactNode) =>
@@ -92,12 +94,45 @@ describe("simulator panels render", () => {
   it("run controls, log and timeline", () => {
     const html = wrap(
       <>
-        <RunControls view={view} plotCount={2} onRun={() => {}} onStep={() => {}} onStop={() => {}} onReset={() => {}} seed={1} onSeedChange={() => {}} />
+        <RunControls
+          view={view}
+          plotCount={2}
+          onRun={() => {}}
+          onStep={() => {}}
+          onStepBack={() => {}}
+          onUndo={() => {}}
+          onStop={() => {}}
+          onReset={() => {}}
+          seed={1}
+          onSeedChange={() => {}}
+        />
         <EventLog log={view.log} plotIds={[1, 2]} />
         <StageTimeline flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} />
       </>
     );
-    expect(html.replace(/<!-- -->/g, "")).toContain("Ran 1 cycle on 2 plot(s)");
+    const text = html.replace(/<!-- -->/g, "");
+    expect(text).toContain("Ran 1 cycle on 2 plot(s)");
+    expect(text).toContain("Back");
+    expect(text).toContain("Undo the step from cycle 40");
+  });
+
+  it("run controls after going back", () => {
+    const rewound: SimulationView = { ...view, lastCall: null, rewound: { undone: { kind: "run", fromCycle: 0, cycles: 40 } } };
+    const html = wrap(
+      <RunControls
+        view={rewound}
+        plotCount={2}
+        onRun={() => {}}
+        onStep={() => {}}
+        onStepBack={() => {}}
+        onUndo={() => {}}
+        onStop={() => {}}
+        onReset={() => {}}
+        seed={1}
+        onSeedChange={() => {}}
+      />
+    );
+    expect(html.replace(/<!-- -->/g, "")).toContain("Undid a run of 40 cycles");
   });
 
   it("scenario, settings and the rotation editor (embedded designer)", () => {

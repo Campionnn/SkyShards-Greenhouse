@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { History, ListOrdered, Play, RotateCcw, Square, StepForward } from "lucide-react";
+import { History, ListOrdered, Play, RotateCcw, Square, StepBack, StepForward, Undo2 } from "lucide-react";
 import { uptimeRatio, type FlowRunnerState, type RunSummary, type ScenarioPlot, type SustainabilityReport, type TimedEvent } from "../../simulator";
 import type { SimulationView } from "../../hooks/useSimulation";
 import { LOG_CYCLES } from "../../hooks/useSimulation";
@@ -18,11 +18,15 @@ export const RunControls: React.FC<{
   plotCount: number;
   onRun: (n: number) => void;
   onStep: () => void;
+  /** Go back one cycle. */
+  onStepBack: () => void;
+  /** Take back the last Step / Run / inventory change. */
+  onUndo: () => void;
   onStop: () => void;
   onReset: () => void;
   seed: number;
   onSeedChange: (seed: number) => void;
-}> = ({ view, plotCount, onRun, onStep, onStop, onReset, seed, onSeedChange }) => {
+}> = ({ view, plotCount, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange }) => {
   const [n, setN] = useState(200);
   const running = view.status === "running";
   const ready = view.status === "ready";
@@ -32,7 +36,16 @@ export const RunControls: React.FC<{
   let status = "Loading...";
   if (view.status === "error") status = "Scenario has errors - see the Scenario panel.";
   else if (running && view.progress) status = `${view.progress.done} / ${view.progress.total} cycles`;
-  else if (ready && summary) {
+  else if (running) status = "Going back...";
+  else if (ready && summary && view.rewound) {
+    const undone = view.rewound.undone;
+    const cycle = view.snapshot!.state.cycle;
+    status = !undone
+      ? `Went back to cycle ${cycle}. Step or Run to continue from here.`
+      : undone.kind === "run"
+        ? `Undid ${undone.cycles === 1 ? "a step" : `a run of ${undone.cycles} cycles`}; back at cycle ${cycle}.`
+        : `Undid an inventory change; back at cycle ${cycle}.`;
+  } else if (ready && summary) {
     status = view.lastCall
       ? `${view.lastCall.truncated ? "Stopped after" : "Ran"} ${view.lastCall.cyclesRun} cycle${view.lastCall.cyclesRun === 1 ? "" : "s"} on ${plotCount} plot(s). Rivals: ${summary.rivals.spawned} spawned, ${summary.rivals.cleared} cleared.`
       : `Set up ${plotCount} plot(s). Cycle ${view.snapshot!.state.cycle}.`;
@@ -62,8 +75,24 @@ export const RunControls: React.FC<{
           className={`${inputClass} w-20 text-right`}
           aria-label="Cycles to run"
         />
+        <button
+          className={buttonClass.neutral}
+          onClick={onStepBack}
+          disabled={!ready || !view.history.canStepBack}
+          title="Go back exactly one growth cycle, inventory changes included"
+        >
+          <StepBack className="w-3.5 h-3.5" /> Back
+        </button>
         <button className={buttonClass.neutral} onClick={onStep} disabled={!ready} title="Advance exactly one growth cycle">
           <StepForward className="w-3.5 h-3.5" /> Step
+        </button>
+        <button
+          className={buttonClass.neutral}
+          onClick={onUndo}
+          disabled={!ready || !view.history.lastAction}
+          title={undoTitle(view.history.lastAction)}
+        >
+          <Undo2 className="w-3.5 h-3.5" /> Undo
         </button>
         <button className={buttonClass.danger} onClick={onStop} disabled={!running}>
           <Square className="w-3.5 h-3.5" /> Stop
@@ -108,6 +137,13 @@ export const RunControls: React.FC<{
     </div>
   );
 };
+
+function undoTitle(action: SimulationView["history"]["lastAction"]): string {
+  if (!action) return "Nothing to undo";
+  if (action.kind === "items") return `Undo the inventory change at cycle ${action.cycle}`;
+  if (action.cycles === 1) return `Undo the step from cycle ${action.fromCycle}`;
+  return `Undo the run of ${action.cycles} cycles (back to cycle ${action.fromCycle})`;
+}
 
 /** Checked-target uptime; red once a checked target sat empty without its requirements. */
 const UptimeBadge: React.FC<{ summary: RunSummary; report: SustainabilityReport | null }> = ({ summary, report }) => {

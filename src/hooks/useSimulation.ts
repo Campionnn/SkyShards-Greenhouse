@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RunSummary, Scenario, ScenarioIssue, TickEventKind, TimedEvent } from "../simulator";
-import type { SessionSnapshot, WorkerRequest, WorkerResponse } from "../simulator/worker/protocol";
+import type { HistoryInfo, SessionSnapshot, UndoableAction, WorkerRequest, WorkerResponse } from "../simulator/worker/protocol";
 
 /** Cycles of history the recent-events log keeps. */
 export const LOG_CYCLES = 20;
@@ -24,6 +24,10 @@ export interface SimulationView {
   error: string | null;
   issues: ScenarioIssue[];
   warnings: ScenarioIssue[];
+  /** What going back can do from here. */
+  history: HistoryInfo;
+  /** The last Back / Undo, for the status line (cleared by the next Step / Run). */
+  rewound: { undone: UndoableAction | null } | null;
 }
 
 const initialView: SimulationView = {
@@ -37,6 +41,8 @@ const initialView: SimulationView = {
   error: null,
   issues: [],
   warnings: [],
+  history: { canStepBack: false, lastAction: null },
+  rewound: null,
 };
 
 function trimLog(events: TimedEvent[], currentCycle: number): TimedEvent[] {
@@ -73,10 +79,29 @@ export function useSimulation(scenario: Scenario | null) {
             lastCycleEvents: [],
             log: [],
             warnings: msg.warnings,
+            history: msg.history,
           });
           break;
         case "updated":
-          setView((v) => ({ ...v, snapshot: msg.snapshot, error: null }));
+          setView((v) => ({ ...v, snapshot: msg.snapshot, history: msg.history, error: null }));
+          break;
+        case "rewound":
+          setView((v) => {
+            const cycle = msg.snapshot.state.cycle;
+            return {
+              ...v,
+              status: "ready",
+              snapshot: msg.snapshot,
+              history: msg.history,
+              // The deltas and grid marks described a step that no longer happened.
+              previousSummary: null,
+              lastCycleEvents: [],
+              log: v.log.filter((e) => e.cycle < cycle),
+              lastCall: null,
+              rewound: { undone: msg.undone },
+              error: null,
+            };
+          });
           break;
         case "progress":
           setView((v) => ({ ...v, progress: { done: msg.done, total: msg.total, summary: msg.summary } }));
@@ -93,6 +118,8 @@ export function useSimulation(scenario: Scenario | null) {
               log: trimLog([...v.log, ...msg.events], cycle),
               progress: null,
               lastCall: { cyclesRun: msg.cyclesRun, truncated: msg.truncated },
+              history: msg.history,
+              rewound: null,
               error: null,
             };
           });
@@ -146,5 +173,17 @@ export function useSimulation(scenario: Scenario | null) {
   /** Add (negative = remove) items in the live run's inventory; the run keeps its cycle and history. */
   const addItems = useCallback((items: Record<string, number>) => send({ type: "addItems", reqId: ++reqIdRef.current, items }), [send]);
 
-  return { view, run, step, stop, reset, addItems };
+  /** Go back exactly one cycle (the opposite of Step). */
+  const stepBack = useCallback(() => {
+    setView((v) => (v.status === "ready" ? { ...v, status: "running", progress: null } : v));
+    send({ type: "back", reqId: ++reqIdRef.current, to: "cycle" });
+  }, [send]);
+
+  /** Take back the last Step / Run / inventory change. */
+  const undo = useCallback(() => {
+    setView((v) => (v.status === "ready" ? { ...v, status: "running", progress: null } : v));
+    send({ type: "back", reqId: ++reqIdRef.current, to: "undo" });
+  }, [send]);
+
+  return { view, run, step, stepBack, undo, stop, reset, addItems };
 }

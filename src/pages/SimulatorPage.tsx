@@ -63,7 +63,7 @@ export const SimulatorPage: React.FC = () => {
   const [incoming, setIncoming] = useState<IncomingLayout | null>(() => readIncomingLayout(location.state));
   const [picking, setPicking] = useState(false);
   const settled = useDebounced(scenario, 300);
-  const { view, run, step, stop, reset, addItems } = useSimulation(settled);
+  const { view, run, step, stepBack, undo, stop, reset, addItems } = useSimulation(settled);
 
   useEffect(() => {
     LocalStorageManager.saveSimulatorScenario(settled);
@@ -151,6 +151,8 @@ export const SimulatorPage: React.FC = () => {
         plotCount={scenario.plots.length}
         onRun={run}
         onStep={step}
+        onStepBack={stepBack}
+        onUndo={undo}
         onStop={stop}
         onReset={reset}
         seed={scenario.settings.seed}

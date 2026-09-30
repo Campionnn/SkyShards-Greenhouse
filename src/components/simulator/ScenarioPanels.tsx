@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Download, FileJson, FolderInput, Layers, Pencil, Plus, RotateCcw, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, RotateCcw, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import {
   ARMOR_SET_LABEL,
   ARMOR_SETS,
@@ -19,7 +19,7 @@ import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui
 import { CheckboxField, NumberField, NumberInput, SelectField } from "./controls";
 import { nameOf, priceableItems } from "./format";
 import { PolicyDefaultsEditor } from "./RotationEditor";
-import { addPlot, exportRotations, importRotations, layoutSummary, removePlot } from "./scenarioEdit";
+import { addPlot, duplicatePlot, exportRotations, importRotations, layoutSummary, nextPlotId, removePlot } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
 
 // ---- Scenario: share links, plots, import/export ---------------------------
@@ -69,6 +69,21 @@ export const ScenarioPanel: React.FC<{
     }
   };
 
+  const duplicate = (plotId: number) => {
+    const id = nextPlotId(scenario);
+    if (id === null) return;
+    const before = scenario;
+    onChange(duplicatePlot(scenario, plotId));
+    toast({
+      id: "simulator-plot-duplicated",
+      title: `Duplicated Plot ${plotId} as Plot ${id}`,
+      description: "Same stages, layouts, exits, checked targets and policy overrides.",
+      variant: "success",
+      duration: 6000,
+      action: { label: "Undo", onClick: () => onChange(before) },
+    });
+  };
+
   const errors = issues.filter((i) => i.level === "error");
   return (
     <Panel title="Scenario" icon={<Layers />} description="Up to 3 plots, each with its own rotation, sharing one inventory and one clock.">
@@ -85,6 +100,14 @@ export const ScenarioPanel: React.FC<{
             </div>
             <button className={buttonClass.icon} onClick={() => onEditRotation(p.id)} title="Edit rotation">
               <Pencil className="w-3.5 h-3.5" />
+            </button>
+            <button
+              className={buttonClass.icon}
+              onClick={() => duplicate(p.id)}
+              disabled={scenario.plots.length >= MAX_PLOTS}
+              title={scenario.plots.length >= MAX_PLOTS ? "All three plots are in use" : "Duplicate this plot with its whole rotation"}
+            >
+              <Copy className="w-3.5 h-3.5" />
             </button>
             <button className={buttonClass.icon} onClick={() => onChange(removePlot(scenario, p.id))} disabled={scenario.plots.length <= 1} title="Remove plot">
               <Trash2 className="w-3.5 h-3.5" />

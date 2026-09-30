@@ -54,6 +54,37 @@ describe("session worker", () => {
     expect(r.eventCounts.advanced).toBeGreaterThan(0);
   });
 
+  it("back goes one cycle, undo takes back a whole run or inventory change", async () => {
+    await send({ type: "init", reqId: 31, scenario: sc });
+    const setup = last("ready").snapshot.state;
+    expect(last("ready").history).toEqual({ canStepBack: false, lastAction: null });
+    await send({ type: "run", reqId: 32, ticks: 30, retainEvents: "none" });
+    const at30 = last("result").snapshot.state;
+    await send({ type: "addItems", reqId: 33, items: { chloronite: 3 } });
+    const changed = last("updated").snapshot.state;
+    expect(last("updated").history.lastAction).toEqual({ kind: "items", cycle: 30, items: { chloronite: 3 } });
+    await send({ type: "run", reqId: 34, ticks: 1, retainEvents: "none" });
+
+    // Back one cycle keeps the inventory change (it happened before that cycle).
+    await send({ type: "back", reqId: 35, to: "cycle" });
+    let r = last("rewound");
+    expect(r.undone).toBeNull();
+    expect(JSON.stringify(r.snapshot.state)).toBe(JSON.stringify(changed));
+
+    await send({ type: "back", reqId: 36, to: "undo" });
+    r = last("rewound");
+    expect(r.undone).toEqual({ kind: "items", cycle: 30, items: { chloronite: 3 } });
+    expect(JSON.stringify(r.snapshot.state)).toBe(JSON.stringify(at30));
+    await send({ type: "back", reqId: 37, to: "undo" });
+    r = last("rewound");
+    expect(r.undone).toEqual({ kind: "run", fromCycle: 0, cycles: 30 });
+    expect(JSON.stringify(r.snapshot.state)).toBe(JSON.stringify(setup));
+    expect(r.history).toEqual({ canStepBack: false, lastAction: null });
+
+    await send({ type: "back", reqId: 38, to: "cycle" });
+    expect(last("error").message).toBe("Already at the start");
+  });
+
   it("reports scenario errors instead of throwing", async () => {
     await send({ type: "init", reqId: 40, scenario: { ...sc, plots: [] } });
     const err = last("error");

@@ -5,6 +5,7 @@ import { decodeDesign } from "../../utilities/designEncoding";
 import { readIncomingLayout, solverResultCells, summarizeTargets } from "../../utilities/layoutHandoff";
 import {
   addPlot,
+  duplicatePlot,
   exportRotations,
   importRotations,
   isBlankScenario,
@@ -69,6 +70,33 @@ describe("placing a layout from the Calculator / Designer / saved layouts", () =
     expect(stages[0].exit).toEqual([{ kind: "cycles", n: 20 }]);
     expect(stages[1]).toMatchObject({ id: "stage-2", label: "B", layout: { code: LAYOUT_B_CODE }, exit: [] });
     expect(sc.plots[0].flow.stages).toHaveLength(1); // input untouched
+  });
+});
+
+describe("duplicating a plot", () => {
+  it("copies the whole rotation and policy overrides under the next free id", () => {
+    const sc = withPlots(LAYOUT_A_CODE, LAYOUT_B_CODE);
+    sc.plots = sc.plots.filter((p) => p.id !== 1); // only Plot 2 left; the copy fills id 1
+    const p2 = sc.plots[0];
+    p2.policies = { baseCropUpkeep: "harvestWhenGrown" };
+    p2.flow.stages[0].exit = [{ kind: "cycles", n: 7 }];
+    p2.flow.stages[0].watch = [];
+    p2.flow.stages.push({ id: "stage-2", label: "Two", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "cycles", n: 3 }], next: "stage-1" });
+    p2.flow.loop = true;
+    p2.flow.startIndex = 1;
+    const next = duplicatePlot(sc, 2);
+    expect(next.plots.map((p) => p.id)).toEqual([1, 2]);
+    const copy = next.plots[0];
+    expect({ ...copy, id: 2 }).toEqual(p2);
+    copy.flow.stages[0].exit.push({ kind: "cycles", n: 1 });
+    expect(p2.flow.stages[0].exit).toHaveLength(1); // a deep copy, not shared
+  });
+
+  it("does nothing when all plots are in use or the plot is unknown", () => {
+    const full = withPlots(LAYOUT_A_CODE, LAYOUT_A_CODE, LAYOUT_A_CODE);
+    expect(duplicatePlot(full, 1)).toBe(full);
+    const one = withPlots(LAYOUT_A_CODE);
+    expect(duplicatePlot(one, 3)).toBe(one);
   });
 });
 

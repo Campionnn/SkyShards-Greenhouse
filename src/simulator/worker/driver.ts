@@ -19,6 +19,12 @@ export interface DriveOptions {
   dropKinds?: readonly TickEventKind[];
   /** Yield between slices (a macrotask in the worker; tests may pass a no-op). */
   yieldToEventLoop?: () => Promise<void>;
+  /**
+   * Hand the state at every multiple of `every()` cycles to `save` (the
+   * session's timeline, so the UI can go back). Slices are cut at those
+   * cycles; that does not change the result because run() is splittable.
+   */
+  checkpoints?: { every: () => number; save: (state: SimulationState) => void };
 }
 
 export function macrotask(): Promise<void> {
@@ -47,12 +53,17 @@ export async function drive(engine: Engine, state: SimulationState, ticks: numbe
       truncated = true;
       break;
     }
-    const k = Math.min(chunk, ticks - done);
+    let k = Math.min(chunk, ticks - done);
+    if (opts.checkpoints) {
+      const every = opts.checkpoints.every();
+      k = Math.min(k, every - (current.cycle % every));
+    }
     const t0 = performance.now();
     const r = engine.run(current, k, { retainEvents: opts.retainEvents });
     const elapsed = performance.now() - t0;
 
     current = r.state;
+    if (opts.checkpoints && current.cycle % opts.checkpoints.every() === 0) opts.checkpoints.save(current);
     done += r.cyclesRun;
     for (const [kind, n] of Object.entries(r.eventCounts) as [TickEventKind, number][]) {
       eventCounts[kind] = (eventCounts[kind] ?? 0) + n;
