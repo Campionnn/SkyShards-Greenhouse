@@ -1,7 +1,7 @@
 import { cellIndex } from "../grid/cells";
 import { buildOccupancy, isFullyGrown } from "../sim/plants";
 import type { FlowRunnerState, PlotState } from "../sim/state";
-import type { Trigger } from "./types";
+import type { Condition, ConditionMatch, Trigger } from "./types";
 
 export interface TriggerView {
   plot: PlotState;
@@ -53,15 +53,59 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
       return (v.runner.decayedInStage[t.kindId] ?? 0) >= 1;
     case "mutationSpawned":
       return (v.runner.spawnedInStage[t.mutationId] ?? 0) >= t.count;
+    case "stageVisits":
+      return stageVisits(v.runner, t.sinceStage) >= Math.max(1, t.count);
   }
 }
 
-/** A stage exits when ALL its triggers hold. An empty exit list holds the stage forever. */
-export function stageExitHolds(exit: readonly Trigger[], v: TriggerView): boolean {
-  return exit.length > 0 && exit.every((t) => triggerHolds(t, v));
+/**
+ * How many times the plot has entered its current stage (this visit
+ * included), counting back to the last time it entered `sinceStage`, or to
+ * the start of the run. Read from the runner's history, so it needs no
+ * extra state.
+ */
+export function stageVisits(runner: FlowRunnerState, sinceStage?: string): number {
+  const h = runner.history;
+  const current = h[h.length - 1]?.stageId;
+  let n = 0;
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i].stageId === current) n++;
+    if (sinceStage !== undefined && h[i].stageId === sinceStage) break;
+  }
+  return n;
 }
 
-export function describeTrigger(t: Trigger): string {
+/** Pure: does this condition (a leaf trigger or an AND / OR group) hold? An empty group never holds. */
+export function conditionHolds(c: Condition, v: TriggerView): boolean {
+  if (c.kind === "group") return conditionsHold(c.of, c.match, v);
+  return triggerHolds(c, v);
+}
+
+/** A condition list combined by `match` (default "all"). An empty list never holds. */
+export function conditionsHold(list: readonly Condition[], match: ConditionMatch | undefined, v: TriggerView): boolean {
+  if (list.length === 0) return false;
+  return match === "any" ? list.some((c) => conditionHolds(c, v)) : list.every((c) => conditionHolds(c, v));
+}
+
+/** A stage's normal exit. An empty exit list holds the stage forever. */
+export function stageExitHolds(exit: readonly Condition[], v: TriggerView, match?: ConditionMatch): boolean {
+  return conditionsHold(exit, match, v);
+}
+
+/** Resolves a stage id to a display name; defaults to the id itself. */
+export type StageNamer = (stageId: string) => string;
+
+export function describeConditions(list: readonly Condition[], match?: ConditionMatch, stageName?: StageNamer): string {
+  const joiner = match === "any" ? " or " : " and ";
+  return list.map((c) => describeCondition(c, stageName)).join(joiner);
+}
+
+export function describeCondition(c: Condition, stageName?: StageNamer): string {
+  if (c.kind === "group") return c.of.length === 0 ? "(empty group)" : `(${describeConditions(c.of, c.match, stageName)})`;
+  return describeTrigger(c, stageName);
+}
+
+export function describeTrigger(t: Trigger, stageName: StageNamer = (id) => id): string {
   switch (t.kind) {
     case "cycles":
       return `${t.n} cycles in stage`;
@@ -85,5 +129,7 @@ export function describeTrigger(t: Trigger): string {
       return `a ${t.kindId} decayed`;
     case "mutationSpawned":
       return `${t.count} x ${t.mutationId} spawned`;
+    case "stageVisits":
+      return `entered this stage ${t.count}+ times${t.sinceStage !== undefined ? ` since ${stageName(t.sinceStage)}` : ""}`;
   }
 }

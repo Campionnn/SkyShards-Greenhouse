@@ -87,9 +87,15 @@ describe("hybrid rotations (spawnsFillLayoutInputs)", () => {
     expect(stageIdOf(back.state)).toBe("grow");
   });
 
-  it("with spawnsFillLayoutInputs off the growing jellybeans are broken and all 15 are placed from inventory", () => {
+  it("with spawnsFillLayoutInputs off the growing jellybeans are taken off and all 15 are placed from inventory", () => {
     const { state, events } = runUntilStage(start(hybrid({ spawnsFillLayoutInputs: false })), "use", 400);
-    expect(ofKind(events, "destroyed").filter((e) => e.kindId === "magic_jellybean")).toHaveLength(9);
+    // From stage 12 a jellybean is harvested (early, for its stage multiplier); younger ones are broken.
+    const broken = ofKind(events, "destroyed").filter((e) => e.kindId === "magic_jellybean");
+    const harvested = ofKind(events, "harvested").filter((e) => e.kindId === "magic_jellybean");
+    expect(broken.length + harvested.length).toBe(9);
+    expect(harvested.length).toBeGreaterThan(0);
+    // Harvested, not broken: the crop bundle drops (Harvest Loss from neighbours can pull it below x1).
+    expect(harvested.every((e) => (e.drops.sugar_cane ?? 0) > 0)).toBe(true);
     expect(ofKind(events, "placed").filter((e) => e.kindId === "magic_jellybean")).toHaveLength(15);
     for (const [r, c] of JELLY_CELLS) expect(plantAt(state, 1, r, c)).toMatchObject({ kindId: "magic_jellybean", origin: "placed" });
   });

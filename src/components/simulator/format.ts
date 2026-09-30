@@ -3,6 +3,8 @@ import {
   defaultNpcPrice,
   describeDebt,
   describeSpotFailure,
+  describeCondition,
+  describeConditions,
   describeTrigger,
   isHarvestableCrop,
   npcPriceSource,
@@ -84,7 +86,7 @@ export function formatDuration(seconds: number): string {
   return `${m}m`;
 }
 
-export { describeTrigger };
+export { describeCondition, describeConditions, describeTrigger };
 export const debtText = (d: Parameters<typeof describeDebt>[0]) => describeDebt(d, nameOf);
 export const spotFailureText = (s: SpotReport) => describeSpotFailure(s, nameOf);
 

@@ -2,17 +2,30 @@ import React, { useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Copy, ExternalLink, Eye, FolderInput, Plus, Trash2, X } from "lucide-react";
 import { DesignerProvider } from "../../context";
 import { useFitCellSize } from "../../hooks";
-import type { FlowStage, Policies, PolicyOverrides, Scenario, ScenarioPlot, StageLayout, Trigger } from "../../simulator";
+import type {
+  Condition,
+  ConditionMatch,
+  FlowStage,
+  Policies,
+  PolicyOverrides,
+  Scenario,
+  ScenarioPlot,
+  StageLayout,
+  StageRoute,
+  Trigger,
+} from "../../simulator";
 import type { LayoutTransform } from "../../utilities";
 import { CropSelectionPalette, DesignerGrid, LayoutClearControls, LayoutHistoryControls, LayoutTransformControls, MutationValidator } from "../designer";
 import { CropImage } from "../shared";
 import { Panel, SectionLabel, useToast } from "../ui";
 import { CheckboxField, IdSelect, NumberInput, SelectField } from "./controls";
-import { ALL_KIND_IDS, ALL_MUTATION_IDS, allItemIds, describeTrigger, nameOf } from "./format";
+import { ALL_KIND_IDS, ALL_MUTATION_IDS, allItemIds, describeConditions, nameOf } from "./format";
 import { LayoutPickerDialog } from "./LayoutPicker";
 import {
   blankStage,
+  defaultGroup,
   defaultTrigger,
+  deleteStage,
   layoutCode,
   layoutSummary,
   layoutToPlacements,
@@ -222,7 +235,18 @@ export const WatchPicker: React.FC<{ stage: FlowStage; onChange: (watch: string[
 
 // ---- Triggers --------------------------------------------------------------
 
-const TriggerRow: React.FC<{ trigger: Trigger; onChange: (t: Trigger) => void; onRemove: () => void }> = ({ trigger, onChange, onRemove }) => (
+/** A stage choice for pickers: its id and "N. label". */
+interface StageOption {
+  id: string;
+  name: string;
+}
+
+const TriggerRow: React.FC<{ trigger: Trigger; stages: StageOption[]; onChange: (t: Trigger) => void; onRemove: () => void }> = ({
+  trigger,
+  stages,
+  onChange,
+  onRemove,
+}) => (
   <div className="flex flex-wrap items-center gap-1.5">
     <select className={inputClass} value={trigger.kind} onChange={(e) => onChange(defaultTrigger(e.target.value as Trigger["kind"]))}>
       {TRIGGER_KINDS.map((k) => (
@@ -273,29 +297,215 @@ const TriggerRow: React.FC<{ trigger: Trigger; onChange: (t: Trigger) => void; o
         <span className="text-xs text-slate-500">cycles</span>
       </>
     )}
-    <button className={buttonClass.icon} onClick={onRemove} title="Remove trigger">
+    {trigger.kind === "stageVisits" && (
+      <>
+        <NumberInput
+          integer
+          min={1}
+          className={`${inputClass} w-16`}
+          title="Counts this visit too: 3 = every 3rd time"
+          value={trigger.count}
+          onChange={(count) => onChange({ ...trigger, count })}
+        />
+        <span className="text-xs text-slate-500">times since</span>
+        <select
+          className={inputClass}
+          value={trigger.sinceStage ?? ""}
+          title="Restart the count each time the plot enters this stage"
+          onChange={(e) => {
+            const next = { ...trigger };
+            if (e.target.value) next.sinceStage = e.target.value;
+            else delete next.sinceStage;
+            onChange(next);
+          }}
+        >
+          <option value="">the start of the run</option>
+          {stages.map((s) => (
+            <option key={s.id} value={s.id}>
+              entering {s.name}
+            </option>
+          ))}
+        </select>
+      </>
+    )}
+    <button className={buttonClass.icon} onClick={onRemove} title="Remove condition">
       <X className="w-3.5 h-3.5" />
     </button>
   </div>
 );
 
-export const TriggerEditor: React.FC<{ exit: Trigger[]; onChange: (exit: Trigger[]) => void }> = ({ exit, onChange }) => (
-  <div className="space-y-1.5">
-    {exit.length === 0 && <p className="text-xs text-slate-500">No exit triggers: the plot stays on this stage.</p>}
-    {exit.map((t, i) => (
-      <TriggerRow
-        key={i}
-        trigger={t}
-        onChange={(next) => onChange(exit.map((x, j) => (j === i ? next : x)))}
-        onRemove={() => onChange(exit.filter((_, j) => j !== i))}
-      />
+/** Select value for "the following stage" (no `next`). Not a valid stage id, since ids are never empty. */
+const NEXT_DEFAULT = "";
+
+/** Nesting depth at which "Add group" stops being offered. */
+const MAX_GROUP_DEPTH = 3;
+
+const MatchToggle: React.FC<{ match: ConditionMatch; onChange: (m: ConditionMatch) => void }> = ({ match, onChange }) => (
+  <div className="inline-flex rounded-md border border-slate-600/50 overflow-hidden text-[11px]" role="group" aria-label="Combine conditions with">
+    {(["all", "any"] as const).map((m) => (
+      <button
+        key={m}
+        type="button"
+        onClick={() => onChange(m)}
+        aria-pressed={match === m}
+        title={m === "all" ? "Every condition must hold" : "At least one condition must hold"}
+        className={`px-2 py-0.5 ${match === m ? "bg-emerald-500/20 text-emerald-200" : "bg-slate-800/60 text-slate-400 hover:text-slate-200"}`}
+      >
+        {m === "all" ? "ALL (AND)" : "ANY (OR)"}
+      </button>
     ))}
-    <button className={buttonClass.neutral} onClick={() => onChange([...exit, defaultTrigger("cycles")])}>
-      <Plus className="w-3.5 h-3.5" /> Add trigger
-    </button>
-    {exit.length > 1 && <p className="text-[11px] text-slate-500">Leaves the stage when ALL hold: {exit.map(describeTrigger).join(" and ")}.</p>}
   </div>
 );
+
+/**
+ * A condition list with an AND / OR switch. Entries are single conditions or
+ * nested groups (each with its own switch), so things like
+ * "(A or B) and C" can be built.
+ */
+export const ConditionListEditor: React.FC<{
+  list: Condition[];
+  match: ConditionMatch;
+  onChange: (list: Condition[], match: ConditionMatch) => void;
+  stages: StageOption[];
+  empty?: string;
+  depth?: number;
+}> = ({ list, match, onChange, stages, empty, depth = 0 }) => {
+  const set = (i: number, c: Condition) => onChange(list.map((x, j) => (j === i ? c : x)), match);
+  const remove = (i: number) => onChange(list.filter((_, j) => j !== i), match);
+  return (
+    <div className="space-y-1.5">
+      {list.length > 1 && (
+        <div className="flex items-center gap-2 text-[11px] text-slate-400">
+          Holds when <MatchToggle match={match} onChange={(m) => onChange(list, m)} /> of these hold
+        </div>
+      )}
+      {list.length === 0 && empty && <p className="text-xs text-slate-500">{empty}</p>}
+      {list.map((c, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <div className="text-[10px] uppercase tracking-wide text-slate-500 pl-1">{match === "any" ? "or" : "and"}</div>}
+          {c.kind === "group" ? (
+            <div className="rounded-md border border-slate-600/40 bg-slate-900/40 p-2 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-400">Group</span>
+                <button className={buttonClass.icon} onClick={() => remove(i)} title="Remove group">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <ConditionListEditor
+                list={c.of}
+                match={c.match}
+                stages={stages}
+                depth={depth + 1}
+                empty="An empty group never holds."
+                onChange={(of, m) => set(i, { ...c, of, match: m })}
+              />
+            </div>
+          ) : (
+            <TriggerRow trigger={c} stages={stages} onChange={(t) => set(i, t)} onRemove={() => remove(i)} />
+          )}
+        </React.Fragment>
+      ))}
+      <div className="flex flex-wrap gap-1.5">
+        <button className={buttonClass.neutral} onClick={() => onChange([...list, defaultTrigger("cycles")], match)}>
+          <Plus className="w-3.5 h-3.5" /> Condition
+        </button>
+        {depth < MAX_GROUP_DEPTH && (
+          <button
+            className={buttonClass.neutral}
+            onClick={() => onChange([...list, defaultGroup(match === "any" ? "all" : "any")], match)}
+            title="A nested set of conditions with its own AND / OR, e.g. (A or B) and C"
+          >
+            <Plus className="w-3.5 h-3.5" /> AND/OR group
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/** Routes: conditional jumps to chosen stages, checked in order before the normal exit. */
+const RoutesEditor: React.FC<{ routes: StageRoute[]; stages: StageOption[]; currentId: string; onChange: (routes: StageRoute[]) => void }> = ({
+  routes,
+  stages,
+  currentId,
+  onChange,
+}) => {
+  const set = (i: number, r: StageRoute) => onChange(routes.map((x, j) => (j === i ? r : x)));
+  const move = (from: number, to: number) => {
+    const next = [...routes];
+    const [r] = next.splice(from, 1);
+    next.splice(to, 0, r);
+    onChange(next);
+  };
+  const defaultTarget = stages.find((s) => s.id !== currentId)?.id ?? currentId;
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-slate-500">
+        Checked in order before the normal exit; the first route whose conditions hold sends the plot to its stage. Use them to go somewhere other than the
+        next stage, e.g. usually swap between stages 1 and 2, but go to stage 3 every 5th visit or once an item runs low.
+      </p>
+      {routes.map((r, i) => (
+        <div key={i} className="rounded-md border border-sky-500/30 bg-sky-500/5 p-2 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-300">
+            <span className="text-slate-500 w-4">{i + 1}</span>
+            Go to
+            <select className={inputClass} value={r.to} onChange={(e) => set(i, { ...r, to: e.target.value })}>
+              {!stages.some((s) => s.id === r.to) && <option value={r.to}>missing stage "{r.to}"</option>}
+              {stages.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.id === currentId ? " (restart this stage)" : ""}
+                </option>
+              ))}
+            </select>
+            when
+            <span className="flex-1" />
+            <button className={buttonClass.icon} disabled={i === 0} onClick={() => move(i, i - 1)} title="Check earlier">
+              <ArrowUp className="w-3 h-3" />
+            </button>
+            <button className={buttonClass.icon} disabled={i === routes.length - 1} onClick={() => move(i, i + 1)} title="Check later">
+              <ArrowDown className="w-3 h-3" />
+            </button>
+            <button className={buttonClass.icon} onClick={() => onChange(routes.filter((_, j) => j !== i))} title="Remove route">
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+          <ConditionListEditor
+            list={r.when}
+            match={r.match ?? "all"}
+            stages={stages}
+            empty="No conditions: this route never fires."
+            onChange={(when, m) => {
+              const next: StageRoute = { ...r, when };
+              if (m === "any") next.match = "any";
+              else delete next.match;
+              set(i, next);
+            }}
+          />
+        </div>
+      ))}
+      <button className={buttonClass.neutral} onClick={() => onChange([...routes, { to: defaultTarget, when: [defaultTrigger("cycles")] }])}>
+        <Plus className="w-3.5 h-3.5" /> Route
+      </button>
+    </div>
+  );
+};
+
+/** "N. label" for a stage id, or the raw id if it no longer exists. */
+function stageNamer(stages: FlowStage[]): (id: string) => string {
+  return (id) => {
+    const i = stages.findIndex((s) => s.id === id);
+    return i < 0 ? `"${id}"` : `${i + 1}. ${stages[i].label || stages[i].id}`;
+  };
+}
+
+/** One-line summary of where a stage goes and when, for the stage list. */
+function stageExitSummary(s: FlowStage, stages: FlowStage[]): string {
+  const name = stageNamer(stages);
+  const parts = (s.routes ?? []).map((r) => `→ ${name(r.to)} if ${r.when.length ? describeConditions(r.when, r.match, name) : "never"}`);
+  if (s.exit.length) parts.push(`${s.next ? `→ ${name(s.next)} ` : ""}when ${describeConditions(s.exit, s.exitMatch, name)}`);
+  return parts.length ? parts.join(" · ") : "no exit";
+}
 
 // ---- Policies --------------------------------------------------------------
 
@@ -447,6 +657,13 @@ export const RotationEditor: React.FC<{
   const { stages } = plot.flow;
   const index = Math.min(selected, stages.length - 1);
   const stage = stages[index];
+  const stageOptions: StageOption[] = stages.map((s, i) => ({ id: s.id, name: `${i + 1}. ${s.label || s.id}` }));
+  const isLast = index === stages.length - 1;
+  const defaultNextLabel = isLast
+    ? plot.flow.loop
+      ? `the next stage (1. ${stages[0].label || stages[0].id})`
+      : "nowhere: hold this final stage"
+    : `the next stage (${stageOptions[index + 1].name})`;
 
   const editPlot = (fn: (p: ScenarioPlot) => ScenarioPlot) => onChange(updatePlot(scenario, plotId, fn));
   const editStage = (fn: (s: FlowStage) => FlowStage) => onChange(updateStage(scenario, plotId, index, fn));
@@ -486,8 +703,8 @@ export const RotationEditor: React.FC<{
                       {s.label || s.id}
                       {i === plot.flow.startIndex && <span className="text-emerald-400"> · start</span>}
                     </div>
-                    <div className="text-[11px] text-slate-500 truncate">
-                      {layoutSummary(s.layout)} · {s.exit.length ? s.exit.map(describeTrigger).join(" & ") : "no exit"}
+                    <div className="text-[11px] text-slate-500 truncate" title={stageExitSummary(s, stages)}>
+                      {layoutSummary(s.layout)} · {stageExitSummary(s, stages)}
                     </div>
                   </div>
                   <button className={buttonClass.icon} disabled={i === 0} onClick={(e) => {
@@ -543,11 +760,7 @@ export const RotationEditor: React.FC<{
               className={buttonClass.danger}
               disabled={stages.length <= 1}
               onClick={() => {
-                editPlot((p) => {
-                  p.flow.stages.splice(index, 1);
-                  p.flow.startIndex = Math.min(p.flow.startIndex, p.flow.stages.length - 1);
-                  return p;
-                });
+                editPlot((p) => deleteStage(p, index));
                 setSelected(Math.max(0, index - 1));
               }}
             >
@@ -581,7 +794,51 @@ export const RotationEditor: React.FC<{
                 onChange={(v) => editStage((s) => ({ ...s, fullClear: v || undefined }))}
               />
               <SectionLabel className="pt-1">Leave this stage when</SectionLabel>
-              <TriggerEditor exit={stage.exit} onChange={(exit) => editStage((s) => ({ ...s, exit }))} />
+              <ConditionListEditor
+                list={stage.exit}
+                match={stage.exitMatch ?? "all"}
+                stages={stageOptions}
+                empty={stage.routes?.length ? "No normal exit: the plot only leaves through a route." : "No exit conditions: the plot stays on this stage."}
+                onChange={(exit, m) =>
+                  editStage((s) => {
+                    const next: FlowStage = { ...s, exit };
+                    if (m === "any") next.exitMatch = "any";
+                    else delete next.exitMatch;
+                    return next;
+                  })
+                }
+              />
+              <SelectField
+                label="then go to"
+                value={stage.next ?? NEXT_DEFAULT}
+                options={[
+                  { value: NEXT_DEFAULT, label: defaultNextLabel },
+                  ...(stage.next !== undefined && !stages.some((s) => s.id === stage.next) ? [{ value: stage.next, label: `missing stage "${stage.next}"` }] : []),
+                  ...stageOptions.map((s) => ({ value: s.id, label: s.id === stage.id ? `${s.name} (restart)` : s.name })),
+                ]}
+                onChange={(v) =>
+                  editStage((s) => {
+                    const next = { ...s };
+                    if (v === NEXT_DEFAULT) delete next.next;
+                    else next.next = v;
+                    return next;
+                  })
+                }
+              />
+              <SectionLabel className="pt-2">Routes to other stages</SectionLabel>
+              <RoutesEditor
+                routes={stage.routes ?? []}
+                stages={stageOptions}
+                currentId={stage.id}
+                onChange={(routes) =>
+                  editStage((s) => {
+                    const next = { ...s };
+                    if (routes.length) next.routes = routes;
+                    else delete next.routes;
+                    return next;
+                  })
+                }
+              />
             </div>
             <div className="space-y-2">
               <SectionLabel>Stage policy overrides</SectionLabel>

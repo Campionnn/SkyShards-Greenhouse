@@ -21,6 +21,14 @@ export function decayDaysOf(m: MutationDef, config: SimConfig): number {
  */
 export const spawnStageOf = (growthStages: number): number => Math.min(1, growthStages);
 
+export const JELLYBEAN = "magic_jellybean";
+/**
+ * From this stage a Magic Jellybean the player breaks early (stage change,
+ * blocking a layout cell) still drops its items and bundle (x1 at 12, rising).
+ * The player's own harvest still waits for stage 120.
+ */
+export const JELLYBEAN_MIN_HARVEST_STAGE = 12;
+
 /** Stage at which a kind counts as fully grown and harvestable. */
 export function readyStageOf(m: MutationDef, config: SimConfig): number {
   if (m.id === "glasscorn") return Math.min(7, m.growthStages); // harvestable at stages 7-8
@@ -197,8 +205,14 @@ export function isFootprintFree(occ: Occupancy, row: number, col: number, size: 
 
 export const isFullyGrown = (p: PlantState): boolean => !p.isDeadPlant && p.stage >= p.readyStage && p.lockedEffects !== null;
 
-/** Only natural spawns and base crops can be harvested. All-in Aloe can be harvested at any stage. */
+/**
+ * Does taking this plant off give its drops (rather than just breaking it)?
+ * Only natural spawns and base crops. All-in Aloe drops at any stage, Magic
+ * Jellybean from stage 12 - before the stage the player normally waits for
+ * (e.g. when a stage change removes it).
+ */
 export const isHarvestable = (p: PlantState): boolean =>
   (p.origin === "spawned" || p.origin === "planted") &&
   !p.isDeadPlant &&
-  (isFullyGrown(p) || (p.kindId === "all_in_aloe" && p.origin === "spawned"));
+  (isFullyGrown(p) ||
+    (p.origin === "spawned" && (p.kindId === "all_in_aloe" || (p.kindId === JELLYBEAN && p.stage >= JELLYBEAN_MIN_HARVEST_STAGE))));

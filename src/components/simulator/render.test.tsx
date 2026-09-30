@@ -113,6 +113,27 @@ describe("simulator panels render", () => {
     expect(html).toContain("checked targets");
   });
 
+  it("the rotation editor with routes, a chosen next stage and AND/OR groups", () => {
+    const routed = scenario([
+      flow(
+        [
+          stage("s1", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 2 }]),
+          stage("s2", { code: LAYOUT_B_CODE }, [{ kind: "group", match: "any", of: [{ kind: "cycles", n: 3 }, { kind: "inventoryBelow", item: "chloronite", qty: 4 }] }, { kind: "cycles", n: 1 }], {
+            next: "s1",
+            routes: [{ to: "s3", when: [{ kind: "stageVisits", count: 3, sinceStage: "s3" }] }],
+          }),
+          stage("s3", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 5 }], { next: "s1" }),
+        ],
+        false
+      ),
+    ]);
+    const html = wrap(<RotationEditor scenario={routed} plotId={1} initialStage={1} onChange={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("Routes to other stages");
+    expect(html).toContain("ANY (OR)");
+    expect(html).toContain("then go to");
+    expect(html).toContain("→ 3. s3 if entered this stage 3+ times since 3. s3");
+  });
+
   it("the layout picker: an incoming layout asks where it goes", () => {
     const incoming = { code: LAYOUT_A_CODE, name: "Chloronite x4", from: "calculator" as const };
     const html = wrap(<LayoutPickerPanel title="t" incoming={incoming} scenario={sc} onPlace={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");

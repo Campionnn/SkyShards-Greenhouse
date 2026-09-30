@@ -7,6 +7,9 @@ import {
   type LayoutSpec,
   type Scenario,
   type ScenarioPlot,
+  type Condition,
+  type ConditionGroup,
+  type ConditionMatch,
   type StageLayout,
   type Trigger,
   type TriggerKind,
@@ -230,7 +233,50 @@ export function defaultTrigger(kind: TriggerKind): Trigger {
       return { kind, mutationId: "chorus_fruit", count: 9 };
     case "targetsFilled":
       return { kind, count: 0 };
+    case "stageVisits":
+      return { kind, count: 3 };
   }
+}
+
+/** A new AND / OR group holding one default condition. */
+export function defaultGroup(match: ConditionMatch = "any"): ConditionGroup {
+  return { kind: "group", match, of: [defaultTrigger("cycles")] };
+}
+
+/** Drop conditions that name `stageId` (stage visits since it), inside groups too. */
+function dropStageConditions(list: Condition[], stageId: string): Condition[] {
+  return list.flatMap((c): Condition[] => {
+    if (c.kind === "group") return [{ ...c, of: dropStageConditions(c.of, stageId) }];
+    if (c.kind === "stageVisits" && c.sinceStage === stageId) {
+      const rest = { ...c };
+      delete rest.sinceStage;
+      return [rest];
+    }
+    return [c];
+  });
+}
+
+/**
+ * Delete a stage and every reference to it: routes to it go, a `next` to it
+ * falls back to the following stage, and "stage visits since it" counts
+ * since the start of the run instead.
+ */
+export function deleteStage(p: ScenarioPlot, index: number): ScenarioPlot {
+  const gone = p.flow.stages[index];
+  if (!gone || p.flow.stages.length <= 1) return p;
+  const stages = p.flow.stages
+    .filter((_, i) => i !== index)
+    .map((s) => {
+      const next: FlowStage = { ...s, exit: dropStageConditions(s.exit, gone.id) };
+      if (next.next === gone.id) delete next.next;
+      if (s.routes) {
+        const routes = s.routes.filter((r) => r.to !== gone.id).map((r) => ({ ...r, when: dropStageConditions(r.when, gone.id) }));
+        if (routes.length) next.routes = routes;
+        else delete next.routes;
+      }
+      return next;
+    });
+  return { ...p, flow: { ...p.flow, stages, startIndex: Math.min(p.flow.startIndex, stages.length - 1) } };
 }
 
 export const TRIGGER_KINDS: { value: TriggerKind; label: string }[] = [
@@ -245,6 +291,7 @@ export const TRIGGER_KINDS: { value: TriggerKind; label: string }[] = [
   { value: "fullyGrown", label: "mutation fully grown" },
   { value: "allFullyGrown", label: "everything fully grown" },
   { value: "noneFullyGrown", label: "nothing fully grown" },
+  { value: "stageVisits", label: "times this stage entered >=" },
 ];
 
 // ---- Layout <-> designer placements ----------------------------------------

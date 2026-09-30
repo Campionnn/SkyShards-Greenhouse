@@ -1,5 +1,5 @@
 import React from "react";
-import { aloeRow, type MutationDef, type PlantState, type SimConfig, type SlotLabel, type WatchStatus } from "../../simulator";
+import { aloeRow, jellybeanMultiplier, type MutationDef, type PlantState, type SimConfig, type SlotLabel, type WatchStatus } from "../../simulator";
 import { effectiveEffects, effectsGivenBy, getCellPixelPosition, getEffectName, sortEffects } from "../../utilities";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage, EffectChips } from "../shared";
@@ -40,6 +40,11 @@ function statusOf(p: PlantState, m: MutationDef | undefined): { text: string; to
   if (p.origin === "placed") return { text: "Fully grown - an input and buff source; cannot be harvested", tone: "text-slate-300" };
   if (p.lockedEffects && p.stage >= p.readyStage) return { text: "Fully grown - ready to harvest", tone: "text-emerald-300" };
   if (m?.id === "all_in_aloe") return { text: "Growing - harvestable at any stage", tone: "text-slate-300" };
+  if (m?.id === "magic_jellybean" && p.origin === "spawned")
+    return {
+      text: p.stage >= 12 ? "Growing - harvested at 120; drops its stuff if broken now" : "Growing - harvested at 120; drops nothing if broken before 12",
+      tone: "text-slate-300",
+    };
   return { text: "Growing", tone: "text-slate-300" };
 }
 
@@ -184,7 +189,9 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; stageS
           </>
         )}
         {p.kindId === "magic_jellybean" && p.origin === "spawned" && (
-          <Row label="Item drop">x{p.stage < 12 ? 0 : Math.min(config.magicJellybeanMultiplierCap, 1 + Math.floor((p.stage - 12) / 12))}</Row>
+          <Row label="Drops now">
+            x{jellybeanMultiplier(p.stage, config.magicJellybeanMultiplierCap)} jellybeans and crop bundle, before yield
+          </Row>
         )}
         {p.kindId === "blastberry" && (
           <Row label="Explosion" tone={p.gate.primed ? "text-red-300" : undefined}>

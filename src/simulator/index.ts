@@ -9,7 +9,7 @@ export { GameDataError, isHarvestableCrop, kindDef, loadGameData } from "./data/
 export type * from "./data/types";
 export type * from "./flow/types";
 export { DEFAULT_POLICIES, mergePolicies } from "./flow/policies";
-export { describeTrigger } from "./flow/triggers";
+export { describeCondition, describeConditions, describeTrigger, type StageNamer } from "./flow/triggers";
 export { LayoutError, resolveLayout } from "./flow/layout";
 export { MAX_PLOTS, ScenarioError, validateScenario, type ScenarioIssue } from "./flow/validate";
 export { analyseSustainability, describeDebt, describeSpotFailure } from "./analysis/sustainability";
@@ -19,6 +19,7 @@ export { layoutFromDecoded, layoutFromShareCode } from "./share/layoutFromShare"
 export { DEFAULT_PLAYER_STATS, defaultSettings, scenarioFromShareCodes, staticFlow } from "./scenario";
 export { ETHEREAL_VINE_BY_RARITY, HARVEST_BOUNTY, RARE_DROP_ITEMS } from "./economy/bounty";
 export { defaultNpcPrice, npcPriceSource, WIKI_NPC_PRICES, type PriceSource } from "./economy/prices";
+export { jellybeanMultiplier } from "./economy/yield";
 export {
   ARMOR_SET_DROPS,
   ARMOR_SET_LABEL,

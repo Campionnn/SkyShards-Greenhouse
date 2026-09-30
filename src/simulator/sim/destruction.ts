@@ -21,8 +21,8 @@ function willGrow(p: PlantState): boolean {
  *   neighbouring cells (destroying what is there). Every root then has its own
  *   40% per tick to spread another. Roots are separate entities the player
  *   breaks while online; a fully grown Devourer makes no new roots.
- * - Chorus Fruit: teleports every tick it starts still growing, leaving End
- *   Stone, then advances in the growth step. So a stage-11 Chorus Fruit (of
+ * - Chorus Fruit: teleports every tick it starts still growing to any other
+ *   cell (AIR included), turning the landing cell into End Stone, then advances in the growth step. So a stage-11 Chorus Fruit (of
  *   12) teleports one last time on the tick it becomes fully grown, and a
  *   fully grown one never teleports.
  * Blastberry explosions happen the moment one breaks (sim/explosion.ts).
@@ -51,9 +51,7 @@ export function stepDestruction(plot: PlotState, ctx: CycleCtx): void {
     const targets: number[] = [];
     for (let idx = 0; idx < TOTAL_CELLS; idx++) {
       if (idx === own) continue;
-      const key = cellKey(Math.floor(idx / GRID_SIZE), idx % GRID_SIZE);
-      // Even anyCell can only land on physical ground; air is not a target.
-      if (plot.groundOverrides[key] === undefined && plot.groundTiles[key] === undefined) continue;
+      // Any cell is a target, AIR included: the landing cell becomes End Stone either way.
       if (config.chorusTeleportTargets === "emptyOnly" && occ[idx]) continue;
       targets.push(idx);
     }

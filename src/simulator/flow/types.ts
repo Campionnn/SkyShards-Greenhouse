@@ -13,7 +13,7 @@ export interface LayoutSpec {
 /** A stage's layout: a share code (the normal form) or an explicit spec (tests, imports). */
 export type StageLayout = { code: string } | LayoutSpec;
 
-/** Leave a stage when ALL of its triggers hold (AND). An empty list never exits. */
+/** One leaf condition. Combine them with `ConditionGroup` (AND / OR) in a `Condition` list. */
 export type Trigger =
   | { kind: "cycles"; n: number }
   | { kind: "inventoryAtLeast"; item: ItemId; qty: number }
@@ -31,9 +31,40 @@ export type Trigger =
    * Target slots of this stage's layout holding their labelled mutation
    * (growing or fully grown). count 0 = every target; otherwise at least `count`.
    */
-  | { kind: "targetsFilled"; count: number };
+  | { kind: "targetsFilled"; count: number }
+  /**
+   * The plot has entered the current stage at least `count` times (this visit
+   * included), counted since it last entered `sinceStage` (a stage id), or
+   * since the run started when that is omitted. "Every 3rd time through
+   * stage 2, go to stage 3" = a route on stage 2 with stageVisits(3, since stage 3).
+   */
+  | { kind: "stageVisits"; count: number; sinceStage?: string };
 
 export type TriggerKind = Trigger["kind"];
+
+/** How a condition list combines its entries: every one (AND) or at least one (OR). */
+export type ConditionMatch = "all" | "any";
+
+/** A nested AND / OR group. An empty group never holds. */
+export interface ConditionGroup {
+  kind: "group";
+  match: ConditionMatch;
+  of: Condition[];
+}
+
+export type Condition = Trigger | ConditionGroup;
+
+/**
+ * A conditional jump to a chosen stage. A stage's routes are checked in order
+ * before its normal exit; the first whose conditions hold wins.
+ */
+export interface StageRoute {
+  /** Target stage id. */
+  to: string;
+  when: Condition[];
+  /** How `when` combines (default "all"). An empty `when` never holds. */
+  match?: ConditionMatch;
+}
 
 export type SpawnedHarvestPolicy = "whenFullyGrown" | "beforeDecay" | "never";
 /**
@@ -81,7 +112,17 @@ export interface FlowStage {
   id: string;
   label?: string;
   layout: StageLayout;
-  exit: Trigger[];
+  /** The normal exit's conditions (combined per `exitMatch`). An empty list never exits. */
+  exit: Condition[];
+  /** How `exit` combines (default "all", AND). */
+  exitMatch?: ConditionMatch;
+  /**
+   * Stage id the normal exit goes to. Omitted = the following stage (or the
+   * first stage on a looping flow; a non-looping flow holds its last stage).
+   */
+  next?: string;
+  /** Conditional jumps to chosen stages, checked in order before the normal exit. */
+  routes?: StageRoute[];
   policies?: PolicyOverrides;
   /** Break every plant on entry instead of keeping identical ones. */
   fullClear?: boolean;
@@ -92,7 +133,10 @@ export interface FlowStage {
   watch?: string[];
 }
 
-/** One plot's rotation. Stages are sequential within this plot only. */
+/**
+ * One plot's rotation. Stages run in order unless a stage's `next` or
+ * `routes` send the plot elsewhere; they never reference another plot.
+ */
 export interface Flow {
   stages: FlowStage[];
   loop: boolean;

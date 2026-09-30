@@ -2,7 +2,7 @@
 
 import type { SimConfig } from "./config";
 import { createEngine } from "./engine";
-import type { Flow, FlowStage, LayoutSpec, PolicyOverrides, StageLayout, Trigger } from "./flow/types";
+import type { Condition, Flow, FlowStage, LayoutSpec, PolicyOverrides, StageLayout } from "./flow/types";
 import { defaultSettings } from "./scenario";
 import { DEVOURER_ROOT, insertPlant, newPlant, newRoot } from "./sim/plants";
 import type { ActivitySchedule, Origin, PlantState, PlayerStats, Scenario, SimulationState } from "./sim/state";
@@ -23,7 +23,7 @@ export function layout(plants: Cellish[] = [], slots: Cellish[] = []): LayoutSpe
   };
 }
 
-export function stage(id: string, spec: StageLayout, exit: Trigger[] = [], extra: Partial<FlowStage> = {}): FlowStage {
+export function stage(id: string, spec: StageLayout, exit: Condition[] = [], extra: Partial<FlowStage> = {}): FlowStage {
   return { id, label: id, layout: spec, exit, ...extra };
 }
 

@@ -298,49 +298,60 @@ describe("destruction", () => {
     expect(r.state.plots[0].plants.some((p) => p.kindId === "devourer_root")).toBe(false);
   });
 
-  it("Chorus Fruit cannot teleport onto AIR, including in anyCell mode", () => {
-    const s = blank({ chorusTeleportTargets: "anyCell" });
+  it("Chorus Fruit teleports onto AIR when there is no ground, turning the landing cell into End Stone", () => {
+    const s = blank();
+    expect(s.plots[0].groundTiles).toEqual({});
     inject(s, 1, "chorus_fruit", 5, 5, "spawned");
     const r = engine.run(s, 1);
-    expect(ofKind(r.events, "teleported")).toHaveLength(0);
-    expect(plantAt(r.state, 1, 5, 5)?.kindId).toBe("chorus_fruit");
-    expect(r.state.plots[0].groundOverrides).toEqual({});
+    const moved = ofKind(r.events, "teleported");
+    expect(moved).toHaveLength(1);
+    const { row, col } = moved[0];
+    expect([row, col]).not.toEqual([5, 5]);
+    expect(r.state.plots[0].groundTiles[`${row},${col}`]).toBeUndefined();
+    expect(r.state.plots[0].groundOverrides).toEqual({ [`${row},${col}`]: "end_stone" });
+    expect(plantAt(r.state, 1, row, col)?.kindId).toBe("chorus_fruit");
+    expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
   });
 
-  it("anyCell can land on an occupied crop's inferred ground, destroying it", () => {
-    const s = start(scenario([flow([stage("a", layout([["wheat", 2, 3]]))])], { config: { ...slotsOnly, chorusTeleportTargets: "anyCell" }, activity: NEVER_ACTIVE }));
-    inject(s, 1, "chorus_fruit", 5, 5, "spawned");
-    const r = engine.run(s, 1);
-    expect(ofKind(r.events, "teleported")[0]).toMatchObject({ row: 2, col: 3 });
-    expect(r.state.plots[0].groundOverrides["2,3"]).toBe("end_stone");
-    expect(plantAt(r.state, 1, 2, 3)?.kindId).toBe("chorus_fruit");
+  it("emptyOnly never lands on a plant; anyCell can land on one, destroying it", () => {
+    const wheat: [string, number, number][] = [];
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) if (r !== 5 || c !== 5) wheat.push(["wheat", r, c]);
+    const full = (mode: "emptyOnly" | "anyCell") => {
+      const s = start(scenario([flow([stage("a", layout(wheat))])], { config: { ...slotsOnly, chorusTeleportTargets: mode }, activity: NEVER_ACTIVE }));
+      inject(s, 1, "chorus_fruit", 5, 5, "spawned");
+      return engine.run(s, 1);
+    };
+    const blocked = full("emptyOnly");
+    expect(ofKind(blocked.events, "teleported")).toHaveLength(0);
+    expect(plantAt(blocked.state, 1, 5, 5)?.kindId).toBe("chorus_fruit");
+    const r = full("anyCell");
+    const [moved] = ofKind(r.events, "teleported");
+    expect(r.state.plots[0].groundOverrides[`${moved.row},${moved.col}`]).toBe("end_stone");
+    expect(plantAt(r.state, 1, moved.row, moved.col)?.kindId).toBe("chorus_fruit");
     expect(r.summary.destroyed.wheat).toBe(1);
   });
 
-  it("a growing Chorus Fruit teleports onto actual ground and converts it; once grown it stays put", () => {
+  it("a growing Chorus Fruit teleports and converts its landing cell; once grown it stays put", () => {
     const s = blank();
-    s.plots[0].groundTiles["2,3"] = "farmland";
     inject(s, 1, "chorus_fruit", 5, 5, "spawned");
     const r = engine.run(s, 1);
     const moved = ofKind(r.events, "teleported")[0];
-    expect(moved).toMatchObject({ row: 2, col: 3 });
-    expect(r.state.plots[0].groundOverrides["2,3"]).toBe("end_stone");
+    expect(r.state.plots[0].groundOverrides[`${moved.row},${moved.col}`]).toBe("end_stone");
     expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
     const grown = blank();
-    grown.plots[0].groundTiles["2,3"] = "farmland";
     inject(grown, 1, "chorus_fruit", 5, 5, "spawned", { stage: 12 });
     expect(ofKind(engine.run(grown, 3).events, "teleported")).toHaveLength(0);
   });
 
   it("destruction runs before growth: a Chorus Fruit teleports one last time on the tick it becomes fully grown", () => {
     const s = blank();
-    s.plots[0].groundTiles["2,3"] = "farmland";
     inject(s, 1, "chorus_fruit", 5, 5, "spawned", { stage: 11 });
     const r = engine.run(s, 1);
     const kinds = r.events.map((e) => e.kind);
     expect(kinds.indexOf("teleported")).toBeGreaterThanOrEqual(0);
     expect(kinds.indexOf("teleported")).toBeLessThan(kinds.indexOf("fullyGrown"));
-    expect(plantAt(r.state, 1, 2, 3)).toMatchObject({ kindId: "chorus_fruit", stage: 12 });
+    const moved = ofKind(r.events, "teleported")[0];
+    expect(plantAt(r.state, 1, moved.row, moved.col)).toMatchObject({ kindId: "chorus_fruit", stage: 12 });
     // Fully grown now: it never moves again.
     expect(ofKind(engine.run(r.state, 3).events, "teleported")).toHaveLength(0);
   });
@@ -353,7 +364,6 @@ describe("destruction", () => {
     expect(ids.indexOf("destruction")).toBeLessThan(ids.indexOf("spawn"));
     // A spawn enters at stage 1 and makes its first jump on the next tick.
     const s = blank();
-    s.plots[0].groundTiles["2,3"] = "farmland";
     inject(s, 1, "chorus_fruit", 5, 5, "spawned");
     expect(plantAt(s, 1, 5, 5)?.stage).toBe(1);
     expect(ofKind(engine.run(s, 1).events, "teleported")).toHaveLength(1);

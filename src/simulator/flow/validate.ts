@@ -5,7 +5,7 @@ import { RARE_CROP_ITEMS } from "../economy/rareCrops";
 import { ALOE_FRAGMENT } from "../stage/aloe";
 import type { Scenario } from "../sim/state";
 import { resolveLayout } from "./layout";
-import type { Trigger } from "./types";
+import type { Condition, Trigger } from "./types";
 
 export interface ScenarioIssue {
   level: "error" | "warning";
@@ -80,10 +80,22 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
       const kinds = new Set(resolved.plants.map((p) => p.kindId));
 
       const isLast = si === stages.length - 1;
-      if (stage.exit.length === 0 && (!isLast || plot.flow.loop) && stages.length > 1) {
+      const routes = stage.routes ?? [];
+      if (stage.exit.length === 0 && routes.length === 0 && (!isLast || plot.flow.loop) && stages.length > 1) {
         warn(`${path}.exit`, "no exit triggers: the plot will stay on this stage forever");
       }
-      for (const t of stage.exit) checkTrigger(t, `${path}.exit`, kinds, resolved.slots.length);
+      const known = (id: string) => stageIds.includes(id);
+      if (stage.next !== undefined && !known(stage.next)) err(`${path}.next`, `goes to stage "${stage.next}", which does not exist`);
+      const checkList = (list: Condition[], where: string) => {
+        for (const c of list) checkCondition(c, where, kinds, resolved.slots.length, known);
+      };
+      checkList(stage.exit, `${path}.exit`);
+      routes.forEach((route, ri) => {
+        const where = `${path}.routes[${ri}]`;
+        if (!known(route.to)) err(where, `goes to stage "${route.to}", which does not exist`);
+        if (route.when.length === 0) warn(where, "has no conditions, so it never fires");
+        checkList(route.when, where);
+      });
       if (stage.watch && layoutIssues.length === 0) {
         const slotKeys = new Set(resolved.slots.map((s) => `${s.row},${s.col}`));
         const stale = stage.watch.filter((k) => !slotKeys.has(k));
@@ -92,7 +104,21 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
     });
   });
 
-  function checkTrigger(t: Trigger, path: string, kinds: Set<string>, slotCount: number) {
+  function checkCondition(c: Condition, path: string, kinds: Set<string>, slotCount: number, known: (id: string) => boolean) {
+    if (c.kind === "group") {
+      if (c.of.length === 0) warn(path, "an empty AND/OR group never holds");
+      for (const inner of c.of) checkCondition(inner, path, kinds, slotCount, known);
+      return;
+    }
+    if (c.kind === "stageVisits") {
+      if (!(c.count >= 1)) err(path, "stage visits count must be >= 1");
+      if (c.sinceStage !== undefined && !known(c.sinceStage)) err(path, `counts since stage "${c.sinceStage}", which does not exist`);
+      return;
+    }
+    checkTrigger(c, path, kinds, slotCount);
+  }
+
+  function checkTrigger(t: Exclude<Trigger, { kind: "stageVisits" }>, path: string, kinds: Set<string>, slotCount: number) {
     switch (t.kind) {
       case "cycles":
         if (!(t.n >= 1)) err(path, "cycles trigger needs n >= 1");

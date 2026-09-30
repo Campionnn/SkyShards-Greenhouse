@@ -9,7 +9,7 @@ import { uniqueCropYieldBonus } from "../stage/clock";
 import type { CycleCtx, TickScratch } from "./context";
 import { explode, isPrimedBlastberry } from "./explosion";
 import { convertAloeFragments, credit } from "./inventory";
-import { removePlant, spawnStageOf } from "./plants";
+import { JELLYBEAN, removePlant, spawnStageOf } from "./plants";
 import { bump, perPlot } from "./summary";
 import { ZOMBUD, zombudHarvest } from "./zombud";
 import type { PlantState, PlotState } from "./state";
@@ -21,6 +21,12 @@ const MINIGAMES: Record<string, "setback" | "destroy"> = {
 };
 
 export type HarvestOutcome = "harvested" | "minigameSetback" | "minigameDestroyed";
+
+function scaleDrops(drops: Record<string, number>, factor: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [item, qty] of Object.entries(drops)) out[item] = qty * factor;
+  return out;
+}
 
 /**
  * Harvest one plant: drops go to the shared inventory and are valued at NPC
@@ -54,7 +60,11 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const effective = new Set(p.lockedEffects ?? effectiveList(p.held));
   const sum = greenhouseYieldSum(effective, ctx.stats.plantYieldUpgrade, uniqueCropYieldBonus(ctx.uniqueCropCount));
   const def = isMutation ? data.mutations[p.kindId] : data.crops[p.kindId];
-  const drops = harvestYield(def.drops, farmingFortuneMultiplier(ctx.stats.farmingFortune), sum, ctx.stats.evergreenChip);
+  // Magic Jellybean: data.json's crop bundle is the stage-12 (x1) amount; the
+  // stage multiplier scales the bundle as well as its own item count.
+  const jellyMult = p.kindId === JELLYBEAN && p.origin === "spawned" ? jellybeanMultiplier(p.stage, ctx.config.magicJellybeanMultiplierCap) : 1;
+  const baseDrops = jellyMult === 1 ? def.drops : scaleDrops(def.drops, jellyMult);
+  const drops = harvestYield(baseDrops, farmingFortuneMultiplier(ctx.stats.farmingFortune), sum, ctx.stats.evergreenChip);
 
   // The mutation's OWN item count is scaled by the greenhouse yield sum only
   // (not Farming Fortune or Evergreen, which are crop-bundle-only): the whole
@@ -87,7 +97,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
     mutationItems = aloes;
   } else if (isMutation && p.origin === "spawned") {
     let base = 1;
-    if (p.kindId === "magic_jellybean") base = jellybeanMultiplier(p.stage, ctx.config.magicJellybeanMultiplierCap);
+    if (p.kindId === JELLYBEAN) base = jellyMult;
     if (p.kindId === "chloronite") base = chloroniteDropCount(ctx.stats.miningFortune);
     const { whole, frac } = yieldScaledCount(base, sum);
     const items = whole + (frac > 1e-9 && chance(rng, frac) ? 1 : 0);

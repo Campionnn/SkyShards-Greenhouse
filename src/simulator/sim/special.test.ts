@@ -130,6 +130,35 @@ describe("All-in Aloe", () => {
   });
 });
 
+describe("Magic Jellybean", () => {
+  // Zeroed stats, no base crops standing: yield sum 1, FF x1, so drops are the raw multiplier.
+  const online = (config: Record<string, unknown> = {}) =>
+    start(scenario([flow([stage("a", layout())])], { config: { ...slotsOnly, ...config }, activity: { kind: "everyN", n: 1, offset: 0 } }));
+  const jellyHarvest = (events: TimedEvent[]) => ofKind(events, "harvested").find((e) => e.kindId === "magic_jellybean");
+
+  it("the player only harvests it at stage 120: 10x jellybeans and 10x the stage-12 crop bundle", () => {
+    const s = online();
+    const p = inject(s, 1, "magic_jellybean", 5, 5, "spawned", { stage: 58 });
+    expect(p.readyStage).toBe(120);
+    const early = engine.run(s, 61); // online every cycle through stages 59-119: never harvested
+    expect(jellyHarvest(early.events)).toBeUndefined();
+    expect(plantAt(early.state, 1, 5, 5)?.stage).toBe(119);
+    const h = jellyHarvest(engine.run(early.state, 1).events)!;
+    expect(h.drops).toMatchObject({ magic_jellybean: 10, moonflower: 6000, sunflower: 6000, sugar_cane: 12000 });
+  });
+
+  it("broken early by a stage change, it still drops at its current stage (60 = 5x / 5x); below 12 nothing", () => {
+    const f = flow([stage("a", layout(), [{ kind: "cycles", n: 1 }]), stage("b", layout(), [], { fullClear: true })], false);
+    const s = start(scenario([f], { config: slotsOnly }));
+    inject(s, 1, "magic_jellybean", 5, 5, "spawned", { stage: 59 }); // 60 after the tick
+    inject(s, 1, "magic_jellybean", 7, 7, "spawned", { stage: 5 });
+    const r = engine.run(s, 1);
+    const h = jellyHarvest(r.events)!;
+    expect(h.drops).toMatchObject({ magic_jellybean: 5, moonflower: 3000, sunflower: 3000, sugar_cane: 6000 });
+    expect(r.summary.destroyed.magic_jellybean).toBe(1);
+  });
+});
+
 describe("harvest yield", () => {
   const harvestAshwreath = (seed: number) => {
     // No base crops standing: yield sum = 1 + 0.5 upgrade = 1.5. FF 0, Evergreen 0.6.

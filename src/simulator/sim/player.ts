@@ -2,7 +2,7 @@ import { endStageOrHold } from "../flow/runner";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import type { CycleCtx, SubStep, TickScratch } from "./context";
 import { harvestPlant } from "./harvest";
-import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, newPlant, removePlant } from "./plants";
+import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
 import { layoutInputAt, maintainLayout } from "./placement";
 import type { PlantState, PlotState } from "./state";
 
@@ -42,8 +42,9 @@ function clearRoots(plot: PlotState, ctx: CycleCtx): void {
 }
 
 /**
- * Natural spawns. All-in Aloe could be taken at any stage; the player takes
- * it at its target stage. A spawn the current layout uses as an input
+ * Natural spawns. All-in Aloe (any stage) and Magic Jellybean (from 12) drop
+ * if taken early, but the player waits for their target stage (Aloe:
+ * aloeHarvestStage; Jellybean: fully grown at 120). A spawn the current layout uses as an input
  * (hybrid rotations) is left standing under `layoutInputSpawns: "keep"`
  * unless it would decay before the next session.
  */
@@ -61,6 +62,7 @@ function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
       if (!isFullyGrown(p)) continue;
     } else {
       if (!isHarvestable(p)) continue;
+      if (p.kindId === JELLYBEAN && !isFullyGrown(p)) continue; // only ever harvested at stage 120
       if (policies.spawnedHarvest === "beforeDecay" && !decaysBeforeNextSession(p, ctx)) continue;
     }
     harvestPlant(plot, p, ctx, scratch);

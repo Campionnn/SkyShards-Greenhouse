@@ -121,6 +121,11 @@ export interface FlowRunnerState {
   harvestedInStage?: Record<MutationId, number>;
   /** Triggers fired on an inactive cycle; the layout is applied at the next player session. */
   pendingTransition: boolean;
+  /**
+   * Stage index the pending change goes to (a route's target or the exit's
+   * `next`). Optional: states saved before routes existed go to the next stage.
+   */
+  pendingTarget?: number;
   /** A non-looping flow that reached its last stage's exit: the plot holds that stage. */
   finished: boolean;
   history: { stageId: string; stageIndex: number; startCycle: number; endCycle: number | null }[];
