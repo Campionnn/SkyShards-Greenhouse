@@ -83,11 +83,16 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
       if (stage.exit.length === 0 && (!isLast || plot.flow.loop) && stages.length > 1) {
         warn(`${path}.exit`, "no exit triggers: the plot will stay on this stage forever");
       }
-      for (const t of stage.exit) checkTrigger(t, `${path}.exit`, kinds);
+      for (const t of stage.exit) checkTrigger(t, `${path}.exit`, kinds, resolved.slots.length);
+      if (stage.watch && layoutIssues.length === 0) {
+        const slotKeys = new Set(resolved.slots.map((s) => `${s.row},${s.col}`));
+        const stale = stage.watch.filter((k) => !slotKeys.has(k));
+        if (stale.length) warn(`${path}.watch`, `watched cell${stale.length === 1 ? "" : "s"} ${stale.join(" ")} ${stale.length === 1 ? "is" : "are"} not a target in this layout and will be ignored`);
+      }
     });
   });
 
-  function checkTrigger(t: Trigger, path: string, kinds: Set<string>) {
+  function checkTrigger(t: Trigger, path: string, kinds: Set<string>, slotCount: number) {
     switch (t.kind) {
       case "cycles":
         if (!(t.n >= 1)) err(path, "cycles trigger needs n >= 1");
@@ -103,14 +108,21 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
       case "plantDecayed":
         if (!kindDef(data, t.kindId)) err(path, `unknown plant "${t.kindId}"`);
         break;
+      case "targetsFilled":
+        if (!(t.count >= 0)) err(path, "count must be >= 0 (0 = every target)");
+        else if (slotCount === 0) warn(path, "this stage's layout has no targets, so this trigger can never fire");
+        else if (t.count > slotCount) warn(path, `the layout has only ${slotCount} targets, so ${t.count} can never be filled`);
+        break;
       case "fullyGrown":
-      case "mutationSpawned": {
+      case "mutationSpawned":
+      case "mutationHarvested": {
         const m = data.mutations[t.mutationId];
         if (!m) {
           err(path, `unknown mutation "${t.mutationId}"`);
           break;
         }
-        if (t.kind === "mutationSpawned" && !(t.count >= 1)) err(path, "count must be >= 1");
+        if (t.kind !== "fullyGrown" && !(t.count >= 1)) err(path, "count must be >= 1");
+        if (t.kind === "fullyGrown" && t.count !== undefined && !(t.count >= 1)) err(path, "count must be >= 1");
         if (m.spawnWeight <= 0 && m.id !== "shellfruit") {
           err(path, `${m.name} never spawns from the weighted roll, so this trigger can never fire`);
           break;

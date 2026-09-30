@@ -44,8 +44,6 @@ export interface PlantState {
   /** Spawned into a labelled slot whose target is a different mutation. */
   isRival: boolean;
   skipNextGrowth: boolean;
-  /** freezeInsteadOfKill: thirst/decay froze it until the next player session. */
-  frozen: boolean;
   gate: {
     asleep?: boolean;
     ratAlive?: boolean;
@@ -75,6 +73,41 @@ export interface PlotState {
   groundOverrides: Record<string, string>;
   /** Slot anchor key -> consecutive cycles its target has been ineligible. */
   slotIneligibleCycles: Record<string, number>;
+  /** Watched slot anchor key -> what the uptime check saw there this cycle. Reset on stage change. */
+  watchStatus: Record<string, WatchStatus>;
+}
+
+/**
+ * One watched target cell, one cycle, as seen at its spawn roll:
+ * - growing:      the target mutation stands there (growing or fully grown)
+ * - ready:        empty, and the target could spawn there now
+ * - requirements: empty, but the target cannot spawn (neighbours or ground missing)
+ * - blocked:      something else is in the way (a rival, Dead Plant, root, a
+ *                 neighbour overlapping a large footprint)
+ * Uptime = growing + ready.
+ */
+export type WatchStatus = "growing" | "ready" | "requirements" | "blocked";
+
+export interface UptimeCounts {
+  /** Cell-cycles watched. */
+  watched: number;
+  growing: number;
+  ready: number;
+  requirements: number;
+  blocked: number;
+}
+
+export interface SpotUptime extends UptimeCounts {
+  mutationId: MutationId;
+  row: number;
+  col: number;
+  /** First cycle it sat empty without its requirements. */
+  firstRequirementsCycle: number | null;
+  /** Longest run of consecutive watched cycles without its requirements. */
+  longestRequirementsStreak: number;
+  currentRequirementsStreak: number;
+  /** Last cycle it was watched (a streak only continues over consecutive cycles). */
+  lastCycle: number;
 }
 
 export interface FlowRunnerState {
@@ -84,6 +117,8 @@ export interface FlowRunnerState {
   /** Counters since entering the current stage. */
   spawnedInStage: Record<MutationId, number>;
   decayedInStage: Record<KindId, number>;
+  /** Natural spawns harvested since entering the stage (optional: states saved before it existed). */
+  harvestedInStage?: Record<MutationId, number>;
   /** Triggers fired on an inactive cycle; the layout is applied at the next player session. */
   pendingTransition: boolean;
   /** A non-looping flow that reached its last stage's exit: the plot holds that stage. */
@@ -128,6 +163,13 @@ export interface Settings {
   seed: number;
   playerStats: PlayerStats;
   activity: ActivitySchedule;
+  /**
+   * Master switch for the player. Off = the player never comes online: no
+   * harvesting, watering, upkeep, re-placing, ground fixing, gate interaction
+   * or stage changes, whatever the activity schedule says. Optional so states
+   * saved before it existed still load (missing = on).
+   */
+  playerActions?: boolean;
   policies: Policies;
   config: SimConfig;
 }
@@ -206,6 +248,8 @@ export interface RunSummary {
   replacements: number;
   debtEvents: number;
   unfilledCellCycles: number;
+  /** Watched target cells, all plots and stages together (cell-cycles). */
+  uptime: UptimeCounts;
   perPlot: Record<string, PerPlotSummary>;
 }
 
@@ -223,6 +267,8 @@ export interface SimulationState {
   debts: DebtEvent[];
   /** "plot:row,col:item" -> an unresolved shortfall episode. */
   openDebts: Record<string, true>;
+  /** Per watched spot: plot id -> stage id -> slot anchor key -> counters. */
+  uptime: Record<string, Record<string, Record<string, SpotUptime>>>;
   summary: RunSummary;
   nextPlantId: number;
   /** Shared, recomputed every cycle across all plots. */
@@ -249,6 +295,8 @@ export type TickEvent =
   | { kind: "spawned"; plantId: number; mutationId: MutationId; row: number; col: number; rival: boolean; slotTarget: MutationId | null }
   | { kind: "placed"; plantId: number; kindId: KindId; row: number; col: number; origin: Origin; replacement: boolean }
   | { kind: "removed"; plantId: number; kindId: KindId; row: number; col: number; reason: string }
+  /** The player restored the ground under an empty target cell to what its mutation needs. */
+  | { kind: "groundFixed"; row: number; col: number; from: string | null; to: string; mutationId: MutationId }
   | { kind: "destroyed"; plantId: number; kindId: KindId; row: number; col: number; by: string }
   | { kind: "teleported"; plantId: number; kindId: KindId; fromRow: number; fromCol: number; row: number; col: number }
   | { kind: "debt"; item: ItemId; row: number; col: number; needed: number; available: number }

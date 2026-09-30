@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { History, ListOrdered, Play, RotateCcw, Square, StepForward } from "lucide-react";
-import type { FlowRunnerState, ScenarioPlot, TimedEvent } from "../../simulator";
+import { uptimeRatio, type FlowRunnerState, type RunSummary, type ScenarioPlot, type SustainabilityReport, type TimedEvent } from "../../simulator";
 import type { SimulationView } from "../../hooks/useSimulation";
 import { LOG_CYCLES } from "../../hooks/useSimulation";
 import { Panel, SegmentedControl } from "../ui";
-import { debtText, describeEvent, formatCoins, formatDuration } from "./format";
+import { describeEvent, formatCoins, formatDuration, spotFailureText } from "./format";
 import { buttonClass, inputClass } from "./styles";
+import { NumberInput } from "./controls";
 
 /** Visible bound for one Run (the reference tool uses 1-500); the engine itself is uncapped. */
 const MAX_RUN = 500;
@@ -52,12 +53,12 @@ export const RunControls: React.FC<{
           className="w-32 accent-emerald-500"
           aria-label="Cycles to run"
         />
-        <input
-          type="number"
+        <NumberInput
+          integer
           min={1}
           max={100000}
           value={n}
-          onChange={(e) => setN(Math.max(1, e.target.valueAsNumber || 1))}
+          onChange={setN}
           className={`${inputClass} w-20 text-right`}
           aria-label="Cycles to run"
         />
@@ -72,11 +73,11 @@ export const RunControls: React.FC<{
         </button>
         <label className="flex items-center gap-1.5 text-xs text-slate-400 ml-auto" title="Changing the seed restarts the simulation">
           seed
-          <input
-            type="number"
+          <NumberInput
+            integer
             className={`${inputClass} w-24 text-right`}
             value={seed}
-            onChange={(e) => Number.isFinite(e.target.valueAsNumber) && onSeedChange(e.target.valueAsNumber)}
+            onChange={onSeedChange}
             disabled={running}
           />
         </label>
@@ -99,18 +100,31 @@ export const RunControls: React.FC<{
             <span className="text-slate-400">
               {summary.cyclesRun} cycles · {formatDuration(summary.elapsedSeconds)}
             </span>
-            {(running ? summary.debtEvents === 0 : view.snapshot.report.sustainable) ? (
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">no debt</span>
-            ) : (
-              <span className="px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30" title={view.snapshot.report.firstDebt ? debtText(view.snapshot.report.firstDebt) : undefined}>
-                {running ? "in debt" : `debt at cycle ${view.snapshot.report.firstDebt?.cycle}`}
-              </span>
-            )}
+            <UptimeBadge summary={summary} report={running ? null : view.snapshot.report} />
           </div>
         )}
       </div>
       {view.error && view.status !== "error" && <p className="text-xs text-red-300">{view.error}</p>}
     </div>
+  );
+};
+
+/** Checked-target uptime; red once a checked target sat empty without its requirements. */
+const UptimeBadge: React.FC<{ summary: RunSummary; report: SustainabilityReport | null }> = ({ summary, report }) => {
+  const u = summary.uptime;
+  if (!u || u.watched === 0) {
+    return <span className="px-2 py-0.5 rounded-full bg-slate-600/20 text-slate-400 border border-slate-600/40">no targets checked</span>;
+  }
+  const text = `${(uptimeRatio(u) * 100).toFixed(1).replace(/\.0$/, "")}% uptime`;
+  if (u.requirements === 0) {
+    return <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">{text}</span>;
+  }
+  const first = report?.firstFailure;
+  return (
+    <span className="px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30" title={first ? spotFailureText(first) : undefined}>
+      {text}
+      {first ? ` · short at cycle ${first.firstRequirementsCycle}` : " · not sustainable"}
+    </span>
   );
 };
 

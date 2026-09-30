@@ -2,7 +2,7 @@ import { newRunner } from "../flow/runner";
 import { ScenarioError, validateScenario } from "../flow/validate";
 import { seedRng } from "../rng";
 import { countUniqueCropGroups, stageSeconds } from "../stage/clock";
-import type { Env } from "./context";
+import { newScratch, type Env } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { convertAloeFragments, ledgerRow } from "./inventory";
 import { applyStageLayout } from "./placement";
@@ -37,6 +37,7 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
     groundTiles: {},
     groundOverrides: {},
     slotIneligibleCycles: {},
+    watchStatus: {},
   }));
 
   const state: SimulationState = {
@@ -51,6 +52,7 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
     ledger: {},
     debts: [],
     openDebts: {},
+    uptime: {},
     summary: zeroSummary(input.plots.map((p) => p.id)),
     nextPlantId: 1,
     uniqueCropCount: 0,
@@ -70,7 +72,7 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
   for (const id of input.settings.config.plotOrder) {
     const plot = state.plots.find((p) => p.id === id);
     if (!plot) continue;
-    applyStageLayout(plot, ctx.layoutFor(id), ctx, { advanced: new Set() }, true, "setup");
+    applyStageLayout(plot, ctx.layoutFor(id), ctx, newScratch(), true, "setup");
   }
 
   state.uniqueCropCount = uniqueCropsAcross(state, env);

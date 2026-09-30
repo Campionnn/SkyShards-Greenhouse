@@ -1,7 +1,8 @@
+import type { SimConfig } from "../config";
 import { cellIndex, footprint } from "../grid/cells";
-import type { CycleCtx, ResolvedLayout } from "./context";
+import type { CycleCtx, ResolvedLayout, TickScratch } from "./context";
 import { destroyPlant } from "./explosion";
-import { harvestPlant, type TickScratch } from "./harvest";
+import { harvestPlant } from "./harvest";
 import { closePlotDebts, credit, spend } from "./inventory";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isFootprintFree, isHarvestable, newPlant, removePlant } from "./plants";
 import type { PlantState, PlotState } from "./state";
@@ -66,11 +67,24 @@ const matches = (p: PlantState, d: ResolvedLayout["plants"][number]) =>
   p.kindId === d.kindId && p.row === d.row && p.col === d.col && p.size === d.size && p.origin === d.origin;
 
 /**
+ * Hybrid rotations: is this natural spawn standing exactly where the layout
+ * places the same mutation? Then it IS that layout input - growing or fully
+ * grown, it counts toward its neighbours' requirements - and nothing needs
+ * to be spent to put one there (`spawnsFillLayoutInputs`).
+ */
+export function layoutInputAt(p: PlantState, layout: ResolvedLayout, config: SimConfig): boolean {
+  if (!config.spawnsFillLayoutInputs || p.origin !== "spawned" || p.isDeadPlant) return false;
+  return layout.plants.some((d) => d.kindId === p.kindId && d.row === p.row && d.col === p.col && d.size === p.size);
+}
+
+/**
  * Enter a stage: diff the plot against the new layout. Unless it is a full
- * clear, a plant identical to the layout's (kind, anchor, origin) is kept with
- * its timers, and a natural spawn growing outside the new layout's cells is
- * left alone. Everything else is removed by the player; then the new plants
- * are placed.
+ * clear:
+ * - a plant identical to the layout's (kind, anchor, origin) is kept with its timers;
+ * - a natural spawn standing where the layout places the same mutation is
+ *   kept as that input (hybrid rotations, `spawnsFillLayoutInputs`);
+ * - a natural spawn entirely outside the new layout's plant cells is left alone.
+ * Everything else is removed by the player; then the new plants are placed.
  */
 export function applyStageLayout(
   plot: PlotState,
@@ -88,6 +102,7 @@ export function applyStageLayout(
     if (!plot.plants.includes(p)) continue;
     const d = desiredAt.get(cellIndex(p.row, p.col));
     if (keepIdentical && d && matches(p, d)) continue;
+    if (!fullClear && layoutInputAt(p, layout, ctx.config)) continue;
     const growingOutsideLayout = p.origin === "spawned" && !footprint(p.row, p.col, p.size).some((c) => desiredCells.has(c));
     if (!fullClear && growingOutsideLayout) continue;
     removeByPlayer(plot, p, ctx, scratch, "stage change");
@@ -97,14 +112,16 @@ export function applyStageLayout(
   plot.groundTiles = { ...layout.groundTiles };
   plot.groundOverrides = {}; // Chorus changes persist only within the stage being exited.
   plot.slotIneligibleCycles = {};
+  plot.watchStatus = {};
   closePlotDebts(ctx.state, plot.id);
   placeLayoutPlants(plot, layout, ctx, mode);
 }
 
 /**
  * Player upkeep during a session: clear Dead Plants the layout does not call
- * for, take natural spawns off layout cells they are blocking, and re-place
- * whatever the layout is missing.
+ * for, take natural spawns off layout cells they are blocking (a spawn that
+ * stands in as the layout input is not blocking), and re-place whatever the
+ * layout is missing.
  */
 export function maintainLayout(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch): void {
   const desiredAt = new Map(layout.plants.map((d) => [cellIndex(d.row, d.col), d]));
@@ -120,6 +137,7 @@ export function maintainLayout(plot: PlotState, layout: ResolvedLayout, ctx: Cyc
     for (const idx of footprint(d.row, d.col, d.size)) {
       const q = occ[idx];
       if (!q || matches(q, d) || q.origin !== "spawned" || !plot.plants.includes(q)) continue;
+      if (layoutInputAt(q, layout, ctx.config)) continue; // a spawn standing in as this input
       removeByPlayer(plot, q, ctx, scratch, "blocking layout");
     }
   }

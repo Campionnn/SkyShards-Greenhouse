@@ -1,16 +1,16 @@
-import type { EffectSimulation } from "../../utilities/effectSimulation";
 import { effectiveList, recomputeEffects } from "../effects/adapter";
-import { cellIndex, cellKey, footprint, footprintFits, GRID_SIZE, ringCells, TOTAL_CELLS } from "../grid/cells";
+import type { FlowStage } from "../flow/types";
+import { cellIndex, cellKey, footprint, footprintFits, ringCells, TOTAL_CELLS } from "../grid/cells";
 import { chance, intInclusive } from "../rng";
 import { candidateMutations } from "../spawn/candidates";
+import { locationOpenFor, ringCounts } from "../spawn/eligibility";
 import { effectiveWeight } from "../spawn/multiplicity";
 import { applyMutationChanceBonus, rollPool, type SpawnPool } from "../spawn/pool";
 import { aloeRow } from "../stage/aloe";
 import { afterAdvance, growthBlockedBy, type GateEnv } from "../stage/gates";
-import type { CycleCtx } from "./context";
+import type { CycleCtx, SubStep, TickScratch } from "./context";
 import { stepDestruction } from "./destruction";
 import { explode, isPrimedBlastberry } from "./explosion";
-import type { TickScratch } from "./harvest";
 import {
   buildOccupancy,
   convertToDeadPlant,
@@ -18,36 +18,61 @@ import {
   isFootprintFree,
   isRoot,
   newPlant,
-  type Occupancy,
+  spawnStageOf,
 } from "./plants";
-import { stepPlayer } from "./player";
 import { bump, perPlot } from "./summary";
-import type { PlantState, PlotState, SlotLabel } from "./state";
+import type { PlantState, PlotState, SlotLabel, WatchStatus } from "./state";
 
 /**
- * The single-tick primitive: one plot, one cycle, in the pinned step order.
- * INTERNAL - only sim/run.ts may call it (the scope-guard test enforces
- * this). It works on run()'s private working copy of the state.
+ * The game tick: everything the greenhouse itself does in one cycle, in
+ * order. It happens instantly, on every cycle, whether or not the player is
+ * online. The player's session (sim/player.ts `PLAYER_STEPS`) comes AFTER
+ * the game tick of every plot, because the player acts at some point during
+ * the cycle rather than at the tick.
  *
- *   0 effects  1 growth  2 water  3 decay  4 player (active cycles only)
- *   5 spawn    6 destruction
+ * Consequences of the order:
+ * - Destruction runs first, before growth: a Chorus Fruit that is still
+ *   growing teleports and THEN advances, so it teleports one last time on the
+ *   tick it becomes fully grown. A growing Devourer rolls for a root the same
+ *   way. Destruction runs before spawn, so a new spawn does nothing
+ *   destructive on its spawn tick.
+ * - Decay runs before the player, so a timer that expires on the cycle the
+ *   player would have harvested is lost.
+ * - A spawn enters at stage 1 (sim/plants.ts `spawnStageOf`). It is not grown
+ *   or watered on the cycle it appears, but a mutation with no growth stages
+ *   is fully grown at once: its effects latch at the end of the spawn step,
+ *   so the player can harvest it that same cycle.
+ * - Spawn runs before decay, so a new spawn's decay timer already ticks once
+ *   on the cycle it appears (a harvestWindowCycles of N means N ticks
+ *   counting the spawn tick).
+ * - A cell the player frees (harvest, clearing) can only refill on the NEXT
+ *   cycle's spawn roll.
  *
- * Decay runs before the player, so a timer that expires on the cycle the
- * player would have harvested is lost. Spawn runs last, so a new mutation is
- * not grown, watered or decayed on the cycle it appears; it starts with its
- * full decay timer and first ticks down on the next cycle. A cell the player
- * freed this cycle can refill in the same cycle.
+ * To change behaviour, edit this list: add, remove or reorder sub-steps.
+ * Adding, removing or reordering an RNG draw changes every seeded result.
  */
-export function tickPlot(plot: PlotState, ctx: CycleCtx): void {
-  const scratch: TickScratch = { advanced: new Set() };
-  const effects = recomputeEffects(plot); // 0
-  stepGrowth(plot, ctx, scratch); // 1
-  stepSoggybud(plot, ctx, scratch); // 2a
-  stepWater(plot, ctx, scratch); // 2b
-  stepDecay(plot, ctx); // 3
-  if (ctx.active) stepPlayer(plot, ctx, scratch, ctx.policiesFor(plot.id)); // 4
-  stepSpawn(plot, ctx, effects); // 5
-  stepDestruction(plot, ctx, scratch); // 6
+export const TICK_STEPS: readonly SubStep[] = [
+  { id: "destruction", summary: "Growing Devourers grow roots and roots spread; growing Chorus Fruit teleports (before it advances).", run: stepDestruction },
+  {
+    id: "effects",
+    summary: "Recompute held effects for every plant (4-way propagation).",
+    run: (plot, _ctx, scratch) => {
+      scratch.effects = recomputeEffects(plot);
+    },
+  },
+  { id: "growth", summary: "Advance one stage unless gated; latch effects when fully grown.", run: stepGrowth },
+  { id: "soggybud", summary: "Soggybud draws water from its neighbours; stage follows water.", run: stepSoggybud },
+  { id: "water", summary: "Plants that advanced this cycle lose 2-3 water; thirst kills.", run: stepWater },
+  { id: "spawn", summary: "Every empty cell (or only slots) rolls once for a spawn (at stage 1; 0-stage kinds latch at once); uptime is booked.", run: stepSpawn },
+  { id: "decay", summary: "Decay timers tick down; expired plants become Dead Plants.", run: stepDecay },
+];
+
+/**
+ * One plot's game tick. INTERNAL - only sim/run.ts may call it (the
+ * scope-guard test enforces this). It works on run()'s private working copy.
+ */
+export function tickPlot(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
+  for (const step of TICK_STEPS) step.run(plot, ctx, scratch);
 }
 
 /** Latch the effect set the first time a plant is fully grown. Its decay timer is already running. */
@@ -70,7 +95,7 @@ function stepGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
   for (const p of plot.plants) {
     // A placed Blastberry went in mid-stage; the next tick primes it.
     if (p.kindId === "blastberry" && p.origin === "placed" && !p.isDeadPlant) p.gate.primed = true;
-    if (p.isDeadPlant || p.origin === "placed" || p.frozen) continue;
+    if (p.isDeadPlant || p.origin === "placed") continue;
     // Soggybud's stage follows its water level (stepSoggybud), not the tick.
     if (p.kindId === "soggybud") continue;
     // Glasscorn keeps growing past its window and resets from stage 8 to 1.
@@ -131,7 +156,7 @@ function stepSoggybud(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): voi
   const { config } = ctx;
   const occ = buildOccupancy(plot);
   for (const p of plot.plants) {
-    if (p.kindId !== "soggybud" || p.origin !== "spawned" || p.isDeadPlant || p.frozen) continue;
+    if (p.kindId !== "soggybud" || p.origin !== "spawned" || p.isDeadPlant) continue;
     const seen = new Set<PlantState>();
     for (const idx of ringCells(p.row, p.col, p.size)) {
       const q = occ[idx];
@@ -144,7 +169,8 @@ function stepSoggybud(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): voi
     }
     const cap = p.growthStages * config.soggybudWaterPerStage;
     p.water = Math.min(p.water, cap);
-    const stage = Math.min(p.growthStages, Math.floor(p.water / config.soggybudWaterPerStage));
+    // It enters at stage 1 like every spawn; water only ever moves it up from there.
+    const stage = Math.min(p.growthStages, Math.max(spawnStageOf(p.growthStages), Math.floor(p.water / config.soggybudWaterPerStage)));
     if (stage > p.stage) {
       scratch.advanced.add(p.id);
       ctx.emit(plot.id, { kind: "advanced", plantId: p.id, kindId: p.kindId, stage });
@@ -173,10 +199,6 @@ function stepWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
     p.water -= loss;
     if (p.water < 0 && chance(rng, config.negativeWaterSkipChance)) p.skipNextGrowth = true;
     if (p.water > config.deathWater) continue;
-    if (config.freezeInsteadOfKill) {
-      p.frozen = true;
-      continue;
-    }
     ctx.emit(plot.id, { kind: "diedOfThirst", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col });
     bump(ctx.state.summary.diedOfThirst, p.kindId);
     const primed = isPrimedBlastberry(p);
@@ -189,14 +211,9 @@ function stepWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
 /** Timers run in seconds of simulated time, so they stay right when the stage length changes. */
 function stepDecay(plot: PlotState, ctx: CycleCtx): void {
   for (const p of [...plot.plants]) {
-    if (!plot.plants.includes(p) || p.isDeadPlant || p.frozen || p.decaySecondsRemaining === null) continue;
+    if (!plot.plants.includes(p) || p.isDeadPlant || p.decaySecondsRemaining === null) continue;
     p.decaySecondsRemaining -= ctx.stageSeconds;
     if (p.decaySecondsRemaining > 1e-6) continue;
-    if (ctx.config.freezeInsteadOfKill) {
-      p.decaySecondsRemaining = 0;
-      p.frozen = true;
-      continue;
-    }
     ctx.emit(plot.id, { kind: "decayed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col });
     bump(ctx.state.summary.decayed, p.kindId);
     perPlot(ctx.state.summary, plot.id).decayed += 1;
@@ -207,17 +224,57 @@ function stepDecay(plot: PlotState, ctx: CycleCtx): void {
   }
 }
 
-function ringCounts(occ: Occupancy, row: number, col: number, size: number): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const idx of ringCells(row, col, size)) {
-    const q = occ[idx];
-    if (q) counts[q.kindId] = (counts[q.kindId] ?? 0) + 1; // CELLS, not entities
+/** Slot anchor keys the current stage watches: its `watch` list, or every target when it has none. */
+function watchedKeys(plot: PlotState, stage: FlowStage): Set<string> {
+  const all = plot.slots.map((s) => cellKey(s.row, s.col));
+  if (!stage.watch) return new Set(all);
+  const wanted = new Set(stage.watch);
+  return new Set(all.filter((k) => wanted.has(k)));
+}
+
+/** What a watched slot holds when something is standing on its anchor. */
+function occupiedStatus(q: PlantState, slot: SlotLabel): WatchStatus {
+  return q.kindId === slot.mutationId && !q.isDeadPlant ? "growing" : "blocked";
+}
+
+/** Book one watched cell-cycle into the per-spot record and the run totals. */
+function recordWatch(plot: PlotState, ctx: CycleCtx, stageId: string, slot: SlotLabel, status: WatchStatus): void {
+  const key = cellKey(slot.row, slot.col);
+  plot.watchStatus[key] = status;
+  const byStage = ((ctx.state.uptime[String(plot.id)] ??= {})[stageId] ??= {});
+  const spot = (byStage[key] ??= {
+    mutationId: slot.mutationId,
+    row: slot.row,
+    col: slot.col,
+    watched: 0,
+    growing: 0,
+    ready: 0,
+    requirements: 0,
+    blocked: 0,
+    firstRequirementsCycle: null,
+    longestRequirementsStreak: 0,
+    currentRequirementsStreak: 0,
+    lastCycle: -1,
+  });
+  // A streak only continues over consecutive cycles (a looping rotation revisits the stage later).
+  if (spot.lastCycle !== ctx.cycle - 1) spot.currentRequirementsStreak = 0;
+  spot.lastCycle = ctx.cycle;
+  spot.watched += 1;
+  spot[status] += 1;
+  const total = ctx.state.summary.uptime;
+  total.watched += 1;
+  total[status] += 1;
+  if (status === "requirements") {
+    spot.firstRequirementsCycle ??= ctx.cycle;
+    spot.currentRequirementsStreak += 1;
+    spot.longestRequirementsStreak = Math.max(spot.longestRequirementsStreak, spot.currentRequirementsStreak);
+  } else {
+    spot.currentRequirementsStreak = 0;
   }
-  return counts;
 }
 
 /**
- * Step 5 - every empty cell (or only labelled slots) draws ONE weighted roll
+ * Spawn - every empty cell (or only labelled slots) draws ONE weighted roll
  * over every mutation eligible there, in row-major order. Any candidate can
  * win - that is the competition/dilution model. A multi-cell candidate needs
  * its whole footprint (anchored top-left at the cell) empty; a spawn blocks
@@ -228,9 +285,10 @@ function ringCounts(occ: Occupancy, row: number, col: number, size: number): Rec
  * lifts the whole mutation arm without touching the relative odds between
  * mutations.
  */
-function stepSpawn(plot: PlotState, ctx: CycleCtx, effects: EffectSimulation): void {
+function stepSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { config } = ctx;
   const { data } = ctx.env;
+  const effects = scratch.effects ?? recomputeEffects(plot);
   const occ = buildOccupancy(plot);
   const candidates = candidateMutations(new Set(plot.plants.map((p) => p.kindId)), data);
 
@@ -241,11 +299,22 @@ function stepSpawn(plot: PlotState, ctx: CycleCtx, effects: EffectSimulation): v
       ? [...slotAt.keys()].sort((a, b) => a - b)
       : Array.from({ length: TOTAL_CELLS }, (_, i) => i);
 
+  const stage = ctx.stageFor(plot.id);
+  const watched = watchedKeys(plot, stage);
+  plot.watchStatus = {};
+  /** Spawns that are fully grown the moment they appear (0 growth stages). */
+  const grownOnSpawn: PlantState[] = [];
+
   for (const idx of locations) {
-    if (occ[idx]) continue;
     const row = Math.floor(idx / 10);
     const col = idx % 10;
     const slot = slotAt.get(idx) ?? null;
+    const watch = !!slot && watched.has(cellKey(row, col));
+    const standing = occ[idx];
+    if (standing) {
+      if (watch) recordWatch(plot, ctx, stage.id, slot!, occupiedStatus(standing, slot!));
+      continue;
+    }
     const target = slot ? data.mutations[slot.mutationId] : undefined;
     const poolMuts = target && !candidates.includes(target) ? [...candidates, target] : candidates;
 
@@ -253,14 +322,7 @@ function stepSpawn(plot: PlotState, ctx: CycleCtx, effects: EffectSimulation): v
     const pool: SpawnPool = { ids: [], weights: [] };
     let targetWeight = 0;
     for (const m of poolMuts) {
-      if (!footprintFits(row, col, m.size) || !isFootprintFree(occ, row, col, m.size)) continue;
-      // The ground is checked per cell, not just at the anchor: a 2×2 or
-      // 3×3 mutation must stand entirely on its required ground. Chorus
-      // conversion wins over the stage's painted ground until the next stage.
-      if (!footprint(row, col, m.size).every((c) => {
-        const key = cellKey(Math.floor(c / GRID_SIZE), c % GRID_SIZE);
-        return (plot.groundOverrides[key] ?? plot.groundTiles[key]) === m.ground;
-      })) continue;
+      if (!locationOpenFor(plot, occ, row, col, m)) continue;
       let counts = countsBySize.get(m.size);
       if (!counts) {
         counts = ringCounts(occ, row, col, m.size);
@@ -277,6 +339,18 @@ function stepSpawn(plot: PlotState, ctx: CycleCtx, effects: EffectSimulation): v
     if (slot) {
       const key = cellKey(slot.row, slot.col);
       plot.slotIneligibleCycles[key] = targetWeight > 0 ? 0 : (plot.slotIneligibleCycles[key] ?? 0) + 1;
+      if (watch) {
+        // Empty anchor: ready if the target could spawn now; blocked if its
+        // footprint is covered by something else; otherwise its requirements
+        // (neighbours or ground) are missing.
+        const status: WatchStatus =
+          targetWeight > 0
+            ? "ready"
+            : target && footprintFits(row, col, target.size) && !isFootprintFree(occ, row, col, target.size)
+              ? "blocked"
+              : "requirements";
+        recordWatch(plot, ctx, stage.id, slot, status);
+      }
     }
 
     const winner = rollPool(applyMutationChanceBonus(pool, ctx.stats.mutationChanceBonus), ctx.state.rng, config.blankFillTo);
@@ -299,6 +373,16 @@ function stepSpawn(plot: PlotState, ctx: CycleCtx, effects: EffectSimulation): v
       rival: plant.isRival,
       slotTarget: slot?.mutationId ?? null,
     });
+    if (plant.stage >= plant.readyStage) grownOnSpawn.push(plant);
   }
+
+  // Refresh held effects for the plot as the spawn roll left it. Always, not
+  // only when something spawned: the player session reads `held` for the one
+  // harvest that has no latched set (an All-in Aloe taken before its harvest
+  // stage), and it must see the same plot every tick. No RNG is drawn.
+  // A mutation with no growth stages is fully grown as it spawns, so it
+  // latches here against that refreshed set rather than at the next growth step.
+  scratch.effects = recomputeEffects(plot);
+  for (const p of grownOnSpawn) latchIfReady(p, plot, ctx);
 }
 

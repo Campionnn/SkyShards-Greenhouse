@@ -75,16 +75,19 @@ export function SegmentedControl<T extends string>({
   options,
   className = "",
   size = "sm",
+  nowrap = false,
 }: {
   value: T;
   onChange: (value: T) => void;
   options: SegmentOption<T>[];
   className?: string;
   size?: "xs" | "sm";
+  /** Keep each label on one line (the control then never shrinks below its labels). */
+  nowrap?: boolean;
 }) {
   const pad = size === "xs" ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm";
   return (
-    <div className={`flex gap-1 ${className}`} role="tablist">
+    <div className={`flex gap-1 ${nowrap ? "shrink-0" : ""} ${className}`} role="tablist">
       {options.map((opt) => {
         const active = opt.value === value;
         const tone = opt.tone ?? "emerald";
@@ -96,7 +99,7 @@ export function SegmentedControl<T extends string>({
             aria-selected={active}
             title={opt.title}
             onClick={() => onChange(opt.value)}
-            className={`flex-1 ${pad} rounded-md border font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+            className={`flex-1 ${nowrap ? "whitespace-nowrap" : ""} ${pad} rounded-md border font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
               active
                 ? TONE_ACTIVE[tone]
                 : "bg-slate-700/30 text-slate-400 border-slate-600/30 hover:bg-slate-700/60 hover:text-slate-200"

@@ -15,10 +15,10 @@ describe("Soggybud", () => {
     inject(s, 1, "soggybud", 5, 5, "spawned");
     inject(s, 1, "wheat", 5, 4, "planted");
     inject(s, 1, "wheat", 5, 6, "planted");
-    expect(plantAt(s, 1, 5, 5)).toMatchObject({ water: 0, stage: 0 });
+    expect(plantAt(s, 1, 5, 5)).toMatchObject({ water: 0, stage: 1 }); // every spawn enters at stage 1
 
     const one = engine.run(s, 1).state;
-    expect(plantAt(one, 1, 5, 5)).toMatchObject({ water: 4, stage: 0 }); // 2 from each of 2 wheat
+    expect(plantAt(one, 1, 5, 5)).toMatchObject({ water: 4, stage: 1 }); // 2 from each of 2 wheat; never below its spawn stage
     expect(plantAt(one, 1, 5, 4)!.water).toBeLessThanOrEqual(98);
 
     const five = engine.run(s, 5).state;
@@ -53,7 +53,7 @@ describe("Soggybud", () => {
     const s = blank({ kind: "everyN", n: 1, offset: 0 });
     inject(s, 1, "soggybud", 5, 5, "spawned");
     const r = engine.run(s, 10).state;
-    expect(plantAt(r, 1, 5, 5)).toMatchObject({ water: 0, stage: 0 });
+    expect(plantAt(r, 1, 5, 5)).toMatchObject({ water: 0, stage: 1 });
   });
 
   it("never draws from another Soggybud", () => {
@@ -151,11 +151,89 @@ describe("harvest yield", () => {
   });
 });
 
+describe("Zombud", () => {
+  const grown = { stage: 16, lockedEffects: [], fullyGrownAtCycle: 0 };
+  const online = (inventory: Record<string, number> = {}, stats: Record<string, number> = {}) =>
+    start(scenario([flow([stage("a", layout())])], { config: slotsOnly, activity: { kind: "everyN", n: 1, offset: 0 }, inventory, stats }));
+
+  it("fills empty ring cells with dead plants from stock, then gives 1 Zombud per adjacent dead plant and consumes them", () => {
+    const s = online({ dead_plant: 3 }, { plantYieldUpgrade: 0.9 });
+    inject(s, 1, "zombud", 5, 5, "spawned", grown);
+    inject(s, 1, "dead_plant", 4, 4, "placed");
+    inject(s, 1, "dead_plant", 6, 6, "placed");
+    inject(s, 1, "wheat", 4, 5, "planted", { lockedEffects: [], stage: 99 });
+    const r = engine.run(s, 1);
+    const h = ofKind(r.events, "harvested").find((e) => e.kindId === "zombud")!;
+    expect(h.drops.zombud).toBe(5); // 2 standing + 3 filled; not yield-scaled
+    expect(r.state.inventory.dead_plant).toBe(0);
+    expect(r.state.inventory.zombud).toBe(5);
+    expect(r.state.summary.debtEvents).toBe(0);
+    expect(r.state.plots[0].plants.some((p) => p.kindId === "dead_plant")).toBe(false);
+    expect(plantAt(r.state, 1, 4, 5)?.kindId).toBe("wheat"); // occupied cells are never touched
+    expect(ofKind(r.events, "removed").filter((e) => e.reason === "became a Zombud mob")).toHaveLength(5);
+  });
+
+  it("with a full ring in stock it yields 8; with none it yields no Zombud and records no debt", () => {
+    const full = online({ dead_plant: 20 });
+    inject(full, 1, "zombud", 5, 5, "spawned", grown);
+    const rf = engine.run(full, 1);
+    expect(ofKind(rf.events, "harvested")[0].drops.zombud).toBe(8);
+    expect(rf.state.inventory.dead_plant).toBe(12);
+
+    const none = online();
+    inject(none, 1, "zombud", 5, 5, "spawned", grown);
+    const rn = engine.run(none, 1);
+    const h = ofKind(rn.events, "harvested")[0];
+    expect(h.drops.zombud).toBeUndefined();
+    expect(h.drops.pumpkin).toBeGreaterThan(0);
+    expect(rn.state.summary.debtEvents).toBe(0);
+  });
+
+  it("the crop bundle drops once on breaking it, however many dead plants turn into mobs", () => {
+    const bundle = (deadPlants: number) => {
+      const s = online({ dead_plant: deadPlants });
+      inject(s, 1, "zombud", 5, 5, "spawned", grown);
+      const h = ofKind(engine.run(s, 1).events, "harvested").find((e) => e.kindId === "zombud")!;
+      return { zombud: h.drops.zombud ?? 0, pumpkin: h.drops.pumpkin, wild_rose: h.drops.wild_rose };
+    };
+    const none = bundle(0);
+    const full = bundle(8);
+    expect(none.zombud).toBe(0);
+    expect(full.zombud).toBe(8);
+    expect(none.pumpkin).toBeGreaterThan(0);
+    expect(full.pumpkin).toBe(none.pumpkin); // 8 mobs, still one bundle
+    expect(full.wild_rose).toBe(none.wild_rose);
+  });
+
+  it("decay just leaves a Dead Plant: the adjacent dead plants stay and nothing drops", () => {
+    const s = blank(NEVER_ACTIVE, { harvestWindowCycles: 2 });
+    inject(s, 1, "zombud", 5, 5, "spawned", grown);
+    inject(s, 1, "dead_plant", 4, 4, "placed");
+    const r = engine.run(s, 3);
+    expect(r.summary.decayed.zombud).toBe(1);
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
+    expect(plantAt(r.state, 1, 4, 4)?.kindId).toBe("dead_plant");
+    expect(r.state.inventory.zombud ?? 0).toBe(0);
+  });
+});
+
+describe("Timestalk", () => {
+  it("gives exactly 1 Timestalk per harvest, with no yield scaling", () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = start(scenario([flow([stage("a", layout())])], { seed, config: slotsOnly, stats: { plantYieldUpgrade: 0.9 } }));
+      inject(s, 1, "timestalk", 5, 5, "spawned", { stage: 14, lockedEffects: [], fullyGrownAtCycle: 0 });
+      const h = ofKind(engine.run(s, 1).events, "harvested").find((e) => e.kindId === "timestalk")!;
+      expect(h.drops.timestalk).toBe(1);
+      expect(h.drops.cactus).toBeGreaterThan(0); // its crop bundle, once, on breaking it
+    }
+  });
+});
+
 describe("Noctilume", () => {
   it("advances only on ticks the player is online (they set the time); there is no day/night cycle", () => {
     const offline = blank();
     inject(offline, 1, "noctilume", 4, 4, "spawned");
-    expect(plantAt(engine.run(offline, 6).state, 1, 4, 4)?.stage).toBe(0);
+    expect(plantAt(engine.run(offline, 6).state, 1, 4, 4)?.stage).toBe(1); // stuck at its spawn stage
 
     const everyOther = blank({ kind: "everyN", n: 2, offset: 0 });
     inject(everyOther, 1, "noctilume", 4, 4, "spawned");

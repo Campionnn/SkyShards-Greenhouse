@@ -7,8 +7,8 @@ import type { SimulationView } from "../../hooks/useSimulation";
 import { engine, flow, LAYOUT_A_CODE, LAYOUT_B_CODE, scenario, stage } from "../../simulator/testHelpers";
 import { ToastProvider } from "../ui";
 import { PlotMarkLegend, PlotView } from "./PlotView";
-import { InventoryPanel, MoneyPanel, SustainabilityPanel } from "./ReportPanels";
-import { RotationEditor } from "./RotationEditor";
+import { InventoryPanel, MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
+import { RotationEditor, WatchPicker } from "./RotationEditor";
 import { EventLog, RunControls, StageTimeline } from "./RunPanels";
 import { ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 
@@ -65,15 +65,26 @@ describe("simulator panels render", () => {
     expect(html).toContain("Stage");
   });
 
+  it("the legend omits freezing and does not promise eligibility before evaluation", () => {
+    const html = renderToString(<PlotMarkLegend />);
+    expect(html).not.toMatch(/frozen|freeze/i);
+    expect(html).toContain("ready or not yet evaluated");
+    expect(html).toContain("checked target blocked by something else");
+  });
+
   it("report panels", () => {
     const html = wrap(
       <>
         <MoneyPanel summary={state.summary} previous={before.summary} />
         <SustainabilityPanel report={view.snapshot!.report} summary={state.summary} />
         <InventoryPanel state={state} />
+        <InventoryPanel state={view.snapshot!.state} onAddItems={() => {}} startingInventory={{ chloronite: 3 }} onStartingInventoryChange={() => {}} />
+        <InventoryPanel state={start.state} onAddItems={() => {}} startingInventory={{ chloronite: 3 }} onStartingInventoryChange={() => {}} />
       </>
     );
     expect(html).toContain("Profit");
+    expect(html).toContain("Started with");
+    expect(html).toContain("This is what you start with");
     expect(html).toContain("Sustainab");
   });
 
@@ -98,5 +109,24 @@ describe("simulator panels render", () => {
     );
     expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1 rotation");
     expect(html).toContain("Leave this stage when");
+    expect(html).toContain("checked targets");
+  });
+
+  it("the uptime tree groups checked targets by plot, collapsed by default", () => {
+    const report = view.snapshot!.report;
+    expect(report.spots.length).toBeGreaterThan(0);
+    expect(report.spots.every((s) => s.stageIndex >= 0)).toBe(true);
+    const html = wrap(<UptimeTree spots={report.spots} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("Plot 1");
+    expect(html).toContain("Plot 2");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("Stage 1 · "); // stages stay hidden until a plot is expanded
+  });
+
+  it("the checked-target picker lists a layout's targets", () => {
+    const html = wrap(<WatchPicker stage={stage("a", { code: LAYOUT_A_CODE })} onChange={() => {}} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("18 of 18 checked");
+    const some = wrap(<WatchPicker stage={stage("a", { code: LAYOUT_A_CODE }, [], { watch: [] })} onChange={() => {}} />).replace(/<!-- -->/g, "");
+    expect(some).toContain("0 of 18 checked");
   });
 });

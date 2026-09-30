@@ -1,4 +1,13 @@
-import type { PerPlotSummary, PlotId, RunSummary } from "./state";
+import type { PerPlotSummary, PlotId, RunSummary, UptimeCounts } from "./state";
+
+export function zeroUptime(): UptimeCounts {
+  return { watched: 0, growing: 0, ready: 0, requirements: 0, blocked: 0 };
+}
+
+/** Share of watched cell-cycles the spot was usable (target standing, or free to spawn). 1 when nothing was watched. */
+export function uptimeRatio(u: UptimeCounts): number {
+  return u.watched > 0 ? (u.growing + u.ready) / u.watched : 1;
+}
 
 export function zeroPerPlot(): PerPlotSummary {
   return { revenue: 0, spawned: 0, harvested: 0, decayed: 0, destroyed: 0 };
@@ -26,6 +35,7 @@ export function zeroSummary(plotIds: PlotId[]): RunSummary {
     replacements: 0,
     debtEvents: 0,
     unfilledCellCycles: 0,
+    uptime: zeroUptime(),
     perPlot: Object.fromEntries(plotIds.map((id) => [String(id), zeroPerPlot()])),
   };
 }

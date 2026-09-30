@@ -2,20 +2,32 @@ import { cellIndex, cellKey, GRID_SIZE, ringCells, TOTAL_CELLS } from "../grid/c
 import { chance, intInclusive } from "../rng";
 import type { CycleCtx } from "./context";
 import { destroyPlant } from "./explosion";
-import type { TickScratch } from "./harvest";
 import { buildOccupancy, DEVOURER_ROOT, insertPlant, isRoot, newRoot, sortPlants } from "./plants";
 import type { PlantState, PlotState } from "./state";
 
 /**
- * Step 6 - gate side effects that reshape the plot, applied last:
+ * A plant that is still growing as the tick starts. Destruction runs first
+ * in the tick, before growth, so "still growing" is judged on the stage the
+ * plant starts the tick with.
+ */
+function willGrow(p: PlantState): boolean {
+  return !p.isDeadPlant && p.origin !== "placed" && p.stage < p.growthStages;
+}
+
+/**
+ * Game-tick sub-step "destruction" - gate side effects that reshape the plot,
+ * applied FIRST in the tick (before effects and growth):
  * - Devourer: while growing, 40% per tick to grow a root into one of its 8
  *   neighbouring cells (destroying what is there). Every root then has its own
  *   40% per tick to spread another. Roots are separate entities the player
  *   breaks while online; a fully grown Devourer makes no new roots.
- * - Chorus Fruit: teleports every tick while growing, leaving End Stone.
+ * - Chorus Fruit: teleports every tick it starts still growing, leaving End
+ *   Stone, then advances in the growth step. So a stage-11 Chorus Fruit (of
+ *   12) teleports one last time on the tick it becomes fully grown, and a
+ *   fully grown one never teleports.
  * Blastberry explosions happen the moment one breaks (sim/explosion.ts).
  */
-export function stepDestruction(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
+export function stepDestruction(plot: PlotState, ctx: CycleCtx): void {
   const { config } = ctx;
   const rng = ctx.state.rng;
 
@@ -34,7 +46,7 @@ export function stepDestruction(plot: PlotState, ctx: CycleCtx, scratch: TickScr
   let occ = buildOccupancy(plot);
   let moved = false;
   for (const p of [...plot.plants]) {
-    if (p.kindId !== "chorus_fruit" || !scratch.advanced.has(p.id) || !plot.plants.includes(p)) continue;
+    if (p.kindId !== "chorus_fruit" || !willGrow(p) || !plot.plants.includes(p)) continue;
     const own = cellIndex(p.row, p.col);
     const targets: number[] = [];
     for (let idx = 0; idx < TOTAL_CELLS; idx++) {

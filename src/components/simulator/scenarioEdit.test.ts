@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeDesign } from "../../utilities/designEncoding";
-import { layoutCode, layoutToPlacements, placementsToCode } from "./scenarioEdit";
+import { layoutCode, layoutToPlacements, placementsToCode, transformWatch } from "./scenarioEdit";
 
 const tiles = [
   { ground: "soul_sand" as const, position: [2, 3] as [number, number] },
@@ -23,5 +23,20 @@ describe("simulator stage layout editor ground roundtrip", () => {
     };
     expect(layoutToPlacements(spec).groundTiles).toEqual([{ ground: "sand", position: [4, 5] }]);
     expect(decodeDesign(layoutCode(spec)).groundTiles).toEqual([{ ground: "sand", position: [4, 5] }]);
+  });
+});
+
+describe("watched targets follow a layout transform", () => {
+  it("moves watch keys with the rotated / mirrored targets", () => {
+    const code = placementsToCode([], [
+      { id: "a", cropId: "chloronite", cropName: "", size: 1, position: [0, 0], isMutation: true },
+      { id: "b", cropId: "chloronite", cropName: "", size: 1, position: [3, 4], isMutation: true },
+    ]);
+    const stage = { id: "s", layout: { code }, exit: [], watch: ["3,4"] };
+    expect(transformWatch(stage, { kind: "rotate", direction: "cw" }).watch).toEqual(["4,6"]);
+    expect(transformWatch(stage, { kind: "mirror", axis: "horizontal" }).watch).toEqual(["3,5"]);
+    expect(transformWatch(stage, { kind: "nudge", dRow: 1, dCol: 0 }).watch).toEqual(["4,4"]);
+    const all = { id: "s", layout: { code }, exit: [] };
+    expect(transformWatch(all, { kind: "rotate", direction: "cw" })).toBe(all);
   });
 });

@@ -2,6 +2,7 @@ import {
   defaultGameData,
   defaultNpcPrice,
   describeDebt,
+  describeSpotFailure,
   describeTrigger,
   isHarvestableCrop,
   npcPriceSource,
@@ -9,6 +10,7 @@ import {
   RARE_DROP_ITEMS,
   WIKI_NPC_PRICES,
   type KindDef,
+  type SpotReport,
   type TimedEvent,
 } from "../../simulator";
 
@@ -84,6 +86,7 @@ export function formatDuration(seconds: number): string {
 
 export { describeTrigger };
 export const debtText = (d: Parameters<typeof describeDebt>[0]) => describeDebt(d, nameOf);
+export const spotFailureText = (s: SpotReport) => describeSpotFailure(s, nameOf);
 
 /** One human sentence per event, for the recent-events log. */
 export function describeEvent(e: TimedEvent): string {
@@ -107,6 +110,8 @@ export function describeEvent(e: TimedEvent): string {
       return `${e.replacement ? "Re-placed" : "Placed"} ${nameOf(e.kindId)}${at}${e.origin === "placed" && e.replacement ? " from inventory" : ""}`;
     case "removed":
       return `${e.reason === "cleared dead plant" ? "Cleared a Dead Plant" : e.reason === "cleared root" ? "Broke a Devourer root" : `Removed ${nameOf(e.kindId)}`}${at}`;
+    case "groundFixed":
+      return `Fixed the ground${at} for ${nameOf(e.mutationId)}: ${e.from ? nameOf(e.from) : "air"} -> ${nameOf(e.to)}`;
     case "teleported":
       return `${nameOf(e.kindId)} teleported (${e.fromRow},${e.fromCol}) -> (${e.row},${e.col}), End Stone left behind`;
     case "debt":

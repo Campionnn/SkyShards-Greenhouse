@@ -1,6 +1,7 @@
 import { ringCells } from "../grid/cells";
 import type { CycleCtx } from "./context";
-import { buildOccupancy, removePlant, spawnedDecaySeconds } from "./plants";
+import { effectiveList } from "../effects/adapter";
+import { buildOccupancy, removePlant, spawnedDecaySeconds, spawnStageOf } from "./plants";
 import { bump, perPlot } from "./summary";
 import type { PlantState, PlotState } from "./state";
 
@@ -63,16 +64,19 @@ function turnIntoShellfruit(plot: PlotState, q: PlantState, ctx: CycleCtx): void
   q.id = ctx.state.nextPlantId++;
   q.kindId = "shellfruit";
   q.origin = "spawned";
-  q.stage = 0;
+  q.stage = spawnStageOf(m.growthStages);
   q.growthStages = m.growthStages;
   q.readyStage = m.growthStages;
   q.fullyGrownAtCycle = null;
   // It is a fresh natural spawn: its decay timer runs from now.
   q.decaySecondsRemaining = spawnedDecaySeconds(m, ctx.config, ctx.stageSeconds);
-  q.lockedEffects = null;
+  // A 0-stage Shellfruit is fully grown as it appears: latch what it holds now.
+  q.lockedEffects = q.stage >= q.readyStage ? effectiveList(q.held) : null;
+  if (q.lockedEffects) q.fullyGrownAtCycle = ctx.cycle;
   q.isRival = false;
   q.gate = {};
   bump(ctx.state.summary.spawned, "shellfruit");
   perPlot(ctx.state.summary, plot.id).spawned += 1;
   ctx.emit(plot.id, { kind: "spawned", plantId: q.id, mutationId: "shellfruit", row: q.row, col: q.col, rival: false, slotTarget: null });
+  if (q.lockedEffects) ctx.emit(plot.id, { kind: "fullyGrown", plantId: q.id, kindId: q.kindId, row: q.row, col: q.col });
 }

@@ -1,12 +1,13 @@
-import { countStageEvents, evaluateFlows } from "../flow/runner";
+import { endStageOrHold } from "../flow/runner";
 import { isActive } from "../stage/activity";
 import { stageSeconds } from "../stage/clock";
-import type { Env } from "./context";
+import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { uniqueCropsAcross } from "./init";
+import { runPlayerSession } from "./player";
 import { finalizeSummary } from "./summary";
 import { tickPlot } from "./tick";
-import type { BatchResult, PlotId, RunOptions, ScenarioPlot, SimulationState, TickEventKind, TimedEvent } from "./state";
+import type { BatchResult, PlotId, PlotState, RunOptions, SimulationState, TickEventKind, TimedEvent } from "./state";
 
 const now = () => globalThis.performance?.now() ?? 0;
 
@@ -19,16 +20,21 @@ const now = () => globalThis.performance?.now() ?? 0;
  * summary) lives in the returned state, so
  *   run(s, 100) === run(run(s, 50).state, 50) === 100 x run(_, 1)
  *
- * Per cycle, in order: shared aggregates (unique crops -> stage length, the
- * activity schedule) -> every plot's physics in plotOrder -> every plot's
- * flow transition in plotOrder -> advance the clock.
+ * Per cycle, in order:
+ *   1. shared aggregates (unique crops -> stage length, the activity schedule)
+ *   2. game tick: every plot's TICK_STEPS (sim/tick.ts), in plotOrder
+ *   3. every rotation counts one more cycle in its stage
+ *   4. player: on an active cycle every plot's PLAYER_STEPS (sim/player.ts),
+ *      in plotOrder - the player acts during the cycle, after the game has
+ *      ticked. On an inactive cycle, exit triggers are only checked and a
+ *      due stage change waits for the next session.
+ *   5. advance the clock
  */
 export function run(env: Env, input: SimulationState, ticks: number, opts: RunOptions = {}): BatchResult {
   const state: SimulationState = structuredClone(input);
   const retain = opts.retainEvents ?? "all";
   const { settings } = state.scenario;
   const order: PlotId[] = settings.config.plotOrder.filter((id) => state.plots.some((p) => p.id === id));
-  const defs = new Map<PlotId, ScenarioPlot>(state.scenario.plots.map((p) => [p.id, p]));
 
   let events: TimedEvent[] = [];
   const eventCounts: Partial<Record<TickEventKind, number>> = {};
@@ -49,22 +55,34 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     const uniqueCropCount = uniqueCropsAcross(state, env);
     const seconds = stageSeconds(settings.playerStats, uniqueCropCount, settings.config.stageBaselineSeconds);
     const firesAt = state.elapsedSeconds + seconds;
-    const active = isActive(settings.activity, cycle, firesAt, settings.playerStats.startTimeOfDay);
+    // playerActions is the master switch: off = the player is never online.
+    const active = settings.playerActions !== false && isActive(settings.activity, cycle, firesAt, settings.playerStats.startTimeOfDay);
 
     const cycleEvents: TimedEvent[] = [];
     const ctx = makeCycleCtx(env, state, { cycle, active, stageSeconds: seconds, firesAt, uniqueCropCount }, cycleEvents);
 
-    // 2. Physics: every plot, in the pinned step order.
+    const plots: { plot: PlotState; scratch: TickScratch }[] = [];
     for (const id of order) {
       const plot = state.plots.find((p) => p.id === id);
-      if (plot) tickPlot(plot, ctx);
+      if (plot) plots.push({ plot, scratch: newScratch() });
     }
 
-    // 3. Flow transitions, per plot, after ALL physics.
-    for (const runner of state.flows) countStageEvents(runner, cycleEvents);
-    evaluateFlows(ctx, order, defs);
+    // 2. Game tick: every plot, instantly.
+    for (const { plot, scratch } of plots) tickPlot(plot, ctx, scratch);
 
-    // 4. Advance the shared clock.
+    // 3. The stage has seen one more cycle.
+    for (const runner of state.flows) runner.cyclesInStage += 1;
+
+    // 4. The player, some time during the cycle.
+    for (const { plot, scratch } of plots) {
+      if (active) runPlayerSession(plot, ctx, scratch);
+      else {
+        const { def, runner } = ctx.flowFor(plot.id);
+        endStageOrHold(plot, def, runner, ctx, scratch, false);
+      }
+    }
+
+    // 5. Advance the shared clock.
     state.cycle += 1;
     state.elapsedSeconds = firesAt;
     state.uniqueCropCount = uniqueCropCount;

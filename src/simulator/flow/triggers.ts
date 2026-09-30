@@ -1,4 +1,5 @@
-import { isFullyGrown } from "../sim/plants";
+import { cellIndex } from "../grid/cells";
+import { buildOccupancy, isFullyGrown } from "../sim/plants";
 import type { FlowRunnerState, PlotState } from "../sim/state";
 import type { Trigger } from "./types";
 
@@ -28,8 +29,22 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
     }
     case "noneFullyGrown":
       return !growable(v.plot).some(isFullyGrown);
-    case "fullyGrown":
-      return v.plot.plants.some((p) => p.kindId === t.mutationId && p.origin === "spawned" && isFullyGrown(p));
+    case "fullyGrown": {
+      const n = v.plot.plants.filter((p) => p.kindId === t.mutationId && p.origin === "spawned" && isFullyGrown(p)).length;
+      return n >= Math.max(1, t.count ?? 1);
+    }
+    case "mutationHarvested":
+      return (v.runner.harvestedInStage?.[t.mutationId] ?? 0) >= t.count;
+    case "targetsFilled": {
+      const slots = v.plot.slots;
+      if (slots.length === 0) return false;
+      const occ = buildOccupancy(v.plot);
+      const filled = slots.filter((s) => {
+        const q = occ[cellIndex(s.row, s.col)];
+        return !!q && !q.isDeadPlant && q.kindId === s.mutationId && q.row === s.row && q.col === s.col;
+      }).length;
+      return t.count <= 0 ? filled === slots.length : filled >= t.count;
+    }
     case "decayImminent":
       return v.plot.plants.some(
         (p) => !p.isDeadPlant && p.decaySecondsRemaining !== null && p.decaySecondsRemaining <= t.withinCycles * v.stageSeconds + 1e-6
@@ -59,7 +74,11 @@ export function describeTrigger(t: Trigger): string {
     case "noneFullyGrown":
       return "nothing fully grown";
     case "fullyGrown":
-      return `${t.mutationId} fully grown`;
+      return (t.count ?? 1) > 1 ? `${t.count} x ${t.mutationId} fully grown` : `${t.mutationId} fully grown`;
+    case "mutationHarvested":
+      return `${t.count} x ${t.mutationId} harvested`;
+    case "targetsFilled":
+      return t.count <= 0 ? "every target filled" : `${t.count} targets filled`;
     case "decayImminent":
       return `something decays within ${t.withinCycles} cycles`;
     case "plantDecayed":

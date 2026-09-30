@@ -2,10 +2,12 @@ import type { Policies, PolicyOverrides } from "./types";
 
 export const DEFAULT_POLICIES: Policies = {
   spawnedHarvest: "whenFullyGrown",
+  layoutInputSpawns: "keep",
   baseCropUpkeep: "leaveUntilDecay",
   watering: "toMax",
   gateInteractions: { wakeSnoozling: true, vacuumRat: true, noctilumeTime: true, feedFleshtrap: true, clearRoots: true },
   replaceDecayed: true,
+  fixGround: true,
 };
 
 /** Scenario defaults, then plot overrides, then stage overrides. */

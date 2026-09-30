@@ -44,3 +44,6 @@ export * from "./gridExport";
 
 // Crop effect propagation (port of the API solver simulation)
 export * from "./effectSimulation";
+
+// Whole-layout nudge / rotate / mirror
+export * from "./layoutTransform";

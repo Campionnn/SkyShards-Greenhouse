@@ -3,5 +3,6 @@ export { DesignerActions } from "./DesignerActions";
 export { DesignerGrid } from "./DesignerGrid";
 export type { DesignerGridHandle } from "./DesignerGrid";
 export { MutationValidator } from "./MutationValidator";
+export { LayoutClearControls, LayoutTransformControls } from "./LayoutTools";
 export { SaveLayoutModal } from "./SaveLayoutModal";
 export { LoadLayoutModal } from "./LoadLayoutModal";

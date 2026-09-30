@@ -57,8 +57,8 @@ export const GATES: Record<string, Gate> = {
 export const UNMODELLED_RULES: Record<string, string> = {
   thunderling: "Charge build-up source is unpublished; the 16,000-charge explosion is not modelled.",
   fleshtrap: "Feeding bonus drops (+20/+40%, cap +100%) are not modelled.",
-  zombud: "Harvest-time Zombuddy fight assumed won.",
-  timestalk: "Harvest-time clone fight assumed won.",
+  zombud: "Zombud mob fight assumed won (1 Zombud per adjacent Dead Plant). Decay just leaves a Dead Plant; no mobs.",
+  timestalk: "Harvest-time clone fight assumed won (1 Timestalk per harvest, no yield scaling).",
 };
 
 export function growthBlockedBy(p: PlantState, env: GateEnv): string | null {

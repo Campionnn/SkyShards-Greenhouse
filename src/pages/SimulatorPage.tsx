@@ -148,7 +148,7 @@ export const SimulatorPage: React.FC = () => {
               <InventoryPanel
                 state={state}
                 onAddItems={addItems}
-                busy={view.status !== "ready"}
+                busy={view.status === "running"}
                 startingInventory={scenario.startingInventory}
                 onStartingInventoryChange={(startingInventory) => setScenario((sc) => ({ ...sc, startingInventory }))}
               />

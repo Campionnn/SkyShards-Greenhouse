@@ -70,8 +70,12 @@ export interface SimConfig {
   spawnCells: SpawnCells;
   /** Stage change keeps a plant when the new layout has the same kind at the same anchor. */
   keepIdenticalOnStageChange: boolean;
-  /** Announced-but-unshipped rule: water and decay freeze plants instead of killing them. */
-  freezeInsteadOfKill: boolean;
+  /**
+   * Hybrid rotations: a natural spawn standing where a layout places the same
+   * mutation (same anchor) is kept and used as that input - growing or fully
+   * grown - instead of being broken and re-placed from inventory.
+   */
+  spawnsFillLayoutInputs: boolean;
   /** Fixed plot iteration order; plots contend for the shared inventory in this order. */
   plotOrder: number[];
 }
@@ -111,7 +115,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   supportCap: 1,
   spawnCells: "allEmpty",
   keepIdenticalOnStageChange: true,
-  freezeInsteadOfKill: false,
+  spawnsFillLayoutInputs: true,
   plotOrder: [1, 2, 3],
 };
 
@@ -164,7 +168,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "capRareCropChance", label: "Cap Rare Crop chance at 100%", group: "model", input: { type: "boolean" }, description: "Overbloom can push a Rare Crop chance past 100%. Off: 175% = 1 guaranteed + a 75% roll for a 2nd. On: at most one item per roll." },
   { key: "spawnCells", label: "Spawn cells", group: "model", input: { type: "select", options: ["allEmpty", "slotsOnly"] }, description: "allEmpty: every empty cell rolls. slotsOnly: only target slots roll." },
   { key: "keepIdenticalOnStageChange", label: "Keep identical plants on stage change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a stage change untouched." },
-  { key: "freezeInsteadOfKill", label: "Freeze instead of kill", group: "model", input: { type: "boolean" }, description: "Announced, not live: thirst and decay freeze plants until the player returns." },
+  { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid rotations work: grow Magic Jellybeans in one stage, then use them as inputs in the next while they finish growing." },
 ];
 
 export function withConfigDefaults(partial?: Partial<SimConfig>): SimConfig {

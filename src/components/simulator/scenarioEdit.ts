@@ -11,7 +11,7 @@ import {
   type Trigger,
   type TriggerKind,
 } from "../../simulator";
-import { decodeDesign, encodeDesign, generatePlacementId } from "../../utilities";
+import { decodeDesign, encodeDesign, generatePlacementId, transformAnchor, type LayoutTransform } from "../../utilities";
 import { GROUND_TYPES, type GroundTile, type GroundType } from "../../utilities/designEncoding";
 
 // Immutable edits to a scenario. The simulator never changes a scenario on
@@ -75,12 +75,18 @@ export function defaultTrigger(kind: TriggerKind): Trigger {
       return { kind, kindId: "wheat" };
     case "mutationSpawned":
       return { kind, mutationId: "chloronite", count: 5 };
+    case "mutationHarvested":
+      return { kind, mutationId: "chorus_fruit", count: 9 };
+    case "targetsFilled":
+      return { kind, count: 0 };
   }
 }
 
 export const TRIGGER_KINDS: { value: TriggerKind; label: string }[] = [
   { value: "cycles", label: "cycles in stage >=" },
   { value: "mutationSpawned", label: "mutation spawned x" },
+  { value: "targetsFilled", label: "targets filled (0 = all)" },
+  { value: "mutationHarvested", label: "mutation harvested x" },
   { value: "inventoryAtLeast", label: "inventory at least" },
   { value: "inventoryBelow", label: "inventory below" },
   { value: "plantDecayed", label: "a plant decayed" },
@@ -142,6 +148,48 @@ export function layoutCode(layout: StageLayout): string {
     spec.slots.map((s) => ({ cropId: s.mutationId, position: [s.row, s.col] as [number, number] })),
     specGroundTiles(spec)
   );
+}
+
+/** Set a stage's watched targets; undefined (every target) drops the field. */
+export function withWatch(stage: FlowStage, watch: string[] | undefined): FlowStage {
+  const next = { ...stage };
+  if (watch === undefined) delete next.watch;
+  else next.watch = watch;
+  return next;
+}
+
+/**
+ * Move a stage's watched target keys through a whole-layout transform, so a
+ * nudged / rotated / mirrored layout keeps checking the same targets. Uses the
+ * stage's layout from BEFORE the transform to know each target's size.
+ */
+export function transformWatch(stage: FlowStage, t: LayoutTransform): FlowStage {
+  if (!stage.watch) return stage;
+  try {
+    const sizes = new Map(layoutToPlacements(stage.layout).targets.map((p) => [`${p.position[0]},${p.position[1]}`, p.size]));
+    const watch = stage.watch.flatMap((key) => {
+      const size = sizes.get(key);
+      if (size === undefined) return [];
+      const [r, c] = key.split(",").map(Number);
+      const [nr, nc] = transformAnchor([r, c], size, t);
+      return [`${nr},${nc}`];
+    });
+    return { ...stage, watch };
+  } catch {
+    return stage;
+  }
+}
+
+/** Drop watched keys that are no longer targets after a layout edit. */
+export function pruneWatch(stage: FlowStage): FlowStage {
+  if (!stage.watch) return stage;
+  try {
+    const keys = new Set(layoutToPlacements(stage.layout).targets.map((t) => `${t.position[0]},${t.position[1]}`));
+    const kept = stage.watch.filter((k) => keys.has(k));
+    return kept.length === stage.watch.length ? stage : { ...stage, watch: kept };
+  } catch {
+    return stage;
+  }
 }
 
 /** "12 plants, 4 targets" */

@@ -96,6 +96,33 @@ describe("mutation ground eligibility", () => {
     expect(r.state.plots[0].plants[0].id).toBe(plantId);
   });
 
+  it("the online player swaps wrong ground under an empty target back (fixGround)", () => {
+    const online = { kind: "everyN" as const, n: 1, offset: 0 };
+    const s = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { config: slotsOnly, activity: online }));
+    s.plots[0].groundOverrides["4,4"] = "end_stone";
+    const r = engine.run(s, 1);
+    expect(r.state.plots[0].groundOverrides["4,4"]).toBeUndefined();
+    expect(r.events.filter((e) => e.kind === "groundFixed")).toMatchObject([{ row: 4, col: 4, from: "end_stone", to: "soul_sand", mutationId: "ashwreath" }]);
+    // Already right: nothing to do.
+    expect(engine.run(r.state, 1).events.some((e) => e.kind === "groundFixed")).toBe(false);
+  });
+
+  it("fixGround skips occupied cells, respects the policy and needs the player online", () => {
+    const online = { kind: "everyN" as const, n: 1, offset: 0 };
+    const occupied = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { config: slotsOnly, activity: online, policies: { spawnedHarvest: "never" } }));
+    occupied.plots[0].groundOverrides["4,4"] = "end_stone";
+    inject(occupied, 1, "chorus_fruit", 4, 4, "spawned", { stage: 12 });
+    expect(engine.run(occupied, 1).state.plots[0].groundOverrides["4,4"]).toBe("end_stone");
+
+    const off = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { config: slotsOnly, activity: online, policies: { fixGround: false } }));
+    off.plots[0].groundOverrides["4,4"] = "end_stone";
+    expect(engine.run(off, 1).state.plots[0].groundOverrides["4,4"]).toBe("end_stone");
+
+    const away = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { config: slotsOnly, activity: NEVER_ACTIVE }));
+    away.plots[0].groundOverrides["4,4"] = "end_stone";
+    expect(engine.run(away, 1).state.plots[0].groundOverrides["4,4"]).toBe("end_stone");
+  });
+
   it("rejects unknown or out-of-bounds explicitly painted ground", () => {
     expect(engine.validate(singlePlot(painted(layout(), "lava", 1, 1))).some((i) => i.level === "error" && i.message.includes("unknown ground"))).toBe(true);
     expect(engine.validate(singlePlot(painted(layout(), "sand", 10, 0))).some((i) => i.level === "error" && i.message.includes("ground tile"))).toBe(true);

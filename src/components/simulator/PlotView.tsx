@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Eye, Pencil } from "lucide-react";
 import { useFitCellSize } from "../../hooks";
 import type { FlowRunnerState, PlotState, ScenarioPlot, SimConfig, TimedEvent } from "../../simulator";
 import { getGroundImagePath } from "../../types/greenhouse";
@@ -9,7 +9,7 @@ import { kindData, nameOf } from "./format";
 import { SimTooltip, type TooltipTarget } from "./SimTooltip";
 import { buttonClass } from "./styles";
 
-type Mark = "harvested" | "spawned" | "decayed" | "destroyed" | "debt" | "teleported" | "exploded";
+type Mark = "harvested" | "spawned" | "decayed" | "destroyed" | "debt" | "teleported" | "exploded" | "groundFixed";
 
 const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; label: string }> = {
   harvested: { ring: "rgba(234,179,8,0.9)", glyph: "✦", color: "text-yellow-300", label: "harvested" },
@@ -19,6 +19,7 @@ const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; lab
   debt: { ring: "rgba(239,68,68,0.95)", glyph: "!", color: "text-red-400", label: "short of an item" },
   teleported: { ring: "rgba(192,132,252,0.9)", glyph: "»", color: "text-purple-300", label: "teleported here" },
   exploded: { ring: "rgba(244,63,94,0.95)", glyph: "✹", color: "text-rose-400", label: "exploded" },
+  groundFixed: { ring: "rgba(163,230,53,0.9)", glyph: "▦", color: "text-lime-300", label: "ground fixed" },
 };
 
 /** Footprint size of a plant / item id (large mutations mark their whole footprint). */
@@ -35,7 +36,20 @@ export const PlotMarkLegend: React.FC = () => (
     ))}
     <span className="flex items-center gap-1">
       <span className="inline-block w-3 h-3 rounded border border-dashed border-cyan-400/70" />
-      empty target cell
+      <Eye className="w-3 h-3 text-cyan-300/80" />
+      empty checked target (cyan: ready or not yet evaluated)
+    </span>
+    <span className="flex items-center gap-1">
+      <span className="inline-block w-3 h-3 rounded border border-dashed border-amber-400/80" />
+      checked target blocked by something else
+    </span>
+    <span className="flex items-center gap-1">
+      <span className="inline-block w-3 h-3 rounded border border-dashed border-red-500/80" />
+      checked target without its requirements (not sustainable)
+    </span>
+    <span className="flex items-center gap-1">
+      <span className="inline-block w-3 h-3 rounded border border-dashed border-slate-500/60" />
+      target not checked
     </span>
     <span className="flex items-center gap-1">
       <span className="inline-block w-3 h-3 rounded border border-dashed border-red-500/70" />
@@ -48,6 +62,30 @@ export const PlotMarkLegend: React.FC = () => (
     <span className="flex items-center gap-1">
       <span className="inline-block w-3 h-3 rounded" style={{ boxShadow: "inset 0 0 0 2px rgba(251,146,60,0.8)" }} />
       rival
+    </span>
+    <span className="flex items-center gap-1">
+      <span className="inline-block w-3 h-3 rounded" style={{ boxShadow: "inset 0 0 0 2px rgba(190,18,60,0.8)" }} />
+      devourer root
+    </span>
+    <span className="flex items-center gap-1">
+      <span className="inline-block w-3 h-[3px] bg-emerald-400/80" />
+      still growing (bar = progress)
+    </span>
+    <span className="flex items-center gap-1">
+      <span className="inline-block w-3 h-3 rounded bg-slate-500" style={{ filter: "grayscale(1) brightness(0.55)" }} />
+      dead plant
+    </span>
+    <span className="flex items-center gap-1">
+      <span className="text-[9px] text-amber-300">z</span>
+      asleep / rat present
+    </span>
+    <span className="flex items-center gap-1">
+      <span className="text-[9px] text-rose-400">✹</span>
+      blastberry primed
+    </span>
+    <span className="flex items-center gap-1">
+      <span className="text-[9px] text-amber-300">⚠</span>
+      target requirements unmet
     </span>
   </div>
 );
@@ -63,6 +101,7 @@ function marksFrom(events: TimedEvent[]): Map<string, { mark: Mark; size: number
     else if (e.kind === "debt") at(e.row, e.col, "debt", sizeOf(e.item));
     else if (e.kind === "teleported") at(e.row, e.col, "teleported");
     else if (e.kind === "exploded") at(e.row, e.col, "exploded");
+    else if (e.kind === "groundFixed") at(e.row, e.col, "groundFixed");
   }
   return marks;
 }
@@ -101,6 +140,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
   const marks = useMemo(() => marksFrom(events), [events]);
 
   const stage = def && runner ? def.flow.stages[runner.stageIndex] : undefined;
+  const watchedKeys = new Set(stage?.watch ?? plot.slots.map((s) => `${s.row},${s.col}`));
   const occupied = new Set<string>();
   for (const p of plot.plants) {
     for (let dr = 0; dr < p.size; dr++) for (let dc = 0; dc < p.size; dc++) occupied.add(`${p.row + dr},${p.col + dc}`);
@@ -167,21 +207,38 @@ export const PlotView: React.FC<PlotViewProps> = ({
           {plot.slots.map((s) => {
             const { top, left } = getCellPixelPosition(s.row, s.col, cellSize, gap);
             const size = s.size * cellSize + (s.size - 1) * gap;
-            if (occupied.has(`${s.row},${s.col}`)) return null;
+            const key = `${s.row},${s.col}`;
+            if (occupied.has(key)) return null;
+            const isWatched = watchedKeys.has(key);
+            const status = isWatched ? plot.watchStatus?.[key] : undefined;
+            const short = status === "requirements";
+            const blocked = status === "blocked";
             return (
               <div
                 key={`slot-${s.row}-${s.col}`}
-                className="absolute rounded border-2 border-dashed border-cyan-400/70 bg-cyan-500/10 flex items-center justify-center pointer-events-auto"
+                className={`absolute rounded border-2 border-dashed flex items-center justify-center pointer-events-auto ${
+                  short
+                    ? "border-red-500/80 bg-red-500/10"
+                    : blocked
+                      ? "border-amber-400/80 bg-amber-500/10"
+                      : isWatched
+                        ? "border-cyan-400/70 bg-cyan-500/10"
+                        : "border-slate-500/60 bg-slate-500/5"
+                }`}
                 style={{ top, left, width: size, height: size }}
-                onMouseEnter={() => setHover({ kind: "slot", slot: s, ineligibleCycles: plot.slotIneligibleCycles[`${s.row},${s.col}`] ?? 0 })}
+                onMouseEnter={() =>
+                  setHover({ kind: "slot", slot: s, ineligibleCycles: plot.slotIneligibleCycles[key] ?? 0, watched: isWatched, watchStatus: plot.watchStatus?.[key] })
+                }
                 onMouseLeave={() => setHover(null)}
               >
-                <div className="opacity-45 grayscale-[40%]">
+                {/* A flex box (not a block) so the inline-flex image has no line-height strut pushing it off-centre. */}
+                <div className={`flex items-center justify-center ${isWatched ? "opacity-45 grayscale-[40%]" : "opacity-25 grayscale"}`}>
                   <CropImage cropId={s.mutationId} cropName={nameOf(s.mutationId)} width={size * 0.6} height={size * 0.6} showFallback={false} />
                 </div>
-                {plot.slotIneligibleCycles[`${s.row},${s.col}`] > 0 && (
-                  <span className="absolute bottom-0 right-0.5 text-[9px] text-amber-300">⚠</span>
+                {plot.slotIneligibleCycles[key] > 0 && (
+                  <span className={`absolute bottom-0 right-0.5 text-[9px] ${short ? "text-red-400" : "text-amber-300"}`}>⚠</span>
                 )}
+                {isWatched && <Eye className={`absolute top-0.5 left-0.5 w-2.5 h-2.5 ${blocked ? "text-amber-300/80" : short ? "text-red-300/80" : "text-cyan-300/80"}`} />}
               </div>
             );
           })}
@@ -210,7 +267,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
                       : p.kindId === "devourer_root"
                         ? "inset 0 0 0 2px rgba(190,18,60,0.8)"
                         : undefined,
-                  filter: p.isDeadPlant ? "grayscale(1) brightness(0.55)" : p.frozen ? "hue-rotate(180deg) saturate(0.6)" : undefined,
+                  filter: p.isDeadPlant ? "grayscale(1) brightness(0.55)" : undefined,
                 }}
               >
                 <CropImage

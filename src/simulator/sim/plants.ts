@@ -13,6 +13,14 @@ export function decayDaysOf(m: MutationDef, config: SimConfig): number {
   return config.decayDaysOverrides[m.id] ?? m.decayDays;
 }
 
+/**
+ * The stage a natural spawn enters at. Mutations appear at stage 1 (not 0),
+ * so an N-stage mutation needs N-1 growth ticks and a 0-stage one (Gloomgourd,
+ * Lonelily, Shellfruit...) is fully grown the tick it spawns. Capped at the
+ * kind's own stage count so a 0-stage mutation stays at 0.
+ */
+export const spawnStageOf = (growthStages: number): number => Math.min(1, growthStages);
+
 /** Stage at which a kind counts as fully grown and harvestable. */
 export function readyStageOf(m: MutationDef, config: SimConfig): number {
   if (m.id === "glasscorn") return Math.min(7, m.growthStages); // harvestable at stages 7-8
@@ -89,7 +97,6 @@ export function newPlant(
     isDeadPlant: false,
     isRival: false,
     skipNextGrowth: false,
-    frozen: false,
     gate: {},
   };
 
@@ -100,6 +107,8 @@ export function newPlant(
       // Placed items go in fully grown: an input and buff source, never harvested.
       plant.stage = def.growthStages;
       plant.fullyGrownAtCycle = cycle;
+    } else {
+      plant.stage = spawnStageOf(def.growthStages);
     }
     if (kindId === "fleshtrap") plant.gate.hunger = config.fleshtrapInitialHunger;
     // Primed once fully grown (natural) or at the next tick after placing (see sim/explosion.ts).
@@ -135,7 +144,6 @@ export function newRoot(state: SimulationState, config: SimConfig, row: number, 
     isDeadPlant: false,
     isRival: false,
     skipNextGrowth: false,
-    frozen: false,
     gate: {},
   };
 }
@@ -155,7 +163,6 @@ export function convertToDeadPlant(state: SimulationState, plant: PlantState): v
   plant.lockedEffects = null;
   plant.held = [];
   plant.skipNextGrowth = false;
-  plant.frozen = false;
   plant.gate = {};
 }
 
@@ -193,6 +200,5 @@ export const isFullyGrown = (p: PlantState): boolean => !p.isDeadPlant && p.stag
 /** Only natural spawns and base crops can be harvested. All-in Aloe can be harvested at any stage. */
 export const isHarvestable = (p: PlantState): boolean =>
   (p.origin === "spawned" || p.origin === "planted") &&
-  !p.frozen &&
   !p.isDeadPlant &&
   (isFullyGrown(p) || (p.kindId === "all_in_aloe" && p.origin === "spawned"));

@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useEffect, type RefObject } from "react";
-import { Save, FolderOpen, Share2, Clipboard, Trash2, RotateCcw, X, Image, Film, Download, ClipboardCopy, Loader2 } from "lucide-react";
+import { Save, FolderOpen, Share2, Clipboard, X, Image, Film, Download, ClipboardCopy, Loader2 } from "lucide-react";
+import { LayoutClearControls, LayoutTransformControls } from "./LayoutTools";
 
 // API base URL for share links
 const SHARE_BASE_URL = "https://api.skyshards.com/share";
@@ -47,10 +48,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     inputPlacements,
     targetPlacements,
     groundTiles,
-    clearGroundTiles,
-    clearInputPlacements,
-    clearTargetPlacements,
-    clearAllPlacements,
     loadFromSolverResult,
   } = useDesigner();
   const { getCropDef, getMutationDef } = useGreenhouseData();
@@ -67,9 +64,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   const [exportProgress, setExportProgress] = useState(0);
   const [currentExportBlob, setCurrentExportBlob] = useState<Blob | null>(null);
   const [hasExportedOnce, setHasExportedOnce] = useState(false);
-  
-  // Delete all confirmation state
-  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   
   // Reload layouts when load modal opens
   useEffect(() => {
@@ -357,33 +351,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       });
     }
   }, [importText, loadFromSolverResult, getCropDef, getMutationDef, toast]);
-  
-  // Clear one kind of placement
-  const handleClearInputs = useCallback(() => {
-    clearInputPlacements();
-    toast({ title: "Input placements cleared", variant: "success", duration: 2000 });
-  }, [clearInputPlacements, toast]);
-
-  const handleClearTargets = useCallback(() => {
-    clearTargetPlacements();
-    toast({ title: "Target placements cleared", variant: "success", duration: 2000 });
-  }, [clearTargetPlacements, toast]);
-
-  const handleClearGround = useCallback(() => {
-    clearGroundTiles();
-    toast({ title: "Ground tiles cleared", variant: "success", duration: 2000 });
-  }, [clearGroundTiles, toast]);
-  
-  // Clear all placements
-  const handleClearAll = useCallback(() => {
-    if (!showDeleteAllConfirm) {
-      setShowDeleteAllConfirm(true);
-      return;
-    }
-    clearAllPlacements();
-    setShowDeleteAllConfirm(false);
-    toast({ title: "Layout cleared", variant: "success", duration: 2000 });
-  }, [showDeleteAllConfirm, clearAllPlacements, toast]);
   
   // Get export options
   const getExportOptions = useCallback((): ExportOptions => {
@@ -715,51 +682,16 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         </Portal>
       )}
       
+      {/* Transform: nudge / rotate / mirror the whole layout */}
+      <div className="space-y-2">
+        <div className="text-xs text-slate-400 uppercase tracking-wider">Transform</div>
+        <LayoutTransformControls />
+      </div>
+
       {/* Clear Buttons */}
       <div className="space-y-2">
         <div className="text-xs text-slate-400 uppercase tracking-wider">Clear</div>
-        <div className="flex flex-wrap gap-2">
-        <button
-          onClick={handleClearInputs}
-          disabled={inputPlacements.length === 0}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title="Remove every input crop"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Inputs
-        </button>
-        <button
-          onClick={handleClearTargets}
-          disabled={targetPlacements.length === 0}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title="Remove every target mutation"
-        >
-          <RotateCcw className="w-4 h-4" />
-          Targets
-        </button>
-        
-        <button
-          onClick={handleClearGround}
-          disabled={groundTiles.length === 0}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title="Erase all painted ground tiles"
-        >
-          <RotateCcw className="w-4 h-4" /> Ground
-        </button>
-        <button
-          onClick={handleClearAll}
-          onBlur={() => setShowDeleteAllConfirm(false)}
-          disabled={totalPlacements === 0}
-          className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-            showDeleteAllConfirm
-              ? 'bg-red-500/80 text-white hover:bg-red-500 border-red-500'
-              : 'bg-slate-800/60 border-slate-600/50 text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-300'
-          }`}
-          title={showDeleteAllConfirm ? 'Click again to confirm' : 'Delete all placements'}
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-        </div>
+        <LayoutClearControls />
       </div>
       
       {/* Save Layout Modal */}

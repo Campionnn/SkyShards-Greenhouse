@@ -1,13 +1,14 @@
 import React, { useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Copy, ExternalLink, Link2, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, ExternalLink, Eye, Link2, Plus, Trash2, X } from "lucide-react";
 import { DesignerProvider } from "../../context";
 import { useFitCellSize } from "../../hooks";
 import type { FlowStage, Policies, PolicyOverrides, Scenario, ScenarioPlot, StageLayout, Trigger } from "../../simulator";
-import { extractLayoutCode } from "../../utilities";
-import { CropSelectionPalette, DesignerGrid, MutationValidator } from "../designer";
+import { extractLayoutCode, type LayoutTransform } from "../../utilities";
+import { CropSelectionPalette, DesignerGrid, LayoutClearControls, LayoutTransformControls, MutationValidator } from "../designer";
+import { CropImage } from "../shared";
 import { Panel, SectionLabel, useToast } from "../ui";
-import { CheckboxField, IdSelect, SelectField } from "./controls";
-import { ALL_KIND_IDS, ALL_MUTATION_IDS, allItemIds, describeTrigger } from "./format";
+import { CheckboxField, IdSelect, NumberInput, SelectField } from "./controls";
+import { ALL_KIND_IDS, ALL_MUTATION_IDS, allItemIds, describeTrigger, nameOf } from "./format";
 import {
   blankStage,
   defaultTrigger,
@@ -15,9 +16,12 @@ import {
   layoutSummary,
   layoutToPlacements,
   placementsToCode,
+  pruneWatch,
+  transformWatch,
   TRIGGER_KINDS,
   updatePlot,
   updateStage,
+  withWatch,
 } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
 
@@ -28,7 +32,7 @@ import { buttonClass, inputClass } from "./styles";
  * DesignerProvider so editing a stage never touches the Designer page's saved
  * layout. Lowercase inputs are planted; targets are EMPTY labelled cells.
  */
-const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: StageLayout) => void }> = ({ layout, onChange }) => {
+const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: StageLayout, transform?: LayoutTransform) => void }> = ({ layout, onChange }) => {
   const { toast } = useToast();
   const [version, setVersion] = useState(0);
   const [importText, setImportText] = useState("");
@@ -79,23 +83,129 @@ const StageLayoutEditor: React.FC<{ layout: StageLayout; onChange: (layout: Stag
         key={version}
         persist={false}
         initialPlacements={initial}
-        onChange={(inputs, targets, groundTiles) => onChange({ code: placementsToCode(inputs, targets, groundTiles) })}
+        onChange={(inputs, targets, groundTiles, transform) => onChange({ code: placementsToCode(inputs, targets, groundTiles) }, transform)}
       >
-        {/* Same arrangement as the Designer page: palette | grid | validation. */}
+        {/* Same arrangement as the Designer page: transform/clear/validation | grid | palette. */}
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[300px_minmax(0,1fr)_300px] gap-4 lg:items-start">
-          <div className="order-2 lg:col-start-2 lg:row-start-1 2xl:col-start-1 bg-slate-900/40 border border-slate-600/30 rounded-lg p-3 max-h-[640px] overflow-y-auto scrollbar-dark">
+          <div className="order-3 lg:col-start-2 lg:row-start-1 lg:row-span-2 2xl:row-span-1 2xl:col-start-3 bg-slate-900/40 border border-slate-600/30 rounded-lg p-3 max-h-[640px] overflow-y-auto scrollbar-dark">
             <CropSelectionPalette />
           </div>
-          <div className="order-1 lg:col-start-1 lg:row-start-1 lg:row-span-2 2xl:col-start-2 2xl:row-span-1 min-w-0 bg-slate-900/40 border border-slate-600/30 rounded-lg p-3">
+          <div className="order-1 lg:col-start-1 lg:row-start-1 2xl:col-start-2 min-w-0 bg-slate-900/40 border border-slate-600/30 rounded-lg p-3">
             <div ref={fitRef} className="w-full flex flex-col items-center">
               <DesignerGrid cellSize={cellSize} gap={gap} showTargets />
             </div>
           </div>
-          <div className="order-3 lg:col-start-2 lg:row-start-2 2xl:col-start-3 2xl:row-start-1 bg-slate-900/40 border border-slate-600/30 rounded-lg p-3">
-            <MutationValidator />
+          <div className="order-2 lg:col-start-1 lg:row-start-2 2xl:col-start-1 2xl:row-start-1 space-y-4">
+            <div className="bg-slate-900/40 border border-slate-600/30 rounded-lg p-3 space-y-3">
+              <div className="space-y-2">
+                <SectionLabel>Transform</SectionLabel>
+                <LayoutTransformControls />
+              </div>
+              <div className="space-y-2">
+                <SectionLabel>Clear</SectionLabel>
+                <LayoutClearControls />
+              </div>
+            </div>
+            <div className="bg-slate-900/40 border border-slate-600/30 rounded-lg p-3">
+              <MutationValidator />
+            </div>
           </div>
         </div>
       </DesignerProvider>
+    </div>
+  );
+};
+
+// ---- Watched targets (sustainability uptime) --------------------------------
+
+const PICK_CELL = 26;
+const PICK_GAP = 2;
+
+/**
+ * Pick which of this stage's target cells the sustainability check records.
+ * `watch` undefined = every target (and it follows layout edits); a list pins
+ * the choice to those anchors.
+ */
+export const WatchPicker: React.FC<{ stage: FlowStage; onChange: (watch: string[] | undefined) => void }> = ({ stage, onChange }) => {
+  const placements = useMemo(() => {
+    try {
+      return layoutToPlacements(stage.layout);
+    } catch {
+      return null;
+    }
+  }, [stage.layout]);
+  if (!placements) return <p className="text-xs text-red-300">This stage's layout could not be read.</p>;
+
+  const targets = placements.targets.map((t) => ({ key: `${t.position[0]},${t.position[1]}`, id: t.cropId, row: t.position[0], col: t.position[1], size: t.size }));
+  const all = targets.map((t) => t.key);
+  const watched = new Set(stage.watch ?? all);
+  const count = targets.filter((t) => watched.has(t.key)).length;
+  const toggle = (key: string) => {
+    const next = all.filter((k) => (k === key ? !watched.has(k) : watched.has(k)));
+    onChange(next.length === all.length ? undefined : next);
+  };
+  const span = (n: number) => n * PICK_CELL + (n - 1) * PICK_GAP;
+  const at = (n: number) => n * (PICK_CELL + PICK_GAP);
+
+  if (targets.length === 0) {
+    return <p className="text-xs text-slate-500">This stage has no target cells. Add targets in the layout below to check their uptime.</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-slate-500">
+        Click a target to include or exclude it. A checked cell loses uptime whenever it sits empty without the requirements for its mutation, or is blocked by
+        something else.
+      </p>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-300">
+          {count} of {targets.length} checked{stage.watch === undefined && <span className="text-slate-500"> (all, the default)</span>}
+        </span>
+        <button className={buttonClass.neutral} disabled={stage.watch === undefined} onClick={() => onChange(undefined)}>
+          All
+        </button>
+        <button className={buttonClass.neutral} disabled={count === 0} onClick={() => onChange([])}>
+          None
+        </button>
+      </div>
+      <div className="relative bg-slate-900/40 border border-slate-600/30 rounded" style={{ width: span(10) + 8, height: span(10) + 8 }}>
+        <div className="absolute" style={{ top: 4, left: 4, width: span(10), height: span(10) }}>
+          {Array.from({ length: 100 }, (_, i) => (
+            <div
+              key={i}
+              className="absolute rounded-sm bg-slate-800/60"
+              style={{ top: at(Math.floor(i / 10)), left: at(i % 10), width: PICK_CELL, height: PICK_CELL }}
+            />
+          ))}
+          {placements.inputs.map((p) => (
+            <div
+              key={p.id}
+              className="absolute rounded-sm opacity-40 flex items-center justify-center pointer-events-none"
+              style={{ top: at(p.position[0]), left: at(p.position[1]), width: span(p.size), height: span(p.size) }}
+            >
+              <CropImage cropId={p.cropId} cropName={nameOf(p.cropId)} width={span(p.size) * 0.8} height={span(p.size) * 0.8} showFallback={false} />
+            </div>
+          ))}
+          {targets.map((t) => {
+            const on = watched.has(t.key);
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => toggle(t.key)}
+                title={`${nameOf(t.id)} at (${t.key}) - ${on ? "checked" : "not checked"}`}
+                className={`absolute rounded-sm flex items-center justify-center cursor-pointer border-2 ${
+                  on ? "border-emerald-400 bg-emerald-500/20" : "border-dashed border-slate-500/70 bg-slate-900/40 opacity-60"
+                }`}
+                style={{ top: at(t.row), left: at(t.col), width: span(t.size), height: span(t.size) }}
+              >
+                <CropImage cropId={t.id} cropName={nameOf(t.id)} width={span(t.size) * 0.7} height={span(t.size) * 0.7} showFallback={false} />
+                {on && <Eye className="absolute top-0 right-0 w-2.5 h-2.5 text-emerald-300" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 };
@@ -112,24 +222,44 @@ const TriggerRow: React.FC<{ trigger: Trigger; onChange: (t: Trigger) => void; o
       ))}
     </select>
     {trigger.kind === "cycles" && (
-      <input type="number" min={1} className={`${inputClass} w-20`} value={trigger.n} onChange={(e) => onChange({ ...trigger, n: Math.max(1, e.target.valueAsNumber || 1) })} />
+      <NumberInput integer min={1} className={`${inputClass} w-20`} value={trigger.n} onChange={(n) => onChange({ ...trigger, n })} />
     )}
     {(trigger.kind === "inventoryAtLeast" || trigger.kind === "inventoryBelow") && (
       <>
         <IdSelect value={trigger.item} ids={allItemIds()} onChange={(item) => onChange({ ...trigger, item })} />
-        <input type="number" min={0} className={`${inputClass} w-20`} value={trigger.qty} onChange={(e) => onChange({ ...trigger, qty: Math.max(0, e.target.valueAsNumber || 0) })} />
+        <NumberInput integer min={0} className={`${inputClass} w-20`} value={trigger.qty} onChange={(qty) => onChange({ ...trigger, qty })} />
       </>
     )}
-    {(trigger.kind === "mutationSpawned" || trigger.kind === "fullyGrown") && (
+    {(trigger.kind === "mutationSpawned" || trigger.kind === "fullyGrown" || trigger.kind === "mutationHarvested") && (
       <IdSelect value={trigger.mutationId} ids={ALL_MUTATION_IDS} onChange={(mutationId) => onChange({ ...trigger, mutationId })} />
     )}
-    {trigger.kind === "mutationSpawned" && (
-      <input type="number" min={1} className={`${inputClass} w-16`} value={trigger.count} onChange={(e) => onChange({ ...trigger, count: Math.max(1, e.target.valueAsNumber || 1) })} />
+    {(trigger.kind === "mutationSpawned" || trigger.kind === "mutationHarvested" || trigger.kind === "fullyGrown") && (
+      <NumberInput
+        integer
+        min={1}
+        className={`${inputClass} w-16`}
+        title="How many"
+        value={trigger.count ?? 1}
+        onChange={(count) => onChange({ ...trigger, count })}
+      />
+    )}
+    {trigger.kind === "targetsFilled" && (
+      <>
+        <NumberInput
+          integer
+          min={0}
+          className={`${inputClass} w-16`}
+          title="0 = every target in this stage's layout"
+          value={trigger.count}
+          onChange={(count) => onChange({ ...trigger, count })}
+        />
+        <span className="text-xs text-slate-500">{trigger.count <= 0 ? "every target holds its mutation" : "targets hold their mutation"}</span>
+      </>
     )}
     {trigger.kind === "plantDecayed" && <IdSelect value={trigger.kindId} ids={ALL_KIND_IDS} onChange={(kindId) => onChange({ ...trigger, kindId })} />}
     {trigger.kind === "decayImminent" && (
       <>
-        <input type="number" min={0} className={`${inputClass} w-16`} value={trigger.withinCycles} onChange={(e) => onChange({ ...trigger, withinCycles: Math.max(0, e.target.valueAsNumber || 0) })} />
+        <NumberInput integer min={0} className={`${inputClass} w-16`} value={trigger.withinCycles} onChange={(withinCycles) => onChange({ ...trigger, withinCycles })} />
         <span className="text-xs text-slate-500">cycles</span>
       </>
     )}
@@ -161,7 +291,7 @@ export const TriggerEditor: React.FC<{ exit: Trigger[]; onChange: (exit: Trigger
 
 const INHERIT = "inherit";
 
-const POLICY_FIELDS: { key: "spawnedHarvest" | "baseCropUpkeep" | "watering"; label: string; options: { value: string; label: string }[] }[] = [
+const POLICY_FIELDS: { key: "spawnedHarvest" | "layoutInputSpawns" | "baseCropUpkeep" | "watering"; label: string; options: { value: string; label: string }[] }[] = [
   {
     key: "spawnedHarvest",
     label: "Natural spawns",
@@ -169,6 +299,14 @@ const POLICY_FIELDS: { key: "spawnedHarvest" | "baseCropUpkeep" | "watering"; la
       { value: "whenFullyGrown", label: "harvest when fully grown" },
       { value: "beforeDecay", label: "harvest right before decay" },
       { value: "never", label: "never harvest" },
+    ],
+  },
+  {
+    key: "layoutInputSpawns",
+    label: "Spawns used as layout inputs (hybrid)",
+    options: [
+      { value: "keep", label: "keep while the layout uses them" },
+      { value: "harvest", label: "harvest like any other spawn" },
     ],
   },
   {
@@ -212,6 +350,12 @@ export const PolicyDefaultsEditor: React.FC<{ value: Policies; onChange: (p: Pol
       />
     ))}
     <CheckboxField label="Clear dead plants and re-place what the layout is missing" checked={value.replaceDecayed} onChange={(v) => onChange({ ...value, replaceDecayed: v })} />
+    <CheckboxField
+      label="Fix wrong ground blocks under empty targets"
+      title="Swap a target cell's ground back to what its mutation needs (e.g. End Stone left by Chorus Fruit)."
+      checked={value.fixGround !== false}
+      onChange={(v) => onChange({ ...value, fixGround: v })}
+    />
     {GATE_FIELDS.map((g) => (
       <CheckboxField
         key={g.key}
@@ -255,6 +399,21 @@ const PolicyOverridesEditor: React.FC<{ value: PolicyOverrides | undefined; onCh
           const next = { ...v };
           if (choice === INHERIT) delete next.replaceDecayed;
           else next.replaceDecayed = choice === "yes";
+          set(next);
+        }}
+      />
+      <SelectField
+        label="Fix wrong target ground"
+        value={v.fixGround === undefined ? INHERIT : v.fixGround ? "yes" : "no"}
+        options={[
+          { value: INHERIT, label: "inherit" },
+          { value: "yes", label: "yes" },
+          { value: "no", label: "no" },
+        ]}
+        onChange={(choice) => {
+          const next = { ...v };
+          if (choice === INHERIT) delete next.fixGround;
+          else next.fixGround = choice === "yes";
           set(next);
         }}
       />
@@ -416,6 +575,10 @@ export const RotationEditor: React.FC<{
               <SectionLabel>Stage policy overrides</SectionLabel>
               <PolicyOverridesEditor value={stage.policies} onChange={(pol) => editStage((s) => ({ ...s, policies: pol }))} />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <SectionLabel>Sustainability: checked targets</SectionLabel>
+              <WatchPicker stage={stage} onChange={(watch) => editStage((s) => withWatch(s, watch))} />
+            </div>
           </div>
         </div>
       </div>
@@ -427,7 +590,10 @@ export const RotationEditor: React.FC<{
         <p className="text-[11px] text-slate-500 mb-3">
           Inputs are planted (base crops free; mutation items come from inventory after setup). Targets are EMPTY cells labelled with the mutation expected to spawn there.
         </p>
-        <StageLayoutEditor key={`${plotId}-${stage.id}`} layout={stage.layout} onChange={(layout) => editStage((s) => ({ ...s, layout }))} />
+        <StageLayoutEditor key={`${plotId}-${stage.id}`} layout={stage.layout} onChange={(layout, transform) =>
+            editStage((s) => pruneWatch({ ...(transform ? transformWatch(s, transform) : s), layout }))
+          }
+        />
       </div>
     </Panel>
   );

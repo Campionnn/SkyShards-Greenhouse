@@ -17,8 +17,8 @@ import {
 } from "../../simulator";
 import { decodeDesign, extractLayoutCode } from "../../utilities";
 import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui";
-import { CheckboxField, IdSelect, NumberField, SelectField } from "./controls";
-import { allItemIds, nameOf, priceableItems } from "./format";
+import { CheckboxField, NumberField, NumberInput, SelectField } from "./controls";
+import { nameOf, priceableItems } from "./format";
 import { PolicyDefaultsEditor } from "./RotationEditor";
 import { addPlot, layoutSummary, removePlot } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
@@ -196,6 +196,21 @@ export const SettingsPanel: React.FC<{ scenario: Scenario; onChange: (sc: Scenar
 
   return (
     <Panel title="Settings" icon={<Settings2 />}>
+      <div className="mb-3">
+        <CheckboxField
+          label={
+            <span className="flex items-center gap-1">
+              Player actions
+              <InfoHint title="Player actions" width={260}>
+                Master switch. Off: the player never comes online, whatever the Online schedule says - no harvesting, watering, upkeep, re-placing, ground fixing, gate
+                interactions or stage changes. The greenhouse only grows, spawns and decays on its own.
+              </InfoHint>
+            </span>
+          }
+          checked={settings.playerActions !== false}
+          onChange={(playerActions) => setSettings({ playerActions })}
+        />
+      </div>
       <SegmentedControl
         size="xs"
         className="mb-3"
@@ -350,7 +365,7 @@ const ScheduleEditor: React.FC<{
 }> = ({ value, startTime, onChange }) => (
   <div className="space-y-2">
     <p className="text-[11px] text-slate-500">
-      Harvesting, watering, upkeep, re-placing, stage changes and gate interactions (waking Snoozling, vacuuming rats, Noctilume) only happen while you are online.
+      Harvesting, watering, upkeep, re-placing, ground fixing, stage changes and gate interactions (waking Snoozling, vacuuming rats, Noctilume) only happen while you are online.
     </p>
     <SegmentedControl
       size="xs"
@@ -372,9 +387,9 @@ const ScheduleEditor: React.FC<{
         {value.windows.map((w, i) => (
           <div key={i} className="flex items-center gap-1.5 text-xs text-slate-300">
             online
-            <input type="number" min={0} max={24} step={0.5} className={`${inputClass} w-16`} value={w.from} onChange={(e) => onChange({ ...value, windows: value.windows.map((x, j) => (j === i ? { ...x, from: e.target.valueAsNumber || 0 } : x)) }, startTime)} />
+            <NumberInput min={0} max={24} step={0.5} className={`${inputClass} w-16`} value={w.from} onChange={(v) => onChange({ ...value, windows: value.windows.map((x, j) => (j === i ? { ...x, from: v } : x)) }, startTime)} />
             to
-            <input type="number" min={0} max={24} step={0.5} className={`${inputClass} w-16`} value={w.to} onChange={(e) => onChange({ ...value, windows: value.windows.map((x, j) => (j === i ? { ...x, to: e.target.valueAsNumber || 0 } : x)) }, startTime)} />
+            <NumberInput min={0} max={24} step={0.5} className={`${inputClass} w-16`} value={w.to} onChange={(v) => onChange({ ...value, windows: value.windows.map((x, j) => (j === i ? { ...x, to: v } : x)) }, startTime)} />
             <button className={buttonClass.icon} onClick={() => onChange({ ...value, windows: value.windows.filter((_, j) => j !== i) }, startTime)}>
               <Trash2 className="w-3 h-3" />
             </button>
@@ -387,39 +402,3 @@ const ScheduleEditor: React.FC<{
     )}
   </div>
 );
-
-export const InventoryEditor: React.FC<{ value: Record<string, number>; onChange: (v: Record<string, number>) => void }> = ({ value, onChange }) => {
-  const ids = allItemIds();
-  const [adding, setAdding] = useState(ids.find((i) => i === "chloronite") ?? ids[0]);
-  return (
-    <div className="space-y-1.5">
-      <p className="text-[11px] text-slate-500">What you start with at cycle 0 (changing it restarts the run). The starting layouts are placed free; this stock is spent when mutation items, fire, fermento or dead plants are re-placed after decay, or placed by a later stage. Base crops are always free.</p>
-      {Object.entries(value).map(([item, qty]) => (
-        <div key={item} className="flex items-center gap-2">
-          <NumberField className="flex-1" label={nameOf(item)} value={qty} min={0} onChange={(v) => onChange({ ...value, [item]: Math.max(0, Math.floor(v)) })} />
-          <button
-            className={buttonClass.icon}
-            onClick={() => {
-              const next = { ...value };
-              delete next[item];
-              onChange(next);
-            }}
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-        </div>
-      ))}
-      <div className="flex items-center gap-2 pt-1">
-        <IdSelect className="flex-1" value={adding} ids={ids.filter((i) => !(i in value))} onChange={setAdding} />
-        <button className={buttonClass.neutral} onClick={() => adding && onChange({ ...value, [adding]: value[adding] ?? 10 })}>
-          <Plus className="w-3.5 h-3.5" /> Add
-        </button>
-      </div>
-      {Object.keys(value).length > 0 && (
-        <button className={buttonClass.danger} onClick={() => onChange({})}>
-          <Trash2 className="w-3.5 h-3.5" /> Clear all
-        </button>
-      )}
-    </div>
-  );
-};

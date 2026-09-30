@@ -331,6 +331,33 @@ describe("destruction", () => {
     inject(grown, 1, "chorus_fruit", 5, 5, "spawned", { stage: 12 });
     expect(ofKind(engine.run(grown, 3).events, "teleported")).toHaveLength(0);
   });
+
+  it("destruction runs before growth: a Chorus Fruit teleports one last time on the tick it becomes fully grown", () => {
+    const s = blank();
+    s.plots[0].groundTiles["2,3"] = "farmland";
+    inject(s, 1, "chorus_fruit", 5, 5, "spawned", { stage: 11 });
+    const r = engine.run(s, 1);
+    const kinds = r.events.map((e) => e.kind);
+    expect(kinds.indexOf("teleported")).toBeGreaterThanOrEqual(0);
+    expect(kinds.indexOf("teleported")).toBeLessThan(kinds.indexOf("fullyGrown"));
+    expect(plantAt(r.state, 1, 2, 3)).toMatchObject({ kindId: "chorus_fruit", stage: 12 });
+    // Fully grown now: it never moves again.
+    expect(ofKind(engine.run(r.state, 3).events, "teleported")).toHaveLength(0);
+  });
+
+  it("destruction is the first tick step, so a new spawn does nothing destructive on its spawn tick", async () => {
+    const { TICK_STEPS } = await import("../sim/tick");
+    const ids = TICK_STEPS.map((s) => s.id);
+    expect(ids[0]).toBe("destruction");
+    expect(ids.indexOf("destruction")).toBeLessThan(ids.indexOf("growth"));
+    expect(ids.indexOf("destruction")).toBeLessThan(ids.indexOf("spawn"));
+    // A spawn enters at stage 1 and makes its first jump on the next tick.
+    const s = blank();
+    s.plots[0].groundTiles["2,3"] = "farmland";
+    inject(s, 1, "chorus_fruit", 5, 5, "spawned");
+    expect(plantAt(s, 1, 5, 5)?.stage).toBe(1);
+    expect(ofKind(engine.run(s, 1).events, "teleported")).toHaveLength(1);
+  });
 });
 
 describe("blastberry", () => {

@@ -1,5 +1,5 @@
 import React from "react";
-import { aloeRow, type MutationDef, type PlantState, type SimConfig, type SlotLabel } from "../../simulator";
+import { aloeRow, type MutationDef, type PlantState, type SimConfig, type SlotLabel, type WatchStatus } from "../../simulator";
 import { effectiveEffects, effectsGivenBy, getCellPixelPosition, getEffectName, sortEffects } from "../../utilities";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage, EffectChips } from "../shared";
@@ -7,7 +7,7 @@ import { formatDuration, kindData, nameOf } from "./format";
 
 export type TooltipTarget =
   | { kind: "plant"; plant: PlantState }
-  | { kind: "slot"; slot: SlotLabel; ineligibleCycles: number }
+  | { kind: "slot"; slot: SlotLabel; ineligibleCycles: number; watched?: boolean; watchStatus?: WatchStatus }
   | { kind: "missing"; item: string; row: number; col: number };
 
 const WIDTH = 280;
@@ -32,7 +32,6 @@ function originLabel(p: PlantState): string {
 function statusOf(p: PlantState, m: MutationDef | undefined): { text: string; tone: string } {
   if (p.kindId === "devourer_root") return { text: "Broken by the player next time they are online", tone: "text-amber-300" };
   if (p.isDeadPlant) return { text: "Cleared (dead_plant item) next time the player is online", tone: "text-slate-300" };
-  if (p.frozen) return { text: "Frozen until the player returns", tone: "text-sky-300" };
   if (p.gate.asleep) return { text: "Asleep - the player wakes it when online", tone: "text-amber-300" };
   if (p.gate.ratAlive) return { text: "A rat is eating it - vacuumed when online", tone: "text-amber-300" };
   if (p.kindId === "fleshtrap" && (p.gate.hunger ?? 0) <= 0) return { text: "Hungry - fed when the player is online", tone: "text-amber-300" };
@@ -102,6 +101,20 @@ export const SimTooltip: React.FC<{
           )}
           {target.ineligibleCycles > 0 && (
             <p className="text-amber-300">Requirements not met for the last {target.ineligibleCycles} cycles.</p>
+          )}
+          {target.watched === false ? (
+            <p className="text-slate-500">Not checked for sustainability (pick checked targets in the rotation editor).</p>
+          ) : (
+            <p className={target.watchStatus === "requirements" ? "text-red-300" : "text-cyan-300"}>
+              Checked for sustainability
+              {target.watchStatus === "requirements"
+                ? ": empty without its requirements, so it is losing uptime."
+                : target.watchStatus === "blocked"
+                  ? ": blocked by something else, so it is losing uptime."
+                  : target.watchStatus === "ready"
+                    ? ": ready to spawn, counted as up."
+                    : "."}
+            </p>
           )}
         </div>
       )}

@@ -6,18 +6,13 @@ import { chloroniteDropCount, farmingFortuneMultiplier, greenhouseYieldSum, harv
 import { chance, nextFloat } from "../rng";
 import { ALOE_FRAGMENT, aloeRow, FRAGMENTS_PER_ALOE } from "../stage/aloe";
 import { uniqueCropYieldBonus } from "../stage/clock";
-import type { CycleCtx } from "./context";
+import type { CycleCtx, TickScratch } from "./context";
 import { explode, isPrimedBlastberry } from "./explosion";
 import { convertAloeFragments, credit } from "./inventory";
-import { removePlant } from "./plants";
+import { removePlant, spawnStageOf } from "./plants";
 import { bump, perPlot } from "./summary";
+import { ZOMBUD, zombudHarvest } from "./zombud";
 import type { PlantState, PlotState } from "./state";
-
-/** Per-plot, per-tick scratch space; never stored in state. */
-export interface TickScratch {
-  /** Plants that advanced a stage this cycle (water loss, Chorus teleports). */
-  advanced: Set<number>;
-}
 
 const MINIGAMES: Record<string, "setback" | "destroy"> = {
   plantboy_advance: "setback",
@@ -42,7 +37,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const game = p.origin === "spawned" ? MINIGAMES[p.kindId] : undefined;
   if (game && !ctx.config.perfectPlay && chance(rng, ctx.config.minigameFailChance)) {
     if (game === "setback") {
-      p.stage = Math.max(0, p.stage - 3);
+      p.stage = Math.max(spawnStageOf(p.growthStages), p.stage - 3); // never below the stage it spawned at
       p.lockedEffects = null;
       p.fullyGrownAtCycle = null;
       // Its spawn timer keeps running: a setback is not a fresh spawn.
@@ -68,7 +63,20 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   // Mining Fortune ladder, Magic Jellybean's stage multiplier, All-in Aloe's
   // fragment table); a "plain" mutation's base count is 1.
   let mutationItems = 0;
-  if (p.kindId === "all_in_aloe" && p.origin === "spawned") {
+  // Zombud / Timestalk: the crop bundle above drops ONCE, on breaking the fully
+  // grown mutation; the fight only gives the mutation items below. So a Zombud
+  // never gives its bundle more than once, however many mobs spawn.
+  if (p.kindId === ZOMBUD && p.origin === "spawned") {
+    // 1 Zombud per adjacent Dead Plant (each becomes a mob; fight assumed won),
+    // no yield scaling. The player fills empty ring cells first (sim/zombud.ts).
+    const items = zombudHarvest(plot, p, ctx);
+    if (items > 0) drops[p.kindId] = (drops[p.kindId] ?? 0) + items;
+    mutationItems = items;
+  } else if (p.kindId === "timestalk" && p.origin === "spawned") {
+    // Exactly 1 per harvest (clone fight assumed won), no yield scaling.
+    drops[p.kindId] = (drops[p.kindId] ?? 0) + 1;
+    mutationItems = 1;
+  } else if (p.kindId === "all_in_aloe" && p.origin === "spawned") {
     const baseFragments = aloeRow(p.stage).multiplier;
     const { whole, frac } = yieldScaledCount(baseFragments, sum);
     const totalFragments = whole + (frac > 1e-9 && chance(rng, frac) ? 1 : 0);

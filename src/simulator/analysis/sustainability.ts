@@ -1,5 +1,6 @@
-import type { GameData, ItemId } from "../data/types";
-import type { DebtEvent, SimulationState } from "../sim/state";
+import type { GameData, ItemId, MutationId } from "../data/types";
+import type { DebtEvent, PlotId, SimulationState, UptimeCounts } from "../sim/state";
+import { uptimeRatio, zeroUptime } from "../sim/summary";
 
 export type ItemStatus =
   /** Needed more than it had at some point: the layout went into debt on it. */
@@ -24,10 +25,38 @@ export interface ItemReport {
   permanent: boolean;
 }
 
+/** One watched target cell in one stage of one plot's rotation. */
+export interface SpotReport extends UptimeCounts {
+  plotId: PlotId;
+  stageId: string;
+  /** Position in the plot's rotation (-1 if the stage no longer exists). */
+  stageIndex: number;
+  stageLabel: string;
+  mutationId: MutationId;
+  row: number;
+  col: number;
+  /** (growing + ready) / watched. */
+  uptime: number;
+  firstRequirementsCycle: number | null;
+  longestRequirementsStreak: number;
+}
+
 export interface SustainabilityReport {
-  /** The debt test: true iff no required spend ever came up short. */
+  /**
+   * The uptime test: true iff no watched target cell ever sat empty without
+   * the requirements to grow its mutation. Blocked cycles (a rival, a Dead
+   * Plant) lower uptime but are not a sustainability failure.
+   */
   sustainable: boolean;
-  /** The headline: the first time the layout needed something it did not have. */
+  /** Watched cell-cycles across every plot and stage. */
+  totals: UptimeCounts;
+  /** totals as a ratio; 1 when nothing has been watched yet. */
+  uptime: number;
+  /** Every watched spot that has been watched at least once, lowest uptime first. */
+  spots: SpotReport[];
+  /** The headline failure: the earliest cycle a watched spot lacked its requirements. */
+  firstFailure: SpotReport | null;
+  /** The first time the layout needed an item it did not have (a common cause of lost uptime). */
   firstDebt: DebtEvent | null;
   debts: DebtEvent[];
   debtCount: number;
@@ -37,8 +66,9 @@ export interface SustainabilityReport {
 }
 
 /**
- * Sustainability is "would it ever go into debt?" - not "is the average net
- * positive". A report on this one run; it never suggests a fix.
+ * Sustainability is "do the target cells you care about always stay able to
+ * grow their mutation?" - measured, never fixed. Which cells count is chosen
+ * per stage (`FlowStage.watch`, default every target).
  */
 export function analyseSustainability(state: SimulationState, data: GameData): SustainabilityReport {
   const items: ItemReport[] = Object.entries(state.ledger)
@@ -66,8 +96,48 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
     })
     .sort((a, b) => a.item.localeCompare(b.item));
 
+  const spots: SpotReport[] = [];
+  for (const [plotKey, byStage] of Object.entries(state.uptime ?? {})) {
+    const def = state.scenario.plots.find((p) => String(p.id) === plotKey);
+    for (const [stageId, byCell] of Object.entries(byStage)) {
+      const stageIndex = def?.flow.stages.findIndex((s) => s.id === stageId) ?? -1;
+      const stage = def?.flow.stages[stageIndex];
+      for (const s of Object.values(byCell)) {
+        spots.push({
+          plotId: Number(plotKey),
+          stageId,
+          stageIndex,
+          stageLabel: stage?.label || stageId,
+          mutationId: s.mutationId,
+          row: s.row,
+          col: s.col,
+          watched: s.watched,
+          growing: s.growing,
+          ready: s.ready,
+          requirements: s.requirements,
+          blocked: s.blocked,
+          uptime: uptimeRatio(s),
+          firstRequirementsCycle: s.firstRequirementsCycle,
+          longestRequirementsStreak: s.longestRequirementsStreak,
+        });
+      }
+    }
+  }
+  spots.sort((a, b) => a.uptime - b.uptime || a.plotId - b.plotId || a.stageId.localeCompare(b.stageId) || a.row - b.row || a.col - b.col);
+
+  const failures = spots.filter((s) => s.firstRequirementsCycle !== null);
+  const firstFailure = failures.reduce<SpotReport | null>(
+    (best, s) => (best === null || s.firstRequirementsCycle! < best.firstRequirementsCycle! ? s : best),
+    null
+  );
+  const totals = state.summary.uptime ?? zeroUptime();
+
   return {
-    sustainable: state.summary.debtEvents === 0,
+    sustainable: totals.requirements === 0,
+    totals,
+    uptime: uptimeRatio(totals),
+    spots,
+    firstFailure,
     firstDebt: state.debts[0] ?? null,
     debts: state.debts,
     debtCount: state.summary.debtEvents,
@@ -79,4 +149,9 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
 /** "Ran out of Chloronite at cycle 147 on plot 2 (needed 1, had 0)". */
 export function describeDebt(d: DebtEvent, name: (id: string) => string): string {
   return `Ran out of ${name(d.item)} at cycle ${d.cycle} on plot ${d.plotId} (needed ${d.needed}, had ${d.available})`;
+}
+
+/** "Chloronite at (4,5) on plot 2, stage Growing, first lacked its requirements at cycle 31". */
+export function describeSpotFailure(s: SpotReport, name: (id: string) => string): string {
+  return `${name(s.mutationId)} at (${s.row},${s.col}) on plot ${s.plotId}, stage ${s.stageLabel}, first lacked its requirements at cycle ${s.firstRequirementsCycle}`;
 }

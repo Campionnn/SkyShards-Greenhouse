@@ -10,8 +10,9 @@ import {
   LocalStorageManager,
   simulateEffects,
   SPECIAL_EFFECT_SETS,
+  transformLayout as applyLayoutTransform,
 } from "../utilities";
-import type { EffectSimulation } from "../utilities";
+import type { EffectSimulation, LayoutTransform } from "../utilities";
 import { GROUND_TYPES, type GroundTile, type GroundType } from "../utilities/designEncoding";
 
 export type DesignerMode = "inputs" | "targets";
@@ -78,6 +79,8 @@ interface DesignerContextType {
   clearInputPlacements: () => void;
   clearTargetPlacements: () => void;
   clearAllPlacements: () => void;
+  /** Nudge, rotate or mirror the whole layout (inputs, targets and ground). */
+  transformLayout: (transform: LayoutTransform) => { success: boolean; error?: string; droppedGround?: number };
   
   // Validation helpers
   isPositionOccupied: (position: [number, number], size: number, excludeId?: string) => boolean;
@@ -169,8 +172,12 @@ interface DesignerProviderProps {
   initialPlacements?: { inputs: DesignerPlacement[]; targets: DesignerPlacement[]; groundTiles?: GroundTile[] };
   /** Save to / restore from localStorage (the Designer page). Off for embedded editors. */
   persist?: boolean;
-  /** Called whenever the placements change after mount. */
-  onChange?: (inputs: DesignerPlacement[], targets: DesignerPlacement[], groundTiles: GroundTile[]) => void;
+  /**
+   * Called whenever the placements change after mount. `transform` is set
+   * when the change was a whole-layout nudge / rotate / mirror, so an owner
+   * can move anything it keys by cell (e.g. the simulator's watched targets).
+   */
+  onChange?: (inputs: DesignerPlacement[], targets: DesignerPlacement[], groundTiles: GroundTile[], transform?: LayoutTransform) => void;
 }
 
 export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, initialPlacements, persist = true, onChange }) => {
@@ -237,12 +244,15 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const isInitialChangeMount = useRef(true);
+  const pendingTransformRef = useRef<LayoutTransform | undefined>(undefined);
   useEffect(() => {
     if (isInitialChangeMount.current) {
       isInitialChangeMount.current = false;
       return;
     }
-    onChangeRef.current?.(inputPlacements, targetPlacements, groundTiles);
+    const transform = pendingTransformRef.current;
+    pendingTransformRef.current = undefined;
+    onChangeRef.current?.(inputPlacements, targetPlacements, groundTiles, transform);
   }, [inputPlacements, targetPlacements, groundTiles]);
   
   const paintGround = useCallback((position: [number, number], ground: GroundType) => {
@@ -416,6 +426,21 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     setTargetPlacements([]);
     setGroundTiles([]);
   }, []);
+
+  const transformLayout = useCallback((transform: LayoutTransform): { success: boolean; error?: string; droppedGround?: number } => {
+    if (inputPlacements.length === 0 && targetPlacements.length === 0 && groundTiles.length === 0) {
+      return { success: false, error: "The layout is empty" };
+    }
+    const next = applyLayoutTransform({ inputs: inputPlacements, targets: targetPlacements, groundTiles }, transform);
+    if (!next) {
+      return { success: false, error: "Something would move off the grid" };
+    }
+    pendingTransformRef.current = transform;
+    setInputPlacements(next.inputs);
+    setTargetPlacements(next.targets);
+    setGroundTiles(normalizeGroundTiles(next.groundTiles, [...next.inputs, ...next.targets]));
+    return { success: true, droppedGround: next.droppedGround };
+  }, [inputPlacements, targetPlacements, groundTiles]);
   
   // Get placement at position
   const getPlacementAt = useCallback((
@@ -694,6 +719,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     clearInputPlacements,
     clearTargetPlacements,
     clearAllPlacements,
+    transformLayout,
     isPositionOccupied,
     isValidPlacement,
     isValidPlacementPosition,

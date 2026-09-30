@@ -36,6 +36,7 @@ export function defaultSettings(): Settings {
     seed: 12345,
     playerStats: { ...DEFAULT_PLAYER_STATS },
     activity: { kind: "everyN", n: 1, offset: 0 },
+    playerActions: true,
     policies: structuredClone(DEFAULT_POLICIES),
     config: structuredClone(DEFAULT_CONFIG),
   };

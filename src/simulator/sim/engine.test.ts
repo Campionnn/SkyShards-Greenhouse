@@ -10,6 +10,7 @@ import {
   stepN,
 } from "../testHelpers";
 import { stageSeconds } from "../stage/clock";
+import { CONFIG_META, DEFAULT_CONFIG } from "../config";
 import type { SimulationState, TimedEvent } from "./state";
 
 // ENGINE.md §5 test vectors, adapted to the user-confirmed rules (placed
@@ -28,22 +29,50 @@ const stageLen = (unique: number) => stageSeconds({ cropGrowth: 0, speedAttribut
 /** Yield with default stats: only the unique-crop bonus (+3% per group) applies. */
 const yieldOf = (base: number, unique: number) => Math.floor(base * (1 + 0.03 * unique) + 1e-9);
 
+describe("death and decay have no freezing mode", () => {
+  it("has no freeze setting or toggle and creates plants without frozen state", () => {
+    expect(DEFAULT_CONFIG).not.toHaveProperty("freezeInsteadOfKill");
+    expect(CONFIG_META.some((entry) => /freeze/i.test(entry.key))).toBe(false);
+    const s = start(singlePlot(layout([["wheat", 4, 4]]), { config: slotsOnly }));
+    expect(s.plots[0].plants[0]).not.toHaveProperty("frozen");
+  });
+
+  it.each(["thirst", "decay"] as const)("%s kills a plant while the player is away", (cause) => {
+    const s = start(singlePlot(layout([["wheat", 4, 4]]), {
+      activity: NEVER_ACTIVE,
+      config: { ...slotsOnly, waterLossMin: 3, waterLossMax: 3 },
+    }));
+    const p = s.plots[0].plants[0];
+    if (cause === "thirst") p.water = s.scenario.settings.config.deathWater;
+    else p.decaySecondsRemaining = 1;
+    const result = engine.run(s, 1);
+    expect(result.events.some((e) => e.kind === (cause === "thirst" ? "diedOfThirst" : "decayed"))).toBe(true);
+    expect(plantAt(result.state, 1, 4, 4)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
+    expect(plantAt(result.state, 1, 4, 4)).not.toHaveProperty("frozen");
+  });
+});
+
 describe("vertical slice: one plot, one mutation, spawned and harvested", () => {
-  it("a pumpkin+melon ring spawns a Gloomgourd, harvested next cycle into the shared inventory", () => {
+  it("a pumpkin+melon ring spawns a Gloomgourd, fully grown at once and harvested the same cycle into the shared inventory", () => {
     let s = start(singlePlot(gloomLayout(), { config: slotsOnly }));
-    let spawnCycle = -1;
-    for (let i = 0; i < 100 && spawnCycle < 0; i++) {
+    let found: ReturnType<typeof engine.run> | null = null;
+    for (let i = 0; i < 100 && !found; i++) {
       const r = engine.run(s, 1);
       s = r.state;
-      if (ofKind(r.events, "spawned").length) spawnCycle = r.events[0].cycle;
+      if (ofKind(r.events, "spawned").length) found = r;
     }
-    expect(spawnCycle).toBeGreaterThanOrEqual(0);
-    expect(plantAt(s, 1, 4, 5)?.kindId).toBe("gloomgourd");
-
-    const next = engine.run(s, 1);
+    if (!found) throw new Error("no Gloomgourd spawned");
+    const next = found;
+    const spawned = ofKind(next.events, "spawned")[0];
+    // A 0-stage mutation is fully grown the tick it spawns: it latches then, and the
+    // player's session in that same cycle harvests it.
+    const grown = ofKind(next.events, "fullyGrown");
+    expect(grown.map((e) => e.plantId)).toEqual([spawned.plantId]);
+    expect(grown[0].cycle).toBe(spawned.cycle);
     const harvested = ofKind(next.events, "harvested");
     expect(harvested).toHaveLength(1);
-    expect(harvested[0].cycle).toBe(spawnCycle + 1);
+    expect(harvested[0].cycle).toBe(spawned.cycle);
+    expect(plantAt(s, 1, 4, 5)).toBeUndefined();
     // The item plus its base-crop bundle reach the inventory; the bundle is revenue.
     // Pumpkin + melon standing = 2 unique crop groups = +6% yield.
     const pumpkin = yieldOf(34, 2);
@@ -56,20 +85,34 @@ describe("vertical slice: one plot, one mutation, spawned and harvested", () => 
     expect(next.summary.harvested.gloomgourd).toBe(1);
   });
 
-  it("#1 the harvested cell re-rolls in the same cycle (harvest runs before spawn)", () => {
+  it("#1 the player acts after the game tick: a harvested cell re-rolls only on the next cycle", () => {
     let s = start(singlePlot(gloomLayout(), { config: slotsOnly, seed: 3 }));
-    let sameCycle = false;
-    for (let i = 0; i < 300 && !sameCycle; i++) {
+    let harvests = 0;
+    for (let i = 0; i < 300; i++) {
       const r = engine.run(s, 1);
       s = r.state;
       const h = ofKind(r.events, "harvested");
       const sp = ofKind(r.events, "spawned");
-      if (h.length && sp.length) {
-        sameCycle = true;
-        expect(r.events.indexOf(h[0])).toBeLessThan(r.events.indexOf(sp[0]));
-      }
+      if (h.length) harvests += 1;
+      // The spawn roll is part of the game tick, the harvest part of the
+      // player's session afterwards; so the harvested cell stays empty
+      // until the next cycle's roll.
+      if (h.length && sp.length) expect(r.events.indexOf(sp[0])).toBeLessThan(r.events.indexOf(h[0]));
+      if (h.length) expect(plantAt(s, 1, 4, 5)).toBeUndefined();
     }
-    expect(sameCycle).toBe(true);
+    expect(harvests).toBeGreaterThan(0);
+  });
+
+  it("the player's session comes after the game tick of every plot", () => {
+    const sc = singlePlot(gloomLayout(), { config: slotsOnly });
+    sc.plots.push({ id: 2, flow: structuredClone(sc.plots[0].flow) });
+    const r = engine.run(start(sc), 1);
+    const kinds = r.events.map((e) => `${e.plotId}:${e.kind}`);
+    const firstSession = kinds.findIndex((k) => k.endsWith(":playerSession"));
+    expect(kinds[firstSession]).toBe("1:playerSession");
+    // Nothing from either plot's game tick happens after the first session starts.
+    const tickKinds = new Set(["advanced", "fullyGrown", "spawned", "decayed", "diedOfThirst", "teleported", "rootSpread"]);
+    expect(r.events.slice(firstSession).some((e) => tickKinds.has(e.kind))).toBe(false);
   });
 });
 
@@ -183,15 +226,38 @@ describe("run: batched and stepped are one path", () => {
 describe("growth", () => {
   const empty = () => start(singlePlot(layout(), { config: slotsOnly, activity: NEVER_ACTIVE }));
 
-  it("#2 a 12-stage mutation needs exactly 12 growth steps; effects latch on the 12th", () => {
+  it("#2 a 12-stage mutation spawns at stage 1 and needs 11 growth steps; effects latch at stage 12", () => {
     const s = empty();
     inject(s, 1, "startlevine", 5, 5, "spawned");
-    const after11 = engine.run(s, 11).state;
-    expect(plantAt(after11, 1, 5, 5)).toMatchObject({ stage: 11, lockedEffects: null });
-    const after12 = engine.run(after11, 1);
+    expect(plantAt(s, 1, 5, 5)?.stage).toBe(1);
+    const after10 = engine.run(s, 10).state;
+    expect(plantAt(after10, 1, 5, 5)).toMatchObject({ stage: 11, lockedEffects: null });
+    const after12 = engine.run(after10, 1);
     expect(plantAt(after12.state, 1, 5, 5)?.stage).toBe(12);
     expect(plantAt(after12.state, 1, 5, 5)?.lockedEffects).not.toBeNull();
     expect(ofKind(after12.events, "fullyGrown")).toHaveLength(1);
+  });
+
+  it("a 0-stage spawn is fully grown as it appears and latches the effects its neighbours give it", () => {
+    // Pumpkin + melon around the Gloomgourd target, with a placed Cindershade (gives
+    // improved_harvest_boost to its cardinal neighbours) right below the target.
+    const sc = singlePlot(layout([["pumpkin", 4, 4], ["melon", 4, 6], ["cindershade", 5, 5]], [["gloomgourd", 4, 5]]), {
+      config: slotsOnly,
+      inventory: { cindershade: 1 },
+      activity: NEVER_ACTIVE,
+    });
+    let s = start(sc);
+    for (let i = 0; i < 200; i++) {
+      const r = engine.run(s, 1);
+      s = r.state;
+      const spawned = ofKind(r.events, "spawned").find((e) => e.mutationId === "gloomgourd");
+      if (!spawned) continue;
+      const g = plantAt(s, 1, 4, 5)!;
+      expect(g).toMatchObject({ kindId: "gloomgourd", stage: 0, fullyGrownAtCycle: spawned.cycle });
+      expect(g.lockedEffects).toContain("improved_harvest_boost");
+      return;
+    }
+    throw new Error("no Gloomgourd spawned");
   });
 
   it("#3 latched effects do not change when a neighbour is removed later", () => {
@@ -271,7 +337,7 @@ describe("water", () => {
     const s = dry();
     inject(s, 1, "thunderling", 5, 5, "spawned");
     const r = engine.run(s, 5);
-    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 5, water: 100 });
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 6, water: 100 }); // spawned at 1, +5
   });
 
   it("an online player keeps plants watered", () => {
@@ -303,10 +369,10 @@ describe("decay and placed items", () => {
     inject(s, 1, "startlevine", 5, 5, "spawned");
     // 12 stages to grow, so 5 days is already counting down while it is still growing.
     expect(plantAt(s, 1, 5, 5)?.decaySecondsRemaining).toBe(5 * 86400);
-    const mid = engine.run(s, 11).state;
+    const mid = engine.run(s, 10).state;
     const p = plantAt(mid, 1, 5, 5)!;
-    expect(p).toMatchObject({ stage: 11, lockedEffects: null }); // still growing
-    expect(p.decaySecondsRemaining).toBeCloseTo(5 * 86400 - 11 * stageLen(0));
+    expect(p).toMatchObject({ stage: 11, lockedEffects: null }); // spawned at 1, still growing
+    expect(p.decaySecondsRemaining).toBeCloseTo(5 * 86400 - 10 * stageLen(0));
   });
 
   it("a spawn whose timer is shorter than its growth decays before it is ever harvestable", () => {
@@ -356,7 +422,11 @@ describe("debt: would it ever need something it does not have?", () => {
   it("re-placing what decayed needs stock: the debt names the cycle and the item", () => {
     const r = engine.run(start(singlePlot(layout([["chloronite", 5, 5]]), { config: slotsOnly })), 18);
     expect(r.state.debts[0]).toMatchObject({ cycle: 17, plotId: 1, item: "chloronite", needed: 1, available: 0 });
-    expect(engine.analyse(r.state).sustainable).toBe(false);
+    const report = engine.analyse(r.state);
+    expect(report.firstDebt?.item).toBe("chloronite");
+    // Sustainability is uptime of watched target cells; this layout has none.
+    expect(report.totals.watched).toBe(0);
+    expect(report.sustainable).toBe(true);
   });
 
   it("a shortfall is one debt event per episode, retried every session, filled once stock exists", () => {
@@ -447,6 +517,16 @@ describe("player activity", () => {
     expect(ofKind(r.events, "harvested").length).toBeGreaterThan(0);
   });
 
+  it("playerActions off: the player never comes online, whatever the schedule says", () => {
+    const sc = singlePlot(gloomLayout(), { config: slotsOnly });
+    expect(sc.settings.playerActions).toBe(true); // default on
+    sc.settings.playerActions = false;
+    const r = engine.run(start(sc), 200);
+    expect(ofKind(r.events, "playerSession")).toHaveLength(0);
+    expect(ofKind(r.events, "harvested")).toHaveLength(0);
+    expect(r.state.lastCycleActive).toBe(false);
+  });
+
   it("time windows: the player is online only while the cycle fires inside a window", () => {
     // No crops standing, so stages are exactly 4 h from midnight: cycles fire at 04:00, 08:00, ... 20:00, 24:00.
     const sc = singlePlot(layout(), { config: slotsOnly, activity: { kind: "windows", windows: [{ from: 18, to: 22 }] } });
@@ -466,9 +546,11 @@ describe("player activity", () => {
     expect(r.summary.harvested.gloomgourd).toBeGreaterThan(0);
     for (const e of ofKind(r.events, "harvested")) {
       const grown = ofKind(r.events, "fullyGrown").filter((g) => g.kindId === "gloomgourd" && g.cycle <= e.cycle).pop()!;
-      // A spawn lives 7 cycles from the tick it appears and Gloomgourd has no growth stages,
-      // so it latches one cycle later with 6 cycles left; sessions every 3 mean the last session
-      // that still sees it alive falls 3-5 cycles after it is fully grown. Any earlier one is skipped.
+      // A spawn lives 7 cycles counting the tick it appears (spawn runs before decay, so its
+      // timer already ticks that cycle). Gloomgourd has no growth stages, so it is fully grown
+      // on that same spawn tick and decays on the 6th cycle after it; sessions every 3 mean the
+      // last session that still sees it alive falls 3-5 cycles after it is fully grown. Any
+      // earlier one is skipped.
       expect(e.cycle - grown.cycle).toBeGreaterThanOrEqual(3);
       expect(e.cycle - grown.cycle).toBeLessThanOrEqual(5);
     }
