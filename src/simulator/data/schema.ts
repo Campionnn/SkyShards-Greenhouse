@@ -6,12 +6,16 @@ import { z } from "zod";
 const size = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 const effectList = z.array(z.string());
 const drops = z.record(z.number().nonnegative());
+/** How many spawns a plant must help before it may decay: an int, "infinite" (never), or null (N/A: timer-only). Required. */
+const minimumMutations = z.union([z.number().int().positive(), z.literal("infinite"), z.null()]);
 
 export const cropSchema = z.object({
   name: z.string(),
   size,
   ground: z.string(),
   growth_stages: z.number().int().nonnegative().nullable(),
+  decay: z.number().nonnegative(),
+  minimum_mutations: minimumMutations,
   positive_buffs: effectList,
   negative_buffs: effectList,
   drops,
@@ -26,6 +30,7 @@ export const mutationSchema = z.object({
   rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
   growth_stages: z.number().int().nonnegative(),
   decay: z.number().nonnegative(),
+  minimum_mutations: minimumMutations,
   positive_buffs: effectList,
   negative_buffs: effectList,
   requires_watering: z.boolean(),

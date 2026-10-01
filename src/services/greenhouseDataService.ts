@@ -18,6 +18,10 @@ export interface CropDataJSON {
   size: number;
   ground: string;
   growth_stages: number | null;
+  /** Days until the plant decays; 0 = never. */
+  decay?: number;
+  /** Spawns a plant must help before it may decay: an int, "infinite" (never), or null (N/A: timer-only). */
+  minimum_mutations?: number | "infinite" | null;
   positive_buffs: string[];
   negative_buffs: string[];
   drops: Record<string, number>;
@@ -37,6 +41,8 @@ export interface MutationDataJSON {
   rarity: string;
   growth_stages: number | null;
   decay: number;
+  /** Spawns a plant must help before it may decay: an int, "infinite" (never), or null (N/A: timer-only). */
+  minimum_mutations?: number | "infinite" | null;
   positive_buffs: string[];
   negative_buffs: string[];
   drops: Record<string, number>;

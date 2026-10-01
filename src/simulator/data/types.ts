@@ -8,6 +8,15 @@ export type Size = 1 | 2 | 3;
 
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
+/**
+ * Minimum mutation value (0.27.2): how many mutation spawns a plant of this kind
+ * must help before its decay timer may remove it.
+ * - a positive integer: the minimum;
+ * - `"infinite"`: never reached, so the plant never decays (Magic Jellybean);
+ * - `null`: N/A, no minimum, so decay is timer-only.
+ */
+export type MinimumMutations = number | "infinite" | null;
+
 export interface CropDef {
   kind: "crop";
   id: KindId;
@@ -16,6 +25,10 @@ export interface CropDef {
   ground: string;
   /** null for fire / dead_plant / fermento: they never grow and cannot be harvested. */
   growthStages: number | null;
+  /** DAYS, like `MutationDef.decayDays`. 0 = never decays (fire, fermento); 3 for base crops and dead_plant. */
+  decayDays: number;
+  /** See `MinimumMutations`. 12 for base crops, 10 for dead_plant, null (N/A) for fire / fermento. */
+  minimumMutations: MinimumMutations;
   positiveBuffs: EffectId[];
   negativeBuffs: EffectId[];
   drops: Record<ItemId, number>;
@@ -34,6 +47,8 @@ export interface MutationDef {
   growthStages: number;
   /** DAYS (not hours - the backend docstring is wrong). 0 = never decays. */
   decayDays: number;
+  /** See `MinimumMutations`. A kind with `decayDays` 0 never decays, whatever its minimum (Fleshtrap: 0 days, minimum 6). */
+  minimumMutations: MinimumMutations;
   positiveBuffs: EffectId[];
   negativeBuffs: EffectId[];
   requiresWatering: boolean;

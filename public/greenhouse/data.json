@@ -5,6 +5,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": 8,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "harvest_boost"
       ],
@@ -20,6 +22,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": 8,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "immunity"
       ],
@@ -34,6 +38,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": 8,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "xp_boost"
       ],
@@ -48,6 +54,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": 11,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "bonus_drops"
       ],
@@ -62,6 +70,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": 11,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "water_retain"
       ],
@@ -76,6 +86,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": 6,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "immunity"
       ],
@@ -90,6 +102,8 @@
       "size": 1,
       "ground": "sand",
       "growth_stages": 8,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "improved_xp_boost"
       ],
@@ -106,6 +120,8 @@
       "size": 1,
       "ground": "sand",
       "growth_stages": 8,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "improved_water_retain"
       ],
@@ -122,6 +138,8 @@
       "size": 1,
       "ground": "soul_sand",
       "growth_stages": 8,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "improved_harvest_boost"
       ],
@@ -138,6 +156,8 @@
       "size": 1,
       "ground": "mycelium",
       "growth_stages": 6,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "improved_harvest_boost"
       ],
@@ -154,6 +174,8 @@
       "size": 1,
       "ground": "mycelium",
       "growth_stages": 6,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "improved_harvest_boost"
       ],
@@ -170,6 +192,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": 15,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "bonus_drops"
       ],
@@ -184,6 +208,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": 15,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "bonus_drops"
       ],
@@ -198,6 +224,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": 15,
+      "decay": 3,
+      "minimum_mutations": 12,
       "positive_buffs": [
         "effect_spread"
       ],
@@ -212,6 +240,8 @@
       "size": 1,
       "ground": "netherrack",
       "growth_stages": null,
+      "decay": 0,
+      "minimum_mutations": null,
       "positive_buffs": [],
       "negative_buffs": [],
       "drops": {},
@@ -222,6 +252,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": null,
+      "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [],
       "negative_buffs": [],
       "drops": {},
@@ -232,6 +264,8 @@
       "size": 1,
       "ground": "farmland",
       "growth_stages": null,
+      "decay": 0,
+      "minimum_mutations": null,
       "positive_buffs": [],
       "negative_buffs": [],
       "drops": {},
@@ -256,6 +290,7 @@
       "rarity": "common",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "improved_harvest_boost"
       ],
@@ -281,6 +316,7 @@
       "rarity": "common",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "immunity"
       ],
@@ -304,6 +340,7 @@
       "rarity": "common",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "harvest_boost"
       ],
@@ -331,6 +368,7 @@
       "rarity": "common",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "bonus_drops",
         "water_retain"
@@ -352,6 +390,7 @@
       "rarity": "common",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "bonus_drops"
       ],
@@ -381,6 +420,7 @@
       "rarity": "common",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "xp_boost",
         "immunity"
@@ -410,6 +450,7 @@
       "rarity": "common",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "improved_xp_boost",
         "improved_water_retain"
@@ -441,6 +482,7 @@
       "rarity": "common",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "improved_harvest_boost"
       ],
@@ -467,6 +509,7 @@
       "rarity": "common",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "effect_spread"
       ],
@@ -494,6 +537,7 @@
       "rarity": "uncommon",
       "growth_stages": 6,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "water_retain"
       ],
@@ -523,6 +567,7 @@
       "rarity": "uncommon",
       "growth_stages": 8,
       "decay": 3,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "effect_spread",
         "improved_harvest_boost"
@@ -554,6 +599,7 @@
       "rarity": "uncommon",
       "growth_stages": 8,
       "decay": 3,
+      "minimum_mutations": 10,
       "positive_buffs": [
         "xp_boost"
       ],
@@ -579,6 +625,7 @@
       "rarity": "uncommon",
       "growth_stages": 6,
       "decay": 3,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "immunity"
       ],
@@ -614,6 +661,7 @@
       "rarity": "uncommon",
       "growth_stages": 8,
       "decay": 3,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "bonus_drops"
       ],
@@ -643,6 +691,7 @@
       "rarity": "uncommon",
       "growth_stages": 8,
       "decay": 3,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "effect_spread"
       ],
@@ -672,6 +721,7 @@
       "rarity": "rare",
       "growth_stages": 6,
       "decay": 3,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "immunity",
         "improved_harvest_boost"
@@ -705,6 +755,7 @@
       "rarity": "rare",
       "growth_stages": 10,
       "decay": 3,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "improved_water_retain"
       ],
@@ -738,6 +789,7 @@
       "rarity": "rare",
       "growth_stages": 10,
       "decay": 3,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "immunity"
       ],
@@ -770,6 +822,7 @@
       "rarity": "rare",
       "growth_stages": 8,
       "decay": 3,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "improved_harvest_boost"
       ],
@@ -803,6 +856,7 @@
       "rarity": "rare",
       "growth_stages": 14,
       "decay": 0,
+      "minimum_mutations": 6,
       "positive_buffs": [
         "bonus_drops"
       ],
@@ -834,6 +888,7 @@
       "rarity": "rare",
       "growth_stages": 120,
       "decay": 0,
+      "minimum_mutations": "infinite",
       "positive_buffs": [
         "improved_xp_boost"
       ],
@@ -866,6 +921,7 @@
       "rarity": "rare",
       "growth_stages": 4,
       "decay": 6,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "effect_spread",
         "improved_water_retain"
@@ -910,6 +966,7 @@
       "rarity": "rare",
       "growth_stages": 20,
       "decay": 6,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "bonus_drops"
       ],
@@ -941,6 +998,7 @@
       "rarity": "rare",
       "growth_stages": 10,
       "decay": 3,
+      "minimum_mutations": 8,
       "positive_buffs": [
         "water_retain"
       ],
@@ -969,6 +1027,7 @@
       "rarity": "epic",
       "growth_stages": 12,
       "decay": 5,
+      "minimum_mutations": 6,
       "positive_buffs": [
         "improved_xp_boost"
       ],
@@ -1001,11 +1060,12 @@
       "rarity": "epic",
       "growth_stages": 12,
       "decay": 5,
+      "minimum_mutations": 6,
       "positive_buffs": [
         "harvest_boost"
       ],
       "negative_buffs": [],
-      "harvest_info": "You will play a game of Snake that can be found in Abiphones and you must collect 8 Apples. If you fail, you will be set back 3 stages.",
+      "harvest_info": "You will play a game of Snake that can be found in Abiphones and you must collect 8 Apples. If you fail, it stays at the same stage and you can try again.",
       "requires_watering": false,
       "drops": {
         "moonflower": 4600,
@@ -1031,6 +1091,7 @@
       "rarity": "epic",
       "growth_stages": 14,
       "decay": 5,
+      "minimum_mutations": 6,
       "positive_buffs": [
         "improved_harvest_boost"
       ],
@@ -1056,6 +1117,7 @@
       "rarity": "epic",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": 6,
       "positive_buffs": [
         "immunity",
         "water_retain"
@@ -1085,6 +1147,7 @@
       "rarity": "epic",
       "growth_stages": 12,
       "decay": 5,
+      "minimum_mutations": 6,
       "positive_buffs": [
         "improved_xp_boost",
         "improved_water_retain"
@@ -1117,6 +1180,7 @@
       "rarity": "epic",
       "growth_stages": 12,
       "decay": 5,
+      "minimum_mutations": null,
       "positive_buffs": [
         "effect_spread",
         "improved_water_retain"
@@ -1124,7 +1188,7 @@
       "negative_buffs": [
         "harvest_loss"
       ],
-      "harvest_info": "Play a game of \"Red Light/Green Light\" and swing/\"break\" when you see \"Green Light\". Stop once it changes to yellow and then red. It takes upwards of 6 \"rounds\" to fully harvest the mutation",
+      "harvest_info": "Play a game of \"Red Light/Green Light\" and swing/\"break\" when you see \"Green Light\". Stop once it changes to yellow and then red. It takes upwards of 6 \"rounds\" to fully harvest the mutation. If you fail, it stays at the same stage and you can try again.",
       "requires_watering": true,
       "drops": {
         "cactus": 7500,
@@ -1149,12 +1213,13 @@
       "rarity": "epic",
       "growth_stages": 16,
       "decay": 6,
+      "minimum_mutations": 6,
       "positive_buffs": [
         "effect_spread"
       ],
       "negative_buffs": [],
       "harvest_info": "Release the Charge before harvest (Precautionary)",
-      "growing_info": "Release the Charge built up over time (will fill up your Thunder in a Bottle items) and before harvest to avoid the plant dying.",
+      "growing_info": "Release the Charge built up over time (will fill up your Thunder in a Bottle items) and before harvest. If it builds up 16,000 charge, it halts (stops growing) until discharged.",
       "requires_watering": false,
       "drops": {
         "cactus": 1650,
@@ -1180,6 +1245,7 @@
       "rarity": "rare",
       "growth_stages": 0,
       "decay": 3,
+      "minimum_mutations": null,
       "positive_buffs": [
         "immunity",
         "water_retain"
@@ -1212,6 +1278,7 @@
       "rarity": "epic",
       "growth_stages": 16,
       "decay": 5,
+      "minimum_mutations": 6,
       "positive_buffs": [
         "effect_spread",
         "bonus_drops"
@@ -1243,6 +1310,7 @@
       "rarity": "legendary",
       "growth_stages": 27,
       "decay": 0,
+      "minimum_mutations": null,
       "positive_buffs": [
         "harvest_boost"
       ],
@@ -1274,6 +1342,7 @@
       "rarity": "legendary",
       "growth_stages": 16,
       "decay": 5,
+      "minimum_mutations": null,
       "positive_buffs": [
         "improved_harvest_boost",
         "bonus_drops"
@@ -1308,6 +1377,7 @@
       "rarity": "legendary",
       "growth_stages": 8,
       "decay": 3,
+      "minimum_mutations": null,
       "positive_buffs": [
         "immunity",
         "improved_water_retain"
@@ -1332,6 +1402,7 @@
       "rarity": "legendary",
       "growth_stages": 40,
       "decay": 10,
+      "minimum_mutations": null,
       "positive_buffs": [
         "improved_harvest_boost",
         "improved_water_retain",
@@ -1370,6 +1441,7 @@
       "rarity": "legendary",
       "growth_stages": 10,
       "decay": 10,
+      "minimum_mutations": null,
       "positive_buffs": [],
       "negative_buffs": [],
       "growing_info": "Obtain a Unfulfilled Jerryseed from a Jerry Visitor and take it to Xalx in the Crystal Hollows with a Mysterious Crop. He will give you back an Unripe Jerryseed that you have to reforge to a Dirty Unripe Jerryseed and take to Dirt in the Dwarven Mines. Dirt will give you the Fertilized Jerryseed in return. When growing, Jerryflower will stop at Stage 5 until it is fed 10x Move Jerry.",
@@ -1394,6 +1466,7 @@
       "rarity": "legendary",
       "growth_stages": 15,
       "decay": 5,
+      "minimum_mutations": null,
       "positive_buffs": [
         "immunity",
         "xp_boost"
@@ -1428,6 +1501,7 @@
       "rarity": "legendary",
       "growth_stages": 14,
       "decay": 5,
+      "minimum_mutations": null,
       "positive_buffs": [
         "improved_xp_boost",
         "improved_water_retain"
