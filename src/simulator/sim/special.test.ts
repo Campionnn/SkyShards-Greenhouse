@@ -139,7 +139,8 @@ describe("Magic Jellybean", () => {
 
   it("the player only harvests it at stage 120: 10x jellybeans and 10x the stage-12 crop bundle", () => {
     const s = online();
-    const p = inject(s, 1, "magic_jellybean", 5, 5, "spawned", { stage: 58 });
+    // Stage 58 under an online player: already watered (a fresh spawn's 0 water could roll a below-0 skip on the first tick).
+    const p = inject(s, 1, "magic_jellybean", 5, 5, "spawned", { stage: 58, water: 100 });
     expect(p.readyStage).toBe(120);
     const early = engine.run(s, 61); // online every cycle through stages 59-119: never harvested
     expect(jellyHarvest(early.events)).toBeUndefined();

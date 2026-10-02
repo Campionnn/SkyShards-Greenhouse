@@ -236,7 +236,11 @@ describe("run: batched and stepped are one path", () => {
 });
 
 describe("growth", () => {
-  const empty = () => start(singlePlot(layout(), { config: slotsOnly, activity: NEVER_ACTIVE }));
+  // These are about growth stages and gates, not water: with the player away,
+  // a plant drinking 18-22 a cycle would dry out (and halt) within ~10 cycles
+  // (fresh spawns start at 0), so water loss is pinned to 0 here.
+  const noWaterLoss = { waterLossMin: 0, waterLossMax: 0 };
+  const empty = () => start(singlePlot(layout(), { config: { ...slotsOnly, ...noWaterLoss }, activity: NEVER_ACTIVE }));
 
   it("#2 a 12-stage mutation spawns at stage 1 and needs 11 growth steps; effects latch at stage 12", () => {
     const s = empty();
@@ -253,8 +257,9 @@ describe("growth", () => {
   it("a 0-stage spawn is fully grown as it appears and latches the effects its neighbours give it", () => {
     // Pumpkin + melon around the Gloomgourd target, with a placed Cindershade (gives
     // improved_harvest_boost to its cardinal neighbours) right below the target.
+    // Nobody waters the pumpkin and melon, so they'd dry out before fully grown and stop counting as the ring.
     const sc = singlePlot(layout([["pumpkin", 4, 4], ["melon", 4, 6], ["cindershade", 5, 5]], [["gloomgourd", 4, 5]]), {
-      config: slotsOnly,
+      config: { ...slotsOnly, ...noWaterLoss },
       inventory: { cindershade: 1 },
       activity: NEVER_ACTIVE,
     });
@@ -296,7 +301,8 @@ describe("growth", () => {
 
   it("an online player wakes a sleeping Snoozling; it then grows on", () => {
     const s = start(singlePlot(layout(), { config: slotsOnly }));
-    inject(s, 1, "snoozling", 3, 3, "spawned", { stage: 4 });
+    // A stage-4 Snoozling the online player has been watering (a fresh spawn's 0 water could roll a below-0 skip).
+    inject(s, 1, "snoozling", 3, 3, "spawned", { stage: 4, water: 100 });
     const r = engine.run(s, 3);
     expect(plantAt(r.state, 1, 3, 3)?.stage).toBe(7);
   });
@@ -362,7 +368,8 @@ describe("water", () => {
     const s = dry();
     inject(s, 1, "thunderling", 5, 5, "spawned");
     const r = engine.run(s, 5);
-    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 6, water: 100 }); // spawned at 1, +5
+    // Spawned at stage 1 with 0 water (every spawn does); it never drinks, so it stays at 0 and never halts.
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 6, water: 0 });
   });
 
   it("an online player keeps plants watered", () => {
@@ -390,7 +397,8 @@ describe("decay and placed items", () => {
   });
 
   it("#9 a spawned mutation's timer starts when it spawns, not when it becomes fully grown", () => {
-    const s = start(singlePlot(layout(), { config: slotsOnly, activity: NEVER_ACTIVE }));
+    // Water loss pinned to 0: unwatered, the Startlevine would dry out and halt mid-growth; this is about the timer.
+    const s = start(singlePlot(layout(), { config: { ...slotsOnly, waterLossMin: 0, waterLossMax: 0 }, activity: NEVER_ACTIVE }));
     inject(s, 1, "startlevine", 5, 5, "spawned");
     // 12 stages to grow, so 5 days is already counting down while it is still growing.
     expect(plantAt(s, 1, 5, 5)?.decaySecondsRemaining).toBe(5 * 86400);

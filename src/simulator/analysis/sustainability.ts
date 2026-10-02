@@ -45,7 +45,8 @@ export interface SustainabilityReport {
   /**
    * The uptime test: true iff no watched target cell ever sat empty without
    * the requirements to grow its mutation. Blocked cycles (a rival, a Dead
-   * Plant) lower uptime but are not a sustainability failure.
+   * Plant) and halted ones (the target standing there dried out) lower
+   * uptime but are not a sustainability failure.
    */
   sustainable: boolean;
   /** Watched cell-cycles across every plot and step. */
@@ -116,6 +117,8 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
           ready: s.ready,
           requirements: s.requirements,
           blocked: s.blocked,
+          // Spots recorded before `halted` existed have none.
+          halted: s.halted ?? 0,
           uptime: uptimeRatio(s),
           firstRequirementsCycle: s.firstRequirementsCycle,
           longestRequirementsStreak: s.longestRequirementsStreak,
@@ -130,7 +133,7 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
     (best, s) => (best === null || s.firstRequirementsCycle! < best.firstRequirementsCycle! ? s : best),
     null
   );
-  const totals = state.summary.uptime ?? zeroUptime();
+  const totals = { ...zeroUptime(), ...state.summary.uptime };
 
   return {
     sustainable: totals.requirements === 0,

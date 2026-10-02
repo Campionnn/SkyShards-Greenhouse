@@ -6,7 +6,8 @@ import { CropImage, EffectChips } from "../shared";
 import { formatDuration, kindData, nameOf } from "./format";
 
 export type TooltipTarget =
-  | { kind: "plant"; plant: PlantState }
+  /** watchStatus: what the uptime check saw at this plant's anchor, when it stands on a checked target cell. */
+  | { kind: "plant"; plant: PlantState; watchStatus?: WatchStatus }
   | { kind: "slot"; slot: SlotLabel; ineligibleCycles: number; watched?: boolean; watchStatus?: WatchStatus }
   | { kind: "missing"; item: string; row: number; col: number };
 
@@ -120,7 +121,9 @@ export const SimTooltip: React.FC<{
                 ? ": empty without its requirements, so it is losing uptime."
                 : target.watchStatus === "blocked"
                   ? ": blocked by something else, so it is losing uptime."
-                  : target.watchStatus === "ready"
+                  : target.watchStatus === "halted"
+                    ? ": its mutation is dried out (halted until watered), so it is losing uptime."
+                    : target.watchStatus === "ready"
                     ? ": ready to spawn, counted as up."
                     : "."}
             </p>
@@ -135,6 +138,11 @@ export const SimTooltip: React.FC<{
       )}
 
       {target.kind === "plant" && <PlantDetails p={target.plant} m={m} cycleSeconds={cycleSeconds} config={config} />}
+      {target.kind === "plant" && target.watchStatus === "halted" && (
+        <p className="mt-2 text-amber-400">
+          Checked target, dried out: this cell is losing uptime (halted) until the player waters it. That is downtime, not a sustainability failure.
+        </p>
+      )}
     </div>
   );
 };

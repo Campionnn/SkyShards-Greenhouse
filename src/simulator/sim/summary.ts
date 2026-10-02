@@ -1,10 +1,14 @@
 import type { PerPlotSummary, PlotId, RunSummary, UptimeCounts } from "./state";
 
 export function zeroUptime(): UptimeCounts {
-  return { watched: 0, growing: 0, ready: 0, requirements: 0, blocked: 0 };
+  return { watched: 0, growing: 0, ready: 0, requirements: 0, blocked: 0, halted: 0 };
 }
 
-/** Share of watched cell-cycles the spot was usable (target standing, or free to spawn). 1 when nothing was watched. */
+/**
+ * Share of watched cell-cycles the spot was usable (target standing and not
+ * dried out, or free to spawn). 1 when nothing was watched. Halted, blocked
+ * and requirements cycles are all downtime.
+ */
 export function uptimeRatio(u: UptimeCounts): number {
   return u.watched > 0 ? (u.growing + u.ready) / u.watched : 1;
 }

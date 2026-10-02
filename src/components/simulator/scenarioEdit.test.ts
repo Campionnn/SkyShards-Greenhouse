@@ -201,6 +201,16 @@ describe("flow export / import", () => {
     expect(kept.settings.config).not.toHaveProperty("deathWater");
   });
 
+  it("keeps a saved water loss as it is (no migration): the old 2-3 defaults stay until the user restores defaults", () => {
+    // Saves store the full config, so a scenario saved before 0.27.2's 18-22 has 2/3 frozen in. We can't tell
+    // that from a deliberate choice, so it is left alone; the Advanced panel shows it as changed from the default.
+    const saved = withPlots(LAYOUT_A_CODE);
+    saved.settings.config = { ...saved.settings.config, waterLossMin: 2, waterLossMax: 3 };
+    const up = migrateScenario(saved);
+    expect(up.settings.config).toMatchObject({ waterLossMin: 2, waterLossMax: 3 });
+    expect(withPlots(LAYOUT_A_CODE).settings.config).toMatchObject({ waterLossMin: 18, waterLossMax: 22 });
+  });
+
   it("rejects files it cannot use, with a readable reason", () => {
     const sc = withPlots(LAYOUT_A_CODE);
     expect(() => importFlows(sc, "nope")).toThrow("not valid JSON");

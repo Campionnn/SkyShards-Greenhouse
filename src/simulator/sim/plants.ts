@@ -124,8 +124,11 @@ export function newPlant(
     // Primed once fully grown (natural) or at the next tick after placing (see sim/explosion.ts).
     if (kindId === "blastberry") plant.gate.primed = false;
     if (kindId === "turtlellini") plant.gate.exploded = 0;
-    // Soggybud grows by drawing water from its neighbours, starting dry.
-    if (kindId === "soggybud" && origin === "spawned") plant.water = 0;
+    // Every natural spawn starts with 0 water (0.27.2 follow-up): one that
+    // needs watering drinks below 0 until the player's next session tops it
+    // up. Soggybud grows by drawing water from its neighbours from there.
+    // Placed items and planted base crops still start at maxWater.
+    if (origin === "spawned") plant.water = 0;
   } else {
     plant.growthStages = def.growthStages ?? 0;
     plant.readyStage = plant.growthStages;
@@ -213,9 +216,10 @@ export function isFootprintFree(occ: Occupancy, row: number, col: number, size: 
  * Watering it (player `water` phase) un-halts it.
  *
  * Derived from `water` alone, no extra state: only plants that consume water
- * (base crops, spawns that need watering) can get there. Soggybud never
- * drains a neighbour below 0 and starts at 0 itself, and placed plants and
- * roots never lose water - as long as `haltWater` stays below 0.
+ * (base crops, spawns that need watering) can get there. Every spawn starts
+ * at 0 water (above the threshold), Soggybud never drains a neighbour below
+ * 0, and placed plants and roots never lose water - as long as `haltWater`
+ * stays below 0.
  */
 export const isDry = (p: PlantState, config: Pick<SimConfig, "haltWater">): boolean => !p.isDeadPlant && p.water <= config.haltWater;
 

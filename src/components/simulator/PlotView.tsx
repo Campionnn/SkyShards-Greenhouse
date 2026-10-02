@@ -53,6 +53,10 @@ export const PlotMarkLegend: React.FC = () => (
       checked target without its requirements (not sustainable)
     </span>
     <span className="flex items-center gap-1">
+      <span className="inline-block w-3 h-3 rounded border-2 border-dashed border-amber-600/90" style={{ filter: DRY_FILTER }} />
+      checked target standing there dried out (halted: downtime, still sustainable)
+    </span>
+    <span className="flex items-center gap-1">
       <span className="inline-block w-3 h-3 rounded border border-dashed border-slate-500/60" />
       target not checked
     </span>
@@ -263,11 +267,15 @@ export const PlotView: React.FC<PlotViewProps> = ({
             const ground = plot.groundOverrides[`${p.row},${p.col}`] ?? plot.groundTiles[`${p.row},${p.col}`];
             const growing = !p.isDeadPlant && p.origin !== "placed" && p.readyStage > 0 && p.stage < p.readyStage;
             const dry = isDry(p, config);
+            // A checked target standing on its own slot but dried out: downtime (uptime status `halted`).
+            const anchor = `${p.row},${p.col}`;
+            const watchStatus = watchedKeys.has(anchor) ? plot.watchStatus?.[anchor] : undefined;
+            const halted = watchStatus === "halted";
             return (
               <div
                 key={p.id}
                 className="absolute rounded overflow-hidden flex items-center justify-center cursor-default"
-                onMouseEnter={() => setHover({ kind: "plant", plant: p })}
+                onMouseEnter={() => setHover({ kind: "plant", plant: p, watchStatus })}
                 onMouseLeave={() => setHover(null)}
                 style={{
                   top,
@@ -293,6 +301,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
                   hasGroundContext
                   showFallback
                 />
+                {halted && <div className="absolute inset-0 rounded border-2 border-dashed border-amber-600/90 pointer-events-none" />}
                 {growing && (
                   <div className="absolute bottom-0 left-0 h-[3px] bg-emerald-400/80" style={{ width: `${(p.stage / p.readyStage) * 100}%` }} />
                 )}

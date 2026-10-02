@@ -22,6 +22,11 @@ export interface SimConfig {
    * and keeps decaying. Watering un-halts it. Formerly `deathWater`.
    */
   haltWater: number;
+  /**
+   * Water a crop that needs watering loses every cycle while it is not fully
+   * grown, whether or not it advanced (0.27.2 follow-up: 18-22). Fully grown
+   * and dried-out plants lose none. x retain/drain factor.
+   */
   waterLossMin: number;
   waterLossMax: number;
   /** Cycle length (one growth stage) before speed bonuses, 4 h. */
@@ -101,8 +106,8 @@ export interface SimConfig {
 export const DEFAULT_CONFIG: SimConfig = {
   blankFillTo: 100,
   haltWater: -100,
-  waterLossMin: 2,
-  waterLossMax: 3,
+  waterLossMin: 18,
+  waterLossMax: 22,
   cycleBaselineSeconds: 14400,
   uniqueCropCap: 10,
   uniqueCropGrowthPerCrop: 0.025,
@@ -161,8 +166,8 @@ export interface ConfigMeta {
 export const CONFIG_META: ConfigMeta[] = [
   { key: "blankFillTo", label: "Spawn pool floor", group: "verified", input: { type: "number", min: 1 }, description: "Pool denominator is max(floor, sum of weights); the remainder is the blank." },
   { key: "haltWater", label: "Halt water level", group: "verified", ref: "Q3", input: { type: "number", max: -1 }, description: "At or below this water level a plant dries out and halts (it no longer dies): it stops growing, gives and relays no effects, and doesn't count for mutation requirements or unique crops. It still blocks Lonelily and keeps decaying. Watering un-halts it. Must stay below 0, so only crops that drink water (base crops, spawns that need watering) can reach it." },
-  { key: "waterLossMin", label: "Water loss min", group: "verified", input: { type: "number", min: 0 }, description: "Minimum water a crop that needs watering loses per growth stage, before retain/drain." },
-  { key: "waterLossMax", label: "Water loss max", group: "verified", input: { type: "number", min: 0 }, description: "Maximum water a crop that needs watering loses per growth stage, before retain/drain." },
+  { key: "waterLossMin", label: "Water loss min", group: "verified", input: { type: "number", min: 0 }, description: "Minimum water a crop that needs watering loses per cycle while not fully grown (whether or not it grew that cycle), before retain/drain. Fully grown and dried-out plants lose none. The default was 2 (per stage grown) before the 0.27.2 rules; a scenario saved then keeps its value until you restore defaults." },
+  { key: "waterLossMax", label: "Water loss max", group: "verified", input: { type: "number", min: 0 }, description: "Maximum water a crop that needs watering loses per cycle while not fully grown (whether or not it grew that cycle), before retain/drain. Fully grown and dried-out plants lose none. The default was 3 (per stage grown) before the 0.27.2 rules; a scenario saved then keeps its value until you restore defaults." },
   { key: "cycleBaselineSeconds", label: "Cycle baseline (s)", group: "verified", ref: "Q2", input: { type: "number", min: 1 }, description: "Cycle length (one growth stage) before speed bonuses (4 h)." },
   { key: "uniqueCropCap", label: "Unique crop bonus cap", group: "verified", input: { type: "number", min: 0, step: 1 }, description: "Most unique crops the Unique Crop Bonus counts (0.27.2 patch notes: 10). The unique crop groups standing on all plots, plus the Flora shard, count up to this many." },
   { key: "uniqueCropGrowthPerCrop", label: "Unique crop growth bonus", group: "verified", input: { type: "number", min: 0, step: 0.005 }, description: "Growth speed added per unique crop counted (0.27.2 patch notes: +2.5% each, +25% at 10)." },

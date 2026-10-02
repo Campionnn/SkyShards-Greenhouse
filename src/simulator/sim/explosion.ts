@@ -70,6 +70,8 @@ function turnIntoShellfruit(plot: PlotState, q: PlantState, ctx: CycleCtx): void
   q.fullyGrownAtCycle = null;
   // It is a fresh natural spawn: its decay timer runs from now.
   q.decaySecondsRemaining = spawnedDecaySeconds(m, ctx.config, ctx.cycleSeconds);
+  // Like every natural spawn it starts with 0 water (sim/plants.ts newPlant); a Shellfruit never drinks anyway.
+  q.water = 0;
   // A 0-stage Shellfruit is fully grown as it appears: latch what it holds now.
   q.lockedEffects = q.stage >= q.readyStage ? effectiveList(q.held) : null;
   if (q.lockedEffects) q.fullyGrownAtCycle = ctx.cycle;

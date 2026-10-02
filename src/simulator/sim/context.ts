@@ -26,15 +26,19 @@ export interface Env {
  * stored in state, so it may hold Sets and objects.
  */
 export interface TickScratch {
-  /** Plants that advanced a growth stage this cycle (water loss). */
-  advanced: Set<number>;
+  /**
+   * Plants that were not yet fully grown (`stage < readyStage`) as this
+   * tick's growth phase reached them, before they advanced. The water phase
+   * drains these (if they drink water and aren't dried out).
+   */
+  notFullyGrown: Set<number>;
   /** The effect simulation from the `effects` phase (Godseed eligibility at spawn). */
   effects: EffectSimulation | null;
   /** The player session moved this plot to a new step this cycle. */
   stepChanged: boolean;
 }
 
-export const newScratch = (): TickScratch => ({ advanced: new Set(), effects: null, stepChanged: false });
+export const newScratch = (): TickScratch => ({ notFullyGrown: new Set(), effects: null, stepChanged: false });
 
 /**
  * Everything one cycle needs besides the plot itself. `state` is the run's
