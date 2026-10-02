@@ -1,7 +1,18 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Eye, Pencil } from "lucide-react";
 import { useFitCellSize } from "../../hooks";
-import { isDry, type FlowRunnerState, type PlotState, type ScenarioPlot, type SimConfig, type TimedEvent } from "../../simulator";
+import {
+  defaultGameData,
+  isDry,
+  sanityCheck,
+  type FlowRunnerState,
+  type PlotState,
+  type SanityCheckResult,
+  type ScenarioPlot,
+  type SimConfig,
+  type SimulationState,
+  type TimedEvent,
+} from "../../simulator";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { getCellPixelPosition, getGridDimensions } from "../../utilities";
 import { CropImage } from "../shared";
@@ -148,6 +159,12 @@ export interface PlotViewProps {
   /** For the hover cards: current cycle length and the scenario's config. */
   cycleSeconds: number;
   config: SimConfig;
+  /**
+   * The Sanity Check inspector: pass the snapshot state to turn it on. Hovering
+   * an empty cell (or a target slot) then shows which mutations could spawn
+   * there. Omitted = off, and no extra hover targets exist.
+   */
+  sanityState?: SimulationState;
 }
 
 /** One plot, read-only: standing plants, empty labelled target cells, and what changed this cycle. */
@@ -161,12 +178,30 @@ export const PlotView: React.FC<PlotViewProps> = ({
   openDebts = [],
   cycleSeconds,
   config,
+  sanityState,
 }) => {
   const fitRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<TooltipTarget | null>(null);
   const { cellSize, gap } = useFitCellSize(fitRef, { max: maxCell, min: 16 });
   const { width, height } = getGridDimensions(cellSize, gap);
   const marks = useMemo(() => marksFrom(events), [events]);
+  // Sanity Check results, memoised per hovered cell for as long as it is the same snapshot state.
+  const checkCache = useRef<{ state: SimulationState; plotId: number; results: Map<string, SanityCheckResult> } | null>(null);
+  const checkAt = (row: number, col: number): SanityCheckResult | undefined => {
+    if (!sanityState) return undefined;
+    let cache = checkCache.current;
+    if (!cache || cache.state !== sanityState || cache.plotId !== plot.id) {
+      cache = { state: sanityState, plotId: plot.id, results: new Map() };
+      checkCache.current = cache;
+    }
+    const key = `${row},${col}`;
+    let result = cache.results.get(key);
+    if (!result) {
+      result = sanityCheck(sanityState, defaultGameData(), plot.id, row, col);
+      cache.results.set(key, result);
+    }
+    return result;
+  };
 
   const step = def && runner ? def.flow.steps[runner.stepIndex] : undefined;
   const watchedKeys = new Set(step?.watch ?? plot.slots.map((s) => `${s.row},${s.col}`));
@@ -231,6 +266,12 @@ export const PlotView: React.FC<PlotViewProps> = ({
                 className={`absolute rounded border ${ground ? "border-emerald-700/20" : "border-slate-700/20"}`}
                 style={{ top, left, width: cellSize, height: cellSize, ...(ground ? { backgroundImage: `url(${getGroundImagePath(ground)})`, backgroundSize: `${cellSize}px ${cellSize}px` } : {}) }}
                 title={ground ? (plot.groundOverrides[key] ? `${ground.replaceAll("_", " ")} (changed during simulation)` : ground.replaceAll("_", " ")) : "air (no ground)"}
+                {...(sanityState
+                  ? {
+                      onMouseEnter: () => setHover({ kind: "check", row: r, col: c, result: checkAt(r, c)! }),
+                      onMouseLeave: () => setHover(null),
+                    }
+                  : {})}
               />
             );
           })}
@@ -258,7 +299,14 @@ export const PlotView: React.FC<PlotViewProps> = ({
                 }`}
                 style={{ top, left, width: size, height: size }}
                 onMouseEnter={() =>
-                  setHover({ kind: "slot", slot: s, ineligibleCycles: plot.slotIneligibleCycles[key] ?? 0, watched: isWatched, watchStatus: plot.watchStatus?.[key] })
+                  setHover({
+                    kind: "slot",
+                    slot: s,
+                    ineligibleCycles: plot.slotIneligibleCycles[key] ?? 0,
+                    watched: isWatched,
+                    watchStatus: plot.watchStatus?.[key],
+                    check: checkAt(s.row, s.col),
+                  })
                 }
                 onMouseLeave={() => setHover(null)}
               >

@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { FlaskConical } from "lucide-react";
+import { FlaskConical, ScanSearch } from "lucide-react";
 import { InfoHint, SegmentedControl, useToast } from "../components/ui";
 import { LayoutPickerDialog } from "../components/simulator/LayoutPicker";
 import { InventoryPanel, MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
 import { EventLog, RunControls, FlowTimeline } from "../components/simulator/RunPanels";
 import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
+import { buttonClass } from "../components/simulator/styles";
 import { FlowEditor } from "../components/simulator/FlowEditor";
 import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
 import { addPlot, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
@@ -63,6 +64,8 @@ export const SimulatorPage: React.FC = () => {
   // A layout sent here by a Simulate button, or the picker opened from the Scenario panel.
   const [incoming, setIncoming] = useState<IncomingLayout | null>(() => readIncomingLayout(location.state));
   const [picking, setPicking] = useState(false);
+  /** Sanity Check inspector: while on, hovering an empty cell or slot shows which mutations could spawn there. */
+  const [sanityCheckOn, setSanityCheckOn] = useState(false);
   const settled = useDebounced(scenario, 300);
   const { view, run, step, stepBack, undo, stop, reset, addItems } = useSimulation(settled);
 
@@ -163,6 +166,19 @@ export const SimulatorPage: React.FC = () => {
       <div className="space-y-4 min-w-0">
           {state ? (
             <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={`${sanityCheckOn ? buttonClass.primary : buttonClass.neutral} flex-shrink-0`}
+                  aria-pressed={sanityCheckOn}
+                  onClick={() => setSanityCheckOn((on) => !on)}
+                  title="Hover an empty cell or target slot to see which mutations could spawn there now, and why the others can't"
+                >
+                  <ScanSearch className="w-3 h-3" />
+                  Sanity Check
+                </button>
+                {sanityCheckOn && <span className="text-xs text-slate-500">Hover an empty cell or target slot.</span>}
+              </div>
               {plotIds.length > 1 && (
                 <SegmentedControl
                   size="xs"
@@ -185,6 +201,7 @@ export const SimulatorPage: React.FC = () => {
                       openDebts={Object.keys(state.openDebts)}
                       cycleSeconds={state.lastCycleSeconds}
                       config={state.scenario.settings.config}
+                      sanityState={sanityCheckOn ? state : undefined}
                     />
                   </div>
                 ))}

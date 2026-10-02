@@ -14,6 +14,15 @@ export { LayoutError, resolveLayout } from "./flow/layout";
 export { MAX_PLOTS, ScenarioError, validateScenario, type ScenarioIssue } from "./flow/validate";
 export { analyseSustainability, describeDebt, describeSpotFailure } from "./analysis/sustainability";
 export type { ItemReport, ItemStatus, SpotReport, SustainabilityReport } from "./analysis/sustainability";
+export { sanityCheck } from "./analysis/sanityCheck";
+export type {
+  SanityBlocker,
+  SanityCheckResult,
+  SanityEntry,
+  SanityFootprint,
+  SanityOccupant,
+  SanityRequirement,
+} from "./analysis/sanityCheck";
 export { uptimeRatio } from "./sim/summary";
 export { layoutFromDecoded, layoutFromShareCode } from "./share/layoutFromShare";
 export { DEFAULT_PLAYER_STATS, defaultSettings, scenarioFromShareCodes, staticFlow } from "./scenario";

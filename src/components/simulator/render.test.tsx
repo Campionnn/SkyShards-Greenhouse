@@ -4,7 +4,8 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { GreenhouseDataProvider, InfoModalProvider } from "../../context";
 import type { SimulationView } from "../../hooks/useSimulation";
-import { engine, flow, LAYOUT_A_CODE, LAYOUT_B_CODE, scenario, step } from "../../simulator/testHelpers";
+import { sanityCheck } from "../../simulator";
+import { engine, flow, LAYOUT_A_CODE, LAYOUT_B_CODE, layout, scenario, singlePlot, start as startOf, step } from "../../simulator/testHelpers";
 import { ToastProvider } from "../ui";
 import { PlotMarkLegend, PlotView } from "./PlotView";
 import { LayoutPickerPanel } from "./LayoutPicker";
@@ -13,6 +14,7 @@ import { FlowEditor, WatchPicker } from "./FlowEditor";
 import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
 import { KindDecayOverrides, ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 import { SimTooltip } from "./SimTooltip";
+import { closestBlocked } from "./sanityFormat";
 import { describeEvent } from "./format";
 
 // Server-render every simulator panel against a real simulation, to catch
@@ -105,6 +107,55 @@ describe("simulator panels render", () => {
     const dead = card({ ...base, kindId: "dead_plant", isDeadPlant: true, origin: "placed", timesMutated: 0, mutatesRemaining: 10, decaySecondsRemaining: 3 * 86400 });
     expect(dead).toContain("Mutates remaining");
     expect(dead).toContain("then +24h (minimum not met)");
+  });
+
+  it("Sanity Check: the plot view gets hover targets only while it is on, and the card lists spawnable and blocked mutations", () => {
+    const sc2 = singlePlot(
+      { ...layout([["pumpkin", 4, 3], ["melon", 4, 5], ["wheat", 7, 7]], [["chloronite", 1, 1]]), groundTiles: [{ ground: "farmland", row: 4, col: 4 }] },
+      { config: { spawnCells: "allEmpty" } }
+    );
+    const s = startOf(sc2);
+    const plot = s.plots[0];
+    const view = (on: boolean) =>
+      renderToString(<PlotView plot={plot} runner={s.flows[0]} def={s.scenario.plots[0]} events={[]} cycleSeconds={s.lastCycleSeconds} config={s.scenario.settings.config} sanityState={on ? s : undefined} />);
+    // Same markup with the toggle on or off at rest (the hover targets are handlers, not DOM): it renders either way.
+    expect(view(true).replace(/<!-- -->/g, "")).toContain("Plot 1");
+    expect(view(false).replace(/<!-- -->/g, "")).toContain("Plot 1");
+
+    const r = sanityCheck(s, engine.data, 1, 4, 4);
+    const card = (result: typeof r, row = 4, col = 4) =>
+      renderToString(<SimTooltip target={{ kind: "check", row, col, result }} cellSize={40} gap={2} gridWidth={420} gridHeight={420} cycleSeconds={14400} config={s.scenario.settings.config} plot={plot} />).replace(/<!-- -->/g, "");
+    const html = card(r);
+    expect(html).toContain("Sanity Check");
+    expect(html).toContain("Can spawn here now");
+    expect(html).toContain("Gloomgourd");
+    expect(html).toContain("30%");
+    expect(html).toContain("Can&#x27;t spawn here");
+    expect(html).toMatch(/needs \d+× /); // a requirement reason
+    expect(html).toMatch(/\+\d+ more/); // the cap
+    expect(html).not.toMatch(/best|rank/i);
+    // Closest-first display cap, not a ranking: fewest missing first, then data.json order.
+    const { shown, more } = closestBlocked(r, 6);
+    expect(shown).toHaveLength(6);
+    expect(more).toBe(r.cannot.length - 6);
+    expect(shown.map((e) => e.missingCount)).toEqual([...shown.map((e) => e.missingCount)].sort((a, b) => a - b));
+
+    // An occupied cell says so; a slot keeps its card and gets the check appended.
+    const occ = sanityCheck(s, engine.data, 1, 7, 7);
+    expect(card(occ, 7, 7)).toContain("stands here");
+    const slotCheck = sanityCheck(s, engine.data, 1, 1, 1);
+    const slotHtml = renderToString(
+      <SimTooltip target={{ kind: "slot", slot: plot.slots[0], ineligibleCycles: 0, check: slotCheck }} cellSize={40} gap={2} gridWidth={420} gridHeight={420} cycleSeconds={14400} config={s.scenario.settings.config} plot={plot} />
+    ).replace(/<!-- -->/g, "");
+    expect(slotHtml).toContain("Empty target cell.");
+    expect(slotHtml).toContain("Sanity Check");
+    expect(slotHtml).toContain("Can spawn here now");
+    const noCheck = renderToString(
+      <SimTooltip target={{ kind: "slot", slot: plot.slots[0], ineligibleCycles: 0 }} cellSize={40} gap={2} gridWidth={420} gridHeight={420} cycleSeconds={14400} config={s.scenario.settings.config} plot={plot} />
+    );
+    expect(noCheck).not.toContain("Sanity Check");
+    // The Plot view renders the sanity-check card for a hovered empty cell only through TooltipTarget "check", never as default DOM.
+    expect(view(true)).not.toContain("Can spawn here now");
   });
 
   it("describeEvent: decayExtended, and a decayed dead plant leaves nothing", () => {
