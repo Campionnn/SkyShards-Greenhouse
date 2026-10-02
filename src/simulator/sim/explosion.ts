@@ -1,7 +1,7 @@
 import { ringCells } from "../grid/cells";
 import type { CycleCtx } from "./context";
 import { effectiveList } from "../effects/adapter";
-import { buildOccupancy, removePlant, spawnedDecaySeconds, spawnStageOf } from "./plants";
+import { buildOccupancy, minimumMutationsOf, removePlant, spawnedDecaySeconds, spawnStageOf } from "./plants";
 import { bump, perPlot } from "./summary";
 import type { PlantState, PlotState } from "./state";
 
@@ -68,8 +68,12 @@ function turnIntoShellfruit(plot: PlotState, q: PlantState, ctx: CycleCtx): void
   q.growthStages = m.growthStages;
   q.readyStage = m.growthStages;
   q.fullyGrownAtCycle = null;
-  // It is a fresh natural spawn: its decay timer runs from now.
+  // It is a fresh natural spawn: its decay timer runs from now, with fresh
+  // minimum-mutation counters. Made by a blast, not by the spawn roll, it
+  // has no requirements and credits nobody.
   q.decaySecondsRemaining = spawnedDecaySeconds(m, ctx.config, ctx.cycleSeconds);
+  q.timesMutated = 0;
+  q.mutatesRemaining = minimumMutationsOf("shellfruit", ctx.env.data, ctx.config);
   // Like every natural spawn it starts with 0 water (sim/plants.ts newPlant); a Shellfruit never drinks anyway.
   q.water = 0;
   // A 0-stage Shellfruit is fully grown as it appears: latch what it holds now.

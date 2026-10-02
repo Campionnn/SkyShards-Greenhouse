@@ -345,6 +345,9 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
   const losses = [
     ...Object.entries(summary.decayed).map(([k, n]) => ({ k, n, what: "decayed" })),
     ...Object.entries(summary.destroyed).map(([k, n]) => ({ k, n, what: "destroyed" })),
+    // Not a loss either: the timer ran out before its minimum mutations were met, so it stood on (+24h each).
+    // Summaries from before the decay rework have no `extended`.
+    ...Object.entries(summary.extended ?? {}).map(([k, n]) => ({ k, n, what: "decay timers extended (minimum not met)" })),
     // Not a loss as such: the plant stands until watered. Counted each time one dries out.
     ...Object.entries(summary.driedOut).map(([k, n]) => ({ k, n, what: "dried out (halted)" })),
   ].sort((a, b) => b.n - a.n);
@@ -459,7 +462,7 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
 
       {losses.length > 0 && (
         <div className="mt-3">
-          <SectionLabel>Losses and halts</SectionLabel>
+          <SectionLabel>Losses, halts and decay extensions</SectionLabel>
           <ul className="text-xs text-slate-300 space-y-0.5">
             {losses.slice(0, 8).map((l) => (
               <li key={`${l.what}-${l.k}`}>

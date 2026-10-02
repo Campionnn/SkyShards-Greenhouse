@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultSettings, migrateScenario, type Scenario } from "../../simulator";
-import { LAYOUT_A_CODE, LAYOUT_B_CODE } from "../../simulator/testHelpers";
+import { BASE_CROP_IDS } from "../../simulator/migrate";
+import { engine, flow, layout, LAYOUT_A_CODE, LAYOUT_B_CODE, scenario, step, TIMER_ONLY } from "../../simulator/testHelpers";
 import { decodeDesign } from "../../utilities/designEncoding";
 import { readIncomingLayout, solverResultCells, summarizeTargets } from "../../utilities/layoutHandoff";
 import {
@@ -199,6 +200,60 @@ describe("flow export / import", () => {
     const kept = migrateScenario(both);
     expect(kept.settings.config.haltWater).toBe(-100);
     expect(kept.settings.config).not.toHaveProperty("deathWater");
+  });
+
+  describe("0.27.2 decay rework: baseCropDecayHours and nullStageKindsDecay", () => {
+    const savedWith = (extra: Record<string, unknown>) => {
+      const saved = withPlots(LAYOUT_A_CODE);
+      (saved.settings.config as unknown as Record<string, unknown>) = { ...saved.settings.config, ...extra };
+      return saved;
+    };
+    const harvestable = engine.data.cropIds.filter((id) => engine.data.crops[id].growthStages !== null);
+
+    it("the hard-coded base crop list is exactly data.json's 14 harvestable crops", () => {
+      expect([...BASE_CROP_IDS].sort()).toEqual([...harvestable].sort());
+      expect(BASE_CROP_IDS).toHaveLength(14);
+    });
+
+    it("a non-default baseCropDecayHours becomes per-crop decayDaysOverrides (hours / 24) for the 14 base crops", () => {
+      const saved = savedWith({ baseCropDecayHours: 36, nullStageKindsDecay: true });
+      const up = migrateScenario(saved);
+      const config = up.settings.config as unknown as Record<string, unknown>;
+      expect(config).not.toHaveProperty("baseCropDecayHours");
+      expect(config).not.toHaveProperty("nullStageKindsDecay");
+      expect(up.settings.config.decayDaysOverrides).toEqual(Object.fromEntries(BASE_CROP_IDS.map((id) => [id, 1.5])));
+      // dead_plant, fire and fermento are not base crops: no override.
+      expect(up.settings.config.decayDaysOverrides).not.toHaveProperty("dead_plant");
+      expect(saved.settings.config).toHaveProperty("baseCropDecayHours", 36); // input untouched
+    });
+
+    it("0 (never) stays 0; existing overrides are kept", () => {
+      const up = migrateScenario(savedWith({ baseCropDecayHours: 0, decayDaysOverrides: { wheat: 5, chloronite: 2 } }));
+      const o = up.settings.config.decayDaysOverrides;
+      expect(o.wheat).toBe(5); // already overridden: kept
+      expect(o.chloronite).toBe(2);
+      expect(o.potato).toBe(0);
+      expect(o.wild_rose).toBe(0);
+      expect(Object.keys(o)).toHaveLength(15);
+    });
+
+    it("the old 72 h default just drops the key; nothing is overridden", () => {
+      const up = migrateScenario(savedWith({ baseCropDecayHours: 72, nullStageKindsDecay: false }));
+      const config = up.settings.config as unknown as Record<string, unknown>;
+      expect(config).not.toHaveProperty("baseCropDecayHours");
+      expect(config).not.toHaveProperty("nullStageKindsDecay");
+      expect(up.settings.config.decayDaysOverrides).toEqual({});
+    });
+
+    it("a migrated save runs: base crops on a 36 h override decay in 1.5 days (timer only)", () => {
+      const up = migrateScenario(savedWith({ baseCropDecayHours: 36 }));
+      const sc = scenario([flow([step("a", layout([["wheat", 5, 5]]))])], {
+        config: { ...up.settings.config, spawnCells: "slotsOnly", ...TIMER_ONLY },
+        activity: { kind: "windows", windows: [] },
+      });
+      const s = engine.initState(sc).state;
+      expect(s.plots[0].plants[0].decaySecondsRemaining).toBe(36 * 3600);
+    });
   });
 
   it("keeps a saved water loss as it is (no migration): the old 2-3 defaults stay until the user restores defaults", () => {

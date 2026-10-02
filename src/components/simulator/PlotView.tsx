@@ -9,7 +9,18 @@ import { kindData, nameOf } from "./format";
 import { SimTooltip, type TooltipTarget } from "./SimTooltip";
 import { buttonClass } from "./styles";
 
-type Mark = "harvested" | "spawned" | "decayed" | "dried" | "destroyed" | "debt" | "teleported" | "exploded" | "groundFixed" | "minigameRetry";
+type Mark =
+  | "harvested"
+  | "spawned"
+  | "decayed"
+  | "extended"
+  | "dried"
+  | "destroyed"
+  | "debt"
+  | "teleported"
+  | "exploded"
+  | "groundFixed"
+  | "minigameRetry";
 
 /** Tint for a dried-out (halted) plant: washed out and sandy, still clearly a living plant (unlike a Dead Plant's grey). */
 const DRY_FILTER = "sepia(0.85) saturate(0.6) brightness(0.8)";
@@ -18,6 +29,7 @@ const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; lab
   harvested: { ring: "rgba(234,179,8,0.9)", glyph: "✦", color: "text-yellow-300", label: "harvested" },
   spawned: { ring: "rgba(52,211,153,0.9)", glyph: "+", color: "text-emerald-300", label: "spawned" },
   decayed: { ring: "rgba(248,113,113,0.9)", glyph: "✕", color: "text-red-300", label: "decayed" },
+  extended: { ring: "rgba(129,140,248,0.9)", glyph: "⧗", color: "text-indigo-300", label: "decay timer extended (minimum mutations not met)" },
   dried: { ring: "rgba(217,119,6,0.95)", glyph: "◌", color: "text-amber-500", label: "dried out (halted until watered)" },
   destroyed: { ring: "rgba(251,146,60,0.9)", glyph: "✕", color: "text-orange-300", label: "destroyed" },
   debt: { ring: "rgba(239,68,68,0.95)", glyph: "!", color: "text-red-400", label: "short of an item" },
@@ -110,6 +122,7 @@ function marksFrom(events: TimedEvent[]): Map<string, { mark: Mark; size: number
     if (e.kind === "harvested") at(e.row, e.col, "harvested", sizeOf(e.kindId));
     else if (e.kind === "spawned") at(e.row, e.col, "spawned", sizeOf(e.mutationId));
     else if (e.kind === "decayed") at(e.row, e.col, "decayed", sizeOf(e.kindId));
+    else if (e.kind === "decayExtended") at(e.row, e.col, "extended", sizeOf(e.kindId));
     else if (e.kind === "driedOut") at(e.row, e.col, "dried", sizeOf(e.kindId));
     else if (e.kind === "destroyed") at(e.row, e.col, "destroyed", sizeOf(e.kindId));
     else if (e.kind === "debt") at(e.row, e.col, "debt", sizeOf(e.item));
@@ -362,6 +375,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
               gridHeight={height}
               cycleSeconds={cycleSeconds}
               config={config}
+              plot={plot}
             />
           )}
         </div>

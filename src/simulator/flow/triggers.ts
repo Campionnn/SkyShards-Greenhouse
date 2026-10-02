@@ -1,5 +1,6 @@
 import { cellIndex } from "../grid/cells";
-import { buildOccupancy, isFullyGrown } from "../sim/plants";
+import { wouldDecayWithin } from "../sim/decay";
+import { buildOccupancy, DEAD_PLANT, isFullyGrown } from "../sim/plants";
 import type { FlowRunnerState, PlotState } from "../sim/state";
 import type { Condition, ConditionMatch, Trigger } from "./types";
 
@@ -46,9 +47,9 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
       return t.count <= 0 ? filled === slots.length : filled >= t.count;
     }
     case "decayImminent":
-      return v.plot.plants.some(
-        (p) => !p.isDeadPlant && p.decaySecondsRemaining !== null && p.decaySecondsRemaining <= t.withinCycles * v.cycleSeconds + 1e-6
-      );
+      // Would actually decay (timer runs out AND minimum mutations met now), not just be extended.
+      // Dead plants don't count - neither leftovers nor layout-placed ones (only they could decay since 0.27.2).
+      return v.plot.plants.some((p) => p.kindId !== DEAD_PLANT && !p.isDeadPlant && wouldDecayWithin(v.plot, p, t.withinCycles * v.cycleSeconds));
     case "plantDecayed":
       return (v.runner.decayedInStep[t.kindId] ?? 0) >= 1;
     case "mutationSpawned":

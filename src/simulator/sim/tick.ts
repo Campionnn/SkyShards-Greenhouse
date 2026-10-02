@@ -9,16 +9,19 @@ import { applyMutationChanceBonus, rollPool, type SpawnPool } from "../spawn/poo
 import { aloeRow } from "../growth/aloe";
 import { afterAdvance, growthBlockedBy, type GateEnv } from "../growth/gates";
 import type { CycleCtx, Phase, TickScratch } from "./context";
+import { creditInputs, isPooled, minimumMet, poolSnapshot } from "./decay";
 import { phaseDestruction } from "./destruction";
 import { explode, isPrimedBlastberry } from "./explosion";
 import {
   buildOccupancy,
   convertToDeadPlant,
+  DEAD_PLANT,
   insertPlant,
   isDry,
   isFootprintFree,
   isRoot,
   newPlant,
+  removePlant,
   spawnStageOf,
 } from "./plants";
 import { bump, perPlot } from "./summary";
@@ -70,7 +73,12 @@ export const TICK_PHASES: readonly Phase[] = [
     run: phaseWater,
   },
   { id: "spawn", summary: "Every empty cell (or only slots) rolls once for a spawn (at stage 1; 0-stage kinds latch at once); uptime is booked.", run: phaseSpawn },
-  { id: "decay", summary: "Decay timers tick down; expired plants become Dead Plants.", run: phaseDecay },
+  {
+    id: "decay",
+    summary:
+      "Decay timers tick down. An expired plant decays only if its minimum mutations are met (pool snapshotted once per tick), else +24h; a decayed dead plant leaves nothing, anything else becomes a Dead Plant.",
+    run: phaseDecay,
+  },
 ];
 
 /**
@@ -245,18 +253,58 @@ function phaseWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
   }
 }
 
-/** Timers run in seconds of simulated time, so they stay right when the cycle length changes. */
+/**
+ * Decay (0.27.2 minimum mutations, sim/decay.ts). Timers run in seconds of
+ * simulated time, so they stay right when the cycle length changes.
+ *
+ * Every kind's pool is snapshotted ONCE at the start of the phase, so every
+ * pooled plant of a kind whose timer runs out this tick is judged against
+ * the same count - they decay together. When a timer runs out:
+ * - minimum met (`minimumMet`): it decays. A dead_plant (layout-placed or
+ *   left behind) leaves nothing - the cell goes empty and the player re-places
+ *   the layout's from stock. Anything else becomes a Dead Plant; a primed
+ *   Blastberry explodes.
+ * - not met: the timer is extended by `decayExtensionHours` until it is
+ *   positive again (`decayExtended`, `summary.extended`). If the minimum is
+ *   met during an extension, it decays when that extension runs out.
+ * Dead Plants are not skipped. No RNG is drawn.
+ */
 function phaseDecay(plot: PlotState, ctx: CycleCtx): void {
+  const { config } = ctx;
+  const { data } = ctx.env;
+  const pools = poolSnapshot(plot);
+  const extension = config.decayExtensionHours * 3600;
   for (const p of [...plot.plants]) {
-    if (!plot.plants.includes(p) || p.isDeadPlant || p.decaySecondsRemaining === null) continue;
+    if (!plot.plants.includes(p) || p.decaySecondsRemaining === null) continue;
     p.decaySecondsRemaining -= ctx.cycleSeconds;
     if (p.decaySecondsRemaining > 1e-6) continue;
+    const combined = pools.get(p.kindId) ?? null;
+    if (!minimumMet(p, combined)) {
+      // A non-positive extension would loop forever: the timer then just stays run out and is re-checked every tick.
+      if (extension > 0) while (p.decaySecondsRemaining <= 1e-6) p.decaySecondsRemaining += extension;
+      ctx.emit(plot.id, {
+        kind: "decayExtended",
+        plantId: p.id,
+        kindId: p.kindId,
+        row: p.row,
+        col: p.col,
+        mutatesRemaining: p.mutatesRemaining,
+        combined: isPooled(p) ? combined : null,
+      });
+      bump((ctx.state.summary.extended ??= {}), p.kindId);
+      continue;
+    }
     ctx.emit(plot.id, { kind: "decayed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col });
     bump(ctx.state.summary.decayed, p.kindId);
     perPlot(ctx.state.summary, plot.id).decayed += 1;
+    if (p.kindId === DEAD_PLANT) {
+      // A decayed dead plant leaves nothing behind (and so leaves its pool).
+      removePlant(plot, p);
+      continue;
+    }
     const primed = isPrimedBlastberry(p);
     const { id, row, col } = p;
-    convertToDeadPlant(ctx.state, p);
+    convertToDeadPlant(ctx.state, data, config, p);
     if (primed) explode(plot, { id, row, col }, ctx); // a decaying Blastberry breaks
   }
 }
@@ -404,6 +452,8 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
     plant.isRival = !!slot && winner !== slot.mutationId;
     insertPlant(plot, plant);
     for (const c of footprint(row, col, plant.size)) occ[c] = plant;
+    // Minimum mutations: the neighbours it needed have helped create it (sim/decay.ts).
+    creditInputs(plot, occ, plant, data.mutations[winner], ctx);
 
     bump(ctx.state.summary.spawned, winner);
     perPlot(ctx.state.summary, plot.id).spawned += 1;

@@ -1,9 +1,20 @@
 import React from "react";
-import { aloeRow, isDry, jellybeanMultiplier, type MutationDef, type PlantState, type SimConfig, type SlotLabel, type WatchStatus } from "../../simulator";
+import {
+  aloeRow,
+  decayStatus,
+  isDry,
+  jellybeanMultiplier,
+  type MutationDef,
+  type PlantState,
+  type PlotState,
+  type SimConfig,
+  type SlotLabel,
+  type WatchStatus,
+} from "../../simulator";
 import { effectiveEffects, effectsGivenBy, getCellPixelPosition, getEffectName, sortEffects } from "../../utilities";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage, EffectChips } from "../shared";
-import { formatDuration, kindData, nameOf } from "./format";
+import { formatCount, formatDuration, formatRemaining, kindData, nameOf } from "./format";
 
 export type TooltipTarget =
   /** watchStatus: what the uptime check saw at this plant's anchor, when it stands on a checked target cell. */
@@ -61,7 +72,9 @@ export const SimTooltip: React.FC<{
   gridHeight: number;
   cycleSeconds: number;
   config: SimConfig;
-}> = ({ target, cellSize, gap, gridWidth, gridHeight, cycleSeconds, config }) => {
+  /** The plot the target stands on (a plant's minimum-mutation pool is per plot). */
+  plot: PlotState;
+}> = ({ target, cellSize, gap, gridWidth, gridHeight, cycleSeconds, config, plot }) => {
   const row = target.kind === "plant" ? target.plant.row : target.kind === "slot" ? target.slot.row : target.row;
   const col = target.kind === "plant" ? target.plant.col : target.kind === "slot" ? target.slot.col : target.col;
   const size = target.kind === "plant" ? target.plant.size : target.kind === "slot" ? target.slot.size : kindData(target.item)?.size ?? 1;
@@ -137,7 +150,7 @@ export const SimTooltip: React.FC<{
         </p>
       )}
 
-      {target.kind === "plant" && <PlantDetails p={target.plant} m={m} cycleSeconds={cycleSeconds} config={config} />}
+      {target.kind === "plant" && <PlantDetails p={target.plant} m={m} cycleSeconds={cycleSeconds} config={config} plot={plot} />}
       {target.kind === "plant" && target.watchStatus === "halted" && (
         <p className="mt-2 text-amber-400">
           Checked target, dried out: this cell is losing uptime (halted) until the player waters it. That is downtime, not a sustainability failure.
@@ -147,11 +160,21 @@ export const SimTooltip: React.FC<{
   );
 };
 
-const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleSeconds: number; config: SimConfig }> = ({
+/** "in 2d 4h (~13 cycles), then decays" / "..., then +24h (minimum not met)" / "never decays". */
+function decayText(p: PlantState, met: boolean, cycles: number, config: SimConfig): string {
+  if (p.decaySecondsRemaining === null) return "never decays";
+  const timer = `in ${formatDuration(p.decaySecondsRemaining)} (~${cycles} cycles)`;
+  if (met) return `${timer}, then decays`;
+  const ext = `+${formatCount(config.decayExtensionHours)}h`;
+  return p.mutatesRemaining === "infinite" ? `${timer}, then ${ext} - never decays (minimum ∞)` : `${timer}, then ${ext} (minimum not met)`;
+}
+
+const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleSeconds: number; config: SimConfig; plot: PlotState }> = ({
   p,
   m,
   cycleSeconds,
   config,
+  plot,
 }) => {
   const status = statusOf(p, m, config);
   const growing = !p.isDeadPlant && p.origin !== "placed" && p.kindId !== "devourer_root";
@@ -162,6 +185,12 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
   const gives = p.isDeadPlant || p.kindId === "devourer_root" ? [] : effectsGivenBy(p.kindId, dry);
   const needsWater = p.origin === "planted" || !!m?.requiresWatering;
   const cycles = (s: number) => Math.max(0, Math.ceil(s / cycleSeconds - 1e-9));
+  const isRootPlant = p.kindId === "devourer_root";
+  // Minimum mutations: its counters, its kind's pool on this plot, and whether it would decay if its timer ran out now.
+  const decay = decayStatus(plot, p);
+  const decayCycles = p.decaySecondsRemaining !== null ? cycles(p.decaySecondsRemaining) : Infinity;
+  // Red only when it would actually decay soon - not when the timer is about to be extended.
+  const decaysSoon = decay.minimumMet && decayCycles <= 2;
 
   return (
     <div className="space-y-2">
@@ -189,12 +218,23 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
             </Row>
           )
         )}
-        {!p.isDeadPlant && p.kindId !== "devourer_root" && (
-          <Row label="Decay" tone={p.decaySecondsRemaining !== null && cycles(p.decaySecondsRemaining) <= 2 ? "text-red-300" : undefined}>
-            {p.decaySecondsRemaining !== null
-              ? `in ${formatDuration(p.decaySecondsRemaining)} (~${cycles(p.decaySecondsRemaining)} cycles)`
-              : "never decays"}
-          </Row>
+        {!isRootPlant && (
+          <>
+            <Row label="Decay" tone={decaysSoon ? "text-red-300" : undefined}>
+              {decayText(p, decay.minimumMet, decayCycles, config)}
+            </Row>
+            <Row label="Times mutated">{formatCount(decay.timesMutated)}</Row>
+            <Row label="Mutates remaining">{decay.mutatesRemaining === null ? "none (timer only)" : formatRemaining(decay.mutatesRemaining)}</Row>
+            {decay.mutatesRemaining !== null && (
+              <Row label="Pool">
+                {decay.pooled
+                  ? `combined ${formatRemaining(decay.combined)} (pooled)`
+                  : decay.timesMutated === 0
+                    ? "not pooled - hasn't helped yet"
+                    : "not pooled - still growing"}
+              </Row>
+            )}
+          </>
         )}
         {p.kindId === "all_in_aloe" && p.origin === "spawned" && (
           <>

@@ -11,7 +11,9 @@ import { LayoutPickerPanel } from "./LayoutPicker";
 import { InventoryPanel, MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
 import { FlowEditor, WatchPicker } from "./FlowEditor";
 import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
-import { ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
+import { KindDecayOverrides, ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
+import { SimTooltip } from "./SimTooltip";
+import { describeEvent } from "./format";
 
 // Server-render every simulator panel against a real simulation, to catch
 // render-time errors (no browser needed).
@@ -66,6 +68,78 @@ describe("simulator panels render", () => {
     // SSR puts a <!-- --> marker between adjacent text nodes.
     expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1");
     expect(html).toContain("Step");
+  });
+
+  it("plant hover cards show the minimum-mutation counters, the pool and what happens when the timer runs out", () => {
+    const plot = structuredClone(state.plots[0]);
+    const card = (plant: (typeof plot.plants)[number]) =>
+      renderToString(
+        <SimTooltip target={{ kind: "plant", plant }} cellSize={40} gap={2} gridWidth={420} gridHeight={420} cycleSeconds={14400} config={state.scenario.settings.config} plot={plot} />
+      ).replace(/<!-- -->/g, "");
+    const base = plot.plants.find((p) => p.origin === "planted")!;
+
+    const fresh = card({ ...base, timesMutated: 0, mutatesRemaining: 12, decaySecondsRemaining: 3600 });
+    expect(fresh).toContain("Times mutated");
+    expect(fresh).toContain("Mutates remaining");
+    expect(fresh).toContain("not pooled - hasn&#x27;t helped yet");
+    expect(fresh).toContain("then +24h (minimum not met)");
+    expect(fresh).not.toMatch(/text-red-300">in /); // it would only be extended: not shown as about to decay
+
+    // Pooled: helped and fully grown, standing on the plot (the pool is read from the plot).
+    const pooled = { ...base, id: -1, stage: base.readyStage, lockedEffects: [], timesMutated: 12, mutatesRemaining: -3, decaySecondsRemaining: 3600 };
+    plot.plants = plot.plants.map((p) => (p === base ? pooled : p));
+    const done = card(pooled);
+    expect(done).toMatch(/combined -?\d+ \(pooled\)/);
+    expect(done).toMatch(/text-red-300">in /); // it would decay if the pool is <= 0
+    plot.plants = plot.plants.map((p) => (p === pooled ? base : p));
+
+    const naCard = card({ ...base, mutatesRemaining: null, decaySecondsRemaining: 3600 });
+    expect(naCard).toContain("none (timer only)");
+    expect(naCard).toContain("then decays");
+    expect(naCard).toMatch(/text-red-300">in /);
+
+    const jelly = card({ ...base, kindId: "magic_jellybean", mutatesRemaining: "infinite", decaySecondsRemaining: null });
+    expect(jelly).toContain("∞");
+    expect(jelly).toContain("never decays");
+
+    const dead = card({ ...base, kindId: "dead_plant", isDeadPlant: true, origin: "placed", timesMutated: 0, mutatesRemaining: 10, decaySecondsRemaining: 3 * 86400 });
+    expect(dead).toContain("Mutates remaining");
+    expect(dead).toContain("then +24h (minimum not met)");
+  });
+
+  it("describeEvent: decayExtended, and a decayed dead plant leaves nothing", () => {
+    const at = { cycle: 1, plotId: 1, plantId: 1, row: 2, col: 3 };
+    expect(describeEvent({ ...at, kind: "decayExtended", kindId: "wheat", mutatesRemaining: 3, combined: null })).toBe(
+      "Wheat's decay timer ran out at (2,3) but it has 3 mutations left to help create - extended 24h"
+    );
+    expect(describeEvent({ ...at, kind: "decayExtended", kindId: "wheat", mutatesRemaining: -1, combined: 5 })).toContain("shared pool");
+    expect(describeEvent({ ...at, kind: "decayed", kindId: "dead_plant" })).toBe("Dead Plant decayed at (2,3)");
+    expect(describeEvent({ ...at, kind: "decayed", kindId: "wheat" })).toBe("Wheat decayed at (2,3) and left a Dead Plant");
+  });
+
+  it("the outcomes list counts decay extensions, and tolerates a summary without them", () => {
+    const summary = { ...state.summary, extended: { wheat: 3 } };
+    const html = wrap(<SustainabilityPanel report={view.snapshot!.report} summary={summary} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("decay timers extended (minimum not met)");
+    const old: Partial<typeof state.summary> = { ...state.summary };
+    delete old.extended;
+    expect(() => wrap(<SustainabilityPanel report={view.snapshot!.report} summary={old as typeof state.summary} />)).not.toThrow();
+  });
+
+  it("the Advanced tab counts per-kind decay overrides", () => {
+    const tuned = structuredClone(sc);
+    tuned.settings.config.decayDaysOverrides = { wheat: 2 };
+    tuned.settings.config.minimumMutationsOverrides = { wheat: 3, chloronite: "none" };
+    const html = wrap(<SettingsPanel scenario={tuned} onChange={() => {}} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("Advanced (2)"); // one per kind overridden
+
+    const table = wrap(<KindDecayOverrides config={tuned.settings.config} onChange={() => {}} />).replace(/<!-- -->/g, "");
+    expect(table).toContain("Decay per kind");
+    expect(table).toContain("Wheat");
+    expect(table).toContain("Chloronite");
+    expect(table).toContain("Override"); // the add picker
+    const empty = wrap(<KindDecayOverrides config={sc.settings.config} onChange={() => {}} />).replace(/<!-- -->/g, "");
+    expect(empty).toContain("Every kind uses the game data");
   });
 
   it("the legend omits freezing and does not promise eligibility before evaluation", () => {

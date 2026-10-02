@@ -1,6 +1,6 @@
 import type { SimConfig } from "../config";
 import { kindDef } from "../data/load";
-import type { GameData, KindId, MutationDef, Size } from "../data/types";
+import type { GameData, KindDef, KindId, MinimumMutations, MutationDef, Size } from "../data/types";
 import { footprint, TOTAL_CELLS } from "../grid/cells";
 import type { Origin, PlantState, PlotState, SimulationState } from "./state";
 
@@ -9,8 +9,26 @@ export const DEAD_PLANT = "dead_plant";
 export const DEVOURER_ROOT = "devourer_root";
 export const isRoot = (p: PlantState): boolean => p.kindId === DEVOURER_ROOT;
 
-export function decayDaysOf(m: MutationDef, config: SimConfig): number {
-  return config.decayDaysOverrides[m.id] ?? m.decayDays;
+/**
+ * A kind's decay timer in DAYS: `decayDaysOverrides` first (any kind, crops
+ * included), else data.json (`decay`). 0 = it never decays.
+ */
+export function decayDaysOf(def: Pick<KindDef, "id" | "decayDays">, config: Pick<SimConfig, "decayDaysOverrides">): number {
+  return config.decayDaysOverrides?.[def.id] ?? def.decayDays;
+}
+
+/**
+ * A kind's minimum mutation value with `minimumMutationsOverrides` applied
+ * ("none" = N/A, timer-only). Unknown kinds (Devourer roots) have none.
+ */
+export function minimumMutationsOf(
+  kindId: KindId,
+  data: GameData,
+  config: Pick<SimConfig, "minimumMutationsOverrides">
+): MinimumMutations {
+  const o = config.minimumMutationsOverrides?.[kindId];
+  if (o !== undefined) return o === "none" ? null : o;
+  return kindDef(data, kindId)?.minimumMutations ?? null;
 }
 
 /**
@@ -48,11 +66,15 @@ export function spawnedDecaySeconds(m: MutationDef, config: SimConfig, cycleSeco
   return days > 0 ? days * 86400 : null;
 }
 
-function baseCropDecaySeconds(config: SimConfig): number | null {
-  return config.baseCropDecayHours > 0 ? config.baseCropDecayHours * 3600 : null;
-}
-
-/** The timer a freshly planted / placed / spawned plant starts with. */
+/**
+ * The timer a freshly planted / placed / spawned plant starts with, in
+ * seconds; null = it never decays. Only the TIMER: whether it actually decays
+ * when the timer runs out also depends on its minimum mutations (sim/decay.ts).
+ * - a natural spawn: `spawnedDecaySeconds` (harvestWindowCycles, else its decay days);
+ * - anything else: its kind's decay days (`decayDaysOf`): 3 for base crops
+ *   and dead_plant, 0 (never) for fire and fermento, the mutation's own for
+ *   placed items.
+ */
 export function initialDecaySeconds(
   data: GameData,
   config: SimConfig,
@@ -63,13 +85,10 @@ export function initialDecaySeconds(
   const m = data.mutations[kindId];
   // A natural spawn decays from the tick it appears, even while it grows.
   if (origin === "spawned") return m ? spawnedDecaySeconds(m, config, cycleSeconds) : null;
-  if (m) {
-    const days = decayDaysOf(m, config);
-    return days > 0 ? days * 86400 : null;
-  }
-  const c = data.crops[kindId];
-  if (c && c.growthStages === null) return config.nullStageKindsDecay ? baseCropDecaySeconds(config) : null;
-  return baseCropDecaySeconds(config);
+  const def = kindDef(data, kindId);
+  if (!def) return null;
+  const days = decayDaysOf(def, config);
+  return days > 0 ? days * 86400 : null;
 }
 
 export function newPlant(
@@ -99,6 +118,8 @@ export function newPlant(
     readyStage: 0,
     fullyGrownAtCycle: null,
     decaySecondsRemaining: initialDecaySeconds(data, config, kindId, origin, cycleSeconds),
+    timesMutated: 0,
+    mutatesRemaining: minimumMutationsOf(kindId, data, config),
     water: config.maxWater,
     held: [],
     lockedEffects: null,
@@ -151,6 +172,9 @@ export function newRoot(state: SimulationState, config: SimConfig, row: number, 
     readyStage: 0,
     fullyGrownAtCycle: cycle,
     decaySecondsRemaining: null,
+    // Not in data.json: no minimum, never credited (never a requirement), never decays.
+    timesMutated: 0,
+    mutatesRemaining: null,
     water: config.maxWater,
     held: [],
     lockedEffects: null,
@@ -161,8 +185,14 @@ export function newRoot(state: SimulationState, config: SimConfig, row: number, 
   };
 }
 
-/** Turn a plant into the Dead Plant it leaves behind (same footprint, a real dead_plant). */
-export function convertToDeadPlant(state: SimulationState, plant: PlantState): void {
+/**
+ * Turn a plant into the Dead Plant it leaves behind (same footprint, a real
+ * dead_plant). It gets the dead_plant timer (3 days, overrides applied) and
+ * fresh counters (helped 0 times, its own minimum of 10 left): having never
+ * helped, it doesn't decay on its own - the player clears it at the next
+ * session.
+ */
+export function convertToDeadPlant(state: SimulationState, data: GameData, config: SimConfig, plant: PlantState): void {
   plant.id = state.nextPlantId++;
   plant.kindId = DEAD_PLANT;
   plant.origin = "placed";
@@ -172,7 +202,9 @@ export function convertToDeadPlant(state: SimulationState, plant: PlantState): v
   plant.growthStages = 0;
   plant.readyStage = 0;
   plant.fullyGrownAtCycle = null;
-  plant.decaySecondsRemaining = null;
+  plant.decaySecondsRemaining = initialDecaySeconds(data, config, DEAD_PLANT, "placed", 0);
+  plant.timesMutated = 0;
+  plant.mutatesRemaining = minimumMutationsOf(DEAD_PLANT, data, config);
   plant.lockedEffects = null;
   plant.held = [];
   plant.skipNextGrowth = false;

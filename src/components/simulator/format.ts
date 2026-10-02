@@ -90,6 +90,26 @@ export { describeCondition, describeConditions, describeTrigger };
 export const debtText = (d: Parameters<typeof describeDebt>[0]) => describeDebt(d, nameOf);
 export const spotFailureText = (s: SpotReport) => describeSpotFailure(s, nameOf);
 
+/** A remaining-mutations count as text: "∞", "none", or the number. */
+export function formatRemaining(r: number | "infinite" | null): string {
+  if (r === "infinite") return "∞";
+  if (r === null) return "none";
+  return formatCount(r);
+}
+
+const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+
+/** Why a decay timer was extended, for `decayExtended`. */
+function describeRemaining(own: number | "infinite" | null, combined: number | "infinite" | null): string {
+  if (combined !== null) {
+    if (combined === "infinite") return "its kind's shared pool never runs out";
+    return `its kind still has ${formatCount(combined)} ${plural(combined, "mutation", "mutations")} left to help create (shared pool)`;
+  }
+  if (own === "infinite") return "it never runs out of mutations to help create";
+  if (typeof own === "number") return `it has ${formatCount(own)} ${plural(own, "mutation", "mutations")} left to help create`;
+  return "its minimum is not met";
+}
+
 /** One human sentence per event, for the recent-events log. */
 export function describeEvent(e: TimedEvent): string {
   const at = "row" in e ? ` at (${e.row},${e.col})` : "";
@@ -103,7 +123,10 @@ export function describeEvent(e: TimedEvent): string {
       return `Harvested ${nameOf(e.kindId)}${at}: ${items || "nothing"} (${formatCoins(e.coinValue)} coins)`;
     }
     case "decayed":
-      return `${nameOf(e.kindId)} decayed${at} and left a Dead Plant`;
+      // A dead plant that decays leaves nothing behind (the player re-places the layout's from stock).
+      return e.kindId === "dead_plant" ? `${nameOf(e.kindId)} decayed${at}` : `${nameOf(e.kindId)} decayed${at} and left a Dead Plant`;
+    case "decayExtended":
+      return `${nameOf(e.kindId)}'s decay timer ran out${at} but ${describeRemaining(e.mutatesRemaining, e.combined)} - extended 24h`;
     case "driedOut":
       return `${nameOf(e.kindId)} dried out${at}: halted until watered (no growth, no effects given, not counted for mutations or unique crops)`;
     case "destroyed":

@@ -1,5 +1,5 @@
 // Upgrades scenario JSON saved before the stage -> step rename, and config
-// keys renamed since (localStorage and exported flow files). Pure: returns a converted copy and leaves the
+// keys renamed or reshaped since (localStorage and exported flow files). Pure: returns a converted copy and leaves the
 // input untouched. Unknown input is returned as it is; callers validate.
 
 type Json = Record<string, unknown>;
@@ -11,6 +11,51 @@ const RENAMED_CONFIG: Record<string, string> = {
   // 0.27.2: a plant at this water level halts instead of dying.
   deathWater: "haltWater",
 };
+
+/**
+ * The 14 harvestable base crops (data.json crops with growth stages; not
+ * fire / dead_plant / fermento). Hard-coded so migration stays independent of
+ * the game data; scenarioEdit.test.ts checks it against data.json.
+ */
+export const BASE_CROP_IDS: readonly string[] = [
+  "wheat",
+  "potato",
+  "carrot",
+  "pumpkin",
+  "melon",
+  "cocoa_beans",
+  "sugar_cane",
+  "cactus",
+  "nether_wart",
+  "red_mushroom",
+  "brown_mushroom",
+  "moonflower",
+  "sunflower",
+  "wild_rose",
+];
+
+/** 0.27.2: base-crop decay now comes from data.json (3 days). The old default. */
+const OLD_BASE_CROP_DECAY_HOURS = 72;
+
+/**
+ * 0.27.2 decay rework: `baseCropDecayHours` became per-crop `decayDaysOverrides`
+ * (only when it differed from the old 72 h default; 0 stays 0 = never; a crop
+ * already overridden keeps its override), and `nullStageKindsDecay` is gone
+ * (dead plants now decay on their data.json timer; fire and fermento never).
+ */
+function migrateDecayConfig(config: Json): void {
+  if ("baseCropDecayHours" in config) {
+    const hours = config.baseCropDecayHours;
+    if (typeof hours === "number" && Number.isFinite(hours) && hours !== OLD_BASE_CROP_DECAY_HOURS) {
+      const overrides: Json = isObj(config.decayDaysOverrides) ? { ...config.decayDaysOverrides } : {};
+      const days = Math.max(0, hours) / 24;
+      for (const id of BASE_CROP_IDS) if (!(id in overrides)) overrides[id] = days;
+      config.decayDaysOverrides = overrides;
+    }
+    delete config.baseCropDecayHours;
+  }
+  delete config.nullStageKindsDecay;
+}
 
 function migrateCondition(c: unknown): unknown {
   if (!isObj(c)) return c;
@@ -50,6 +95,7 @@ export function migrateScenario<T>(raw: T): T {
         delete config[from];
       }
     }
+    migrateDecayConfig(config);
     out.settings = { ...settings, config };
   }
   return out as T;
