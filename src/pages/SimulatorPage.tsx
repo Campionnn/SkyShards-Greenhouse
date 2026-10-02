@@ -148,6 +148,21 @@ export const SimulatorPage: React.FC = () => {
           answer has to be simulated.
         </InfoHint>
         <span className="text-xs text-slate-500 hidden md:inline">Evaluates one scenario. Step and Run use the same engine.</span>
+        {state && (
+          <div className="flex items-center gap-2 ml-auto">
+            {sanityCheckOn && <span className="text-xs text-slate-500 hidden sm:inline">Hover an empty cell or target slot.</span>}
+            <button
+              type="button"
+              className={`${sanityCheckOn ? buttonClass.primary : buttonClass.neutral} flex-shrink-0`}
+              aria-pressed={sanityCheckOn}
+              onClick={() => setSanityCheckOn((on) => !on)}
+              title="Hover an empty cell or target slot to see which mutations could spawn there now, and why the others can't"
+            >
+              <ScanSearch className="w-3 h-3" />
+              Sanity Check
+            </button>
+          </div>
+        )}
       </div>
 
       <RunControls
@@ -166,19 +181,6 @@ export const SimulatorPage: React.FC = () => {
       <div className="space-y-4 min-w-0">
           {state ? (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className={`${sanityCheckOn ? buttonClass.primary : buttonClass.neutral} flex-shrink-0`}
-                  aria-pressed={sanityCheckOn}
-                  onClick={() => setSanityCheckOn((on) => !on)}
-                  title="Hover an empty cell or target slot to see which mutations could spawn there now, and why the others can't"
-                >
-                  <ScanSearch className="w-3 h-3" />
-                  Sanity Check
-                </button>
-                {sanityCheckOn && <span className="text-xs text-slate-500">Hover an empty cell or target slot.</span>}
-              </div>
               {plotIds.length > 1 && (
                 <SegmentedControl
                   size="xs"
