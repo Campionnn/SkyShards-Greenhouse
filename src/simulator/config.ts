@@ -30,6 +30,10 @@ export interface SimConfig {
   uniqueCropGrowthPerCrop: number;
   /** Harvest yield per unique crop counted (0.27.2 patch notes: +2.5%, so +25% at the cap). */
   uniqueCropYieldPerCrop: number;
+  /** Thunderling charge gained per growth stage (wiki). */
+  thunderlingChargePerStage: number;
+  /** Thunderling charge at which it stops growing until discharged (wiki). */
+  thunderlingMaxCharge: number;
   /** Base-crop decay timer (added 2026-08-20). */
   baseCropDecayHours: number;
 
@@ -98,6 +102,8 @@ export const DEFAULT_CONFIG: SimConfig = {
   uniqueCropCap: 10,
   uniqueCropGrowthPerCrop: 0.025,
   uniqueCropYieldPerCrop: 0.025,
+  thunderlingChargePerStage: 2000,
+  thunderlingMaxCharge: 16000,
   baseCropDecayHours: 72,
 
   maxWater: 100,
@@ -156,6 +162,8 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "uniqueCropCap", label: "Unique crop bonus cap", group: "verified", input: { type: "number", min: 0, step: 1 }, description: "Most unique crops the Unique Crop Bonus counts (0.27.2 patch notes: 10). The unique crop groups standing on all plots, plus the Flora shard, count up to this many." },
   { key: "uniqueCropGrowthPerCrop", label: "Unique crop growth bonus", group: "verified", input: { type: "number", min: 0, step: 0.005 }, description: "Growth speed added per unique crop counted (0.27.2 patch notes: +2.5% each, +25% at 10)." },
   { key: "uniqueCropYieldPerCrop", label: "Unique crop yield bonus", group: "verified", input: { type: "number", min: 0, step: 0.005 }, description: "Harvest yield added per unique crop counted (0.27.2 patch notes: +2.5% each, +25% at 10)." },
+  { key: "thunderlingChargePerStage", label: "Thunderling charge per stage", group: "verified", input: { type: "number", min: 0 }, description: "Charge a spawned Thunderling gains per growth stage (wiki: 2,000). It starts at 0." },
+  { key: "thunderlingMaxCharge", label: "Thunderling max charge", group: "verified", input: { type: "number", min: 1 }, description: "At this charge a Thunderling stops growing (it still counts for requirements and shares effects) until the player discharges it. No more charge builds above it." },
   { key: "baseCropDecayHours", label: "Base crop decay (h)", group: "verified", input: { type: "number", min: 0 }, description: "Base crops decay this long after planting. 0 = never." },
 
   { key: "maxWater", label: "Max water", group: "unpublished", ref: "Q3", input: { type: "number", min: 0 }, description: "Water level after watering." },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ALOE_FRAGMENT, aloeHarvestItems, aloeRow } from "../growth/aloe";
+import { DEFAULT_POLICIES, mergePolicies } from "../flow/policies";
 import { engine, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, step, start } from "../testHelpers";
 import type { ActivitySchedule, TimedEvent } from "./state";
 
@@ -341,5 +342,93 @@ describe("Failed minigames (PlantBoy Advance, Stoplight Petal, Phantomleaf)", ()
     const r = engine.run(s, 1, { retainEvents: "all" });
     expect(ofKind(r.events, "minigameFailed")).toHaveLength(0);
     expect(ofKind(r.events, "harvested")).toHaveLength(1);
+  });
+});
+describe("Thunderling charge", () => {
+  const everyCycle: ActivitySchedule = { kind: "everyN", n: 1, offset: 0 };
+  const spawn = (s: ReturnType<typeof blank>) => inject(s, 1, "thunderling", 5, 5, "spawned");
+
+  it("starts at 0 charge, gains 2000 per stage, and stops exactly at 16,000 (stage 9) and stays there", () => {
+    const s = blank();
+    const p = spawn(s);
+    expect(p.stage).toBe(1);
+    expect(p.gate.charge).toBe(0);
+
+    const three = engine.run(s, 3).state;
+    expect(plantAt(three, 1, 5, 5)).toMatchObject({ stage: 4 });
+    expect(plantAt(three, 1, 5, 5)!.gate.charge).toBe(6000);
+
+    const r = engine.run(s, 8, { retainEvents: "all" });
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 9 }); // 8 stages after spawning
+    expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBe(16000);
+    expect(ofKind(r.events, "growthBlocked")).toHaveLength(0);
+
+    const later = engine.run(r.state, 10, { retainEvents: "all" });
+    expect(plantAt(later.state, 1, 5, 5)).toMatchObject({ stage: 9 });
+    expect(plantAt(later.state, 1, 5, 5)!.gate.charge).toBe(16000); // no charge above the max
+    expect(ofKind(later.events, "growthBlocked").every((e) => e.kindId === "thunderling" && e.gate === "overcharged")).toBe(true);
+    expect(ofKind(later.events, "growthBlocked")).toHaveLength(10);
+    expect(ofKind(later.events, "advanced")).toHaveLength(0);
+  });
+
+  it("an overcharged Thunderling still counts as standing (a growth stop only)", () => {
+    const s = blank();
+    spawn(s);
+    const halted = plantAt(engine.run(s, 12).state, 1, 5, 5)!;
+    expect(halted.isDeadPlant).toBe(false);
+    expect(halted.stage).toBe(9);
+  });
+
+  it("discharging resumes growth", () => {
+    const s = blank();
+    spawn(s);
+    const halted = engine.run(s, 12).state;
+    expect(plantAt(halted, 1, 5, 5)).toMatchObject({ stage: 9 });
+
+    halted.scenario.settings.activity = everyCycle;
+    const r = engine.run(halted, 1);
+    expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBe(0); // the session discharged it
+    const grown = engine.run(r.state, 1);
+    expect(plantAt(grown.state, 1, 5, 5)).toMatchObject({ stage: 10 });
+  });
+
+  it("an online player discharges every session, so it never halts", () => {
+    const s = blank(everyCycle);
+    spawn(s);
+    const r = engine.run(s, 7);
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 8 });
+    expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBe(0);
+  });
+
+  it("with the discharge toggle off it halts for good, even when the player is online", () => {
+    const s = start(
+      scenario([flow([step("a", layout())])], { config: slotsOnly, activity: everyCycle, policies: { gateInteractions: { dischargeThunderling: false } } })
+    );
+    spawn(s);
+    const r = engine.run(s, 20);
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 9 });
+    expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBe(16000);
+  });
+
+  it("the charge numbers come from the config", () => {
+    const s = blank(NEVER_ACTIVE, { thunderlingChargePerStage: 5000, thunderlingMaxCharge: 10000 });
+    spawn(s);
+    const r = engine.run(s, 6);
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 3 });
+    expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBe(10000);
+  });
+
+  it("the discharge policy defaults on and survives partial gateInteractions overrides (old saves get it)", () => {
+    expect(DEFAULT_POLICIES.gateInteractions.dischargeThunderling).toBe(true);
+    const merged = mergePolicies(DEFAULT_POLICIES, { gateInteractions: { wakeSnoozling: false } });
+    expect(merged.gateInteractions).toMatchObject({ wakeSnoozling: false, dischargeThunderling: true });
+  });
+
+  it("a placed Thunderling does not grow, so it has no charge", () => {
+    const s = blank();
+    const p = inject(s, 1, "thunderling", 5, 5, "placed");
+    expect(p.gate.charge).toBeUndefined();
+    const r = engine.run(s, 5);
+    expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBeUndefined();
   });
 });

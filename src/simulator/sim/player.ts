@@ -19,12 +19,13 @@ function water(plot: PlotState, ctx: CycleCtx): void {
   for (const p of plot.plants) if (p.kindId !== "soggybud") p.water = ctx.config.maxWater; // Soggybud can't be watered
 }
 
-/** Special-mutation interactions: wake Snoozling, vacuum the Cheesebite rat, feed Fleshtrap. */
+/** Special-mutation interactions: wake Snoozling, vacuum the Cheesebite rat, discharge Thunderling, feed Fleshtrap. */
 function tendGates(plot: PlotState, ctx: CycleCtx): void {
   const g = ctx.policiesFor(plot.id).gateInteractions;
   for (const p of plot.plants) {
     if (g.wakeSnoozling && p.gate.asleep) p.gate.asleep = false;
     if (g.vacuumRat && p.gate.ratAlive) p.gate.ratAlive = false;
+    if (g.dischargeThunderling && p.gate.charge) p.gate.charge = 0;
     if (g.feedFleshtrap && p.kindId === "fleshtrap" && p.origin === "spawned") {
       p.gate.hunger = (p.gate.hunger ?? 0) + ctx.config.fleshtrapFeedHunger;
     }
@@ -148,7 +149,7 @@ export const PLAYER_PHASES: readonly Phase[] = [
     run: (plot, ctx) => ctx.emit(plot.id, { kind: "playerSession" }),
   },
   { id: "water", summary: "Water every plant to max (watering: toMax). Soggybud can't be watered.", run: water },
-  { id: "gates", summary: "Wake Snoozling, vacuum the Cheesebite rat, feed Fleshtrap (gateInteractions).", run: tendGates },
+  { id: "gates", summary: "Wake Snoozling, vacuum the Cheesebite rat, discharge Thunderling, feed Fleshtrap (gateInteractions).", run: tendGates },
   { id: "roots", summary: "Break Devourer roots (clearRoots).", run: clearRoots },
   { id: "harvest", summary: "Harvest natural spawns (spawnedHarvest, layoutInputSpawns).", run: harvestSpawns },
   { id: "baseCrops", summary: "Harvest and replant base crops (baseCropUpkeep).", run: tendBaseCrops },

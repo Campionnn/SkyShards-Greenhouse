@@ -5,7 +5,7 @@ export const DEFAULT_POLICIES: Policies = {
   layoutInputSpawns: "keep",
   baseCropUpkeep: "leaveUntilDecay",
   watering: "toMax",
-  gateInteractions: { wakeSnoozling: true, vacuumRat: true, noctilumeTime: true, feedFleshtrap: true, clearRoots: true },
+  gateInteractions: { wakeSnoozling: true, vacuumRat: true, dischargeThunderling: true, noctilumeTime: true, feedFleshtrap: true, clearRoots: true },
   replaceDecayed: true,
   fixGround: true,
 };

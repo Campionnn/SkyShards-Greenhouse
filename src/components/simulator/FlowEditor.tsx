@@ -551,6 +551,7 @@ const POLICY_FIELDS: { key: "spawnedHarvest" | "layoutInputSpawns" | "baseCropUp
 const GATE_FIELDS: { key: keyof Policies["gateInteractions"]; label: string }[] = [
   { key: "wakeSnoozling", label: "Wake Snoozling" },
   { key: "vacuumRat", label: "Vacuum Cheesebite rats" },
+  { key: "dischargeThunderling", label: "Discharge Thunderlings" },
   { key: "noctilumeTime", label: "Change time for Noctilume" },
   { key: "feedFleshtrap", label: "Feed Fleshtrap" },
   { key: "clearRoots", label: "Break Devourer roots" },

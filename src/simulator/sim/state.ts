@@ -48,6 +48,8 @@ export interface PlantState {
     asleep?: boolean;
     ratAlive?: boolean;
     hunger?: number;
+    /** Thunderling: charge built up by growing (+2000 per stage); halts at the max until discharged. Spawned only. */
+    charge?: number;
     /** Blastberry: explodes when broken. Natural: primed once fully grown; placed: primed at the next tick. */
     primed?: boolean;
     /** Turtlellini: times caught in a Blastberry explosion (2 = Shellfruit). */

@@ -89,6 +89,8 @@ export interface Policies {
   gateInteractions: {
     wakeSnoozling: boolean;
     vacuumRat: boolean;
+    /** Discharge Thunderlings (charge back to 0) each session. */
+    dischargeThunderling: boolean;
     noctilumeTime: boolean;
     feedFleshtrap: boolean;
     /** Break Devourer roots. */

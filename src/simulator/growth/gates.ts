@@ -45,6 +45,14 @@ export const GATES: Record<string, Gate> = {
     // whenever they are online, so it advances on online ticks only.
     blocks: (_p, env) => (env.active && env.noctilumeTimeChange ? null : "waiting for the player to set the time"),
   },
+  thunderling: {
+    // Charge builds +perStage per stage grown; at the max it stops growing (a growth stop only)
+    // until the player discharges it. A placed Thunderling never grows, so it builds none.
+    blocks: (p, env) => ((p.gate.charge ?? 0) >= env.config.thunderlingMaxCharge ? "overcharged" : null),
+    onAdvanced: (p, env) => {
+      p.gate.charge = Math.min(env.config.thunderlingMaxCharge, (p.gate.charge ?? 0) + env.config.thunderlingChargePerStage);
+    },
+  },
   fleshtrap: {
     blocks: (p) => ((p.gate.hunger ?? 0) <= 0 ? "hungry" : null),
     onAdvanced: (p, env) => {
@@ -55,7 +63,7 @@ export const GATES: Record<string, Gate> = {
 
 /** Kinds whose rules are documented but deliberately not modelled, with the reason. */
 export const UNMODELLED_RULES: Record<string, string> = {
-  thunderling: "Charge build-up source is unpublished; the 16,000-charge explosion is not modelled.",
+  thunderling: "Discharging into Thunder/Storm/Hurricane in a Bottle (bottle charge) is not modelled.",
   fleshtrap: "Feeding bonus drops (+20/+40%, cap +100%) are not modelled.",
   zombud: "Zombud mob fight assumed won (1 Zombud per adjacent Dead Plant). Decay just leaves a Dead Plant; no mobs.",
   timestalk: "Harvest-time clone fight assumed won (1 Timestalk per harvest, no yield scaling).",
