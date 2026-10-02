@@ -32,8 +32,25 @@ export interface PlantState {
   /** Stage at which it counts as fully grown / harvestable (Glasscorn 7, All-in Aloe configurable). */
   readyStage: number;
   fullyGrownAtCycle: number | null;
-  /** Seconds until decay; null = the kind never decays (a spawned mutation gets one at spawn). */
+  /**
+   * Seconds until the decay timer runs out; null = the kind never decays (a
+   * spawned mutation gets one at spawn). When it runs out the plant only
+   * decays if its minimum mutations are met (sim/decay.ts); otherwise the
+   * timer is extended by `decayExtensionHours`.
+   */
   decaySecondsRemaining: number | null;
+  /**
+   * How many mutation spawns this plant has helped create (0.27.2): it was
+   * credited as one of a new spawn's listed requirements in the spawn's ring.
+   */
+  timesMutated: number;
+  /**
+   * Mutations it still has to help create before it may decay: its kind's
+   * minimum (overrides applied) minus `timesMutated`. May go negative.
+   * `"infinite"` never runs out (Magic Jellybean: never decays); null = N/A,
+   * no minimum (timer-only decay; also Devourer roots).
+   */
+  mutatesRemaining: number | "infinite" | null;
   water: number;
   /** Raw held effects (drives propagation and Godseed). */
   held: EffectId[];
@@ -255,6 +272,13 @@ export interface RunSummary {
   harvested: Record<KindId, number>;
   /** Plants lost to decay, by kind. */
   decayed: Record<KindId, number>;
+  /**
+   * Decay timers that ran out while the plant's minimum mutations were not
+   * met, so the timer was extended (`decayExtensionHours`), by kind. Counted
+   * once per expiry. A state from before it existed may lack it: the engine
+   * creates it on first use and the UI reads it as empty.
+   */
+  extended: Record<KindId, number>;
   destroyed: Record<KindId, number>;
   /** Plants that dried out (water reached haltWater) and halted until watered, by kind. Counted each time one dries out. */
   driedOut: Record<KindId, number>;
@@ -315,6 +339,14 @@ export type TickEvent =
   | { kind: "rootSpread"; row: number; col: number; fromRow: number; fromCol: number }
   | { kind: "converted"; from: ItemId; to: ItemId; count: number }
   | { kind: "decayed"; plantId: number; kindId: KindId; row: number; col: number }
+  /**
+   * Its decay timer ran out but its minimum mutations are not met, so the
+   * timer was extended (by `decayExtensionHours`, as many times as needed).
+   * `mutatesRemaining` is its own count; `combined` is its kind's pool on the
+   * plot when it is pooled (null when not pooled).
+   */
+  | { kind: "decayExtended"; plantId: number; kindId: KindId; row: number; col: number;
+      mutatesRemaining: number | "infinite" | null; combined: number | "infinite" | null }
   /** Water reached haltWater: the plant halts (no growth, no effects given, not counted) until watered. */
   | { kind: "driedOut"; plantId: number; kindId: KindId; row: number; col: number }
   | { kind: "harvested"; plantId: number; kindId: KindId; row: number; col: number; origin: Origin;

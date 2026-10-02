@@ -2,8 +2,8 @@
 // deliberately NOT exported: callers advance time only through run().
 
 export { createEngine, type Engine } from "./engine";
-export { CONFIG_META, DEFAULT_CONFIG, withConfigDefaults } from "./config";
-export type { ConfigGroup, ConfigMeta, SimConfig } from "./config";
+export { CONFIG_META, DEFAULT_CONFIG, MUTATION_CREDIT_ORDERS, withConfigDefaults } from "./config";
+export type { ConfigGroup, ConfigMeta, MinimumMutationsOverride, MutationCreditOrder, SimConfig } from "./config";
 export { defaultGameData } from "./data/default";
 export { GameDataError, isHarvestableCrop, kindDef, loadGameData } from "./data/load";
 export type * from "./data/types";
@@ -33,6 +33,9 @@ export {
   type ArmorSet,
 } from "./economy/rareCrops";
 export { UNMODELLED_RULES } from "./growth/gates";
-export { isDry } from "./sim/plants";
+export { decayDaysOf, isDry, minimumMutationsOf } from "./sim/plants";
+// Read-only minimum-mutation helpers for the UI (pure; never mutate a state).
+export { combinedRemaining, decayStatus, isPooled, minimumMet, wouldDecayWithin } from "./sim/decay";
+export type { DecayStatus, MutatesRemaining } from "./sim/decay";
 export { ALOE_FRAGMENT, ALOE_OPTIMAL_STAGE, aloeHarvestItems, aloeRow } from "./growth/aloe";
 export type * from "./sim/state";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ALOE_FRAGMENT, aloeHarvestItems, aloeRow } from "../growth/aloe";
 import { DEFAULT_POLICIES, mergePolicies } from "../flow/policies";
-import { engine, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, step, start } from "../testHelpers";
+import { engine, flow, inject, layout, NEVER_ACTIVE, NO_BASE_CROP_DECAY, plantAt, scenario, step, start, TIMER_ONLY } from "../testHelpers";
 import type { ActivitySchedule, TimedEvent } from "./state";
 
 const slotsOnly = { spawnCells: "slotsOnly" as const };
@@ -27,7 +27,7 @@ describe("Soggybud", () => {
 
     // The player keeps the wheat watered; wheat decay is off so the neighbours stay put, and the
     // Soggybud's own 3-day timer is stretched out so the water mechanic is what this test measures.
-    const grown = blank({ kind: "everyN", n: 1, offset: 0 }, { baseCropDecayHours: 0, decayDaysOverrides: { soggybud: 30 } });
+    const grown = blank({ kind: "everyN", n: 1, offset: 0 }, { decayDaysOverrides: { ...NO_BASE_CROP_DECAY.decayDaysOverrides, soggybud: 30 } });
     inject(grown, 1, "soggybud", 5, 5, "spawned");
     inject(grown, 1, "wheat", 5, 4, "planted");
     inject(grown, 1, "wheat", 5, 6, "planted");
@@ -41,7 +41,8 @@ describe("Soggybud", () => {
 
   it("with only 2 neighbours its 3-day timer runs out before it finishes growing", () => {
     // 4 water a tick means 25 ticks to mature, but a spawn only lives 3 days (~18-19 cycles).
-    const s = blank();
+    // Timer-only: it never helped a mutation, so its minimum (8) would otherwise extend it.
+    const s = blank(NEVER_ACTIVE, TIMER_ONLY);
     inject(s, 1, "soggybud", 5, 5, "spawned");
     inject(s, 1, "wheat", 5, 4, "planted");
     inject(s, 1, "wheat", 5, 6, "planted");
@@ -237,7 +238,8 @@ describe("Zombud", () => {
   });
 
   it("decay just leaves a Dead Plant: the adjacent dead plants stay and nothing drops", () => {
-    const s = blank(NEVER_ACTIVE, { harvestWindowCycles: 2 });
+    // Timer-only: the Zombud never helped a mutation, so its minimum (6) would otherwise extend it.
+    const s = blank(NEVER_ACTIVE, { harvestWindowCycles: 2, ...TIMER_ONLY });
     inject(s, 1, "zombud", 5, 5, "spawned", grown);
     inject(s, 1, "dead_plant", 4, 4, "placed");
     const r = engine.run(s, 3);

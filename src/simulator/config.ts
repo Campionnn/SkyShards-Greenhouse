@@ -10,6 +10,18 @@
 export type WeightModel = "ceiling" | "support";
 export type SpawnCells = "allEmpty" | "slotsOnly";
 export type ChorusTeleport = "emptyOnly" | "anyCell";
+/**
+ * Which ring neighbours a new spawn credits when more of a required kind
+ * stand there than its requirement count (unpublished; sim/decay.ts):
+ * - ringOrder: ring cell index ascending (row by row from the top-left), no RNG;
+ * - mostRemainingFirst: the ones with the most mutations left to help (spreads the use);
+ * - fewestRemainingFirst: the ones with the fewest left (uses the same ones up);
+ * - random: a seeded shuffle (draws RNG only when selected).
+ */
+export type MutationCreditOrder = "ringOrder" | "mostRemainingFirst" | "fewestRemainingFirst" | "random";
+export const MUTATION_CREDIT_ORDERS: readonly MutationCreditOrder[] = ["ringOrder", "mostRemainingFirst", "fewestRemainingFirst", "random"];
+/** A per-kind minimum mutations override: a count, "infinite" (never decays) or "none" (N/A: timer-only). */
+export type MinimumMutationsOverride = number | "infinite" | "none";
 
 export interface SimConfig {
   // ---- Verified ----
@@ -44,19 +56,32 @@ export interface SimConfig {
   thunderlingChargePerStage: number;
   /** Thunderling charge at which it stops growing until discharged (wiki). */
   thunderlingMaxCharge: number;
-  /** Base-crop decay timer (added 2026-08-20). */
-  baseCropDecayHours: number;
+  /**
+   * 0.27.2: a decay timer that runs out while the plant's minimum mutations
+   * are not met is extended by this many hours (as often as needed).
+   */
+  decayExtensionHours: number;
 
   // ---- Unpublished: reasoned defaults ----
   maxWater: number;
   /** Chance a stage is skipped while water < 0 (Q9). */
   negativeWaterSkipChance: number;
-  /** Whole life of a natural spawn, in cycles from the tick it spawns. 0 = use its own decay timer (Q16b). */
+  /**
+   * A natural spawn's decay TIMER, in cycles from the tick it spawns. 0 = use
+   * its own decay timer (Q16b). Timer only: its minimum mutations still apply.
+   */
   harvestWindowCycles: number;
-  /** Per-mutation decay overrides in DAYS (Q7). Empty = data.json values. */
+  /**
+   * Per-kind decay timer overrides in DAYS (Q7), for any crop or mutation
+   * (base crops, dead_plant, fire ... included). 0 = never decays. Empty =
+   * data.json values. Edited in the Advanced panel's per-kind table.
+   */
   decayDaysOverrides: Record<string, number>;
-  /** Do placed fire / fermento / dead_plant decay? (they have no growth stages) */
-  nullStageKindsDecay: boolean;
+  /**
+   * Per-kind minimum mutations overrides (0.27.2). Missing = data.json.
+   * Edited in the Advanced panel's per-kind table, not via CONFIG_META.
+   */
+  minimumMutationsOverrides: Record<string, MinimumMutationsOverride>;
   /** Chance per tick that a Devourer grows a root into a neighbouring cell (40%, staff-confirmed). */
   devourerRootChance: number;
   /** Chance per tick that each root spreads another root. */
@@ -91,6 +116,8 @@ export interface SimConfig {
   supportCap: number;
   /** Which empty cells roll for a spawn each cycle. */
   spawnCells: SpawnCells;
+  /** Which neighbours a spawn credits when more than its requirement count stand in the ring (unpublished). */
+  mutationCreditOrder: MutationCreditOrder;
   /** A step change keeps a plant when the new layout has the same kind at the same anchor. */
   keepIdenticalOnStepChange: boolean;
   /**
@@ -114,13 +141,13 @@ export const DEFAULT_CONFIG: SimConfig = {
   uniqueCropYieldPerCrop: 0.025,
   thunderlingChargePerStage: 2000,
   thunderlingMaxCharge: 16000,
-  baseCropDecayHours: 72,
+  decayExtensionHours: 24,
 
   maxWater: 100,
   negativeWaterSkipChance: 0.5,
   harvestWindowCycles: 0,
   decayDaysOverrides: {},
-  nullStageKindsDecay: false,
+  minimumMutationsOverrides: {},
   devourerRootChance: 0.4,
   rootSpreadChance: 0.4,
   chorusTeleportTargets: "emptyOnly",
@@ -142,6 +169,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   supportPerCell: 0.25,
   supportCap: 1,
   spawnCells: "allEmpty",
+  mutationCreditOrder: "ringOrder",
   keepIdenticalOnStepChange: true,
   spawnsFillLayoutInputs: true,
   plotOrder: [1, 2, 3],
@@ -174,12 +202,11 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "uniqueCropYieldPerCrop", label: "Unique crop yield bonus", group: "verified", input: { type: "number", min: 0, step: 0.005 }, description: "Harvest yield added per unique crop counted (0.27.2 patch notes: +2.5% each, +25% at 10)." },
   { key: "thunderlingChargePerStage", label: "Thunderling charge per stage", group: "verified", input: { type: "number", min: 0 }, description: "Charge a spawned Thunderling gains per growth stage (wiki: 2,000). It starts at 0." },
   { key: "thunderlingMaxCharge", label: "Thunderling max charge", group: "verified", input: { type: "number", min: 1 }, description: "At this charge a Thunderling stops growing (it still counts for requirements and shares effects) until the player discharges it. No more charge builds above it." },
-  { key: "baseCropDecayHours", label: "Base crop decay (h)", group: "verified", input: { type: "number", min: 0 }, description: "Base crops decay this long after planting. 0 = never." },
+  { key: "decayExtensionHours", label: "Decay extension (h)", group: "verified", input: { type: "number", min: 1 }, description: "0.27.2: when a plant's decay timer runs out but it hasn't yet helped create its minimum number of mutations, the timer is extended by this many hours (as often as needed). Plants of the same kind on a plot that have helped at least once and are fully grown share the count. Decay timers and minimums per kind are in the table below." },
 
   { key: "maxWater", label: "Max water", group: "unpublished", ref: "Q3", input: { type: "number", min: 0 }, description: "Water level after watering. Watering also un-halts a dried-out plant." },
   { key: "negativeWaterSkipChance", label: "Negative-water skip chance", group: "unpublished", ref: "Q9", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Chance a stage is skipped while water is below 0 (before it reaches the halt level)." },
-  { key: "harvestWindowCycles", label: "Spawn lifetime (cycles)", group: "unpublished", ref: "Q16", input: { type: "number", min: 0 }, description: "How long a natural spawn lives, in cycles from the tick it spawns (growth included). 0 = its own decay timer." },
-  { key: "nullStageKindsDecay", label: "Fire/fermento/dead plant decay", group: "unpublished", input: { type: "boolean" }, description: "Placed fire, fermento and dead plants decay on the base-crop timer." },
+  { key: "harvestWindowCycles", label: "Spawn decay timer (cycles)", group: "unpublished", ref: "Q16", input: { type: "number", min: 0 }, description: "A natural spawn's decay timer, in cycles from the tick it spawns (growth included). 0 = its own decay timer. Timer only: when it runs out, the minimum mutations still apply (it is extended until met)." },
   { key: "devourerRootChance", label: "Devourer root chance", group: "verified", ref: "Q6", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Chance per tick a Devourer grows a root into one of its 8 neighbouring cells, destroying what is there (40% staff-confirmed)." },
   { key: "rootSpreadChance", label: "Root spread chance", group: "unpublished", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Chance per tick each root spreads another root into a neighbouring cell." },
   { key: "soggybudWaterPerNeighbour", label: "Soggybud water per neighbour", group: "unpublished", input: { type: "number", min: 0 }, description: "Water a Soggybud takes each tick from each neighbouring crop that has water (never from another Soggybud)." },
@@ -200,6 +227,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "armorRareCropBug", label: "Armor Rare Crop bug", group: "model", input: { type: "boolean" }, description: "Wiki-reported bug: in the Greenhouse, Cropie and Squash do not drop while wearing Fermento or Helianthus Armor (only Fermento and Helianthus roll). Off = the set bonus as written." },
   { key: "capRareCropChance", label: "Cap Rare Crop chance at 100%", group: "model", input: { type: "boolean" }, description: "Overbloom can push a Rare Crop chance past 100%. Off: 175% = 1 guaranteed + a 75% roll for a 2nd. On: at most one item per roll." },
   { key: "spawnCells", label: "Spawn cells", group: "model", input: { type: "select", options: ["allEmpty", "slotsOnly"] }, description: "allEmpty: every empty cell rolls. slotsOnly: only target slots roll." },
+  { key: "mutationCreditOrder", label: "Mutation credit order", group: "model", input: { type: "select", options: [...MUTATION_CREDIT_ORDERS] }, description: "When a mutation spawns, it credits as many ring neighbours of each required kind as the requirement count (each counts toward their minimum mutations). Which ones, when more stand there, is unknown in game. ringOrder: row by row from the top-left (extra neighbours never age). mostRemainingFirst: the ones with the most left to help (spreads the use evenly). fewestRemainingFirst: the ones with the fewest left (uses the same ones up). random: a seeded random pick." },
   { key: "keepIdenticalOnStepChange", label: "Keep identical plants on step change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a step change untouched." },
   { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid flows work: grow Magic Jellybeans in one step, then use them as inputs in the next while they finish growing." },
 ];

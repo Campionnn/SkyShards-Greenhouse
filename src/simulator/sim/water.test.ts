@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SimConfig } from "../config";
 import type { PolicyOverrides } from "../flow/types";
-import { engine, inject, layout, NEVER_ACTIVE, plantAt, singlePlot, start } from "../testHelpers";
+import { engine, inject, layout, NEVER_ACTIVE, NO_BASE_CROP_DECAY, plantAt, singlePlot, start, TIMER_ONLY } from "../testHelpers";
 import { isDry } from "./plants";
 import type { ActivitySchedule, PlantState, SimulationState, TimedEvent } from "./state";
 
@@ -22,7 +22,7 @@ const blank = (
 ): SimulationState =>
   start(
     singlePlot(layout([], opts.slots ?? []), {
-      config: { spawnCells: "slotsOnly", baseCropDecayHours: 0, ...opts.config },
+      config: { spawnCells: "slotsOnly", ...NO_BASE_CROP_DECAY, ...opts.config },
       activity: opts.activity ?? NEVER_ACTIVE,
       policies: opts.policies,
     })
@@ -365,7 +365,8 @@ describe("watering and decay", () => {
   });
 
   it("its decay timer keeps running while it is halted, and it decays on time", () => {
-    const s = blank({ config: { baseCropDecayHours: 72 } });
+    // The data's 3-day base-crop timer; timer-only decay (its minimum would otherwise hold it: it never helped).
+    const s = blank({ config: { decayDaysOverrides: {}, ...TIMER_ONLY } });
     const p = inject(s, 1, "wheat", 5, 5, "planted", { water: HALT, stage: 2 });
     const timer = p.decaySecondsRemaining!;
     expect(timer).toBe(72 * 3600);

@@ -9,6 +9,20 @@ import type { ActivitySchedule, Origin, PlantState, PlayerStats, Scenario, Simul
 
 export const engine = createEngine();
 
+/**
+ * Config patch: every crop and mutation has no minimum mutations ("none" =
+ * N/A), so decay is timer-only, as before 0.27.2. For tests whose subject is
+ * the decay TIMER, not the minimum.
+ */
+export const TIMER_ONLY: Pick<SimConfig, "minimumMutationsOverrides"> = {
+  minimumMutationsOverrides: Object.fromEntries([...engine.data.cropIds, ...engine.data.mutationIds].map((id) => [id, "none" as const])),
+};
+
+/** Config patch: the harvestable base crops never decay (decay timer 0), so long tests keep their rings. */
+export const NO_BASE_CROP_DECAY: Pick<SimConfig, "decayDaysOverrides"> = {
+  decayDaysOverrides: Object.fromEntries(engine.data.cropIds.filter((id) => engine.data.crops[id].growthStages !== null).map((id) => [id, 0])),
+};
+
 /** The two real share codes from SHARE_CODES_AND_LAYOUTS.md (Layout A: prerequisites, Layout B: chorus fruit). */
 export const LAYOUT_A_CODE =
   "RctJDsIwEETRC_0FY4AlhAzXsNs2CeDExICElMNjr_Jq0ypVBzo8RyyODWtGDggrDJE9BSe2fFHs5pFfujwhfUSm-TmG--PmnDE-u1ZVXfuyL33nnLV9prMYhxil0Y0MlxQRLTJkS7fsVKtb9XmfX5PK_g";

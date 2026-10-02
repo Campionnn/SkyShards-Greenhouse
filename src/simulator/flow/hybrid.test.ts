@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { engine, flow, inject, layout, plantAt, scenario, step, start } from "../testHelpers";
+import { engine, flow, inject, layout, plantAt, scenario, step, start, TIMER_ONLY } from "../testHelpers";
 import type { SimulationState, TimedEvent } from "../sim/state";
 import type { Trigger } from "./types";
 
@@ -121,7 +121,8 @@ describe("hybrid flows (spawnsFillLayoutInputs)", () => {
 
   it("a kept input is still harvested just before it would decay", () => {
     const spec = layout([["chloronite", 4, 4]]);
-    const s = start(scenario([flow([step("a", spec)])], { config: { spawnCells: "slotsOnly" } }));
+    // Timer-only: this is about the timer; with its minimum (8) unmet it would just be extended, not decay.
+    const s = start(scenario([flow([step("a", spec)])], { config: { spawnCells: "slotsOnly", ...TIMER_ONLY } }));
     s.plots[0].plants = [];
     inject(s, 1, "chloronite", 4, 4, "spawned", { stage: 10, decaySecondsRemaining: 14400 * 2 + 1 });
     const r = engine.run(s, 3);

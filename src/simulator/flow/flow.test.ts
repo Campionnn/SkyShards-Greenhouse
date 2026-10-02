@@ -12,6 +12,7 @@ import {
   scenario,
   step,
   start,
+  TIMER_ONLY,
 } from "../testHelpers";
 import type { TimedEvent } from "../sim/state";
 
@@ -57,7 +58,8 @@ describe("multi-plot: spatially independent, temporally shared", () => {
         flow([step("grow", layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]))]),
         flow([step("use", layout([["gloomgourd", 2, 2]]))]),
       ],
-      { config: slotsOnly, seed: 5 }
+      // Timer-only: the placed Gloomgourd on plot 2 never helps a mutation, so its minimum (10) would otherwise keep it forever.
+      { config: { ...slotsOnly, ...TIMER_ONLY }, seed: 5 }
     );
     const s = start(sc);
     expect(plantAt(s, 2, 2, 2)?.kindId).toBe("gloomgourd"); // setup is free
@@ -70,12 +72,12 @@ describe("multi-plot: spatially independent, temporally shared", () => {
   });
 
   it("the shared inventory is contended in plotOrder", () => {
-    // Both placed Chloronites decay on cycle 17; one spare in stock goes to whichever plot ticks first.
+    // Both placed Chloronites decay on cycle 17 (timer-only: they never help); one spare in stock goes to whichever plot ticks first.
     const two = (order: number[]) =>
       engine.run(
         start(
           scenario([flow([step("a", layout([["chloronite", 1, 1]]))]), flow([step("b", layout([["chloronite", 1, 1]]))])], {
-            config: { ...slotsOnly, plotOrder: order },
+            config: { ...slotsOnly, ...TIMER_ONLY, plotOrder: order },
             inventory: { chloronite: 1 },
           })
         ),
@@ -152,7 +154,8 @@ describe("per-plot flows", () => {
       [step("wheat", layout([["wheat", 0, 0]]), [{ kind: "plantDecayed", kindId: "wheat" }]), step("potato", layout([["potato", 0, 0]]), [])],
       false
     );
-    const r = engine.run(start(scenario([f], { config: slotsOnly })), 25);
+    // Timer-only: the wheat never helps a mutation, so its minimum (12) would otherwise keep extending it.
+    const r = engine.run(start(scenario([f], { config: { ...slotsOnly, ...TIMER_ONLY } })), 25);
     const change = ofKind(r.events, "stepChanged")[0];
     const decay = ofKind(r.events, "decayed")[0];
     expect(change.cycle).toBe(decay.cycle);

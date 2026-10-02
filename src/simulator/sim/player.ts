@@ -1,17 +1,21 @@
 import { endStepOrHold } from "../flow/runner";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import type { CycleCtx, Phase, TickScratch } from "./context";
+import { wouldDecayWithin } from "./decay";
 import { harvestPlant } from "./harvest";
 import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
 import { layoutInputAt, maintainLayout } from "./placement";
 import type { PlantState, PlotState } from "./state";
 
-/** Would this plant's timer run out before the player's next session? */
-function decaysBeforeNextSession(p: PlantState, ctx: CycleCtx): boolean {
-  if (p.decaySecondsRemaining === null) return false;
+/**
+ * Would this plant actually decay before the player's next session? Its
+ * timer runs out by then AND its minimum mutations are met now (current
+ * counters, sim/decay.ts `wouldDecayWithin`). One that would only be
+ * extended is not about to decay. Never online again: any timer counts.
+ */
+function decaysBeforeNextSession(plot: PlotState, p: PlantState, ctx: CycleCtx): boolean {
   const k = ctx.cyclesUntilNextActive();
-  if (!Number.isFinite(k)) return true;
-  return p.decaySecondsRemaining - k * ctx.cycleSeconds <= 1e-6;
+  return wouldDecayWithin(plot, p, Number.isFinite(k) ? k * ctx.cycleSeconds : Infinity);
 }
 
 function water(plot: PlotState, ctx: CycleCtx): void {
@@ -56,7 +60,7 @@ function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
   for (const p of [...plot.plants]) {
     if (p.origin !== "spawned" || !plot.plants.includes(p)) continue;
     if (policies.layoutInputSpawns === "keep" && layoutInputAt(p, layout, ctx.config)) {
-      if (isHarvestable(p) && isFullyGrown(p) && decaysBeforeNextSession(p, ctx)) harvestPlant(plot, p, ctx, scratch);
+      if (isHarvestable(p) && isFullyGrown(p) && decaysBeforeNextSession(plot, p, ctx)) harvestPlant(plot, p, ctx, scratch);
       continue;
     }
     if (p.kindId === "all_in_aloe") {
@@ -64,7 +68,7 @@ function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
     } else {
       if (!isHarvestable(p)) continue;
       if (p.kindId === JELLYBEAN && !isFullyGrown(p)) continue; // only ever harvested at stage 120
-      if (policies.spawnedHarvest === "beforeDecay" && !decaysBeforeNextSession(p, ctx)) continue;
+      if (policies.spawnedHarvest === "beforeDecay" && !decaysBeforeNextSession(plot, p, ctx)) continue;
     }
     harvestPlant(plot, p, ctx, scratch);
   }
@@ -76,7 +80,7 @@ function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
   if (upkeep === "leaveUntilDecay") return;
   for (const p of [...plot.plants]) {
     if (p.origin !== "planted" || !isHarvestable(p) || !plot.plants.includes(p)) continue;
-    if (upkeep === "harvestBeforeDecay" && !decaysBeforeNextSession(p, ctx)) continue;
+    if (upkeep === "harvestBeforeDecay" && !decaysBeforeNextSession(plot, p, ctx)) continue;
     const { kindId, row, col } = p;
     if (harvestPlant(plot, p, ctx, scratch) !== "harvested") continue;
     const replant = newPlant(ctx.state, ctx.env.data, ctx.config, kindId, row, col, "planted", ctx.cycle, ctx.cycleSeconds);

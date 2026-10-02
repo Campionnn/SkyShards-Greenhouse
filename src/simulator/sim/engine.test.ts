@@ -8,6 +8,7 @@ import {
   singlePlot,
   start,
   runCycles,
+  TIMER_ONLY,
 } from "../testHelpers";
 import { cycleSeconds } from "../growth/clock";
 import { CONFIG_META, DEFAULT_CONFIG } from "../config";
@@ -40,7 +41,8 @@ describe("death and decay have no freezing mode", () => {
   it("decay kills a plant while the player is away", () => {
     const s = start(singlePlot(layout([["wheat", 4, 4]]), {
       activity: NEVER_ACTIVE,
-      config: { ...slotsOnly, waterLossMin: 3, waterLossMax: 3 },
+      // Timer-only: the wheat never helped a mutation, so its minimum would otherwise extend it.
+      config: { ...slotsOnly, ...TIMER_ONLY, waterLossMin: 3, waterLossMax: 3 },
     }));
     s.plots[0].plants[0].decaySecondsRemaining = 1;
     const result = engine.run(s, 1);
@@ -410,7 +412,7 @@ describe("decay and placed items", () => {
 
   it("a spawn whose timer is shorter than its growth decays before it is ever harvestable", () => {
     const s = start(
-      singlePlot(layout(), { config: { ...slotsOnly, harvestWindowCycles: 5 }, activity: NEVER_ACTIVE })
+      singlePlot(layout(), { config: { ...slotsOnly, ...TIMER_ONLY, harvestWindowCycles: 5 }, activity: NEVER_ACTIVE })
     );
     inject(s, 1, "startlevine", 5, 5, "spawned");
     const r = engine.run(s, 6);
@@ -426,7 +428,8 @@ describe("decay and placed items", () => {
   });
 
   it("#11 decay leaves a Dead Plant; the player clears it (a dead_plant item) and re-places from stock", () => {
-    const sc = singlePlot(layout([["chloronite", 5, 5]]), { inventory: { chloronite: 2 }, config: slotsOnly });
+    // Timer-only: a placed Chloronite that never helps would otherwise be held by its minimum (8).
+    const sc = singlePlot(layout([["chloronite", 5, 5]]), { inventory: { chloronite: 2 }, config: { ...slotsOnly, ...TIMER_ONLY } });
     const r = engine.run(start(sc), 18); // 3 days at 4 h cycles
     expect(r.summary.decayed.chloronite).toBe(1);
     expect(r.state.inventory.dead_plant).toBe(1);
@@ -436,7 +439,7 @@ describe("decay and placed items", () => {
   });
 
   it("with the player away, the Dead Plant stands in the cell", () => {
-    const sc = singlePlot(layout([["chloronite", 5, 5]]), { inventory: { chloronite: 2 }, config: slotsOnly, activity: NEVER_ACTIVE });
+    const sc = singlePlot(layout([["chloronite", 5, 5]]), { inventory: { chloronite: 2 }, config: { ...slotsOnly, ...TIMER_ONLY }, activity: NEVER_ACTIVE });
     const r = engine.run(start(sc), 20);
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
   });
@@ -453,7 +456,7 @@ describe("debt: would it ever need something it does not have?", () => {
   });
 
   it("re-placing what decayed needs stock: the debt names the cycle and the item", () => {
-    const r = engine.run(start(singlePlot(layout([["chloronite", 5, 5]]), { config: slotsOnly })), 18);
+    const r = engine.run(start(singlePlot(layout([["chloronite", 5, 5]]), { config: { ...slotsOnly, ...TIMER_ONLY } })), 18);
     expect(r.state.debts[0]).toMatchObject({ cycle: 17, plotId: 1, item: "chloronite", needed: 1, available: 0 });
     const report = engine.analyse(r.state);
     expect(report.firstDebt?.item).toBe("chloronite");
@@ -463,7 +466,7 @@ describe("debt: would it ever need something it does not have?", () => {
   });
 
   it("a shortfall is one debt event per episode, retried every session, filled once stock exists", () => {
-    const s = start(singlePlot(layout([["chloronite", 5, 5]]), { config: slotsOnly }));
+    const s = start(singlePlot(layout([["chloronite", 5, 5]]), { config: { ...slotsOnly, ...TIMER_ONLY } }));
     const r = engine.run(s, 22); // decays at cycle 17, then 5 failed sessions (17-21)
     expect(r.summary.debtEvents).toBe(1);
     expect(r.summary.unfilledCellCycles).toBe(5);
@@ -570,7 +573,7 @@ describe("player activity", () => {
 
   it("'before decay' harvests at the last session before the harvest window closes", () => {
     const sc = singlePlot(gloomLayout(), {
-      config: { ...slotsOnly, harvestWindowCycles: 7 },
+      config: { ...slotsOnly, ...TIMER_ONLY, harvestWindowCycles: 7 },
       activity: { kind: "everyN", n: 3, offset: 0 },
       policies: { spawnedHarvest: "beforeDecay" },
     });
@@ -599,7 +602,7 @@ describe("player activity", () => {
 
   it("default upkeep leaves base crops until decay (72 h of cycles), then replants for free", () => {
     const cycles = Math.ceil((72 * 3600) / cycleLen(1));
-    const r = engine.run(start(singlePlot(layout([["wheat", 5, 5]]), { config: slotsOnly })), cycles);
+    const r = engine.run(start(singlePlot(layout([["wheat", 5, 5]]), { config: { ...slotsOnly, ...TIMER_ONLY } })), cycles);
     expect(r.summary.harvested.wheat).toBeUndefined();
     expect(r.summary.decayed.wheat).toBe(1);
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", stage: 0 });

@@ -21,7 +21,7 @@ export interface ItemReport {
   shortfall: number;
   firstStockoutCycle: number | null;
   status: ItemStatus;
-  /** A mutation with no decay: placed once, it never needs replacing. */
+  /** A mutation that never decays (no timer, or an Infinite minimum): placed once, it never needs replacing. Data values; overrides aren't applied. */
   permanent: boolean;
 }
 
@@ -92,7 +92,8 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
         shortfall: row.shortfall,
         firstStockoutCycle: row.firstStockoutCycle,
         status,
-        permanent: !!m && m.decayDays === 0,
+        // No timer, or a minimum that is never met (Magic Jellybean): placed once, it never decays.
+        permanent: !!m && (m.decayDays === 0 || m.minimumMutations === "infinite"),
       };
     })
     .sort((a, b) => a.item.localeCompare(b.item));
