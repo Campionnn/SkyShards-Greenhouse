@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { GreenhouseDataProvider, InfoModalProvider } from "../../context";
 import type { SimulationView } from "../../hooks/useSimulation";
 import { sanityCheck } from "../../simulator";
-import { engine, flow, LAYOUT_A_CODE, LAYOUT_B_CODE, layout, scenario, singlePlot, start as startOf, step } from "../../simulator/testHelpers";
+import { engine, flow, inject, LAYOUT_A_CODE, LAYOUT_B_CODE, layout, scenario, singlePlot, start as startOf, step } from "../../simulator/testHelpers";
 import { ToastProvider } from "../ui";
 import { PlotMarkLegend, PlotView } from "./PlotView";
 import { LayoutPickerPanel } from "./LayoutPicker";
@@ -14,7 +14,7 @@ import { FlowEditor, WatchPicker } from "./FlowEditor";
 import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
 import { KindDecayOverrides, ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 import { SimTooltip } from "./SimTooltip";
-import { closestBlocked } from "./sanityFormat";
+import { closestBlocked, hoveredCellOffset } from "./sanityFormat";
 import { describeEvent } from "./format";
 
 // Server-render every simulator panel against a real simulation, to catch
@@ -156,6 +156,50 @@ describe("simulator panels render", () => {
     expect(noCheck).not.toContain("Sanity Check");
     // The Plot view renders the sanity-check card for a hovered empty cell only through TooltipTarget "check", never as default DOM.
     expect(view(true)).not.toContain("Can spawn here now");
+  });
+
+  it("Sanity Check on multi-cell elements: the plant card appends the check of the hovered cell, the slot card names the cell", () => {
+    const farmland = Array.from({ length: 9 }, (_, i) => ({ ground: "farmland", row: 4 + Math.floor(i / 3), col: 4 + (i % 3) }));
+    const s = startOf(singlePlot({ ...layout([["wheat", 4, 3]], [["godseed", 4, 4]]), groundTiles: farmland }, { config: { spawnCells: "allEmpty" } }));
+    const plot = structuredClone(s.plots[0]);
+    const tip = (target: React.ComponentProps<typeof SimTooltip>["target"]) =>
+      renderToString(<SimTooltip target={target} cellSize={40} gap={2} gridWidth={420} gridHeight={420} cycleSeconds={14400} config={s.scenario.settings.config} plot={plot} />).replace(/<!-- -->/g, "");
+
+    // A Godseed standing on the 3x3: the card is unchanged without a check, and gains the section (for the hovered cell) with one.
+    const godseed = startOf(singlePlot({ ...layout([["wheat", 4, 3]]), groundTiles: farmland }, { config: { spawnCells: "allEmpty" } }));
+    const gs = inject(godseed, 1, "godseed", 4, 4, "placed");
+    const plain = tip({ kind: "plant", plant: gs });
+    expect(plain).not.toContain("Sanity Check");
+    const centre = sanityCheck(godseed, engine.data, 1, 5, 5);
+    const withCheck = tip({ kind: "plant", plant: gs, check: centre });
+    expect(withCheck).toContain("Sanity Check");
+    expect(withCheck).toContain("row 5, col 5");
+    expect(withCheck).toContain("stands here");
+    expect(withCheck).toContain("once the cell is free");
+    expect(withCheck).toContain("Lonelily");
+    expect(withCheck).toContain(plain.slice(plain.indexOf("Type"), plain.indexOf("Gives"))); // the plant card itself is untouched
+
+    // A slot card hovered at an inner cell says which cell is checked, and that it is not the target's anchor.
+    const slot = plot.slots[0];
+    const inner = sanityCheck(s, engine.data, 1, 5, 5);
+    const slotHtml = tip({ kind: "slot", slot, ineligibleCycles: 0, check: inner });
+    expect(slotHtml).toContain("Empty target cell.");
+    expect(slotHtml).toContain("row 5, col 5");
+    expect(slotHtml).toContain("not the target&#x27;s top-left (4, 4)");
+    // The anchor itself needs no such note.
+    expect(tip({ kind: "slot", slot, ineligibleCycles: 0, check: sanityCheck(s, engine.data, 1, 4, 4) })).not.toContain("not the target");
+  });
+
+  it("hoveredCellOffset maps the mouse to a cell of a multi-cell element (clamped, scale-aware)", () => {
+    const rect = { left: 100, top: 50, width: 3 * 40 + 2 * 2, height: 3 * 40 + 2 * 2 }; // 3x3, cell 40, gap 2
+    const at = (x: number, y: number) => hoveredCellOffset(x, y, rect, 3, 40, 2);
+    expect(at(100, 50)).toEqual({ dr: 0, dc: 0 });
+    expect(at(100 + 41, 50 + 85)).toEqual({ dr: 2, dc: 0 });
+    expect(at(100 + 45, 50 + 45)).toEqual({ dr: 1, dc: 1 });
+    expect(at(100 + 500, 50 - 20)).toEqual({ dr: 0, dc: 2 }); // clamped
+    // Rendered at half scale: the same fractions land in the same cells.
+    const half = { left: 0, top: 0, width: rect.width / 2, height: rect.height / 2 };
+    expect(hoveredCellOffset(half.width - 1, half.height / 2, half, 3, 40, 2)).toEqual({ dr: 1, dc: 2 });
   });
 
   it("describeEvent: decayExtended, and a decayed dead plant leaves nothing", () => {

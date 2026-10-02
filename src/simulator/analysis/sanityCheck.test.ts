@@ -186,6 +186,74 @@ describe("sanityCheck: what a cell offers", () => {
   });
 });
 
+describe("sanityCheck on the cells of a multi-cell element", () => {
+  // A wheat at (4,3) touches the 3x3's top-left (4,4) but not its centre (5,5): the ring of (5,5) is rows 4-6 x cols 4-6.
+  const FARM = block3x3(4, 4);
+
+  it("a non-anchor cell under a multi-cell plant removes the WHOLE plant, and differs from the anchor", () => {
+    const s = start(singlePlot(farm(layout([["wheat", 4, 3]]), ...FARM, [4, 3]), quiet));
+    inject(s, 1, "godseed", 4, 4, "placed");
+    const anchor = check(s, 4, 4);
+    const centre = check(s, 5, 5);
+    const edge = check(s, 6, 6);
+    for (const r of [anchor, centre, edge]) {
+      // Same occupant (reported at its anchor) however its cell is hovered.
+      expect(r.occupied).toMatchObject({ kindId: "godseed", row: 4, col: 4, size: 3 });
+    }
+    expect(centre.row).toBe(5);
+    expect(centre.col).toBe(5);
+    // Anchor: the wheat at (4,3) is in the ring, so Lonelily is blocked. Centre: ring rows 4-6 x cols 4-6 is empty once the Godseed is gone.
+    expect(ids(anchor.canSpawn)).not.toContain("lonelily");
+    expect(entry(s, 4, 4, "lonelily").blockers[0]).toMatchObject({ kind: "ringNotEmpty" });
+    expect(ids(centre.canSpawn)).toContain("lonelily");
+    expect(ids(edge.canSpawn)).toContain("lonelily");
+    // The plot itself was not touched.
+    expect(s.plots[0].plants.map((p) => p.kindId).sort()).toEqual(["godseed", "wheat"]);
+  });
+
+  it("a non-anchor cell of a multi-cell empty slot has its own result and no slot target", () => {
+    const s = start(singlePlot(farm(layout([["wheat", 4, 3]], [["godseed", 4, 4]]), ...FARM, [4, 3]), quiet));
+    expect(s.plots[0].slots[0]).toMatchObject({ row: 4, col: 4, size: 3 });
+    const anchor = check(s, 4, 4);
+    const inner = check(s, 5, 5);
+    expect(anchor.slotTarget).toBe("godseed");
+    expect(anchor.entries.map((e) => e.mutationId)).toContain("godseed");
+    expect(inner.slotTarget).toBeNull(); // only the anchor rolls for the slot's target
+    expect(inner.occupied).toBeNull();
+    expect(ids(anchor.canSpawn)).not.toContain("lonelily");
+    expect(ids(inner.canSpawn)).toContain("lonelily");
+    // The inner cell is evaluated exactly like the same cell with no slot there at all (what phaseSpawn does for a non-slot cell).
+    const bare = start(singlePlot(farm(layout([["wheat", 4, 3]]), ...FARM, [4, 3]), quiet));
+    expect(check(bare, 5, 5)).toEqual(inner);
+  });
+
+  it("'slots only' mode: only the anchor of a multi-cell slot rolls", () => {
+    const s = start(singlePlot(farm(layout([["wheat", 0, 0]], [["godseed", 4, 4]]), ...FARM), { ...quiet, config: { spawnCells: "slotsOnly" } }));
+    expect(check(s, 4, 4).rolls).toBe(true);
+    const inner = check(s, 5, 5);
+    expect(inner.rolls).toBe(false);
+    expect(inner.noRollReason).toMatch(/slot/i);
+  });
+
+  it("a non-anchor cell's pool is the one phaseSpawn builds for that cell", () => {
+    const s = start(singlePlot(farm(layout([["pumpkin", 3, 4], ["melon", 3, 6], ["wheat", 0, 0]], [["godseed", 4, 4]]), ...FARM), { ...quiet, config: { blankFillTo: 1 } }));
+    const r = check(s, 4, 5); // an edge cell of the slot: its ring (rows 3-5, cols 4-6) holds the pumpkin and the melon
+    const plot = structuredClone(s.plots[0]);
+    const occ = buildOccupancy(plot);
+    const candidates = candidateMutations(new Set(plot.plants.map((p) => p.kindId)), data);
+    const pool: SpawnPool = { ids: [], weights: [] };
+    for (const m of candidates) {
+      if (!locationOpenFor(plot, occ, 4, 5, m)) continue;
+      const one = buildPool([m], ringCounts(occ, 4, 5, m.size, s.scenario.settings.config), s.scenario.settings.config, () => false);
+      pool.ids.push(...one.ids);
+      pool.weights.push(...one.weights);
+    }
+    expect(r.slotTarget).toBeNull();
+    expect(ids(r.canSpawn)).toEqual(pool.ids);
+    expect(ids(r.canSpawn)).toContain("gloomgourd");
+  });
+});
+
 describe("sanityCheck is read-only", () => {
   it("does not change the state (no effects written, no RNG drawn)", () => {
     const s = start(singlePlot(farm(layout([["pumpkin", 4, 3], ["melon", 4, 5], ["wheat", 4, 4], ["wheat", 0, 0]], [["godseed", 7, 7]]), [5, 5]), quiet));
