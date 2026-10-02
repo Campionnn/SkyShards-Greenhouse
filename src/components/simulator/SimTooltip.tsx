@@ -7,6 +7,7 @@ import {
   type MutationDef,
   type PlantState,
   type PlotState,
+  type SanityCheckResult,
   type SimConfig,
   type SlotLabel,
   type WatchStatus,
@@ -15,16 +16,75 @@ import { effectiveEffects, effectsGivenBy, getCellPixelPosition, getEffectName, 
 import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage, EffectChips } from "../shared";
 import { formatCount, formatDuration, formatRemaining, kindData, nameOf } from "./format";
+import { closestBlocked, describeBlocker, formatChance, occupantName } from "./sanityFormat";
 
 export type TooltipTarget =
   /** watchStatus: what the uptime check saw at this plant's anchor, when it stands on a checked target cell. */
   | { kind: "plant"; plant: PlantState; watchStatus?: WatchStatus }
-  | { kind: "slot"; slot: SlotLabel; ineligibleCycles: number; watched?: boolean; watchStatus?: WatchStatus }
-  | { kind: "missing"; item: string; row: number; col: number };
+  /** check: the Sanity Check result, appended to the slot card while the toggle is on. */
+  | { kind: "slot"; slot: SlotLabel; ineligibleCycles: number; watched?: boolean; watchStatus?: WatchStatus; check?: SanityCheckResult }
+  | { kind: "missing"; item: string; row: number; col: number }
+  /** Sanity Check on an empty (non-slot) cell: which mutations could spawn here. */
+  | { kind: "check"; row: number; col: number; result: SanityCheckResult };
 
 const WIDTH = 280;
 const EST_HEIGHT = 300;
+const CHECK_EST_HEIGHT = 380;
 const OFFSET = 8;
+
+// ---- Sanity Check card (display only: nothing here ranks layouts) ----
+
+const CANT_SHOWN = 6;
+
+export const SanityCheckSection: React.FC<{ result: SanityCheckResult }> = ({ result }) => {
+  const { shown, more } = closestBlocked(result, CANT_SHOWN);
+  return (
+    <div className="space-y-2" data-testid="sanity-check">
+      <div className="text-[11px] uppercase tracking-wide text-cyan-300/90">Sanity Check</div>
+      {result.occupied && (
+        <p className="text-amber-300">
+          {occupantName(result.occupied)} stands here. Showing what could spawn once the cell is free.
+        </p>
+      )}
+      {result.noRollReason && <p className="text-amber-300">{result.noRollReason}</p>}
+      <div>
+        <div className="text-[11px] text-slate-500 mb-0.5">Can spawn here now (chance per roll)</div>
+        {result.canSpawn.length === 0 ? (
+          <p className="text-slate-400">Nothing.</p>
+        ) : (
+          <ul className="space-y-0.5">
+            {result.canSpawn.map((e) => (
+              <li key={e.mutationId} className="flex items-center justify-between gap-2 text-emerald-300">
+                <span className="truncate">{nameOf(e.mutationId)}</span>
+                <span className="tabular-nums text-slate-200">{formatChance(e.chance)}</span>
+              </li>
+            ))}
+            <li className="text-[11px] text-slate-500">
+              Anything spawns: {formatChance(result.anyChance)}
+              {result.denominator > result.totalWeight ? " (the rest is a blank roll)" : ""}
+            </li>
+          </ul>
+        )}
+      </div>
+      <div>
+        <div className="text-[11px] text-slate-500 mb-0.5">Can&apos;t spawn here</div>
+        {shown.length === 0 ? (
+          <p className="text-slate-400">Nothing else is held back.</p>
+        ) : (
+          <ul className="space-y-0.5">
+            {shown.map((e) => (
+              <li key={e.mutationId} className="text-slate-400">
+                <span className="text-slate-300">{nameOf(e.mutationId)}</span>: {e.blockers.length > 0 ? describeBlocker(e.blockers[0], e.mutationId) : ""}
+                {e.blockers.length > 1 && <span className="text-slate-500"> (+{e.blockers.length - 1} more)</span>}
+              </li>
+            ))}
+            {more > 0 && <li className="text-[11px] text-slate-500">+{more} more</li>}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const Row: React.FC<{ label: string; children: React.ReactNode; tone?: string }> = ({ label, children, tone }) => (
   <>
@@ -77,8 +137,8 @@ export const SimTooltip: React.FC<{
 }> = ({ target, cellSize, gap, gridWidth, gridHeight, cycleSeconds, config, plot }) => {
   const row = target.kind === "plant" ? target.plant.row : target.kind === "slot" ? target.slot.row : target.row;
   const col = target.kind === "plant" ? target.plant.col : target.kind === "slot" ? target.slot.col : target.col;
-  const size = target.kind === "plant" ? target.plant.size : target.kind === "slot" ? target.slot.size : kindData(target.item)?.size ?? 1;
-  const kindId = target.kind === "plant" ? target.plant.kindId : target.kind === "slot" ? target.slot.mutationId : target.item;
+  const size = target.kind === "plant" ? target.plant.size : target.kind === "slot" ? target.slot.size : target.kind === "check" ? 1 : kindData(target.item)?.size ?? 1;
+  const kindId = target.kind === "plant" ? target.plant.kindId : target.kind === "slot" ? target.slot.mutationId : target.kind === "check" ? "" : target.item;
 
   const { top, left } = getCellPixelPosition(row, col, cellSize, gap);
   const span = size * cellSize + (size - 1) * gap;
@@ -87,7 +147,8 @@ export const SimTooltip: React.FC<{
     x = left - OFFSET - WIDTH;
     if (x < 0) x = Math.max(0, gridWidth - WIDTH);
   }
-  const y = Math.max(0, Math.min(top, gridHeight - EST_HEIGHT));
+  const hasCheck = target.kind === "check" || (target.kind === "slot" && !!target.check);
+  const y = Math.max(0, Math.min(top, gridHeight - (hasCheck ? CHECK_EST_HEIGHT : EST_HEIGHT)));
 
   const def = kindData(kindId);
   const m: MutationDef | undefined = def?.kind === "mutation" ? def : undefined;
@@ -100,10 +161,10 @@ export const SimTooltip: React.FC<{
       role="tooltip"
     >
       <div className="flex items-center gap-2 mb-2">
-        <CropImage cropId={kindId} cropName={nameOf(kindId)} size="sm" showFallback />
+        {kindId && <CropImage cropId={kindId} cropName={nameOf(kindId)} size="sm" showFallback />}
         <div className="min-w-0">
           <div className={`text-sm font-medium ${rarity ? getRarityTextColor(rarity) : "text-slate-100"}`}>
-            {target.kind === "plant" && target.plant.isDeadPlant ? "Dead Plant" : nameOf(kindId)}
+            {target.kind === "check" ? "Empty cell" : target.kind === "plant" && target.plant.isDeadPlant ? "Dead Plant" : nameOf(kindId)}
           </div>
           <div className="text-[11px] text-slate-500">
             ({row}, {col}){size > 1 ? ` · ${size}x${size}` : ""}
@@ -141,6 +202,12 @@ export const SimTooltip: React.FC<{
                     : "."}
             </p>
           )}
+        </div>
+      )}
+
+      {(target.kind === "check" || (target.kind === "slot" && target.check)) && (
+        <div className={target.kind === "slot" ? "mt-2 pt-2 border-t border-slate-600/40" : ""}>
+          <SanityCheckSection result={target.kind === "check" ? target.result : target.check!} />
         </div>
       )}
 
