@@ -63,7 +63,12 @@ export const TICK_PHASES: readonly Phase[] = [
   },
   { id: "growth", summary: "Advance one growth stage unless gated or dried out; latch effects when fully grown.", run: phaseGrowth },
   { id: "soggybud", summary: "Soggybud draws water from its neighbours; stage follows water.", run: phaseSoggybud },
-  { id: "water", summary: "Plants that advanced this cycle lose 2-3 water; at the halt level they dry out (halt until watered).", run: phaseWater },
+  {
+    id: "water",
+    summary:
+      "Water consumers not yet fully grown lose waterLossMin-Max water (default 18-22, x retain/drain) every cycle, advanced or not; at the halt level they dry out (halt until watered) and lose no more.",
+    run: phaseWater,
+  },
   { id: "spawn", summary: "Every empty cell (or only slots) rolls once for a spawn (at stage 1; 0-stage kinds latch at once); uptime is booked.", run: phaseSpawn },
   { id: "decay", summary: "Decay timers tick down; expired plants become Dead Plants.", run: phaseDecay },
 ];
@@ -99,6 +104,9 @@ function phaseGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void
     if (p.isDeadPlant || p.origin === "placed") continue;
     // Soggybud's stage follows its water level (phaseSoggybud), not the tick.
     if (p.kindId === "soggybud") continue;
+    // Not fully grown as the tick starts: it drinks this cycle (phaseWater),
+    // whether or not it advances below.
+    if (p.stage < p.readyStage) scratch.notFullyGrown.add(p.id);
     // Glasscorn keeps growing past its window and resets from stage 8 to 1.
     const resets = p.kindId === "glasscorn" && p.growthStages > 0 && p.stage >= p.growthStages;
     if (p.stage < p.growthStages || resets) {
@@ -122,7 +130,6 @@ function phaseGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void
           } else {
             p.stage += 1;
           }
-          scratch.advanced.add(p.id);
           ctx.emit(plot.id, { kind: "advanced", plantId: p.id, kindId: p.kindId, stage: p.stage });
           afterAdvance(p, env);
           // All-in Aloe: reaching a new stage rolls that stage's reset chance (wiki table).
@@ -157,7 +164,7 @@ function holdsWater(q: PlantState, ctx: CycleCtx): boolean {
  * crop (8 cells around it, other Soggybuds excluded) that has some, and its
  * growth stage is its water level: stage = floor(water / soggybudWaterPerStage).
  */
-function phaseSoggybud(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
+function phaseSoggybud(plot: PlotState, ctx: CycleCtx): void {
   const { config } = ctx;
   const occ = buildOccupancy(plot);
   for (const p of plot.plants) {
@@ -176,10 +183,7 @@ function phaseSoggybud(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
     p.water = Math.min(p.water, cap);
     // It enters at stage 1 like every spawn; water only ever moves it up from there.
     const stage = Math.min(p.growthStages, Math.max(spawnStageOf(p.growthStages), Math.floor(p.water / config.soggybudWaterPerStage)));
-    if (stage > p.stage) {
-      scratch.advanced.add(p.id);
-      ctx.emit(plot.id, { kind: "advanced", plantId: p.id, kindId: p.kindId, stage });
-    }
+    if (stage > p.stage) ctx.emit(plot.id, { kind: "advanced", plantId: p.id, kindId: p.kindId, stage });
     p.stage = stage;
     latchIfReady(p, plot, ctx);
   }
@@ -195,23 +199,47 @@ export function retainFactor(effective: readonly string[]): number {
 }
 
 /**
- * "After each growth stage, a crop loses between 2-3 Water Level." Below 0
- * it may skip its next stage. At `haltWater` it dries out (0.27.2): it no
- * longer dies, it halts (sim/plants.ts `isDry`) until the player waters it.
- * Only a plant that advanced loses water and a dry plant never advances, so
- * crossing the threshold happens - and is reported - exactly once per
- * drying out.
+ * Does this plant drink this cycle? A water consumer drinks on every tick it
+ * is not fully grown - whether it advanced, was gated, skipped or blocked -
+ * and stops once fully grown (0.27.2 follow-up, user-confirmed).
+ *
+ * "Not fully grown" = `stage < readyStage` as the tick's growth phase reached
+ * the plant, BEFORE it advanced (`scratch.notFullyGrown`). `readyStage` is the
+ * stage `isFullyGrown` and latching use. Consequences:
+ * - the tick a plant grows its last stage still drains (it spent that cycle
+ *   growing, like every stage before it); from the next tick it never drinks;
+ * - a Glasscorn drinks again after its lap resets it to stage 1 (stages 7-8
+ *   are fully grown); an All-in Aloe would after a reset, but it doesn't
+ *   need watering;
+ * - a 0-stage kind is fully grown the moment it spawns and never drinks;
+ * - a plant the player places or plants mid-session first drinks on the
+ *   next tick.
+ * A dried-out plant drinks no more: it is already halted.
+ */
+function drinks(p: PlantState, ctx: CycleCtx, scratch: TickScratch): boolean {
+  return scratch.notFullyGrown.has(p.id) && consumesWater(p, ctx) && !isDry(p, ctx.config);
+}
+
+/**
+ * Water loss (0.27.2 follow-up): every plant that drinks this cycle (see
+ * `drinks`) loses waterLossMin..waterLossMax x retainFactor. Below 0 it may
+ * skip its next stage (one roll per drained cycle). At `haltWater` it dries
+ * out: it no longer dies, it halts (sim/plants.ts `isDry`) until the player
+ * waters it. A dry plant drinks no more, so crossing the threshold happens -
+ * and is reported - exactly once per drying out.
+ *
+ * RNG: per drinking plant, in plot order, one `intInclusive` for the loss,
+ * then one `chance` only if its water is now below 0.
  */
 function phaseWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { config } = ctx;
   const rng = ctx.state.rng;
   for (const p of plot.plants) {
-    if (!scratch.advanced.has(p.id) || !consumesWater(p, ctx)) continue;
-    const wasDry = isDry(p, config);
+    if (!drinks(p, ctx, scratch)) continue;
     const loss = intInclusive(rng, config.waterLossMin, config.waterLossMax) * retainFactor(effectiveList(p.held));
     p.water -= loss;
     if (p.water < 0 && chance(rng, config.negativeWaterSkipChance)) p.skipNextGrowth = true;
-    if (wasDry || !isDry(p, config)) continue;
+    if (!isDry(p, config)) continue;
     ctx.emit(plot.id, { kind: "driedOut", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col });
     bump(ctx.state.summary.driedOut, p.kindId);
   }
@@ -241,9 +269,14 @@ function watchedKeys(plot: PlotState, step: FlowStep): Set<string> {
   return new Set(all.filter((k) => wanted.has(k)));
 }
 
-/** What a watched slot holds when something is standing on its anchor. */
-function occupiedStatus(q: PlantState, slot: SlotLabel): WatchStatus {
-  return q.kindId === slot.mutationId && !q.isDeadPlant ? "growing" : "blocked";
+/**
+ * What a watched slot holds when something is standing on its anchor: its
+ * target (growing, or `halted` while that target is dried out), or something
+ * else in the way (`blocked`, a dry rival included).
+ */
+function occupiedStatus(q: PlantState, slot: SlotLabel, config: CycleCtx["config"]): WatchStatus {
+  if (q.kindId !== slot.mutationId || q.isDeadPlant) return "blocked";
+  return isDry(q, config) ? "halted" : "growing";
 }
 
 /** Book one watched cell-cycle into the per-spot record and the run totals. */
@@ -260,6 +293,7 @@ function recordWatch(plot: PlotState, ctx: CycleCtx, stepId: string, slot: SlotL
     ready: 0,
     requirements: 0,
     blocked: 0,
+    halted: 0,
     firstRequirementsCycle: null,
     longestRequirementsStreak: 0,
     currentRequirementsStreak: 0,
@@ -321,7 +355,7 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
     const watch = !!slot && watched.has(cellKey(row, col));
     const standing = occ[idx];
     if (standing) {
-      if (watch) recordWatch(plot, ctx, step.id, slot!, occupiedStatus(standing, slot!));
+      if (watch) recordWatch(plot, ctx, step.id, slot!, occupiedStatus(standing, slot!, config));
       continue;
     }
     const target = slot ? data.mutations[slot.mutationId] : undefined;

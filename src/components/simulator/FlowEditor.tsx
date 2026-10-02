@@ -177,8 +177,8 @@ export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] 
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-slate-500">
-        Click a target to include or exclude it. A checked cell loses uptime whenever it sits empty without the requirements for its mutation, or is blocked by
-        something else.
+        Click a target to include or exclude it. A checked cell loses uptime whenever it sits empty without the requirements for its mutation, is blocked by
+        something else, or its mutation stands there dried out.
       </p>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-slate-300">

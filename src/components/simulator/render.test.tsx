@@ -73,6 +73,7 @@ describe("simulator panels render", () => {
     expect(html).not.toMatch(/frozen|freeze/i);
     expect(html).toContain("ready or not yet evaluated");
     expect(html).toContain("checked target blocked by something else");
+    expect(html).toContain("checked target standing there dried out (halted");
   });
 
   it("report panels", () => {
@@ -190,6 +191,7 @@ describe("simulator panels render", () => {
     expect(html).toContain("Plot 2");
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("Step 1 · "); // steps stay hidden until a plot is expanded
+    expect(html).toContain(">halted</span>"); // its own column, next to blocked
   });
 
   it("the checked-target picker lists a layout's targets", () => {

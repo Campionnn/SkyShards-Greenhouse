@@ -109,13 +109,18 @@ const pct = (x: number) => `${(x * 100).toFixed(x >= 0.999 || x === 0 ? 0 : 1)}%
 
 const uptimeTone = (x: number) => (x >= 0.999 ? "text-emerald-300" : x >= 0.9 ? "text-amber-300" : "text-red-300");
 
-/** Stacked bar: growing / ready (up) vs blocked / missing requirements (down). */
+/** Stacked bar: growing / ready (up) vs halted / blocked / missing requirements (down). */
 const UptimeBar: React.FC<{ u: UptimeCounts }> = ({ u }) => {
   const w = (n: number) => `${u.watched > 0 ? (n / u.watched) * 100 : 0}%`;
+  const halted = u.halted ?? 0;
   return (
-    <div className="flex h-1.5 w-full rounded overflow-hidden bg-slate-700/60" title={`growing ${u.growing} · ready ${u.ready} · blocked ${u.blocked} · no requirements ${u.requirements}`}>
+    <div
+      className="flex h-1.5 w-full rounded overflow-hidden bg-slate-700/60"
+      title={`growing ${u.growing} · ready ${u.ready} · halted (dried out) ${halted} · blocked ${u.blocked} · no requirements ${u.requirements}`}
+    >
       <div className="bg-emerald-500/90" style={{ width: w(u.growing) }} />
       <div className="bg-emerald-300/60" style={{ width: w(u.ready) }} />
+      <div className="bg-amber-600/90" style={{ width: w(halted) }} />
       <div className="bg-orange-400/80" style={{ width: w(u.blocked) }} />
       <div className="bg-red-500/90" style={{ width: w(u.requirements) }} />
     </div>
@@ -123,6 +128,9 @@ const UptimeBar: React.FC<{ u: UptimeCounts }> = ({ u }) => {
 };
 
 // ---- Uptime tree: plot > flow step > mutation > cell ------------------
+
+/** Columns: label, uptime, no requirements, blocked, halted. */
+const UPTIME_COLS = "grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.5rem_3rem]";
 
 interface UptimeNode {
   key: string;
@@ -134,13 +142,14 @@ interface UptimeNode {
 }
 
 function sumCounts(spots: SpotReport[]): UptimeCounts {
-  const u = { watched: 0, growing: 0, ready: 0, requirements: 0, blocked: 0 };
+  const u = { watched: 0, growing: 0, ready: 0, requirements: 0, blocked: 0, halted: 0 };
   for (const s of spots) {
     u.watched += s.watched;
     u.growing += s.growing;
     u.ready += s.ready;
     u.requirements += s.requirements;
     u.blocked += s.blocked;
+    u.halted += s.halted ?? 0;
   }
   return u;
 }
@@ -239,7 +248,7 @@ const UptimeRow: React.FC<{ n: UptimeNode; depth: number; open: Set<string>; tog
   return (
     <>
       <div
-        className={`grid grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.5rem] gap-x-3 items-center py-1 rounded ${
+        className={`grid ${UPTIME_COLS} gap-x-3 items-center py-1 rounded ${
           expandable ? "cursor-pointer hover:bg-slate-700/30" : ""
         } ${depth === 0 ? "border-t border-slate-700/50 first:border-t-0" : ""}`}
         onClick={expandable ? () => toggle(id) : undefined}
@@ -271,6 +280,7 @@ const UptimeRow: React.FC<{ n: UptimeNode; depth: number; open: Set<string>; tog
           {formatCount(n.counts.requirements)}
         </span>
         <span className={`text-right tabular-nums ${n.counts.blocked > 0 ? "text-orange-300" : "text-slate-500"}`}>{formatCount(n.counts.blocked)}</span>
+        <span className={`text-right tabular-nums ${n.counts.halted > 0 ? "text-amber-500" : "text-slate-500"}`}>{formatCount(n.counts.halted)}</span>
       </div>
       {isOpen && n.children.map((c) => <UptimeRow key={c.key} n={c} depth={depth + 1} open={open} toggle={toggle} path={id} />)}
     </>
@@ -309,11 +319,14 @@ export const UptimeTree: React.FC<{ spots: SpotReport[] }> = ({ spots }) => {
           Collapse all
         </button>
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.5rem] gap-x-3 pb-1 text-slate-500">
+      <div className={`grid ${UPTIME_COLS} gap-x-3 pb-1 text-slate-500`}>
         <span className="pl-[18px]">plot / step / mutation</span>
         <span className="text-right">uptime</span>
         <span className="text-right" title="Cycles a checked cell sat empty without its requirements">no req.</span>
         <span className="text-right" title="Cycles something else blocked a checked cell">blocked</span>
+        <span className="text-right" title="Cycles a checked cell's mutation stood there dried out (halted until watered). Downtime, but not a sustainability failure.">
+          halted
+        </span>
       </div>
       {tree.map((n) => (
         <UptimeRow key={n.key} n={n} depth={0} open={open} toggle={toggle} path="" />
@@ -341,12 +354,14 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
     <Panel
       title="Sustainability"
       icon={report.sustainable ? <ShieldCheck /> : <ShieldAlert />}
-      description="Uptime of the target cells you check (every target unless you pick some for a step in the flow editor). A checked cell is up while its mutation stands there or could spawn there now. It is down while something else blocks it, or while it sits empty without the requirements to grow its mutation - that last one means the flow is not sustainable."
+      description="Uptime of the target cells you check (every target unless you pick some for a step in the flow editor). A checked cell is up while its mutation stands there or could spawn there now. It is down while its mutation stands there dried out, while something else blocks it, or while it sits empty without the requirements to grow its mutation - that last one means the flow is not sustainable."
       actions={
         <InfoHint title="How uptime is counted" width={300}>
-          Every cycle, at the spawn roll, each checked target cell is one of: growing (its mutation is there), ready (empty and its requirements hold),
-          blocked (a rival, Dead Plant or root is in the way) or missing requirements (empty, and the neighbours or ground it needs are not there - for
-          example because a placed item decayed and there was no stock to re-place it, or a neighbour dried out and doesn't count until watered). Uptime = (growing + ready) / checked cycles.
+          Every cycle, at the spawn roll, each checked target cell is one of: growing (its mutation is there), halted (its mutation is there but dried out,
+          halted until watered), ready (empty and its requirements hold), blocked (a rival, Dead Plant or root is in the way) or missing requirements (empty,
+          and the neighbours or ground it needs are not there - for example because a placed item decayed and there was no stock to re-place it, or a
+          neighbour dried out and doesn't count until watered). Uptime = (growing + ready) / checked cycles. Only missing requirements makes the flow not
+          sustainable; halted and blocked cycles only lower uptime.
         </InfoHint>
       }
     >
@@ -359,7 +374,12 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
           <div>
             Sustainable: checked targets never lacked their requirements in {formatCount(summary.cyclesRun)} cycles.
             <span className={`ml-1 font-medium ${uptimeTone(report.uptime)}`}>{pct(report.uptime)} uptime</span>
-            {t.blocked > 0 && <span className="text-emerald-300/70"> ({formatCount(t.blocked)} blocked cell-cycles)</span>}
+            {(t.blocked > 0 || t.halted > 0) && (
+              <span className="text-emerald-300/70">
+                {" "}
+                ({[t.blocked > 0 && `${formatCount(t.blocked)} blocked`, t.halted > 0 && `${formatCount(t.halted)} halted (dried out)`].filter(Boolean).join(", ")} cell-cycles)
+              </span>
+            )}
           </div>
           <UptimeBar u={t} />
         </div>
@@ -372,6 +392,7 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
           <div className="text-red-300/80">
             {formatCount(t.requirements)} of {formatCount(t.watched)} checked cell-cycles without requirements
             {t.blocked > 0 && ` · ${formatCount(t.blocked)} blocked`}
+            {t.halted > 0 && ` · ${formatCount(t.halted)} halted (dried out)`}
           </div>
           <UptimeBar u={t} />
         </div>

@@ -82,13 +82,15 @@ export interface PlotState {
 /**
  * One watched target cell, one cycle, as seen at its spawn roll:
  * - growing:      the target mutation stands there (growing or fully grown)
+ * - halted:       the target mutation stands there but is dried out (halted
+ *                 until watered). Downtime, but not a sustainability failure.
  * - ready:        empty, and the target could spawn there now
  * - requirements: empty, but the target cannot spawn (neighbours or ground missing)
  * - blocked:      something else is in the way (a rival, Dead Plant, root, a
  *                 neighbour overlapping a large footprint)
- * Uptime = growing + ready.
+ * Uptime = (growing + ready) / watched. Only `requirements` makes a run not sustainable.
  */
-export type WatchStatus = "growing" | "ready" | "requirements" | "blocked";
+export type WatchStatus = "growing" | "halted" | "ready" | "requirements" | "blocked";
 
 export interface UptimeCounts {
   /** Cell-cycles watched. */
@@ -97,6 +99,8 @@ export interface UptimeCounts {
   ready: number;
   requirements: number;
   blocked: number;
+  /** The target stood on its cell dried out (0.27.2). Downtime only. */
+  halted: number;
 }
 
 export interface SpotUptime extends UptimeCounts {
