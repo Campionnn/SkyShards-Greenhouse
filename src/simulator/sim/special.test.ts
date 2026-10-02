@@ -270,3 +270,76 @@ describe("Noctilume", () => {
     expect(ofKind(r.events, "advanced").map((e) => e.cycle)).toEqual([0, 2]);
   });
 });
+
+describe("Failed minigames (PlantBoy Advance, Stoplight Petal, Phantomleaf)", () => {
+  const failing = { perfectPlay: false, minigameFailChance: 1 };
+  const everyCycle: ActivitySchedule = { kind: "everyN", n: 1, offset: 0 };
+  const grown = (stage: number) => ({ stage, lockedEffects: [], fullyGrownAtCycle: 0 });
+
+  for (const [kindId, stages] of [["plantboy_advance", 12], ["stoplight_petal", 12]] as const) {
+    it(`${kindId}: a failed minigame changes nothing, and it is harvested once the player succeeds`, () => {
+      const s = blank(everyCycle, failing);
+      const p = inject(s, 1, kindId, 5, 5, "spawned", grown(stages));
+      const before = JSON.stringify(p);
+
+      const r = engine.run(s, 3, { retainEvents: "all" });
+      const failed = ofKind(r.events, "minigameFailed");
+      expect(failed).toHaveLength(3); // one attempt per session
+      expect(failed.every((e) => e.kindId === kindId && e.outcome === "retry" && e.row === 5 && e.col === 5)).toBe(true);
+      expect(ofKind(r.events, "harvested")).toHaveLength(0);
+      expect(ofKind(r.events, "destroyed")).toHaveLength(0);
+      expect(r.summary.destroyed[kindId]).toBeUndefined();
+      // Same stage, still fully grown, latched effects untouched.
+      const after = plantAt(r.state, 1, 5, 5)!;
+      expect(after).toMatchObject({ kindId, stage: stages, fullyGrownAtCycle: 0, lockedEffects: [] });
+      expect(after.id).toBe(JSON.parse(before).id);
+
+      // The player gets it right at the next session.
+      r.state.scenario.settings.config.minigameFailChance = 0;
+      const done = engine.run(r.state, 1, { retainEvents: "all" });
+      expect(ofKind(done.events, "harvested").filter((e) => e.kindId === kindId)).toHaveLength(1);
+      expect(ofKind(done.events, "minigameFailed")).toHaveLength(0);
+      expect(plantAt(done.state, 1, 5, 5)).toBeUndefined();
+    });
+
+    it(`${kindId}: a step change still breaks a failed one (a loss)`, () => {
+      const f = flow([step("a", layout(), [{ kind: "cycles", n: 2 }]), step("b", layout(), [], { fullClear: true })], false);
+      const s = start(scenario([f], { config: { ...slotsOnly, ...failing }, activity: everyCycle }));
+      inject(s, 1, kindId, 5, 5, "spawned", grown(stages));
+      const r = engine.run(s, 4, { retainEvents: "all" });
+      expect(ofKind(r.events, "stepChanged")).toHaveLength(1);
+      expect(ofKind(r.events, "harvested")).toHaveLength(0);
+      expect(r.summary.destroyed[kindId]).toBe(1);
+      expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
+    });
+  }
+
+  it("a failed PlantBoy blocking a layout cell is broken by the player", () => {
+    const s = start(scenario([flow([step("a", layout([["wheat", 5, 5]]))])], { config: { ...slotsOnly, ...failing }, activity: everyCycle }));
+    const wheat = plantAt(s, 1, 5, 5)!;
+    s.plots[0].plants.splice(s.plots[0].plants.indexOf(wheat), 1);
+    inject(s, 1, "plantboy_advance", 5, 5, "spawned", grown(12));
+    const r = engine.run(s, 1, { retainEvents: "all" });
+    expect(r.summary.destroyed.plantboy_advance).toBe(1);
+    expect(plantAt(r.state, 1, 5, 5)?.kindId).toBe("wheat"); // layout re-placed
+  });
+
+  it("phantomleaf: a failed minigame destroys it, with both events", () => {
+    const s = blank(everyCycle, failing);
+    inject(s, 1, "phantomleaf", 5, 5, "spawned", grown(15));
+    const r = engine.run(s, 1, { retainEvents: "all" });
+    expect(ofKind(r.events, "destroyed")).toMatchObject([{ kindId: "phantomleaf", by: "minigame", row: 5, col: 5 }]);
+    expect(ofKind(r.events, "minigameFailed")).toMatchObject([{ kindId: "phantomleaf", outcome: "destroyed", row: 5, col: 5 }]);
+    expect(ofKind(r.events, "harvested")).toHaveLength(0);
+    expect(r.summary.destroyed.phantomleaf).toBe(1);
+    expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
+  });
+
+  it("with perfect minigames (the default) nothing ever fails", () => {
+    const s = blank(everyCycle, { minigameFailChance: 1 });
+    inject(s, 1, "plantboy_advance", 5, 5, "spawned", grown(12));
+    const r = engine.run(s, 1, { retainEvents: "all" });
+    expect(ofKind(r.events, "minigameFailed")).toHaveLength(0);
+    expect(ofKind(r.events, "harvested")).toHaveLength(1);
+  });
+});

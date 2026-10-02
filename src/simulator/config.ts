@@ -67,7 +67,7 @@ export interface SimConfig {
   magicJellybeanMultiplierCap: number;
   /** Assume the PlantBoy / Stoplight / Phantomleaf minigames succeed. */
   perfectPlay: boolean;
-  /** Failure chance per minigame harvest when perfectPlay is off. */
+  /** Failure chance per minigame harvest when perfectPlay is off (PlantBoy / Stoplight retry next session; Phantomleaf is destroyed). */
   minigameFailChance: number;
 
   // ---- Model switches ----
@@ -174,7 +174,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "aloeHarvestStage", label: "All-in Aloe harvest stage", group: "unpublished", input: { type: "number", min: 1, max: 27 }, description: "Stage the player harvests All-in Aloe at. It resets to stage 1 with a rising chance on each new stage; 14 maximises expected drops." },
   { key: "magicJellybeanMultiplierCap", label: "Jellybean multiplier cap", group: "unpublished", input: { type: "number", min: 1 }, description: "Magic Jellybean drop multiplier (its own items and its crop bundle): +1 per 12 stages from 12, up to this cap. The player harvests at stage 120; one broken earlier (from stage 12) drops at its current multiplier." },
   { key: "perfectPlay", label: "Perfect minigames", group: "unpublished", input: { type: "boolean" }, description: "PlantBoy / Stoplight / Phantomleaf minigames always succeed." },
-  { key: "minigameFailChance", label: "Minigame fail chance", group: "unpublished", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Used when perfect minigames is off." },
+  { key: "minigameFailChance", label: "Minigame fail chance", group: "unpublished", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Used when perfect minigames is off. A failed PlantBoy Advance or Stoplight Petal stays fully grown and is retried at the next session (a step change or blocked layout cell still breaks it); a failed Phantomleaf is destroyed." },
 
   { key: "weightModel", label: "Spawn weight model", group: "model", ref: "Q4", input: { type: "select", options: ["ceiling", "support"] }, description: "ceiling: full weight once requirements hold (repo). support: weight x 25% per matching adjacent cell (wiki)." },
   { key: "supportPerCell", label: "Support per cell", group: "model", ref: "Q4", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Support model only." },
