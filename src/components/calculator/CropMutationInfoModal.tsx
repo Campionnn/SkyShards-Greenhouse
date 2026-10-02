@@ -4,7 +4,7 @@ import {
   AlertTriangle,
   Loader2,
   Box,
-  ClockArrowUp, Flame, Target, PackageOpen, ClockArrowDown, WandSparkles, Sprout, Scissors, Droplets
+  ClockArrowUp, Flame, Target, PackageOpen, ClockArrowDown, Hourglass, WandSparkles, Sprout, Scissors, Droplets
 } from "lucide-react";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { CropImage } from "../shared";
@@ -31,6 +31,16 @@ function formatGroundType(ground: string): string {
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
+
+// Minimum mutations: a number, "infinite" (never decays), or null (N/A: timer-only).
+function formatMinimumMutations(value: number | "infinite" | null): string {
+  if (value === "infinite") return "Infinite";
+  if (value === null) return "None";
+  return String(value);
+}
+
+const DECAY_RULE_NOTE =
+  "It can only decay once its timer has run out and it has helped create this many mutations; until then the timer extends by 24h. Plants of the same kind on a plot share the count.";
 
 // Get rarity color
 function getRarityColor(rarity: string): string {
@@ -199,7 +209,11 @@ export const CropMutationInfoModal: React.FC = () => {
   const rarity = isMutation ? mutationData!.rarity : null;
   const requirements = isMutation ? mutationData!.requirements : [];
   const special = isMutation ? mutationData!.special : null;
-  const decay = isMutation ? mutationData!.decay : null;
+  // Days; 0 = never. Crops carry it too (optional in the data type).
+  const decay: number | null = isMutation ? mutationData!.decay : cropData!.decay ?? null;
+  const minimumMutations = isMutation ? mutationData!.minimum_mutations : cropData!.minimum_mutations;
+  // The rule only applies when something can actually decay and a count gates it.
+  const showDecayRule = decay !== null && decay > 0 && typeof minimumMutations === "number";
   const drops = isMutation ? mutationData!.drops : cropData!.drops ?? null;
   const requiresWatering = isMutation ? mutationData!.requires_watering ?? null : null;
   const harvestInfo = isMutation ? mutationData!.harvest_info : null;
@@ -305,11 +319,11 @@ export const CropMutationInfoModal: React.FC = () => {
               </div>
             </div>
 
-            {/* Growth Stages & Decay (side by side for mutations) */}
-            {(growthStages !== null || (decay !== null && decay > 0)) && (
-              <div className="flex gap-4">
+            {/* Growth Stages, Decay & Minimum mutations (tiles share a wrapping row) */}
+            {(growthStages !== null || decay !== null || minimumMutations !== undefined) && (
+              <div className="flex flex-wrap gap-4">
                 {growthStages !== null && (
-                  <div className="flex-1 bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
+                  <div className="flex-1 min-w-[8rem] bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <ClockArrowUp className="w-4 h-4 text-blue-400" />
                       <h3 className="text-sm font-medium text-slate-200">Growth Stages</h3>
@@ -317,16 +331,32 @@ export const CropMutationInfoModal: React.FC = () => {
                     <span className="text-sm text-slate-300">{growthStages} stage{growthStages !== 1 ? "s" : ""}</span>
                   </div>
                 )}
-                {decay !== null && decay > 0 && (
-                  <div className="flex-1 bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
+                {decay !== null && (
+                  <div className="flex-1 min-w-[8rem] bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <ClockArrowDown className="w-4 h-4 text-amber-400" />
                       <h3 className="text-sm font-medium text-slate-200">Decay</h3>
                     </div>
-                    <span className="text-sm text-slate-300">{decay} day{decay !== 1 ? "s" : ""}</span>
+                    <span className="text-sm text-slate-300">
+                      {decay > 0 ? `${decay} day${decay !== 1 ? "s" : ""}` : "Never"}
+                    </span>
+                  </div>
+                )}
+                {minimumMutations !== undefined && (
+                  <div className="flex-1 min-w-[8rem] bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Hourglass className="w-4 h-4 text-amber-400" />
+                      <h3 className="text-sm font-medium text-slate-200">Minimum Mutations</h3>
+                    </div>
+                    <span className="text-sm text-slate-300">{formatMinimumMutations(minimumMutations)}</span>
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Decay rule note: only meaningful with a decay timer AND a numeric minimum */}
+            {showDecayRule && (
+              <p className="text-xs text-slate-500 leading-relaxed">{DECAY_RULE_NOTE}</p>
             )}
 
             {/* Watering Requirement (Mutations Only) */}
@@ -350,7 +380,7 @@ export const CropMutationInfoModal: React.FC = () => {
                   }`}
                 >
                   {requiresWatering
-                    ? "Requires water while growing. A mutation that dries out has a chance to stall on its next growth stage, so keep it watered. Water Retain crops nearby help."
+                    ? "Requires water while growing. A plant that dries out halts: it stops growing, gives no effects and doesn't count for mutations or unique crops until it is watered. It no longer dies. Water Retain crops nearby help."
                     : "Does not need water to grow."}
                 </p>
               </div>
