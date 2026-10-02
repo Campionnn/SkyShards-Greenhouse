@@ -108,6 +108,10 @@ export function describeEvent(e: TimedEvent): string {
       return `${nameOf(e.kindId)} died of thirst${at}`;
     case "destroyed":
       return `${nameOf(e.kindId)} destroyed${at} by ${e.by}`;
+    case "minigameFailed":
+      return e.outcome === "retry"
+        ? `${nameOf(e.kindId)} minigame failed${at}: it stays fully grown, try again next session`
+        : `${nameOf(e.kindId)} minigame failed${at}: it was destroyed`;
     case "placed":
       return `${e.replacement ? "Re-placed" : "Placed"} ${nameOf(e.kindId)}${at}${e.origin === "placed" && e.replacement ? " from inventory" : ""}`;
     case "removed":

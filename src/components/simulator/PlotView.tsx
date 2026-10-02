@@ -9,7 +9,7 @@ import { kindData, nameOf } from "./format";
 import { SimTooltip, type TooltipTarget } from "./SimTooltip";
 import { buttonClass } from "./styles";
 
-type Mark = "harvested" | "spawned" | "decayed" | "destroyed" | "debt" | "teleported" | "exploded" | "groundFixed";
+type Mark = "harvested" | "spawned" | "decayed" | "destroyed" | "debt" | "teleported" | "exploded" | "groundFixed" | "minigameRetry";
 
 const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; label: string }> = {
   harvested: { ring: "rgba(234,179,8,0.9)", glyph: "✦", color: "text-yellow-300", label: "harvested" },
@@ -20,6 +20,7 @@ const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; lab
   teleported: { ring: "rgba(192,132,252,0.9)", glyph: "»", color: "text-purple-300", label: "teleported here" },
   exploded: { ring: "rgba(244,63,94,0.95)", glyph: "✹", color: "text-rose-400", label: "exploded" },
   groundFixed: { ring: "rgba(163,230,53,0.9)", glyph: "▦", color: "text-lime-300", label: "ground fixed" },
+  minigameRetry: { ring: "rgba(250,204,21,0.9)", glyph: "↻", color: "text-yellow-400", label: "minigame failed, retry next session" },
 };
 
 /** Footprint size of a plant / item id (large mutations mark their whole footprint). */
@@ -102,6 +103,8 @@ function marksFrom(events: TimedEvent[]): Map<string, { mark: Mark; size: number
     else if (e.kind === "teleported") at(e.row, e.col, "teleported");
     else if (e.kind === "exploded") at(e.row, e.col, "exploded");
     else if (e.kind === "groundFixed") at(e.row, e.col, "groundFixed");
+    // A destroyed one already shows the "destroyed" mark; only the retry (plant left standing) needs its own.
+    else if (e.kind === "minigameFailed" && e.outcome === "retry") at(e.row, e.col, "minigameRetry", sizeOf(e.kindId));
   }
   return marks;
 }

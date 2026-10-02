@@ -15,7 +15,7 @@ import type { PlantState, PlotState } from "./state";
 export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch, why: string): void {
   if (isHarvestable(p)) {
     harvestPlant(plot, p, ctx, scratch);
-    if (plot.plants.includes(p)) destroyPlant(plot, p, ctx, why); // minigame setback left it standing
+    if (plot.plants.includes(p)) destroyPlant(plot, p, ctx, why); // a failed minigame (retry) left it standing: breaking it here is a loss
     return;
   }
   if (p.isDeadPlant) {

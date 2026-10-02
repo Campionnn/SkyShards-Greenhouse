@@ -317,6 +317,8 @@ export type TickEvent =
   /** The player restored the ground under an empty target cell to what its mutation needs. */
   | { kind: "groundFixed"; row: number; col: number; from: string | null; to: string; mutationId: MutationId }
   | { kind: "destroyed"; plantId: number; kindId: KindId; row: number; col: number; by: string }
+  /** A player minigame (PlantBoy / Stoplight / Phantomleaf harvest) failed. "retry": the plant stays fully grown; "destroyed": it was lost. */
+  | { kind: "minigameFailed"; plantId: number; kindId: KindId; row: number; col: number; outcome: "retry" | "destroyed" }
   | { kind: "teleported"; plantId: number; kindId: KindId; fromRow: number; fromCol: number; row: number; col: number }
   | { kind: "debt"; item: ItemId; row: number; col: number; needed: number; available: number }
   | { kind: "stepChanged"; fromStep: string; toStep: string; stepIndex: number }

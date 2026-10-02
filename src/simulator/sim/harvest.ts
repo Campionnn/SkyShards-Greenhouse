@@ -9,18 +9,24 @@ import { uniqueCropYieldBonus } from "../growth/clock";
 import type { CycleCtx, TickScratch } from "./context";
 import { explode, isPrimedBlastberry } from "./explosion";
 import { convertAloeFragments, credit } from "./inventory";
-import { JELLYBEAN, removePlant, spawnStageOf } from "./plants";
+import { JELLYBEAN, removePlant } from "./plants";
 import { bump, perPlot } from "./summary";
 import { ZOMBUD, zombudHarvest } from "./zombud";
 import type { PlantState, PlotState } from "./state";
 
-const MINIGAMES: Record<string, "setback" | "destroy"> = {
-  plantboy_advance: "setback",
-  stoplight_petal: "destroy",
+/**
+ * Spawned kinds whose harvest is a player minigame, and what a failed one does:
+ * - retry:   nothing changes (no stage change, no relatch); the plant stays fully
+ *            grown and the player tries again at the next session.
+ * - destroy: the plant is lost.
+ */
+const MINIGAMES: Record<string, "retry" | "destroy"> = {
+  plantboy_advance: "retry",
+  stoplight_petal: "retry",
   phantomleaf: "destroy",
 };
 
-export type HarvestOutcome = "harvested" | "minigameSetback" | "minigameDestroyed";
+export type HarvestOutcome = "harvested" | "minigameFailed";
 
 function scaleDrops(drops: Record<string, number>, factor: number): Record<string, number> {
   const out: Record<string, number> = {};
@@ -42,19 +48,18 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   // Player minigames: assumed won unless perfectPlay is off.
   const game = p.origin === "spawned" ? MINIGAMES[p.kindId] : undefined;
   if (game && !ctx.config.perfectPlay && chance(rng, ctx.config.minigameFailChance)) {
-    if (game === "setback") {
-      p.stage = Math.max(spawnStageOf(p.growthStages), p.stage - 3); // never below the stage it spawned at
-      p.lockedEffects = null;
-      p.fullyGrownAtCycle = null;
-      // Its spawn timer keeps running: a setback is not a fresh spawn.
-      return "minigameSetback";
+    if (game === "retry") {
+      // No stage change, no relatch: still fully grown, the player tries again next session.
+      ctx.emit(plot.id, { kind: "minigameFailed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, outcome: "retry" });
+      return "minigameFailed";
     }
     removePlant(plot, p);
     bump(ctx.state.summary.destroyed, p.kindId);
     perPlot(ctx.state.summary, plot.id).destroyed += 1;
     if (p.isRival) ctx.state.summary.rivals.cleared += 1;
     ctx.emit(plot.id, { kind: "destroyed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, by: "minigame" });
-    return "minigameDestroyed";
+    ctx.emit(plot.id, { kind: "minigameFailed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, outcome: "destroyed" });
+    return "minigameFailed";
   }
 
   const effective = new Set(p.lockedEffects ?? effectiveList(p.held));
