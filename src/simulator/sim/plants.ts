@@ -119,6 +119,8 @@ export function newPlant(
       plant.stage = spawnStageOf(def.growthStages);
     }
     if (kindId === "fleshtrap") plant.gate.hunger = config.fleshtrapInitialHunger;
+    // A spawned Thunderling grows and so builds charge; a placed one never grows.
+    if (kindId === "thunderling" && origin !== "placed") plant.gate.charge = 0;
     // Primed once fully grown (natural) or at the next tick after placing (see sim/explosion.ts).
     if (kindId === "blastberry") plant.gate.primed = false;
     if (kindId === "turtlellini") plant.gate.exploded = 0;

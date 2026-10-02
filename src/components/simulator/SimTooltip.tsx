@@ -29,11 +29,13 @@ function originLabel(p: PlantState): string {
   return "Planted crop";
 }
 
-function statusOf(p: PlantState, m: MutationDef | undefined): { text: string; tone: string } {
+function statusOf(p: PlantState, m: MutationDef | undefined, config: SimConfig): { text: string; tone: string } {
   if (p.kindId === "devourer_root") return { text: "Broken by the player next time they are online", tone: "text-amber-300" };
   if (p.isDeadPlant) return { text: "Cleared (dead_plant item) next time the player is online", tone: "text-slate-300" };
   if (p.gate.asleep) return { text: "Asleep - the player wakes it when online", tone: "text-amber-300" };
   if (p.gate.ratAlive) return { text: "A rat is eating it - vacuumed when online", tone: "text-amber-300" };
+  if (p.kindId === "thunderling" && (p.gate.charge ?? 0) >= config.thunderlingMaxCharge)
+    return { text: "Overcharged - discharged when the player is online", tone: "text-amber-300" };
   if (p.kindId === "fleshtrap" && (p.gate.hunger ?? 0) <= 0) return { text: "Hungry - fed when the player is online", tone: "text-amber-300" };
   if (p.kindId === "noctilume" && p.origin === "spawned" && p.stage < p.readyStage)
     return { text: "Grows only while the player is online (they set the time)", tone: "text-slate-300" };
@@ -141,7 +143,7 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
   cycleSeconds,
   config,
 }) => {
-  const status = statusOf(p, m);
+  const status = statusOf(p, m, config);
   const growing = !p.isDeadPlant && p.origin !== "placed" && p.kindId !== "devourer_root";
   const effective = effectiveEffects(p.held);
   const cancelled = sortEffects(p.held.filter((e) => !effective.has(e)));
@@ -203,6 +205,11 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
           </Row>
         )}
         {p.kindId === "turtlellini" && <Row label="Blasts taken">{p.gate.exploded ?? 0} / 2 (2 = Shellfruit)</Row>}
+        {p.kindId === "thunderling" && p.gate.charge !== undefined && (
+          <Row label="Charge" tone={p.gate.charge >= config.thunderlingMaxCharge ? "text-amber-300" : undefined}>
+            {p.gate.charge.toLocaleString("en-US")} / {config.thunderlingMaxCharge.toLocaleString("en-US")}
+          </Row>
+        )}
         {p.kindId === "fleshtrap" && p.origin === "spawned" && <Row label="Hunger">{p.gate.hunger ?? 0}</Row>}
         {p.kindId === "devourer" && p.origin === "spawned" && (
           <Row label="Roots">{p.stage < p.growthStages ? `${Math.round(config.devourerRootChance * 100)}% per tick while growing` : "none (fully grown)"}</Row>

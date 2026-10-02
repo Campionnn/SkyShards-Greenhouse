@@ -78,7 +78,7 @@ export const PlotMarkLegend: React.FC = () => (
     </span>
     <span className="flex items-center gap-1">
       <span className="text-[9px] text-amber-300">z</span>
-      asleep / rat present
+      asleep / rat present / overcharged
     </span>
     <span className="flex items-center gap-1">
       <span className="text-[9px] text-rose-400">✹</span>
@@ -285,7 +285,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
                 {growing && (
                   <div className="absolute bottom-0 left-0 h-[3px] bg-emerald-400/80" style={{ width: `${(p.stage / p.readyStage) * 100}%` }} />
                 )}
-                {(p.gate.asleep || p.gate.ratAlive) && <span className="absolute top-0 right-0.5 text-[9px] text-amber-300">z</span>}
+                {(p.gate.asleep || p.gate.ratAlive || (p.kindId === "thunderling" && (p.gate.charge ?? 0) >= config.thunderlingMaxCharge)) && <span className="absolute top-0 right-0.5 text-[9px] text-amber-300">z</span>}
                 {p.kindId === "blastberry" && p.gate.primed && <span className="absolute top-0 left-0.5 text-[9px] text-rose-400">✹</span>}
               </div>
             );
