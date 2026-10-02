@@ -1,4 +1,4 @@
-import type { SimConfig } from "../config";
+import { THUNDERLING_CHARGE_PER_STAGE, THUNDERLING_MAX_CHARGE, type SimConfig } from "../config";
 import type { GameData } from "../data/types";
 import type { Occupancy } from "../sim/plants";
 import type { PlantState } from "../sim/state";
@@ -44,9 +44,9 @@ export const GATES: Record<string, Gate> = {
   },
   thunderling: {
     // At max charge it stops growing until discharged. Placed Thunderlings never grow, so build none.
-    blocks: (p, env) => ((p.gate.charge ?? 0) >= env.config.thunderlingMaxCharge ? "overcharged" : null),
-    onAdvanced: (p, env) => {
-      p.gate.charge = Math.min(env.config.thunderlingMaxCharge, (p.gate.charge ?? 0) + env.config.thunderlingChargePerStage);
+    blocks: (p) => ((p.gate.charge ?? 0) >= THUNDERLING_MAX_CHARGE ? "overcharged" : null),
+    onAdvanced: (p) => {
+      p.gate.charge = Math.min(THUNDERLING_MAX_CHARGE, (p.gate.charge ?? 0) + THUNDERLING_CHARGE_PER_STAGE);
     },
   },
   fleshtrap: {

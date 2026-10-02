@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { ALOE_FRAGMENT, aloeHarvestItems, aloeRow } from "../growth/aloe";
 import { DEFAULT_POLICIES, mergePolicies } from "../flow/policies";
-import { engine, flow, inject, layout, NEVER_ACTIVE, NO_BASE_CROP_DECAY, plantAt, scenario, step, start, TIMER_ONLY } from "../testHelpers";
+import { THUNDERLING_CHARGE_PER_STAGE, THUNDERLING_MAX_CHARGE, type SimConfig } from "../config";
+import type { Engine } from "../engine";
+import { engine, engineWith, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, step, start, TIMER_ONLY } from "../testHelpers";
 import type { ActivitySchedule, TimedEvent } from "./state";
 
-const slotsOnly = { spawnCells: "slotsOnly" as const };
-const blank = (activity: ActivitySchedule = NEVER_ACTIVE, config: Record<string, unknown> = {}) =>
-  start(scenario([flow([step("a", layout())])], { config: { ...slotsOnly, ...config }, activity }));
+const blank = (activity: ActivitySchedule = NEVER_ACTIVE, config: Partial<SimConfig> = {}, eng: Engine = engine) =>
+  start(scenario([flow([step("a", layout())])], { config, activity }), eng);
 const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
 
@@ -27,14 +28,15 @@ describe("Soggybud", () => {
     expect(plantAt(five, 1, 5, 5)).toMatchObject({ water: 20, stage: 2 });
 
     // Wheat watered and not decaying; the Soggybud's timer is stretched to 30 days so only water limits growth.
-    const grown = blank({ kind: "everyN", n: 1, offset: 0 }, { decayDaysOverrides: { ...NO_BASE_CROP_DECAY.decayDaysOverrides, soggybud: 30 } });
-    inject(grown, 1, "soggybud", 5, 5, "spawned");
-    inject(grown, 1, "wheat", 5, 4, "planted", { water: 100 });
-    inject(grown, 1, "wheat", 5, 6, "planted", { water: 100 });
+    const slow = engineWith({ noBaseCropDecay: true, decayDays: { soggybud: 30 } });
+    const grown = blank({ kind: "everyN", n: 1, offset: 0 }, {}, slow);
+    inject(grown, 1, "soggybud", 5, 5, "spawned", {}, slow);
+    inject(grown, 1, "wheat", 5, 4, "planted", { water: 100 }, slow);
+    inject(grown, 1, "wheat", 5, 6, "planted", { water: 100 }, slow);
     // 2 wheat x 2 water = 4 per tick: stage 10 (100 water) on the 25th tick, then the player harvests it.
-    const before = engine.run(grown, 24).state;
+    const before = slow.run(grown, 24).state;
     expect(plantAt(before, 1, 5, 5)).toMatchObject({ water: 96, stage: 9 });
-    const done = engine.run(before, 1);
+    const done = slow.run(before, 1);
     expect(ofKind(done.events, "fullyGrown").some((e) => e.kindId === "soggybud")).toBe(true);
     expect(ofKind(done.events, "harvested").some((e) => e.kindId === "soggybud")).toBe(true);
   });
@@ -42,11 +44,11 @@ describe("Soggybud", () => {
   it("with only 2 neighbours its 3-day timer runs out before it finishes growing", () => {
     // 4 water a tick means 25 ticks to mature; the 3-day timer runs out after ~18-19 cycles.
     // Timer-only, so its unmet minimum (8) doesn't extend it.
-    const s = blank(NEVER_ACTIVE, TIMER_ONLY);
-    inject(s, 1, "soggybud", 5, 5, "spawned");
-    inject(s, 1, "wheat", 5, 4, "planted");
-    inject(s, 1, "wheat", 5, 6, "planted");
-    const r = engine.run(s, 20);
+    const s = blank(NEVER_ACTIVE, {}, TIMER_ONLY);
+    inject(s, 1, "soggybud", 5, 5, "spawned", {}, TIMER_ONLY);
+    inject(s, 1, "wheat", 5, 4, "planted", {}, TIMER_ONLY);
+    inject(s, 1, "wheat", 5, 6, "planted", {}, TIMER_ONLY);
+    const r = TIMER_ONLY.run(s, 20);
     expect(r.summary.decayed.soggybud).toBe(1);
     expect(ofKind(r.events, "fullyGrown").some((e) => e.kindId === "soggybud")).toBe(false);
   });
@@ -108,7 +110,7 @@ describe("All-in Aloe", () => {
   it("the online player harvests it at the target stage for fragments + crops", () => {
     // Find a seed where the aloe survives 8 -> 9 without resetting (18% reset chance at 9).
     for (let seed = 1; seed < 40; seed++) {
-      const s = start(scenario([flow([step("a", layout())])], { seed, config: { ...slotsOnly, aloeHarvestStage: 9 } }));
+      const s = start(scenario([flow([step("a", layout())])], { seed, config: { aloeHarvestStage: 9 } }));
       inject(s, 1, "all_in_aloe", 5, 5, "spawned", { stage: 8 });
       const r = engine.run(s, 1);
       const h = ofKind(r.events, "harvested")[0];
@@ -123,7 +125,7 @@ describe("All-in Aloe", () => {
 
   it("can be harvested at any stage: a step change takes it at its current stage", () => {
     const f = flow([step("a", layout(), [{ kind: "cycles", n: 1 }]), step("b", layout(), [], { fullClear: true })], false);
-    const s = start(scenario([f], { config: slotsOnly }));
+    const s = start(scenario([f]));
     inject(s, 1, "all_in_aloe", 5, 5, "spawned", { stage: 2 });
     const r = engine.run(s, 1);
     const h = ofKind(r.events, "harvested")[0];
@@ -134,8 +136,8 @@ describe("All-in Aloe", () => {
 
 describe("Magic Jellybean", () => {
   // Zeroed stats, no base crops standing: yield sum 1, FF x1, so drops are the raw multiplier.
-  const online = (config: Record<string, unknown> = {}) =>
-    start(scenario([flow([step("a", layout())])], { config: { ...slotsOnly, ...config }, activity: { kind: "everyN", n: 1, offset: 0 } }));
+  const online = (config: Partial<SimConfig> = {}) =>
+    start(scenario([flow([step("a", layout())])], { config, activity: { kind: "everyN", n: 1, offset: 0 } }));
   const jellyHarvest = (events: TimedEvent[]) => ofKind(events, "harvested").find((e) => e.kindId === "magic_jellybean");
 
   it("the player only harvests it at stage 120: 10x jellybeans and 10x the stage-12 crop bundle", () => {
@@ -152,7 +154,7 @@ describe("Magic Jellybean", () => {
 
   it("broken early by a step change, it still drops at its current stage (60 = 5x / 5x); below 12 nothing", () => {
     const f = flow([step("a", layout(), [{ kind: "cycles", n: 1 }]), step("b", layout(), [], { fullClear: true })], false);
-    const s = start(scenario([f], { config: slotsOnly }));
+    const s = start(scenario([f]));
     inject(s, 1, "magic_jellybean", 5, 5, "spawned", { stage: 59 }); // 60 after the tick
     inject(s, 1, "magic_jellybean", 7, 7, "spawned", { stage: 5 });
     const r = engine.run(s, 1);
@@ -165,7 +167,7 @@ describe("Magic Jellybean", () => {
 describe("harvest yield", () => {
   const harvestAshwreath = (seed: number) => {
     // No base crops standing: yield sum = 1 + 0.5 upgrade = 1.5. FF 0, Evergreen 0.6.
-    const s = start(scenario([flow([step("a", layout())])], { seed, config: slotsOnly, stats: { plantYieldUpgrade: 0.5, evergreenChip: 0.6 } }));
+    const s = start(scenario([flow([step("a", layout())])], { seed, stats: { plantYieldUpgrade: 0.5, evergreenChip: 0.6 } }));
     inject(s, 1, "ashwreath", 5, 5, "spawned", { lockedEffects: [], fullyGrownAtCycle: 0 });
     return ofKind(engine.run(s, 1).events, "harvested").find((e) => e.kindId === "ashwreath")!;
   };
@@ -186,7 +188,7 @@ describe("harvest yield", () => {
 describe("Zombud", () => {
   const grown = { stage: 16, lockedEffects: [], fullyGrownAtCycle: 0 };
   const online = (inventory: Record<string, number> = {}, stats: Record<string, number> = {}) =>
-    start(scenario([flow([step("a", layout())])], { config: slotsOnly, activity: { kind: "everyN", n: 1, offset: 0 }, inventory, stats }));
+    start(scenario([flow([step("a", layout())])], { activity: { kind: "everyN", n: 1, offset: 0 }, inventory, stats }));
 
   it("fills empty ring cells with dead plants from stock, then gives 1 Zombud per adjacent dead plant and consumes them", () => {
     const s = online({ dead_plant: 3 }, { plantYieldUpgrade: 0.9 });
@@ -239,10 +241,12 @@ describe("Zombud", () => {
 
   it("decay just leaves a Dead Plant: the adjacent dead plants stay and nothing drops", () => {
     // Timer-only: the Zombud never helped a mutation, so its minimum (6) would otherwise extend it.
-    const s = blank(NEVER_ACTIVE, { harvestWindowCycles: 2, ...TIMER_ONLY });
-    inject(s, 1, "zombud", 5, 5, "spawned", grown);
-    inject(s, 1, "dead_plant", 4, 4, "placed");
-    const r = engine.run(s, 3);
+    // A 6 h timer, so it decays within the 3 cycles.
+    const eng = engineWith({ timerOnly: true, decayDays: { zombud: 0.25 } });
+    const s = blank(NEVER_ACTIVE, {}, eng);
+    inject(s, 1, "zombud", 5, 5, "spawned", grown, eng);
+    inject(s, 1, "dead_plant", 4, 4, "placed", {}, eng);
+    const r = eng.run(s, 3);
     expect(r.summary.decayed.zombud).toBe(1);
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
     expect(plantAt(r.state, 1, 4, 4)?.kindId).toBe("dead_plant");
@@ -253,7 +257,7 @@ describe("Zombud", () => {
 describe("Timestalk", () => {
   it("gives exactly 1 Timestalk per harvest, with no yield scaling", () => {
     for (let seed = 1; seed <= 20; seed++) {
-      const s = start(scenario([flow([step("a", layout())])], { seed, config: slotsOnly, stats: { plantYieldUpgrade: 0.9 } }));
+      const s = start(scenario([flow([step("a", layout())])], { seed, stats: { plantYieldUpgrade: 0.9 } }));
       inject(s, 1, "timestalk", 5, 5, "spawned", { stage: 14, lockedEffects: [], fullyGrownAtCycle: 0 });
       const h = ofKind(engine.run(s, 1).events, "harvested").find((e) => e.kindId === "timestalk")!;
       expect(h.drops.timestalk).toBe(1);
@@ -275,76 +279,22 @@ describe("Noctilume", () => {
   });
 });
 
-describe("Failed minigames (PlantBoy Advance, Stoplight Petal, Phantomleaf)", () => {
-  const failing = { perfectPlay: false, minigameFailChance: 1 };
+describe("Minigames (PlantBoy Advance, Stoplight Petal, Phantomleaf) always succeed", () => {
   const everyCycle: ActivitySchedule = { kind: "everyN", n: 1, offset: 0 };
   const grown = (stage: number) => ({ stage, lockedEffects: [], fullyGrownAtCycle: 0 });
 
-  for (const [kindId, stages] of [["plantboy_advance", 12], ["stoplight_petal", 12]] as const) {
-    it(`${kindId}: a failed minigame changes nothing, and it is harvested once the player succeeds`, () => {
-      const s = blank(everyCycle, failing);
-      const p = inject(s, 1, kindId, 5, 5, "spawned", grown(stages));
-      const before = JSON.stringify(p);
-
-      const r = engine.run(s, 3, { retainEvents: "all" });
-      const failed = ofKind(r.events, "minigameFailed");
-      expect(failed).toHaveLength(3); // one attempt per session
-      expect(failed.every((e) => e.kindId === kindId && e.outcome === "retry" && e.row === 5 && e.col === 5)).toBe(true);
-      expect(ofKind(r.events, "harvested")).toHaveLength(0);
-      expect(ofKind(r.events, "destroyed")).toHaveLength(0);
-      expect(r.summary.destroyed[kindId]).toBeUndefined();
-      // Same stage, still fully grown, latched effects untouched.
-      const after = plantAt(r.state, 1, 5, 5)!;
-      expect(after).toMatchObject({ kindId, stage: stages, fullyGrownAtCycle: 0, lockedEffects: [] });
-      expect(after.id).toBe(JSON.parse(before).id);
-
-      // The player gets it right at the next session.
-      r.state.scenario.settings.config.minigameFailChance = 0;
-      const done = engine.run(r.state, 1, { retainEvents: "all" });
-      expect(ofKind(done.events, "harvested").filter((e) => e.kindId === kindId)).toHaveLength(1);
-      expect(ofKind(done.events, "minigameFailed")).toHaveLength(0);
-      expect(plantAt(done.state, 1, 5, 5)).toBeUndefined();
-    });
-
-    it(`${kindId}: a step change still breaks a failed one (a loss)`, () => {
-      const f = flow([step("a", layout(), [{ kind: "cycles", n: 2 }]), step("b", layout(), [], { fullClear: true })], false);
-      const s = start(scenario([f], { config: { ...slotsOnly, ...failing }, activity: everyCycle }));
-      inject(s, 1, kindId, 5, 5, "spawned", grown(stages));
-      const r = engine.run(s, 4, { retainEvents: "all" });
-      expect(ofKind(r.events, "stepChanged")).toHaveLength(1);
-      expect(ofKind(r.events, "harvested")).toHaveLength(0);
-      expect(r.summary.destroyed[kindId]).toBe(1);
-      expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
-    });
-  }
-
-  it("a failed PlantBoy blocking a layout cell is broken by the player", () => {
-    const s = start(scenario([flow([step("a", layout([["wheat", 5, 5]]))])], { config: { ...slotsOnly, ...failing }, activity: everyCycle }));
-    const wheat = plantAt(s, 1, 5, 5)!;
-    s.plots[0].plants.splice(s.plots[0].plants.indexOf(wheat), 1);
-    inject(s, 1, "plantboy_advance", 5, 5, "spawned", grown(12));
+  it.each([
+    ["plantboy_advance", 12],
+    ["stoplight_petal", 12],
+    ["phantomleaf", 15],
+  ] as const)("%s is simply harvested by the online player", (kindId, stage) => {
+    const s = blank(everyCycle);
+    inject(s, 1, kindId, 5, 5, "spawned", grown(stage));
     const r = engine.run(s, 1, { retainEvents: "all" });
-    expect(r.summary.destroyed.plantboy_advance).toBe(1);
-    expect(plantAt(r.state, 1, 5, 5)?.kindId).toBe("wheat"); // layout re-placed
-  });
-
-  it("phantomleaf: a failed minigame destroys it, with both events", () => {
-    const s = blank(everyCycle, failing);
-    inject(s, 1, "phantomleaf", 5, 5, "spawned", grown(15));
-    const r = engine.run(s, 1, { retainEvents: "all" });
-    expect(ofKind(r.events, "destroyed")).toMatchObject([{ kindId: "phantomleaf", by: "minigame", row: 5, col: 5 }]);
-    expect(ofKind(r.events, "minigameFailed")).toMatchObject([{ kindId: "phantomleaf", outcome: "destroyed", row: 5, col: 5 }]);
-    expect(ofKind(r.events, "harvested")).toHaveLength(0);
-    expect(r.summary.destroyed.phantomleaf).toBe(1);
+    expect(ofKind(r.events, "harvested").filter((e) => e.kindId === kindId)).toHaveLength(1);
+    expect(ofKind(r.events, "destroyed")).toHaveLength(0);
+    expect(r.summary.destroyed[kindId]).toBeUndefined();
     expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
-  });
-
-  it("with perfect minigames (the default) nothing ever fails", () => {
-    const s = blank(everyCycle, { minigameFailChance: 1 });
-    inject(s, 1, "plantboy_advance", 5, 5, "spawned", grown(12));
-    const r = engine.run(s, 1, { retainEvents: "all" });
-    expect(ofKind(r.events, "minigameFailed")).toHaveLength(0);
-    expect(ofKind(r.events, "harvested")).toHaveLength(1);
   });
 });
 describe("Thunderling charge", () => {
@@ -405,7 +355,7 @@ describe("Thunderling charge", () => {
 
   it("with the discharge toggle off it halts for good, even when the player is online", () => {
     const s = start(
-      scenario([flow([step("a", layout())])], { config: slotsOnly, activity: everyCycle, policies: { gateInteractions: { dischargeThunderling: false } } })
+      scenario([flow([step("a", layout())])], { activity: everyCycle, policies: { gateInteractions: { dischargeThunderling: false } } })
     );
     spawn(s);
     const r = engine.run(s, 20);
@@ -413,12 +363,15 @@ describe("Thunderling charge", () => {
     expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBe(16000);
   });
 
-  it("the charge numbers come from the config", () => {
-    const s = blank(NEVER_ACTIVE, { thunderlingChargePerStage: 5000, thunderlingMaxCharge: 10000 });
+  it("the charge numbers are the fixed THUNDERLING_* constants", () => {
+    expect(THUNDERLING_CHARGE_PER_STAGE).toBe(2000);
+    expect(THUNDERLING_MAX_CHARGE).toBe(16000);
+    const s = blank();
     spawn(s);
-    const r = engine.run(s, 6);
-    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 3 });
-    expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBe(10000);
+    const stagesToMax = THUNDERLING_MAX_CHARGE / THUNDERLING_CHARGE_PER_STAGE;
+    const r = engine.run(s, stagesToMax + 3);
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 1 + stagesToMax });
+    expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBe(THUNDERLING_MAX_CHARGE);
   });
 
   it("the discharge policy defaults on and survives partial gateInteractions overrides (old saves get it)", () => {

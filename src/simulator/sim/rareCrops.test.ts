@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { armorRareCrops, overbloomMultiplier, rollRareCount } from "../economy/rareCrops";
 import { npcPriceSource } from "../economy/prices";
+import type { SimConfig } from "../config";
 import { seedRng } from "../rng";
 import { engine, flow, inject, layout, scenario, step, start } from "../testHelpers";
 import type { PlayerStats, TimedEvent } from "./state";
@@ -9,8 +10,8 @@ const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
 
 /** Harvest one fully grown spawned Ashwreath (common) with the given stats. */
-function harvestOne(seed: number, stats: Partial<PlayerStats>, config: Record<string, unknown> = {}) {
-  const s = start(scenario([flow([step("a", layout())])], { seed, config: { spawnCells: "slotsOnly", ...config }, stats }));
+function harvestOne(seed: number, stats: Partial<PlayerStats>, config: Partial<SimConfig> = {}) {
+  const s = start(scenario([flow([step("a", layout())])], { seed, config, stats }));
   inject(s, 1, "ashwreath", 5, 5, "spawned", { lockedEffects: [], fullyGrownAtCycle: 0 });
   const r = engine.run(s, 1);
   return { h: ofKind(r.events, "harvested").find((e) => e.kindId === "ashwreath")!, r };
@@ -53,7 +54,7 @@ describe("armor Rare Crops", () => {
   it("Helianthus 4/4 at Overbloom 400 guarantees Cropie (20% x 5 = 100%) on every harvest and books Rare Crop revenue", () => {
     let helianthus = 0;
     for (let seed = 1; seed <= 200; seed++) {
-      const { h, r } = harvestOne(seed, { armorSet: "helianthus", overbloom: 400 });
+      const { h, r } = harvestOne(seed, { armorSet: "helianthus", overbloom: 400 }, { armorRareCropBug: false });
       expect(h.drops.cropie).toBe(1);
       expect([undefined, 1]).toContain(h.drops.squash); // 12% x 5 = 60%: at most one
       helianthus += h.drops.helianthus ?? 0;
@@ -81,9 +82,9 @@ describe("armor Rare Crops", () => {
     expect(counts.every((n) => n === 1)).toBe(true);
   });
 
-  it("the armor bug toggle stops Cropie and Squash under Helianthus", () => {
+  it("the armor bug (on by default) stops Cropie and Squash under Helianthus", () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const { h } = harvestOne(seed, { armorSet: "helianthus", overbloom: 400 }, { armorRareCropBug: true });
+      const { h } = harvestOne(seed, { armorSet: "helianthus", overbloom: 400 });
       expect(h.drops.cropie).toBeUndefined();
       expect(h.drops.squash).toBeUndefined();
     }
@@ -97,14 +98,13 @@ describe("armor Rare Crops", () => {
 });
 
 describe("NPC prices", () => {
-  it("rare items default to wiki NPC prices; overrides win", () => {
+  it("rare items use wiki NPC prices", () => {
     const p = npcPriceSource(engine.data);
     expect(p.price("helianthus")).toBe(275_000);
     expect(p.price("cropie")).toBe(25_000);
     expect(p.price("ethereal_vine")).toBe(20_000);
     expect(p.price("wheat")).toBe(6);
     expect(p.price("chloronite")).toBe(0);
-    expect(npcPriceSource(engine.data, { helianthus: 1 }).price("helianthus")).toBe(1);
   });
 });
 

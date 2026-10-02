@@ -5,6 +5,7 @@ import {
   defaultGameData,
   isDry,
   sanityCheck,
+  THUNDERLING_MAX_CHARGE,
   type FlowRunnerState,
   type PlantState,
   type PlotState,
@@ -33,8 +34,7 @@ type Mark =
   | "debt"
   | "teleported"
   | "exploded"
-  | "groundFixed"
-  | "minigameRetry";
+  | "groundFixed";
 
 /** Sandy tint for a dried-out (halted) plant, distinct from a Dead Plant's grey. */
 const DRY_FILTER = "sepia(0.85) saturate(0.6) brightness(0.8)";
@@ -50,7 +50,6 @@ const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; lab
   teleported: { ring: "rgba(192,132,252,0.9)", glyph: "»", color: "text-purple-300", label: "teleported here" },
   exploded: { ring: "rgba(244,63,94,0.95)", glyph: "✹", color: "text-rose-400", label: "exploded" },
   groundFixed: { ring: "rgba(163,230,53,0.9)", glyph: "▦", color: "text-lime-300", label: "ground fixed" },
-  minigameRetry: { ring: "rgba(250,204,21,0.9)", glyph: "↻", color: "text-yellow-400", label: "minigame failed, retry next session" },
 };
 
 /** Footprint size of a plant or item id, so large mutations mark their whole footprint. */
@@ -143,8 +142,6 @@ function marksFrom(events: TimedEvent[]): Map<string, { mark: Mark; size: number
     else if (e.kind === "teleported") at(e.row, e.col, "teleported");
     else if (e.kind === "exploded") at(e.row, e.col, "exploded");
     else if (e.kind === "groundFixed") at(e.row, e.col, "groundFixed");
-    // A destroyed outcome already gets the "destroyed" mark; only a retry (plant still standing) needs its own.
-    else if (e.kind === "minigameFailed" && e.outcome === "retry") at(e.row, e.col, "minigameRetry", sizeOf(e.kindId));
   }
   return marks;
 }
@@ -241,7 +238,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
     standing: plot.plants.filter((p) => p.origin !== "spawned" && !p.isDeadPlant).length,
     spawns: plot.plants.filter((p) => p.origin === "spawned").length,
     dead: plot.plants.filter((p) => p.isDeadPlant).length,
-    dry: plot.plants.filter((p) => isDry(p, config)).length,
+    dry: plot.plants.filter((p) => isDry(p)).length,
     openSlots: plot.slots.filter((s) => !occupied.has(`${s.row},${s.col}`)).length,
   };
   const missing = openDebts
@@ -361,7 +358,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
             const size = p.size * cellSize + (p.size - 1) * gap;
             const ground = plot.groundOverrides[`${p.row},${p.col}`] ?? plot.groundTiles[`${p.row},${p.col}`];
             const growing = !p.isDeadPlant && p.origin !== "placed" && p.readyStage > 0 && p.stage < p.readyStage;
-            const dry = isDry(p, config);
+            const dry = isDry(p);
             // Checked target standing on its slot but dried out: uptime status `halted`.
             const anchor = `${p.row},${p.col}`;
             const watchStatus = watchedKeys.has(anchor) ? plot.watchStatus?.[anchor] : undefined;
@@ -405,7 +402,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
                 {growing && (
                   <div className="absolute bottom-0 left-0 h-[3px] bg-emerald-400/80" style={{ width: `${(p.stage / p.readyStage) * 100}%` }} />
                 )}
-                {(p.gate.asleep || p.gate.ratAlive || (p.kindId === "thunderling" && (p.gate.charge ?? 0) >= config.thunderlingMaxCharge)) && <span className="absolute top-0 right-0.5 text-[9px] text-amber-300">z</span>}
+                {(p.gate.asleep || p.gate.ratAlive || (p.kindId === "thunderling" && (p.gate.charge ?? 0) >= THUNDERLING_MAX_CHARGE)) && <span className="absolute top-0 right-0.5 text-[9px] text-amber-300">z</span>}
                 {p.kindId === "blastberry" && p.gate.primed && <span className="absolute top-0 left-0.5 text-[9px] text-rose-400">✹</span>}
               </div>
             );

@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { engine, flow, inject, layout, NEVER_ACTIVE, scenario, singlePlot, step, start } from "../testHelpers";
+import { ALWAYS_SPAWN, engine, flow, inject, layout, NEVER_ACTIVE, scenario, singlePlot, step, start } from "../testHelpers";
 import type { LayoutSpec } from "../flow/types";
-
-const slotsOnly = { spawnCells: "slotsOnly" as const };
 
 const painted = (spec: LayoutSpec, ground: string, row: number, col: number): LayoutSpec => ({
   ...spec,
@@ -11,7 +9,7 @@ const painted = (spec: LayoutSpec, ground: string, row: number, col: number): La
 
 /** Ashwreath needs soul sand and two nether wart + two fire in its ring. */
 const ashwreathReady = (spec: LayoutSpec) => {
-  const s = start(singlePlot(spec, { config: slotsOnly, activity: NEVER_ACTIVE }));
+  const s = start(singlePlot(spec, { activity: NEVER_ACTIVE }));
   for (const [kind, row, col] of [["nether_wart", 3, 4], ["nether_wart", 3, 5], ["fire", 4, 3], ["fire", 4, 5]] as const) {
     inject(s, 1, kind, row, col, kind === "nether_wart" ? "planted" : "placed");
   }
@@ -26,7 +24,7 @@ describe("mutation ground eligibility", () => {
   });
 
   it("unpainted cells remain AIR, while explicit farmland can support a spawn", () => {
-    const opts = { config: { spawnCells: "allEmpty" as const, blankFillTo: 1 }, activity: NEVER_ACTIVE };
+    const opts = { stats: ALWAYS_SPAWN, activity: NEVER_ACTIVE };
     const bare = start(singlePlot(layout(), opts));
     expect(bare.plots[0].groundTiles["0,0"]).toBeUndefined();
     expect(engine.run(bare, 1).state.plots[0].plants).toHaveLength(0);
@@ -37,7 +35,7 @@ describe("mutation ground eligibility", () => {
 
   it("a painted bare cell supports a mutation without any slot label", () => {
     const spec = painted(layout([ ["nether_wart", 0, 0], ["nether_wart", 0, 2], ["fire", 1, 0], ["fire", 1, 1] ]), "soul_sand", 0, 1);
-    const opts = { config: { spawnCells: "allEmpty" as const, blankFillTo: 1 }, activity: NEVER_ACTIVE };
+    const opts = { stats: ALWAYS_SPAWN, activity: NEVER_ACTIVE };
     const paintedState = engine.run(start(singlePlot(spec, opts)), 1).state;
     expect(paintedState.plots[0].plants.some((p) => p.row === 0 && p.col === 1 && p.kindId === "ashwreath")).toBe(true);
     const bareState = engine.run(start(singlePlot({ ...spec, groundTiles: [] }, opts)), 1).state;
@@ -61,7 +59,7 @@ describe("mutation ground eligibility", () => {
       if (r >= 4 && r <= 5 && c >= 4 && c <= 5) continue;
       ring.push([i++ < 6 ? "startlevine" : "chloronite", r, c]);
     }
-    const s = start(singlePlot(layout(ring, [["glasscorn", 4, 4]]), { config: slotsOnly, activity: NEVER_ACTIVE }));
+    const s = start(singlePlot(layout(ring, [["glasscorn", 4, 4]]), { activity: NEVER_ACTIVE }));
     for (const key of ["4,4", "4,5", "5,4", "5,5"]) expect(s.plots[0].groundTiles[key]).toBe("sand");
     const broken = structuredClone(s);
     broken.plots[0].groundOverrides["5,5"] = "farmland";
@@ -70,11 +68,11 @@ describe("mutation ground eligibility", () => {
   });
 
   it("layout plants infer ground that remains after removal; spawning does not erase ground", () => {
-    const planted = start(singlePlot(painted(layout([["wheat", 4, 4]]), "sand", 4, 4), { config: slotsOnly }));
+    const planted = start(singlePlot(painted(layout([["wheat", 4, 4]]), "sand", 4, 4), {}));
     expect(planted.plots[0].groundTiles["4,4"]).toBe("farmland");
     planted.plots[0].plants = [];
     expect(planted.plots[0].groundTiles["4,4"]).toBe("farmland");
-    const placed = start(singlePlot(layout([["chloronite", 2, 2]]), { config: slotsOnly }));
+    const placed = start(singlePlot(layout([["chloronite", 2, 2]]), {}));
     expect(placed.plots[0].groundTiles["2,2"]).toBe(engine.data.mutations.chloronite.ground);
     const s = ashwreathReady(layout([], [["ashwreath", 4, 4]]));
     const before = structuredClone(s.plots[0].groundTiles);
@@ -86,7 +84,7 @@ describe("mutation ground eligibility", () => {
   it("a step transition replaces paint and clears Chorus ground without erasing identical plants", () => {
     const first = painted(layout([["wheat", 1, 1]]), "sand", 5, 5);
     const second = painted(layout([["wheat", 1, 1]]), "mycelium", 6, 6);
-    const sc = scenario([flow([step("one", first, [{ kind: "cycles", n: 1 }]), step("two", second)], false)], { config: slotsOnly });
+    const sc = scenario([flow([step("one", first, [{ kind: "cycles", n: 1 }]), step("two", second)], false)], {});
     const s = start(sc);
     const plantId = s.plots[0].plants[0].id;
     s.plots[0].groundOverrides["0,0"] = "end_stone";
@@ -98,7 +96,7 @@ describe("mutation ground eligibility", () => {
 
   it("the online player swaps wrong ground under an empty target back (fixGround)", () => {
     const online = { kind: "everyN" as const, n: 1, offset: 0 };
-    const s = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { config: slotsOnly, activity: online }));
+    const s = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { activity: online }));
     s.plots[0].groundOverrides["4,4"] = "end_stone";
     const r = engine.run(s, 1);
     expect(r.state.plots[0].groundOverrides["4,4"]).toBeUndefined();
@@ -109,16 +107,16 @@ describe("mutation ground eligibility", () => {
 
   it("fixGround skips occupied cells, respects the policy and needs the player online", () => {
     const online = { kind: "everyN" as const, n: 1, offset: 0 };
-    const occupied = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { config: slotsOnly, activity: online, policies: { spawnedHarvest: "never" } }));
+    const occupied = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { activity: online, policies: { spawnedHarvest: "never" } }));
     occupied.plots[0].groundOverrides["4,4"] = "end_stone";
     inject(occupied, 1, "chorus_fruit", 4, 4, "spawned", { stage: 12 });
     expect(engine.run(occupied, 1).state.plots[0].groundOverrides["4,4"]).toBe("end_stone");
 
-    const off = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { config: slotsOnly, activity: online, policies: { fixGround: false } }));
+    const off = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { activity: online, policies: { fixGround: false } }));
     off.plots[0].groundOverrides["4,4"] = "end_stone";
     expect(engine.run(off, 1).state.plots[0].groundOverrides["4,4"]).toBe("end_stone");
 
-    const away = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { config: slotsOnly, activity: NEVER_ACTIVE }));
+    const away = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { activity: NEVER_ACTIVE }));
     away.plots[0].groundOverrides["4,4"] = "end_stone";
     expect(engine.run(away, 1).state.plots[0].groundOverrides["4,4"]).toBe("end_stone");
   });

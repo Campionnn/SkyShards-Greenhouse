@@ -12,7 +12,7 @@ import { LayoutPickerPanel } from "./LayoutPicker";
 import { InventoryPanel, MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
 import { FlowEditor, WatchPicker } from "./FlowEditor";
 import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
-import { KindDecayOverrides, ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
+import { ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 import { SimTooltip } from "./SimTooltip";
 import { closestBlocked, hoveredCellOffset } from "./sanityFormat";
 import { describeEvent } from "./format";
@@ -111,8 +111,7 @@ describe("simulator panels render", () => {
 
   it("Sanity Check: the plot view gets hover targets only while it is on, and the card lists spawnable and blocked mutations", () => {
     const sc2 = singlePlot(
-      { ...layout([["pumpkin", 4, 3], ["melon", 4, 5], ["wheat", 7, 7]], [["chloronite", 1, 1]]), groundTiles: [{ ground: "farmland", row: 4, col: 4 }] },
-      { config: { spawnCells: "allEmpty" } }
+      { ...layout([["pumpkin", 4, 3], ["melon", 4, 5], ["wheat", 7, 7]], [["chloronite", 1, 1]]), groundTiles: [{ ground: "farmland", row: 4, col: 4 }] }
     );
     const s = startOf(sc2);
     const plot = s.plots[0];
@@ -160,13 +159,13 @@ describe("simulator panels render", () => {
 
   it("Sanity Check on multi-cell elements: the plant card appends the check of the hovered cell, the slot card names the cell", () => {
     const farmland = Array.from({ length: 9 }, (_, i) => ({ ground: "farmland", row: 4 + Math.floor(i / 3), col: 4 + (i % 3) }));
-    const s = startOf(singlePlot({ ...layout([["wheat", 4, 3]], [["godseed", 4, 4]]), groundTiles: farmland }, { config: { spawnCells: "allEmpty" } }));
+    const s = startOf(singlePlot({ ...layout([["wheat", 4, 3]], [["godseed", 4, 4]]), groundTiles: farmland }));
     const plot = structuredClone(s.plots[0]);
     const tip = (target: React.ComponentProps<typeof SimTooltip>["target"]) =>
       renderToString(<SimTooltip target={target} cellSize={40} gap={2} gridWidth={420} gridHeight={420} cycleSeconds={14400} config={s.scenario.settings.config} plot={plot} />).replace(/<!-- -->/g, "");
 
     // A Godseed on the 3x3: the card gains a check section for the hovered cell only when given one.
-    const godseed = startOf(singlePlot({ ...layout([["wheat", 4, 3]]), groundTiles: farmland }, { config: { spawnCells: "allEmpty" } }));
+    const godseed = startOf(singlePlot({ ...layout([["wheat", 4, 3]]), groundTiles: farmland }));
     const gs = inject(godseed, 1, "godseed", 4, 4, "placed");
     const plain = tip({ kind: "plant", plant: gs });
     expect(plain).not.toContain("Sanity Check");
@@ -221,22 +220,16 @@ describe("simulator panels render", () => {
     expect(() => wrap(<SustainabilityPanel report={view.snapshot!.report} summary={old as typeof state.summary} />)).not.toThrow();
   });
 
-  it("the Advanced tab counts per-kind decay overrides", () => {
+  it("the Advanced tab counts the settings changed from their defaults", () => {
     const tuned = structuredClone(sc);
-    tuned.settings.config.decayDaysOverrides = { wheat: 2 };
-    tuned.settings.config.minimumMutationsOverrides = { wheat: 3, chloronite: "none" };
+    tuned.settings.config.waterLossMin = 2;
+    tuned.settings.config.armorRareCropBug = false;
     const html = wrap(<SettingsPanel scenario={tuned} onChange={() => {}} />).replace(/<!-- -->/g, "");
-    expect(html).toContain("Advanced (2)"); // one per kind overridden
-
-    const table = wrap(<KindDecayOverrides config={tuned.settings.config} onChange={() => {}} />).replace(/<!-- -->/g, "");
-    expect(table).toContain("Decay per kind");
-    expect(table).toContain("Wheat");
-    expect(table).toContain("Chloronite");
-    expect(table).toContain("Override"); // the add picker
-    const empty = wrap(<KindDecayOverrides config={sc.settings.config} onChange={() => {}} />).replace(/<!-- -->/g, "");
-    expect(empty).toContain("Every kind uses the game data");
+    expect(html).toContain("Advanced (2)"); // one per changed setting
+    const plain = wrap(<SettingsPanel scenario={sc} onChange={() => {}} />).replace(/<!-- -->/g, "");
+    expect(plain).toContain("Advanced");
+    expect(plain).not.toMatch(/Advanced \(\d+\)/);
   });
-
   it("the legend omits freezing and does not promise eligibility before evaluation", () => {
     const html = renderToString(<PlotMarkLegend />);
     expect(html).not.toMatch(/frozen|freeze/i);

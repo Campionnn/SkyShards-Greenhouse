@@ -1,3 +1,4 @@
+import { HARVEST_BOUNTY_ROLLS } from "../config";
 import { effectiveList } from "../effects/adapter";
 import { bountyFromRoll, ETHEREAL_VINE_BY_RARITY } from "../economy/bounty";
 import { valueOf } from "../economy/prices";
@@ -14,15 +15,6 @@ import { bump, perPlot } from "./summary";
 import { ZOMBUD, zombudHarvest } from "./zombud";
 import type { PlantState, PlotState } from "./state";
 
-/** Spawned kinds harvested via a minigame. On failure: retry = unchanged, try next session; destroy = plant lost. */
-const MINIGAMES: Record<string, "retry" | "destroy"> = {
-  plantboy_advance: "retry",
-  stoplight_petal: "retry",
-  phantomleaf: "destroy",
-};
-
-export type HarvestOutcome = "harvested" | "minigameFailed";
-
 function scaleDrops(drops: Record<string, number>, factor: number): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [item, qty] of Object.entries(drops)) out[item] = qty * factor;
@@ -32,34 +24,19 @@ function scaleDrops(drops: Record<string, number>, factor: number): Record<strin
 /**
  * Harvest and remove one plant. Drops go to the shared inventory and are
  * booked as revenue at NPC price. Yield uses the effects latched when it
- * became fully grown. A spawned mutation also drops its own item.
+ * became fully grown. A spawned mutation also drops its own item. Minigames
+ * (PlantBoy Advance, Stoplight Petal, Phantomleaf) are always won.
  */
-export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): HarvestOutcome {
+export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): void {
   const { data } = ctx.env;
   const rng = ctx.state.rng;
   const isMutation = !!data.mutations[p.kindId];
 
-  // Minigames are won unless perfectPlay is off.
-  const game = p.origin === "spawned" ? MINIGAMES[p.kindId] : undefined;
-  if (game && !ctx.config.perfectPlay && chance(rng, ctx.config.minigameFailChance)) {
-    if (game === "retry") {
-      ctx.emit(plot.id, { kind: "minigameFailed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, outcome: "retry" });
-      return "minigameFailed";
-    }
-    removePlant(plot, p);
-    bump(ctx.state.summary.destroyed, p.kindId);
-    perPlot(ctx.state.summary, plot.id).destroyed += 1;
-    if (p.isRival) ctx.state.summary.rivals.cleared += 1;
-    ctx.emit(plot.id, { kind: "destroyed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, by: "minigame" });
-    ctx.emit(plot.id, { kind: "minigameFailed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, outcome: "destroyed" });
-    return "minigameFailed";
-  }
-
   const effective = new Set(p.lockedEffects ?? effectiveList(p.held));
-  const sum = greenhouseYieldSum(effective, ctx.stats.plantYieldUpgrade, uniqueCropYieldBonus(ctx.uniqueCropCount, ctx.config));
+  const sum = greenhouseYieldSum(effective, ctx.stats.plantYieldUpgrade, uniqueCropYieldBonus(ctx.uniqueCropCount));
   const def = isMutation ? data.mutations[p.kindId] : data.crops[p.kindId];
   // Jellybean: data.json bundle is the stage-12 (x1) amount; the stage multiplier scales bundle and item count.
-  const jellyMult = p.kindId === JELLYBEAN && p.origin === "spawned" ? jellybeanMultiplier(p.stage, ctx.config.magicJellybeanMultiplierCap) : 1;
+  const jellyMult = p.kindId === JELLYBEAN && p.origin === "spawned" ? jellybeanMultiplier(p.stage) : 1;
   const baseDrops = jellyMult === 1 ? def.drops : scaleDrops(def.drops, jellyMult);
   const drops = harvestYield(baseDrops, farmingFortuneMultiplier(ctx.stats.farmingFortune), sum, ctx.stats.evergreenChip);
 
@@ -99,7 +76,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   // Harvest Bounty (bonus_drops): own table, not boosted by Overbloom.
   const rareDrops: Record<string, number> = {};
   if (effective.has("bonus_drops")) {
-    for (let i = 0; i < ctx.config.bountyRollsPerHarvest; i++) {
+    for (let i = 0; i < HARVEST_BOUNTY_ROLLS; i++) {
       const item = bountyFromRoll(nextFloat(rng));
       if (item) bump(rareDrops, item);
     }
@@ -161,5 +138,4 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   removePlant(plot, p);
   if (primed) explode(plot, p, ctx); // drops are kept
   void scratch;
-  return "harvested";
 }

@@ -16,7 +16,6 @@ import {
 } from "../testHelpers";
 import type { TimedEvent } from "../sim/state";
 
-const slotsOnly = { spawnCells: "slotsOnly" as const };
 const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
 const history = (s: ReturnType<typeof start>, plotId: number) =>
@@ -26,11 +25,11 @@ describe("multi-plot: spatially independent, temporally shared", () => {
   it("unique crops aggregate across plots, and one plot's crops speed up another's cycles", () => {
     const crops = ["wheat", "potato", "carrot", "pumpkin", "melon", "cocoa_beans"];
     const others = ["sugar_cane", "cactus", "nether_wart", "wild_rose", "red_mushroom", "sunflower"];
-    const alone = start(scenario([flow([step("a", layout(crops.map((k, i) => [k, 0, i])))])], { config: slotsOnly }));
+    const alone = start(scenario([flow([step("a", layout(crops.map((k, i) => [k, 0, i])))])], {}));
     const together = start(
       scenario(
         [flow([step("a", layout(crops.map((k, i) => [k, 0, i])))]), flow([step("b", layout(others.map((k, i) => [k, 0, i])))])],
-        { config: slotsOnly }
+        {}
       )
     );
     expect(alone.uniqueCropCount).toBe(6);
@@ -43,9 +42,7 @@ describe("multi-plot: spatially independent, temporally shared", () => {
 
   it("#20 effects never cross a plot boundary", () => {
     const s = start(
-      scenario([flow([step("a", layout([["wild_rose", 0, 9], ["nether_wart", 0, 8]]))]), flow([step("b", layout([["wheat", 0, 0]]))])], {
-        config: slotsOnly,
-      })
+      scenario([flow([step("a", layout([["wild_rose", 0, 9], ["nether_wart", 0, 8]]))]), flow([step("b", layout([["wheat", 0, 0]]))])])
     );
     const r = engine.run(s, 1);
     expect(plantAt(r.state, 2, 0, 0)?.held).toEqual([]);
@@ -59,11 +56,11 @@ describe("multi-plot: spatially independent, temporally shared", () => {
         flow([step("use", layout([["gloomgourd", 2, 2]]))]),
       ],
       // Timer-only: plot 2's Gloomgourd never helps, so its minimum (10) would keep it forever.
-      { config: { ...slotsOnly, ...TIMER_ONLY }, seed: 5 }
+      { seed: 5 }
     );
-    const s = start(sc);
+    const s = start(sc, TIMER_ONLY);
     expect(plantAt(s, 2, 2, 2)?.kindId).toBe("gloomgourd"); // setup is free
-    const r = engine.run(s, 60);
+    const r = TIMER_ONLY.run(s, 60);
     expect(plantAt(r.state, 2, 2, 2)?.kindId).toBe("gloomgourd");
     expect(r.summary.debtEvents).toBe(0);
     // Placed Gloomgourds decay after 3 days and are re-placed from plot 1's harvests.
@@ -74,12 +71,13 @@ describe("multi-plot: spatially independent, temporally shared", () => {
   it("the shared inventory is contended in plotOrder", () => {
     // Both Chloronites decay on cycle 17 (timer-only); the one spare goes to the plot that ticks first.
     const two = (order: number[]) =>
-      engine.run(
+      TIMER_ONLY.run(
         start(
           scenario([flow([step("a", layout([["chloronite", 1, 1]]))]), flow([step("b", layout([["chloronite", 1, 1]]))])], {
-            config: { ...slotsOnly, ...TIMER_ONLY, plotOrder: order },
+            config: { plotOrder: order },
             inventory: { chloronite: 1 },
-          })
+          }),
+          TIMER_ONLY
         ),
         18
       ).state;
@@ -89,7 +87,7 @@ describe("multi-plot: spatially independent, temporally shared", () => {
 
   it("profit is one aggregate, with a per-plot breakdown that sums to it", () => {
     const grow = () => flow([step("g", layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]))]);
-    const r = engine.run(start(scenario([grow(), grow(), grow()], { config: slotsOnly })), 150, { retainEvents: "none" });
+    const r = engine.run(start(scenario([grow(), grow(), grow()], {})), 150, { retainEvents: "none" });
     const perPlot = Object.values(r.summary.perPlot).reduce((a, p) => a + p.revenue, 0);
     expect(perPlot).toBe(r.summary.coinsRealised);
     expect(Object.keys(r.summary.perPlot)).toEqual(["1", "2", "3"]);
@@ -100,7 +98,7 @@ describe("per-plot flows", () => {
   const twoStep = (n: number) => flow([step("s1", layout([["wheat", 0, 0]]), [{ kind: "cycles", n }]), step("s2", layout([["potato", 0, 0]]), [{ kind: "cycles", n }])], true);
 
   it("plots desynchronise: each follows its own step list on the shared clock", () => {
-    const r = engine.run(start(scenario([twoStep(2), twoStep(5)], { config: slotsOnly })), 12);
+    const r = engine.run(start(scenario([twoStep(2), twoStep(5)], {})), 12);
     expect(history(r.state, 1).length).toBeGreaterThan(history(r.state, 2).length);
     expect(history(r.state, 1)[1]).toEqual(["s2", 1]);
     expect(history(r.state, 2)[1]).toEqual(["s2", 4]);
@@ -108,14 +106,14 @@ describe("per-plot flows", () => {
 
   it("startIndex offsets a plot without changing its steps", () => {
     const f = twoStep(3);
-    const s = start(scenario([f, { ...f, startIndex: 1 }], { config: slotsOnly }));
+    const s = start(scenario([f, { ...f, startIndex: 1 }], {}));
     expect(plantAt(s, 1, 0, 0)?.kindId).toBe("wheat");
     expect(plantAt(s, 2, 0, 0)?.kindId).toBe("potato");
   });
 
   it("a non-looping flow holds its final step while the others keep going", () => {
     const once = flow([step("only", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 2 }])], false);
-    const r = engine.run(start(scenario([once, twoStep(2)], { config: slotsOnly })), 10);
+    const r = engine.run(start(scenario([once, twoStep(2)], {})), 10);
     expect(r.state.flows[0].finished).toBe(true);
     expect(history(r.state, 1)).toHaveLength(1);
     expect(history(r.state, 2).length).toBeGreaterThan(3);
@@ -129,9 +127,9 @@ describe("per-plot flows", () => {
       ],
       false
     );
-    const held = engine.run(start(scenario([f], { config: slotsOnly })), 10);
+    const held = engine.run(start(scenario([f], {})), 10);
     expect(history(held.state, 1)).toHaveLength(1);
-    const moved = engine.run(start(scenario([f], { config: slotsOnly, inventory: { chloronite: 1 } })), 10);
+    const moved = engine.run(start(scenario([f], { inventory: { chloronite: 1 } })), 10);
     expect(history(moved.state, 1)).toEqual([["s1", 0], ["s2", 1]]);
   });
 
@@ -143,7 +141,7 @@ describe("per-plot flows", () => {
       ],
       false
     );
-    const r = engine.run(start(scenario([f], { config: slotsOnly, seed: 8 })), 100);
+    const r = engine.run(start(scenario([f], { seed: 8 })), 100);
     const change = ofKind(r.events, "stepChanged")[0];
     const spawnedBefore = ofKind(r.events, "spawned").filter((e) => e.cycle <= change.cycle && e.mutationId === "gloomgourd");
     expect(spawnedBefore).toHaveLength(2);
@@ -155,7 +153,7 @@ describe("per-plot flows", () => {
       false
     );
     // Timer-only: the wheat never helps a mutation, so its minimum (12) would otherwise keep extending it.
-    const r = engine.run(start(scenario([f], { config: { ...slotsOnly, ...TIMER_ONLY } })), 25);
+    const r = TIMER_ONLY.run(start(scenario([f]), TIMER_ONLY), 25);
     const change = ofKind(r.events, "stepChanged")[0];
     const decay = ofKind(r.events, "decayed")[0];
     expect(change.cycle).toBe(decay.cycle);
@@ -165,7 +163,7 @@ describe("per-plot flows", () => {
   it("a trigger that fires while the player is away waits for the next session", () => {
     const f = flow([step("a", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 1 }]), step("b", layout([["potato", 0, 0]]), [])], false);
     // Online on cycles 3, 7, ...: the trigger holds at the end of cycle 0, the change happens at cycle 3.
-    const r = engine.run(start(scenario([f], { config: slotsOnly, activity: { kind: "everyN", n: 4, offset: 3 } })), 6);
+    const r = engine.run(start(scenario([f], { activity: { kind: "everyN", n: 4, offset: 3 } })), 6);
     expect(r.state.flows[0].history[1]).toMatchObject({ stepId: "b", startCycle: 3 });
     expect(ofKind(r.events, "stepChanged")[0].cycle).toBe(3);
   });
@@ -178,7 +176,7 @@ describe("per-plot flows", () => {
       ],
       false
     );
-    const s = start(scenario([f], { config: slotsOnly, inventory: { chloronite: 1 } }));
+    const s = start(scenario([f], { inventory: { chloronite: 1 } }));
     const id = plantAt(s, 1, 1, 1)!.id;
     const r = engine.run(s, 4);
     expect(plantAt(r.state, 1, 1, 1)?.id).toBe(id);
@@ -194,7 +192,7 @@ describe("per-plot flows", () => {
       ],
       false
     );
-    const r = engine.run(start(scenario([f], { config: slotsOnly, inventory: { chloronite: 1 } })), 3);
+    const r = engine.run(start(scenario([f], { inventory: { chloronite: 1 } })), 3);
     expect(r.summary.destroyed.chloronite).toBe(1);
     expect(r.state.inventory.chloronite ?? 0).toBe(0); // the later step spent the spare
     expect(r.summary.debtEvents).toBe(0);
@@ -202,14 +200,14 @@ describe("per-plot flows", () => {
 
   it("only the starting layout is free: a later step places from inventory", () => {
     const f = flow([step("a", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 1 }]), step("b", layout([["chloronite", 1, 1]]), [])], false);
-    const r = engine.run(start(scenario([f], { config: slotsOnly })), 2);
+    const r = engine.run(start(scenario([f], {})), 2);
     expect(r.state.debts[0]).toMatchObject({ cycle: 0, item: "chloronite" });
     expect(plantAt(r.state, 1, 1, 1)).toBeUndefined();
   });
 
   it("step policies override the plot and scenario defaults", () => {
     const f = flow([step("a", layout([["wheat", 0, 0]]), [], { policies: { baseCropUpkeep: "harvestWhenGrown" } })]);
-    const r = engine.run(start(scenario([f], { config: slotsOnly })), 9);
+    const r = engine.run(start(scenario([f], {})), 9);
     expect(r.summary.harvested.wheat).toBe(1);
   });
 });
@@ -273,34 +271,49 @@ describe("the reference scenario: 1 plot of Layout A feeding 2 plots of Layout B
 
 describe("destruction", () => {
   const blank = (config: Record<string, unknown> = {}, activity = NEVER_ACTIVE) =>
-    start(scenario([flow([step("a", layout())])], { config: { ...slotsOnly, ...config }, activity }));
+    start(scenario([flow([step("a", layout())])], { config, activity }));
+
+  const roots = (s: ReturnType<typeof start>) => s.plots[0].plants.filter((p) => p.kindId === "devourer_root").length;
 
   it("a growing Devourer grows a root into a neighbouring cell, destroying what was there", () => {
-    const s = blank({ devourerRootChance: 1, rootSpreadChance: 0 });
+    // Root chances are fixed (DEVOURER_ROOT_CHANCE 40%), so step until the first root appears.
+    let s = blank({ waterLossMin: 0, waterLossMax: 0 });
     inject(s, 1, "devourer", 5, 5, "spawned");
     // Fill all 8 neighbours so the root must land on a plant.
     for (const [r, c] of [[4, 4], [4, 5], [4, 6], [5, 4], [5, 6], [6, 4], [6, 5], [6, 6]]) inject(s, 1, "wheat", r, c, "planted");
-    const r = engine.run(s, 1);
-    expect(r.summary.destroyed.wheat).toBe(1);
-    expect(r.state.plots[0].plants.filter((p) => p.kindId === "devourer_root")).toHaveLength(1);
+    for (let i = 0; i < 50; i++) {
+      const r = engine.run(s, 1);
+      s = r.state;
+      const grown = ofKind(r.events, "rootSpread");
+      if (!grown.length) continue;
+      // Only the Devourer can root on the first tick a root appears (no roots stood before).
+      expect(grown).toHaveLength(1);
+      expect(grown[0]).toMatchObject({ fromRow: 5, fromCol: 5 });
+      expect(r.summary.destroyed.wheat).toBe(1);
+      expect(roots(r.state)).toBe(1);
+      return;
+    }
+    throw new Error("the Devourer never grew a root");
   });
 
   it("roots spread on their own, and the online player breaks them", () => {
-    const s = blank({ devourerRootChance: 0, rootSpreadChance: 1 });
+    // Root spread chance is fixed (ROOT_SPREAD_CHANCE 40%): step while the player is away until one has spread.
+    let s = blank();
     inject(s, 1, "devourer_root", 0, 0, "placed");
-    const offline = engine.run(s, 2).state; // 1 -> 2 -> 4 roots
-    expect(offline.plots[0].plants.filter((p) => p.kindId === "devourer_root").length).toBe(4);
-    const online = structuredClone(offline);
+    for (let i = 0; i < 50 && roots(s) < 3; i++) s = engine.run(s, 1).state;
+    expect(roots(s)).toBeGreaterThanOrEqual(3);
+    const online = structuredClone(s);
     online.scenario.settings.activity = { kind: "everyN", n: 1, offset: 0 };
-    online.scenario.settings.config.rootSpreadChance = 0;
-    const cleared = engine.run(online, 1).state;
-    expect(cleared.plots[0].plants.filter((p) => p.kindId === "devourer_root")).toHaveLength(0);
+    // Roots may spread again in the tick, but the session that follows breaks every one.
+    const r = engine.run(online, 1);
+    expect(roots(r.state)).toBe(0);
+    expect(ofKind(r.events, "removed").filter((e) => e.reason === "cleared root").length).toBeGreaterThanOrEqual(3);
   });
 
   it("a fully grown Devourer grows no roots", () => {
-    const s = blank({ devourerRootChance: 1, rootSpreadChance: 1 });
+    const s = blank();
     inject(s, 1, "devourer", 5, 5, "spawned", { stage: 16 });
-    const r = engine.run(s, 5);
+    const r = engine.run(s, 20);
     expect(r.state.plots[0].plants.some((p) => p.kindId === "devourer_root")).toBe(false);
   });
 
@@ -323,7 +336,7 @@ describe("destruction", () => {
     const wheat: [string, number, number][] = [];
     for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) if (r !== 5 || c !== 5) wheat.push(["wheat", r, c]);
     const full = (mode: "emptyOnly" | "anyCell") => {
-      const s = start(scenario([flow([step("a", layout(wheat))])], { config: { ...slotsOnly, chorusTeleportTargets: mode }, activity: NEVER_ACTIVE }));
+      const s = start(scenario([flow([step("a", layout(wheat))])], { config: { chorusTeleportTargets: mode }, activity: NEVER_ACTIVE }));
       inject(s, 1, "chorus_fruit", 5, 5, "spawned");
       return engine.run(s, 1);
     };
@@ -377,7 +390,7 @@ describe("destruction", () => {
 });
 
 describe("blastberry", () => {
-  const blank = (activity = NEVER_ACTIVE) => start(scenario([flow([step("a", layout())])], { config: slotsOnly, activity }));
+  const blank = (activity = NEVER_ACTIVE) => start(scenario([flow([step("a", layout())])], { activity }));
 
   it("a natural Blastberry primes when fully grown; harvesting it drops its items and explodes", () => {
     const s = blank({ kind: "everyN", n: 1, offset: 0 });
@@ -409,7 +422,7 @@ describe("blastberry", () => {
       ],
       false
     );
-    const s = start(scenario([f], { config: slotsOnly }));
+    const s = start(scenario([f], {}));
     expect(s.plots[0].plants.find((p) => p.kindId === "blastberry")?.gate.primed).toBe(false);
     const r = engine.run(s, 1); // tick 0 primes them; the step change at its end breaks them
     // One broken by the player at the step change, the other set off by the first blast.

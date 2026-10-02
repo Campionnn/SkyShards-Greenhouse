@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { MutationCreditOrder, SimConfig } from "../config";
+import { DECAY_EXTENSION_HOURS, type MutationCreditOrder, type SimConfig } from "../config";
+import type { Engine } from "../engine";
 import { triggerHolds } from "../flow/triggers";
 import type { PolicyOverrides } from "../flow/types";
 import {
+  ALWAYS_SPAWN,
   engine,
+  engineWith,
   flow,
   inject,
   layout,
@@ -39,20 +42,30 @@ const DAY = 86400;
 const CYCLE = 4 * H;
 
 /**
- * An empty plot with optional target slots: only slots roll, nobody loses
- * water, cycles are a fixed 4 h (no unique-crop speed-up), the player is away.
- * blankFillTo 1: an eligible target takes every roll.
+ * An empty plot with optional target slots: only slots roll (every other cell
+ * is AIR), nobody loses water, cycles are a fixed 4 h (no base crops planted,
+ * Flora 0), the player is away. ALWAYS_SPAWN: an eligible target takes every roll.
+ * Pass `eng` for patched game data, and use the same engine for inject / run.
  */
 const blank = (
-  opts: { slots?: [string, number, number][]; config?: Partial<SimConfig>; activity?: ActivitySchedule; policies?: PolicyOverrides; seed?: number } = {}
+  opts: {
+    slots?: [string, number, number][];
+    config?: Partial<SimConfig>;
+    activity?: ActivitySchedule;
+    policies?: PolicyOverrides;
+    seed?: number;
+    eng?: Engine;
+  } = {}
 ): SimulationState =>
   start(
     singlePlot(layout([], opts.slots ?? []), {
       seed: opts.seed,
-      config: { spawnCells: "slotsOnly", waterLossMin: 0, waterLossMax: 0, uniqueCropGrowthPerCrop: 0, blankFillTo: 1, ...opts.config },
+      config: { waterLossMin: 0, waterLossMax: 0, ...opts.config },
+      stats: ALWAYS_SPAWN,
       activity: opts.activity ?? NEVER_ACTIVE,
       policies: opts.policies,
-    })
+    }),
+    opts.eng ?? engine
   );
 
 /** A fully grown base crop (latched already, so it counts as fully grown before the first tick). */
@@ -63,27 +76,31 @@ const counters = (s: SimulationState, row: number, col: number) => {
 };
 
 describe("counters", () => {
-  it("every plant starts with timesMutated 0 and its kind's minimum (overrides applied); roots have none", () => {
-    const s = blank({ config: { minimumMutationsOverrides: { carrot: 3, potato: "infinite", melon: "none" } } });
-    expect(inject(s, 1, "wheat", 0, 0, "planted")).toMatchObject({ timesMutated: 0, mutatesRemaining: 12 });
-    expect(inject(s, 1, "dead_plant", 0, 1, "placed")).toMatchObject({ timesMutated: 0, mutatesRemaining: 10 });
-    expect(inject(s, 1, "fire", 0, 2, "placed")).toMatchObject({ timesMutated: 0, mutatesRemaining: null, decaySecondsRemaining: null });
-    expect(inject(s, 1, "creambloom", 0, 3, "spawned")).toMatchObject({ timesMutated: 0, mutatesRemaining: 8 });
-    expect(inject(s, 1, "magic_jellybean", 0, 4, "placed")).toMatchObject({ mutatesRemaining: "infinite" });
-    expect(inject(s, 1, "godseed", 2, 0, "placed")).toMatchObject({ mutatesRemaining: null });
-    expect(inject(s, 1, "carrot", 0, 5, "planted")).toMatchObject({ mutatesRemaining: 3 });
-    expect(inject(s, 1, "potato", 0, 6, "planted")).toMatchObject({ mutatesRemaining: "infinite" });
-    expect(inject(s, 1, "melon", 0, 7, "planted")).toMatchObject({ mutatesRemaining: null });
-    expect(inject(s, 1, "devourer_root", 9, 9, "placed")).toMatchObject({ timesMutated: 0, mutatesRemaining: null, decaySecondsRemaining: null });
+  it("every plant starts with timesMutated 0 and its kind's minimum from the game data; roots have none", () => {
+    const eng = engineWith({ minimumMutations: { carrot: 3, potato: "infinite", melon: null } });
+    const s = blank({ eng });
+    const put = (kindId: string, r: number, c: number, origin: PlantState["origin"]) => inject(s, 1, kindId, r, c, origin, {}, eng);
+    expect(put("wheat", 0, 0, "planted")).toMatchObject({ timesMutated: 0, mutatesRemaining: 12 });
+    expect(put("dead_plant", 0, 1, "placed")).toMatchObject({ timesMutated: 0, mutatesRemaining: 10 });
+    expect(put("fire", 0, 2, "placed")).toMatchObject({ timesMutated: 0, mutatesRemaining: null, decaySecondsRemaining: null });
+    expect(put("creambloom", 0, 3, "spawned")).toMatchObject({ timesMutated: 0, mutatesRemaining: 8 });
+    expect(put("magic_jellybean", 0, 4, "placed")).toMatchObject({ mutatesRemaining: "infinite" });
+    expect(put("godseed", 2, 0, "placed")).toMatchObject({ mutatesRemaining: null });
+    expect(put("carrot", 0, 5, "planted")).toMatchObject({ mutatesRemaining: 3 });
+    expect(put("potato", 0, 6, "planted")).toMatchObject({ mutatesRemaining: "infinite" });
+    expect(put("melon", 0, 7, "planted")).toMatchObject({ mutatesRemaining: null });
+    expect(put("devourer_root", 9, 9, "placed")).toMatchObject({ timesMutated: 0, mutatesRemaining: null, decaySecondsRemaining: null });
   });
 
-  it("timers come from data.json: base crops and dead plants 3 days, fire / fermento never; decayDaysOverrides applies to any kind", () => {
-    const s = blank({ config: { decayDaysOverrides: { wheat: 1, fire: 2, dead_plant: 0 } } });
-    expect(inject(s, 1, "potato", 0, 0, "planted").decaySecondsRemaining).toBe(3 * DAY);
-    expect(inject(s, 1, "wheat", 0, 1, "planted").decaySecondsRemaining).toBe(1 * DAY);
-    expect(inject(s, 1, "fermento", 0, 2, "placed").decaySecondsRemaining).toBeNull();
-    expect(inject(s, 1, "fire", 0, 3, "placed").decaySecondsRemaining).toBe(2 * DAY);
-    expect(inject(s, 1, "dead_plant", 0, 4, "placed").decaySecondsRemaining).toBeNull();
+  it("timers come from the game data: base crops and dead plants 3 days, fire / fermento never; any kind's days can differ", () => {
+    const eng = engineWith({ decayDays: { wheat: 1, fire: 2, dead_plant: 0 } });
+    const s = blank({ eng });
+    const put = (kindId: string, r: number, c: number, origin: PlantState["origin"]) => inject(s, 1, kindId, r, c, origin, {}, eng);
+    expect(put("potato", 0, 0, "planted").decaySecondsRemaining).toBe(3 * DAY);
+    expect(put("wheat", 0, 1, "planted").decaySecondsRemaining).toBe(1 * DAY);
+    expect(put("fermento", 0, 2, "placed").decaySecondsRemaining).toBeNull();
+    expect(put("fire", 0, 3, "placed").decaySecondsRemaining).toBe(2 * DAY);
+    expect(put("dead_plant", 0, 4, "placed").decaySecondsRemaining).toBeNull();
     expect(inject(blank(), 1, "dead_plant", 0, 0, "placed").decaySecondsRemaining).toBe(3 * DAY);
   });
 });
@@ -263,21 +280,21 @@ describe("decay check", () => {
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "chloronite", timesMutated: 0, decaySecondsRemaining: DAY });
   });
 
-  it("the extension length is configurable, and a long gap adds as many extensions as needed to get back above 0", () => {
-    const s = blank({ config: { decayExtensionHours: 5 } });
+  it("each extension is 24 h, and a timer far below 0 gets as many extensions as it needs to get back above 0", () => {
+    const s = blank();
     inject(s, 1, "chloronite", 5, 5, "placed", { decaySecondsRemaining: 1 });
     const r = engine.run(s, 1);
-    // 1 - 4 h, + 5 h = ~1 h left: one extension.
+    // 1 - 4 h, + 24 h = 20 h + 1 left: one extension.
     expect(ofKind(r.events, "decayExtended")).toHaveLength(1);
-    expect(plantAt(r.state, 1, 5, 5)!.decaySecondsRemaining).toBeCloseTo(1 + H);
+    expect(plantAt(r.state, 1, 5, 5)!.decaySecondsRemaining).toBeCloseTo(DECAY_EXTENSION_HOURS * H - CYCLE + 1);
 
-    const t = blank({ config: { decayExtensionHours: 1 } });
-    inject(t, 1, "chloronite", 5, 5, "placed", { decaySecondsRemaining: 1 });
+    const t = blank();
+    inject(t, 1, "chloronite", 5, 5, "placed", { decaySecondsRemaining: -21 * H + 1 });
     const r2 = engine.run(t, 1);
-    // 1 - 4 h is about -4 h: four 1 h extensions bring it back above 0, reported once.
+    // -21 h - 4 h is about -25 h: two 24 h extensions bring it back above 0, reported once.
     expect(ofKind(r2.events, "decayExtended")).toHaveLength(1);
     expect(r2.summary.extended).toEqual({ chloronite: 1 });
-    expect(plantAt(r2.state, 1, 5, 5)!.decaySecondsRemaining).toBeCloseTo(1);
+    expect(plantAt(r2.state, 1, 5, 5)!.decaySecondsRemaining).toBeCloseTo(23 * H + 1);
   });
 
   it("not pooled: decays once its own remaining is <= 0", () => {
@@ -372,8 +389,9 @@ describe("pool", () => {
   it("met during an extension: it decays when that extension runs out, not at once", () => {
     // A pumpkin that helped once (1 left) runs out on cycle 0 and is extended 24 h (6 cycles).
     // On cycle 1 a melon arrives, a Gloomgourd spawns and credits the pumpkin: 0 left, met.
+    // (Standing base crops count as unique crops, so cycles are a bit shorter than 4 h here.)
     const s = blank({ slots: [["gloomgourd", 4, 5]] });
-    inject(s, 1, "pumpkin", 4, 4, "planted", grownCrop(11, { timesMutated: 1, mutatesRemaining: 1, decaySecondsRemaining: CYCLE }));
+    inject(s, 1, "pumpkin", 4, 4, "planted", grownCrop(11, { timesMutated: 1, mutatesRemaining: 1, decaySecondsRemaining: 1 }));
     const first = engine.run(s, 1);
     expect(ofKind(first.events, "decayExtended").map((e) => e.kindId)).toEqual(["pumpkin"]);
     inject(first.state, 1, "melon", 4, 6, "planted", grownCrop(11));
@@ -398,10 +416,11 @@ describe("kinds without a minimum or without a timer", () => {
     expect(ofKind(r.events, "decayExtended").filter((e) => e.kindId !== "dead_plant")).toHaveLength(0);
   });
 
-  it("Infinite (Magic Jellybean) never decays, even with a decay timer override", () => {
-    const s = blank({ config: { decayDaysOverrides: { magic_jellybean: 1 } } });
-    inject(s, 1, "magic_jellybean", 5, 5, "placed", { timesMutated: 50 });
-    const r = engine.run(s, 60);
+  it("Infinite (Magic Jellybean) never decays, even with a short decay timer", () => {
+    const eng = engineWith({ decayDays: { magic_jellybean: 1 } });
+    const s = blank({ eng });
+    inject(s, 1, "magic_jellybean", 5, 5, "placed", { timesMutated: 50 }, eng);
+    const r = eng.run(s, 60);
     expect(r.summary.decayed.magic_jellybean).toBeUndefined();
     expect(r.summary.extended.magic_jellybean).toBe(10); // runs out every day
     expect(ofKind(r.events, "decayExtended")[0]).toMatchObject({ mutatesRemaining: "infinite", combined: "infinite" });
@@ -422,7 +441,7 @@ describe("kinds without a minimum or without a timer", () => {
 describe("Dead Plants", () => {
   /** A layout dead plant at (5,5) that has already helped its 10 mutations: it decays when its 3-day timer runs out (cycle 17). */
   const used = (inventory: Record<string, number>, activity: ActivitySchedule = ONLINE) => {
-    const s = start(singlePlot(layout([["dead_plant", 5, 5]]), { config: { spawnCells: "slotsOnly" }, inventory, activity }));
+    const s = start(singlePlot(layout([["dead_plant", 5, 5]]), { inventory, activity }));
     Object.assign(plantAt(s, 1, 5, 5)!, { timesMutated: 10, mutatesRemaining: 0 });
     return s;
   };
@@ -454,14 +473,15 @@ describe("Dead Plants", () => {
 
   it("a Dead Plant left behind by decay has a timer and fresh counters, and never decays on its own", () => {
     // Timer-only Chloronite, so it decays on time (cycle 17) and leaves a Dead Plant.
-    const s = blank({ config: { minimumMutationsOverrides: { chloronite: "none" } } });
-    inject(s, 1, "chloronite", 5, 5, "placed");
-    const r = engine.run(s, 18);
+    const eng = engineWith({ minimumMutations: { chloronite: null } });
+    const s = blank({ eng });
+    inject(s, 1, "chloronite", 5, 5, "placed", {}, eng);
+    const r = eng.run(s, 18);
     expect(r.summary.decayed.chloronite).toBe(1);
     const dead = plantAt(r.state, 1, 5, 5)!;
     expect(dead).toMatchObject({ kindId: "dead_plant", isDeadPlant: true, timesMutated: 0, mutatesRemaining: 10, decaySecondsRemaining: 3 * DAY });
     expect(decayStatus(r.state.plots[0], dead)).toMatchObject({ pooled: false, minimumMet: false });
-    const later = engine.run(r.state, 200);
+    const later = eng.run(r.state, 200);
     expect(later.summary.decayed.dead_plant).toBeUndefined();
     expect(later.summary.extended.dead_plant).toBeGreaterThan(0);
     expect(plantAt(later.state, 1, 5, 5)).toMatchObject({ id: dead.id, kindId: "dead_plant" });
@@ -470,7 +490,6 @@ describe("Dead Plants", () => {
   it("a Witherbloom setup uses up its dead plants over time: each decays only after helping 10 times, and is re-placed", () => {
     // 4 layout dead plants around a Witherbloom target (needs exactly 4): every spawn credits all 4.
     const sc = singlePlot(layout([["dead_plant", 3, 3], ["dead_plant", 3, 4], ["dead_plant", 3, 5], ["dead_plant", 4, 3]], [["witherbloom", 4, 4]]), {
-      config: { spawnCells: "slotsOnly" },
       inventory: { dead_plant: 60 },
       seed: 3,
     });
@@ -498,7 +517,6 @@ describe("Dead Plants", () => {
       ["fleshtrap", 5, 5],
     ];
     const sc = singlePlot(layout(plants, [["zombud", 4, 4]]), {
-      config: { spawnCells: "slotsOnly" },
       inventory: { dead_plant: 400, cindershade: 50 },
       seed: 11,
     });
@@ -542,12 +560,12 @@ describe("Turtlellini -> Shellfruit", () => {
 
 describe("predictions use the current counters", () => {
   /** A fully grown spawned Startlevine (minimum 6) whose timer runs out before the next session (online every cycle). */
-  const nearlyOut = (patch: Partial<PlantState>, config: Partial<SimConfig> = {}) => {
-    const s = blank({ activity: ONLINE, policies: { spawnedHarvest: "beforeDecay" }, config });
-    inject(s, 1, "startlevine", 5, 5, "spawned", { stage: 12, lockedEffects: [], fullyGrownAtCycle: 0, water: 100, decaySecondsRemaining: 1.5 * CYCLE, ...patch });
+  const nearlyOut = (patch: Partial<PlantState>, eng: Engine = engine) => {
+    const s = blank({ activity: ONLINE, policies: { spawnedHarvest: "beforeDecay" }, eng });
+    inject(s, 1, "startlevine", 5, 5, "spawned", { stage: 12, lockedEffects: [], fullyGrownAtCycle: 0, water: 100, decaySecondsRemaining: 1.5 * CYCLE, ...patch }, eng);
     return s;
   };
-  const harvested = (s: SimulationState) => ofKind(engine.run(s, 1).events, "harvested").map((e) => e.kindId);
+  const harvested = (s: SimulationState, eng: Engine = engine) => ofKind(eng.run(s, 1).events, "harvested").map((e) => e.kindId);
 
   it("'before decay' doesn't harvest a plant that would only be extended", () => {
     expect(harvested(nearlyOut({}))).toEqual([]);
@@ -559,7 +577,7 @@ describe("predictions use the current counters", () => {
 
   it("...but does harvest it once its minimum is met (or timer-only)", () => {
     expect(harvested(nearlyOut({ timesMutated: 6, mutatesRemaining: 0 }))).toEqual(["startlevine"]);
-    expect(harvested(nearlyOut({}, TIMER_ONLY))).toEqual(["startlevine"]);
+    expect(harvested(nearlyOut({}, TIMER_ONLY), TIMER_ONLY)).toEqual(["startlevine"]);
   });
 
   it("wouldDecayWithin needs both: the timer runs out in time AND the minimum is met", () => {
@@ -577,11 +595,11 @@ describe("predictions use the current counters", () => {
 
   it("decayImminent ignores a plant that would just be extended", () => {
     const f = flow([step("a", layout([["chloronite", 5, 5]]), [{ kind: "decayImminent", withinCycles: 2 }]), step("b", layout())], false);
-    const held = engine.run(start(scenario([f], { config: { spawnCells: "slotsOnly" }, inventory: { chloronite: 5 } })), 40);
+    const held = engine.run(start(scenario([f], { inventory: { chloronite: 5 } })), 40);
     expect(ofKind(held.events, "stepChanged")).toHaveLength(0);
     expect(ofKind(held.events, "decayExtended").length).toBeGreaterThan(0);
 
-    const moved = engine.run(start(scenario([f], { config: { spawnCells: "slotsOnly", ...TIMER_ONLY } })), 40);
+    const moved = TIMER_ONLY.run(start(scenario([f]), TIMER_ONLY), 40);
     // Timer-only: 18 cycles to decay; "within 2 cycles" holds from the end of cycle 15.
     expect(ofKind(moved.events, "stepChanged").map((e) => e.cycle)).toEqual([15]);
   });
@@ -614,11 +632,12 @@ describe("long runs", () => {
             ["gloomgourd", 6, 7],
           ]
         ),
-        { config: { spawnCells: "slotsOnly", mutationCreditOrder: order, ...NO_BASE_CROP_DECAY }, seed: 5 }
+        { config: { mutationCreditOrder: order }, seed: 5 }
       );
-      const s = start(sc);
-      const whole = engine.run(s, 120).state;
-      const split = engine.run(engine.run(s, 47).state, 73).state;
+      const eng = NO_BASE_CROP_DECAY;
+      const s = start(sc, eng);
+      const whole = eng.run(s, 120).state;
+      const split = eng.run(eng.run(s, 47).state, 73).state;
       expect(JSON.stringify(split)).toBe(JSON.stringify(whole));
       expect(whole.plots[0].plants.some((p) => p.timesMutated > 0)).toBe(true);
     }

@@ -7,7 +7,6 @@ import { deleteStep } from "../../components/simulator/scenarioEdit";
 // Choosing which step to go to: routes (conditional jumps), `next`, AND / OR
 // condition groups and the stepVisits condition.
 
-const slotsOnly = { spawnCells: "slotsOnly" as const };
 const ids = (s: ReturnType<typeof start>, plotId = 1) => s.flows.find((f) => f.plotId === plotId)!.history.map((h) => h.stepId);
 const at = (id: string, crop: string, exit: Condition[] = [], extra: Partial<FlowStep> = {}) => step(id, layout([[crop, 0, 0]]), exit, extra);
 const cycles = (n: number): Condition => ({ kind: "cycles", n });
@@ -16,15 +15,15 @@ describe("choosing the next step", () => {
   it("next sends the normal exit to a chosen step instead of the following one", () => {
     // 1 -> 2 -> 1 -> 2 ... ; step 3 is never reached.
     const f = flow([at("s1", "wheat", [cycles(1)]), at("s2", "potato", [cycles(1)], { next: "s1" }), at("s3", "carrot")], false);
-    const r = engine.run(start(scenario([f], { config: slotsOnly })), 6);
+    const r = engine.run(start(scenario([f], {})), 6);
     expect(ids(r.state)).toEqual(["s1", "s2", "s1", "s2", "s1", "s2", "s1"]);
   });
 
   it("a route jumps to its step once its conditions hold, before the normal exit is looked at", () => {
     const route: StepRoute = { to: "s3", when: [{ kind: "inventoryAtLeast", item: "chloronite", qty: 1 }] };
     const f = flow([at("s1", "wheat", [cycles(1)], { routes: [route] }), at("s2", "potato"), at("s3", "carrot")], false);
-    expect(ids(engine.run(start(scenario([f], { config: slotsOnly })), 3).state)).toEqual(["s1", "s2"]);
-    expect(ids(engine.run(start(scenario([f], { config: slotsOnly, inventory: { chloronite: 1 } })), 3).state)).toEqual(["s1", "s3"]);
+    expect(ids(engine.run(start(scenario([f], {})), 3).state)).toEqual(["s1", "s2"]);
+    expect(ids(engine.run(start(scenario([f], { inventory: { chloronite: 1 } })), 3).state)).toEqual(["s1", "s3"]);
   });
 
   it("routes are checked in order; the first that holds wins", () => {
@@ -32,7 +31,7 @@ describe("choosing the next step", () => {
       [at("s1", "wheat", [], { routes: [{ to: "s3", when: [cycles(1)] }, { to: "s2", when: [cycles(1)] }] }), at("s2", "potato"), at("s3", "carrot")],
       false
     );
-    expect(ids(engine.run(start(scenario([f], { config: slotsOnly })), 2).state)).toEqual(["s1", "s3"]);
+    expect(ids(engine.run(start(scenario([f], {})), 2).state)).toEqual(["s1", "s3"]);
   });
 
   it("swaps between 1 and 2, and goes to 3 every 3rd time through step 2", () => {
@@ -47,7 +46,7 @@ describe("choosing the next step", () => {
       ],
       false
     );
-    const r = engine.run(start(scenario([f], { config: slotsOnly })), 14);
+    const r = engine.run(start(scenario([f], {})), 14);
     expect(ids(r.state)).toEqual(["s1", "s2", "s1", "s2", "s1", "s2", "s3", "s1", "s2", "s1", "s2", "s1", "s2", "s3", "s1"]);
   });
 
@@ -56,7 +55,7 @@ describe("choosing the next step", () => {
       [at("s1", "wheat", [cycles(1)]), at("s2", "potato", [cycles(1)], { routes: [{ to: "s1", when: [{ kind: "inventoryAtLeast", item: "wheat", qty: 1 }] }] })],
       false
     );
-    const s = start(scenario([f], { config: slotsOnly }));
+    const s = start(scenario([f], {}));
     const held = engine.run(s, 4).state;
     expect(held.flows[0].finished).toBe(true);
     expect(ids(held)).toEqual(["s1", "s2"]);
@@ -68,7 +67,7 @@ describe("choosing the next step", () => {
 
   it("a route that becomes due while the player is away keeps its target for the next session", () => {
     const f = flow([at("s1", "wheat", [cycles(1)], { routes: [{ to: "s3", when: [cycles(1)] }] }), at("s2", "potato"), at("s3", "carrot")], false);
-    const r = engine.run(start(scenario([f], { config: slotsOnly, activity: { kind: "everyN", n: 4, offset: 3 } })), 2);
+    const r = engine.run(start(scenario([f], { activity: { kind: "everyN", n: 4, offset: 3 } })), 2);
     expect(r.state.flows[0]).toMatchObject({ pendingTransition: true, pendingTarget: 2 });
     const later = engine.run(r.state, 2).state;
     expect(ids(later)).toEqual(["s1", "s3"]);
@@ -77,7 +76,7 @@ describe("choosing the next step", () => {
 
   it("a step can route to itself: the layout is re-applied and its counters restart", () => {
     const f = flow([at("s1", "wheat", [], { routes: [{ to: "s1", when: [cycles(2)] }] })], false);
-    const r = engine.run(start(scenario([f], { config: slotsOnly })), 5);
+    const r = engine.run(start(scenario([f], {})), 5);
     expect(ids(r.state)).toEqual(["s1", "s1", "s1"]);
     expect(r.state.flows[0].cyclesInStep).toBe(1);
   });
@@ -91,7 +90,7 @@ describe("choosing the next step", () => {
       ],
       true
     );
-    const s = start(scenario([f], { config: slotsOnly, activity: { kind: "everyN", n: 3, offset: 1 } }));
+    const s = start(scenario([f], { activity: { kind: "everyN", n: 3, offset: 1 } }));
     const whole = engine.run(s, 40).state;
     const split = engine.run(engine.run(s, 17).state, 23).state;
     expect(JSON.stringify(split)).toBe(JSON.stringify(whole));
@@ -104,20 +103,20 @@ describe("AND / OR conditions", () => {
   const blocked: Condition = { kind: "inventoryAtLeast", item: "chloronite", qty: 1 };
 
   it("exitMatch any leaves when one condition holds; all waits for every one", () => {
-    const any = engine.run(start(scenario([two([cycles(2), blocked], "any")], { config: slotsOnly })), 5).state;
+    const any = engine.run(start(scenario([two([cycles(2), blocked], "any")], {})), 5).state;
     expect(ids(any)).toEqual(["s1", "s2"]);
-    const all = engine.run(start(scenario([two([cycles(2), blocked])], { config: slotsOnly })), 5).state;
+    const all = engine.run(start(scenario([two([cycles(2), blocked])], {})), 5).state;
     expect(ids(all)).toEqual(["s1"]);
   });
 
   it("nested groups: (blocked or 2 cycles) and 3 cycles", () => {
     const exit: Condition[] = [{ kind: "group", match: "any", of: [blocked, cycles(2)] }, cycles(3)];
-    const r = engine.run(start(scenario([two(exit)], { config: slotsOnly })), 5).state;
+    const r = engine.run(start(scenario([two(exit)], {})), 5).state;
     expect(r.flows[0].history[1]).toMatchObject({ stepId: "s2", startCycle: 2 });
   });
 
   it("an empty group never holds", () => {
-    const r = engine.run(start(scenario([two([{ kind: "group", match: "any", of: [] }], "any")], { config: slotsOnly })), 5).state;
+    const r = engine.run(start(scenario([two([{ kind: "group", match: "any", of: [] }], "any")], {})), 5).state;
     expect(ids(r)).toEqual(["s1"]);
   });
 

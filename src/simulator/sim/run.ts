@@ -47,8 +47,8 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
 
     // 1. Shared aggregates.
     const uniqueCropsStanding = uniqueCropsAcross(state, env);
-    const uniqueCropCount = effectiveUniqueCrops(uniqueCropsStanding, settings.playerStats.floraShard, settings.config.uniqueCropCap);
-    const seconds = cycleSeconds(settings.playerStats, uniqueCropCount, settings.config);
+    const uniqueCropCount = effectiveUniqueCrops(uniqueCropsStanding, settings.playerStats.floraShard);
+    const seconds = cycleSeconds(settings.playerStats, uniqueCropCount);
     const firesAt = state.elapsedSeconds + seconds;
     // playerActions === false: never online.
     const active = settings.playerActions !== false && isActive(settings.activity, cycle, firesAt, settings.playerStats.startTimeOfDay);

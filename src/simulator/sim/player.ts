@@ -1,3 +1,4 @@
+import { MAX_WATER } from "../config";
 import { endStepOrHold } from "../flow/runner";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import type { CycleCtx, Phase, TickScratch } from "./context";
@@ -15,7 +16,7 @@ function decaysBeforeNextSession(plot: PlotState, p: PlantState, ctx: CycleCtx):
 
 function water(plot: PlotState, ctx: CycleCtx): void {
   if (ctx.policiesFor(plot.id).watering !== "toMax") return;
-  for (const p of plot.plants) if (p.kindId !== "soggybud") p.water = ctx.config.maxWater; // Soggybud can't be watered
+  for (const p of plot.plants) if (p.kindId !== "soggybud") p.water = MAX_WATER; // Soggybud can't be watered
 }
 
 /** Wake Snoozling, vacuum the Cheesebite rat, discharge Thunderling, feed Fleshtrap. */
@@ -75,8 +76,8 @@ function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
     if (p.origin !== "planted" || !isHarvestable(p) || !plot.plants.includes(p)) continue;
     if (upkeep === "harvestBeforeDecay" && !decaysBeforeNextSession(plot, p, ctx)) continue;
     const { kindId, row, col } = p;
-    if (harvestPlant(plot, p, ctx, scratch) !== "harvested") continue;
-    const replant = newPlant(ctx.state, ctx.env.data, ctx.config, kindId, row, col, "planted", ctx.cycle, ctx.cycleSeconds);
+    harvestPlant(plot, p, ctx, scratch);
+    const replant = newPlant(ctx.state, ctx.env.data, ctx.config, kindId, row, col, "planted", ctx.cycle);
     insertPlant(plot, replant);
     ctx.emit(plot.id, { kind: "placed", plantId: replant.id, kindId, row, col, origin: "planted", replacement: false });
   }

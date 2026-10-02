@@ -11,7 +11,7 @@ export interface PriceSource {
 /**
  * Wiki NPC sell prices of non-crop items (base crops use data.json
  * `sell_price`). Non-sellable items (Iridium) are 0; Evergreen and Synthesis
- * Chips default to 50,000. Overridden by config `rareDropValues`.
+ * Chips are 50,000.
  */
 export const WIKI_NPC_PRICES: Record<string, number> = {
   seeds: 3,
@@ -29,7 +29,7 @@ export const WIKI_NPC_PRICES: Record<string, number> = {
   iridium: 0,
 };
 
-/** Default NPC price of an item, ignoring overrides. */
+/** NPC price of an item: the wiki table, else the crop's data.json sell price, else 0. */
 export function defaultNpcPrice(data: GameData, item: ItemId): number {
   if (item in WIKI_NPC_PRICES) return WIKI_NPC_PRICES[item];
   const crop = data.crops[item];
@@ -37,14 +37,8 @@ export function defaultNpcPrice(data: GameData, item: ItemId): number {
   return 0;
 }
 
-export function npcPriceSource(data: GameData, overrides: Record<string, number> = {}): PriceSource {
-  return {
-    price(item) {
-      const o = overrides[item];
-      if (typeof o === "number" && Number.isFinite(o)) return o;
-      return defaultNpcPrice(data, item);
-    },
-  };
+export function npcPriceSource(data: GameData): PriceSource {
+  return { price: (item) => defaultNpcPrice(data, item) };
 }
 
 export function valueOf(drops: Record<ItemId, number>, prices: PriceSource): number {

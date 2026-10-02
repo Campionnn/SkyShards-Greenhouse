@@ -103,7 +103,7 @@ describe("hybrid flows (spawnsFillLayoutInputs)", () => {
   it("layoutInputSpawns: harvest treats a spawn used as an input like any other spawn", () => {
     // A fully grown spawned chloronite on a cell where the layout places one.
     const spec = layout([["chloronite", 4, 4]]);
-    const keep = start(scenario([flow([step("a", spec)])], { config: { spawnCells: "slotsOnly" } }));
+    const keep = start(scenario([flow([step("a", spec)])]));
     const plot = keep.plots[0];
     plot.plants = [];
     inject(keep, 1, "chloronite", 4, 4, "spawned", { stage: 10 });
@@ -122,10 +122,10 @@ describe("hybrid flows (spawnsFillLayoutInputs)", () => {
   it("a kept input is still harvested just before it would decay", () => {
     const spec = layout([["chloronite", 4, 4]]);
     // Timer-only: with its minimum (8) unmet it would be extended instead of decaying.
-    const s = start(scenario([flow([step("a", spec)])], { config: { spawnCells: "slotsOnly", ...TIMER_ONLY } }));
+    const s = start(scenario([flow([step("a", spec)])]), TIMER_ONLY);
     s.plots[0].plants = [];
-    inject(s, 1, "chloronite", 4, 4, "spawned", { stage: 10, decaySecondsRemaining: 14400 * 2 + 1 });
-    const r = engine.run(s, 3);
+    inject(s, 1, "chloronite", 4, 4, "spawned", { stage: 10, decaySecondsRemaining: 14400 * 2 + 1 }, TIMER_ONLY);
+    const r = TIMER_ONLY.run(s, 3);
     const h = ofKind(r.events, "harvested");
     expect(h.map((e) => e.kindId)).toEqual(["chloronite"]);
     expect(ofKind(r.events, "decayed")).toHaveLength(0);
@@ -137,7 +137,6 @@ describe("new triggers", () => {
     const spec = layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5], ["gloomgourd", 6, 5]]);
     // Not harvested, so the trigger (checked after the player's harvest) sees them standing.
     const sc = scenario([flow([step("a", spec, [{ kind: "targetsFilled", count: 1 }]), step("b", layout())])], {
-      config: { spawnCells: "slotsOnly" },
       policies: { spawnedHarvest: "never" },
     });
     const s = start(sc);
@@ -156,7 +155,6 @@ describe("new triggers", () => {
   it("mutationHarvested counts natural spawns harvested in the step", () => {
     const spec = layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]);
     const sc = scenario([flow([step("a", spec, [{ kind: "mutationHarvested", mutationId: "gloomgourd", count: 1 }]), step("b", layout())])], {
-      config: { spawnCells: "slotsOnly" },
     });
     const s = start(sc);
     inject(s, 1, "gloomgourd", 4, 5, "spawned", { stage: 1000 });

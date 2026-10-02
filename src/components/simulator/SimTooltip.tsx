@@ -2,8 +2,14 @@ import React from "react";
 import {
   aloeRow,
   decayStatus,
+  DECAY_EXTENSION_HOURS,
+  DEVOURER_ROOT_CHANCE,
+  HALT_WATER,
   isDry,
   jellybeanMultiplier,
+  MAX_WATER,
+  ROOT_SPREAD_CHANCE,
+  THUNDERLING_MAX_CHARGE,
   type MutationDef,
   type PlantState,
   type PlotState,
@@ -57,7 +63,6 @@ export const SanityCheckSection: React.FC<{ result: SanityCheckResult; anchor?: 
           Checking this cell on its own ({result.row}, {result.col}), not the target&apos;s top-left ({anchor.row}, {anchor.col}). Only the top-left cell rolls for the slot&apos;s target.
         </p>
       )}
-      {result.noRollReason && <p className="text-amber-300">{result.noRollReason}</p>}
       <div>
         <div className="text-[11px] text-slate-500 mb-0.5">Can spawn here now (chance per roll)</div>
         {result.canSpawn.length === 0 ? (
@@ -112,14 +117,14 @@ function originLabel(p: PlantState): string {
   return "Planted crop";
 }
 
-function statusOf(p: PlantState, m: MutationDef | undefined, config: SimConfig): { text: string; tone: string } {
+function statusOf(p: PlantState, m: MutationDef | undefined): { text: string; tone: string } {
   if (p.kindId === "devourer_root") return { text: "Broken by the player next time they are online", tone: "text-amber-300" };
   if (p.isDeadPlant) return { text: "Cleared (dead_plant item) next time the player is online", tone: "text-slate-300" };
-  if (isDry(p, config))
+  if (isDry(p))
     return { text: "Dried out - halted until watered (no effects, doesn't count for mutations or unique crops)", tone: "text-red-300" };
   if (p.gate.asleep) return { text: "Asleep - the player wakes it when online", tone: "text-amber-300" };
   if (p.gate.ratAlive) return { text: "A rat is eating it - vacuumed when online", tone: "text-amber-300" };
-  if (p.kindId === "thunderling" && (p.gate.charge ?? 0) >= config.thunderlingMaxCharge)
+  if (p.kindId === "thunderling" && (p.gate.charge ?? 0) >= THUNDERLING_MAX_CHARGE)
     return { text: "Overcharged - discharged when the player is online", tone: "text-amber-300" };
   if (p.kindId === "fleshtrap" && (p.gate.hunger ?? 0) <= 0) return { text: "Hungry - fed when the player is online", tone: "text-amber-300" };
   if (p.kindId === "noctilume" && p.origin === "spawned" && p.stage < p.readyStage)
@@ -245,11 +250,11 @@ export const SimTooltip: React.FC<{
 };
 
 /** "in 2d 4h (~13 cycles), then decays" / "..., then +24h (minimum not met)" / "never decays". */
-function decayText(p: PlantState, met: boolean, cycles: number, config: SimConfig): string {
+function decayText(p: PlantState, met: boolean, cycles: number): string {
   if (p.decaySecondsRemaining === null) return "never decays";
   const timer = `in ${formatDuration(p.decaySecondsRemaining)} (~${cycles} cycles)`;
   if (met) return `${timer}, then decays`;
-  const ext = `+${formatCount(config.decayExtensionHours)}h`;
+  const ext = `+${formatCount(DECAY_EXTENSION_HOURS)}h`;
   return p.mutatesRemaining === "infinite" ? `${timer}, then ${ext} - never decays (minimum ∞)` : `${timer}, then ${ext} (minimum not met)`;
 }
 
@@ -260,11 +265,11 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
   config,
   plot,
 }) => {
-  const status = statusOf(p, m, config);
+  const status = statusOf(p, m);
   const growing = !p.isDeadPlant && p.origin !== "placed" && p.kindId !== "devourer_root";
   const effective = effectiveEffects(p.held);
   const cancelled = sortEffects(p.held.filter((e) => !effective.has(e)));
-  const dry = isDry(p, config);
+  const dry = isDry(p);
   // A dried-out plant gives no effects but still receives them, like a designer slot.
   const gives = p.isDeadPlant || p.kindId === "devourer_root" ? [] : effectsGivenBy(p.kindId, dry);
   const needsWater = p.origin === "planted" || !!m?.requiresWatering;
@@ -298,14 +303,14 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
         ) : (
           growing && (
             <Row label="Water" tone={dry ? "text-red-300" : undefined}>
-              {needsWater ? `${Math.round(p.water)} / ${config.maxWater}${dry ? ` (halted at ${config.haltWater} or below)` : ""}` : "does not need water"}
+              {needsWater ? `${Math.round(p.water)} / ${MAX_WATER}${dry ? ` (halted at ${HALT_WATER} or below)` : ""}` : "does not need water"}
             </Row>
           )
         )}
         {!isRootPlant && (
           <>
             <Row label="Decay" tone={decaysSoon ? "text-red-300" : undefined}>
-              {decayText(p, decay.minimumMet, decayCycles, config)}
+              {decayText(p, decay.minimumMet, decayCycles)}
             </Row>
             <Row label="Times mutated">{formatCount(decay.timesMutated)}</Row>
             <Row label="Mutates remaining">{decay.mutatesRemaining === null ? "none (timer only)" : formatRemaining(decay.mutatesRemaining)}</Row>
@@ -332,7 +337,7 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
         )}
         {p.kindId === "magic_jellybean" && p.origin === "spawned" && (
           <Row label="Drops now">
-            x{jellybeanMultiplier(p.stage, config.magicJellybeanMultiplierCap)} jellybeans and crop bundle, before yield
+            x{jellybeanMultiplier(p.stage)} jellybeans and crop bundle, before yield
           </Row>
         )}
         {p.kindId === "blastberry" && (
@@ -346,18 +351,18 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
         )}
         {p.kindId === "turtlellini" && <Row label="Blasts taken">{p.gate.exploded ?? 0} / 2 (2 = Shellfruit)</Row>}
         {p.kindId === "thunderling" && p.gate.charge !== undefined && (
-          <Row label="Charge" tone={p.gate.charge >= config.thunderlingMaxCharge ? "text-amber-300" : undefined}>
-            {p.gate.charge.toLocaleString("en-US")} / {config.thunderlingMaxCharge.toLocaleString("en-US")}
+          <Row label="Charge" tone={p.gate.charge >= THUNDERLING_MAX_CHARGE ? "text-amber-300" : undefined}>
+            {p.gate.charge.toLocaleString("en-US")} / {THUNDERLING_MAX_CHARGE.toLocaleString("en-US")}
           </Row>
         )}
         {p.kindId === "fleshtrap" && p.origin === "spawned" && <Row label="Hunger">{p.gate.hunger ?? 0}</Row>}
         {p.kindId === "devourer" && p.origin === "spawned" && (
-          <Row label="Roots">{p.stage < p.growthStages ? `${Math.round(config.devourerRootChance * 100)}% per tick while growing` : "none (fully grown)"}</Row>
+          <Row label="Roots">{p.stage < p.growthStages ? `${Math.round(DEVOURER_ROOT_CHANCE * 100)}% per tick while growing` : "none (fully grown)"}</Row>
         )}
         {p.kindId === "chorus_fruit" && p.origin === "spawned" && (
           <Row label="Teleports">{p.stage < p.growthStages ? "every tick while growing" : "no (fully grown)"}</Row>
         )}
-        {p.kindId === "devourer_root" && <Row label="Spreads">{Math.round(config.rootSpreadChance * 100)}% per tick</Row>}
+        {p.kindId === "devourer_root" && <Row label="Spreads">{Math.round(ROOT_SPREAD_CHANCE * 100)}% per tick</Row>}
       </div>
 
       {!p.isDeadPlant && p.kindId !== "devourer_root" && (

@@ -1,7 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { defaultGameData } from "../data/default";
-import { DEFAULT_CONFIG } from "../config";
 import { cycleSeconds, effectiveUniqueCrops, uniqueCropYieldBonus, upgradeTerm } from "../growth/clock";
 import { npcPriceSource, valueOf } from "./prices";
 import { chloroniteDropCount, farmingFortuneMultiplier, greenhouseYieldSum, harvestYield, jellybeanMultiplier, yieldScaledCount } from "./yield";
@@ -17,7 +16,7 @@ describe("yield", () => {
 
   it("yield arithmetic (unique-crop cap of 10): melon 320 x 2.60 x 1.75 = 1456, with Evergreen +60% = 2329", () => {
     // A fixed FF multiplier (2.60) pins the product, floor and Evergreen arithmetic.
-    const sum = greenhouseYieldSum(new Set(["improved_harvest_boost"]), 0.2, uniqueCropYieldBonus(12, DEFAULT_CONFIG));
+    const sum = greenhouseYieldSum(new Set(["improved_harvest_boost"]), 0.2, uniqueCropYieldBonus(12));
     expect(sum).toBeCloseTo(1.75);
     expect(harvestYield({ melon: 320 }, 2.6, sum, 0).melon).toBe(1456);
     expect(harvestYield({ melon: 320 }, 2.6, sum, 0.6).melon).toBe(2329);
@@ -57,7 +56,7 @@ describe("yield", () => {
   });
 
   it("Magic Jellybean: +1 item per 12 stages from 12, capped at 10", () => {
-    expect([11, 12, 24, 120].map((s) => jellybeanMultiplier(s, 10))).toEqual([0, 1, 2, 10]);
+    expect([11, 12, 24, 120].map((s) => jellybeanMultiplier(s))).toEqual([0, 1, 2, 10]);
   });
 
   it("yieldScaledCount: 1.86 total yield on a base-1 mutation (e.g. Ashwreath) -> guaranteed 1, 86% chance of a 2nd", () => {
@@ -68,7 +67,7 @@ describe("yield", () => {
     // Chloronite at 2000 MF (base 4) with 1.86 yield -> expected 7.44: guaranteed 7, 44% chance of an 8th.
     expect(yieldScaledCount(chloroniteDropCount(2000), 1.86)).toEqual({ whole: 7, frac: expect.closeTo(0.44, 9) });
     // Magic Jellybean base 2 (stage 24) with 1.86 yield -> expected 3.72: guaranteed 3, 72% chance of a 4th.
-    expect(yieldScaledCount(jellybeanMultiplier(24, 10), 1.86)).toEqual({ whole: 3, frac: expect.closeTo(0.72, 9) });
+    expect(yieldScaledCount(jellybeanMultiplier(24), 1.86)).toEqual({ whole: 3, frac: expect.closeTo(0.72, 9) });
   });
 
   it("yieldScaledCount at yield 1 (no bonuses) reproduces the base count exactly, no roll", () => {
@@ -84,40 +83,40 @@ describe("growth stage clock", () => {
   });
 
   it("the wiki formula at every maximum, unique crops capped at 10, gives ~6302 s", () => {
-    expect(cycleSeconds({ cropGrowth: 210, speedAttribute: 10, growthUpgradeTier: 9 }, 12, DEFAULT_CONFIG)).toBeCloseTo(
+    expect(cycleSeconds({ cropGrowth: 210, speedAttribute: 10, growthUpgradeTier: 9 }, 12)).toBeCloseTo(
       14400 / (1 + 0.025 * 10 + 0.0025 * 210 + 0.001 * 10 + 0.5),
       0
     );
   });
 
   it("unique crops count 10 at most", () => {
-    expect(cycleSeconds({ cropGrowth: 0, speedAttribute: 0, growthUpgradeTier: 0 }, 14, DEFAULT_CONFIG)).toBeCloseTo(14400 / 1.25);
+    expect(cycleSeconds({ cropGrowth: 0, speedAttribute: 0, growthUpgradeTier: 0 }, 14)).toBeCloseTo(14400 / 1.25);
   });
 
   it("the yield bonus at the cap is 0.25 (10 x 2.5%)", () => {
-    expect(uniqueCropYieldBonus(10, DEFAULT_CONFIG)).toBeCloseTo(0.25);
-    expect(uniqueCropYieldBonus(999, DEFAULT_CONFIG)).toBeCloseTo(0.25); // clamped
+    expect(uniqueCropYieldBonus(10)).toBeCloseTo(0.25);
+    expect(uniqueCropYieldBonus(999)).toBeCloseTo(0.25); // clamped
   });
 });
 
 describe("Flora shard and effectiveUniqueCrops", () => {
   it("6 standing + Flora 4 = 10", () => {
-    expect(effectiveUniqueCrops(6, 4, 10)).toBe(10);
+    expect(effectiveUniqueCrops(6, 4)).toBe(10);
   });
 
   it("6 standing + Flora 10 caps at 10", () => {
-    expect(effectiveUniqueCrops(6, 10, 10)).toBe(10);
+    expect(effectiveUniqueCrops(6, 10)).toBe(10);
   });
 
   it("a missing Flora counts as 0", () => {
-    expect(effectiveUniqueCrops(6, undefined, 10)).toBe(6);
+    expect(effectiveUniqueCrops(6, undefined)).toBe(6);
   });
 
   it("Flora 10 makes the cycle length independent of the base crops standing", () => {
     const stats = { cropGrowth: 0, speedAttribute: 0, growthUpgradeTier: 0 };
-    const at0 = cycleSeconds(stats, effectiveUniqueCrops(0, 10, 10), DEFAULT_CONFIG);
-    const at6 = cycleSeconds(stats, effectiveUniqueCrops(6, 10, 10), DEFAULT_CONFIG);
-    const at12 = cycleSeconds(stats, effectiveUniqueCrops(12, 10, 10), DEFAULT_CONFIG);
+    const at0 = cycleSeconds(stats, effectiveUniqueCrops(0, 10));
+    const at6 = cycleSeconds(stats, effectiveUniqueCrops(6, 10));
+    const at12 = cycleSeconds(stats, effectiveUniqueCrops(12, 10));
     expect(at0).toBe(at6);
     expect(at6).toBe(at12);
   });

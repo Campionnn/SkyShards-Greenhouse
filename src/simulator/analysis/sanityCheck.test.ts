@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { HALT_WATER } from "../config";
 import type { LayoutSpec } from "../flow/types";
 import { seedRng } from "../rng";
 import { recomputeEffects } from "../effects/adapter";
@@ -27,11 +28,10 @@ describe("sanityCheck: what a cell offers", () => {
     const s = start(singlePlot(farm(layout([["pumpkin", 4, 3], ["melon", 4, 5]]), [4, 4]), quiet));
     const r = check(s, 4, 4);
     expect(r.occupied).toBeNull();
-    expect(r.rolls).toBe(true);
     expect(ids(r.canSpawn)).toEqual(["gloomgourd"]);
     const g = r.canSpawn[0];
     expect(g.weight).toBe(30);
-    expect(g.chance).toBeCloseTo(30 / 100, 12); // weights sum to 30 < blankFillTo 100
+    expect(g.chance).toBeCloseTo(30 / 100, 12); // weights sum to 30 < the floor of 100
     expect(r.denominator).toBe(100);
     expect(r.anyChance).toBeCloseTo(0.3, 12);
     expect(g.requirements).toEqual([
@@ -103,7 +103,7 @@ describe("sanityCheck: what a cell offers", () => {
     expect(ids(check(empty, 4, 4).canSpawn)).toContain("lonelily");
 
     const dry = start(singlePlot(farm(layout([["wheat", 4, 3]]), [4, 4]), quiet));
-    dry.plots[0].plants[0].water = dry.scenario.settings.config.haltWater;
+    dry.plots[0].plants[0].water = HALT_WATER;
     const e = entry(dry, 4, 4, "lonelily");
     expect(e.canSpawn).toBe(false);
     expect(e.blockers[0]).toMatchObject({ kind: "ringNotEmpty" });
@@ -113,7 +113,7 @@ describe("sanityCheck: what a cell offers", () => {
   it("a dry wheat doesn't count toward Dustgrain", () => {
     const s = start(singlePlot(farm(layout([["wheat", 4, 3], ["wheat", 4, 5]]), [4, 4]), quiet));
     expect(entry(s, 4, 4, "dustgrain").canSpawn).toBe(true);
-    s.plots[0].plants.find((p) => p.col === 5)!.water = s.scenario.settings.config.haltWater;
+    s.plots[0].plants.find((p) => p.col === 5)!.water = HALT_WATER;
     const e = entry(s, 4, 4, "dustgrain");
     expect(e.canSpawn).toBe(false);
     expect(e.requirements).toEqual([{ crop: "wheat", needed: 2, have: 1, dry: 1 }]);
@@ -156,14 +156,6 @@ describe("sanityCheck: what a cell offers", () => {
     expect(check(covered, 5, 5).occupied?.kindId).toBe("wheat");
   });
 
-  it("'slots only' spawn mode: a cell that isn't a slot doesn't roll at all", () => {
-    const s = start(singlePlot(farm(layout([["pumpkin", 4, 3], ["melon", 4, 5]], [["gloomgourd", 0, 0]]), [4, 4]), { ...quiet, config: { spawnCells: "slotsOnly" } }));
-    const off = check(s, 4, 4);
-    expect(off.rolls).toBe(false);
-    expect(off.noRollReason).toMatch(/slot/i);
-    expect(check(s, 0, 0).rolls).toBe(true);
-  });
-
   it("Bioanalysis scales the weights, as the spawn roll does", () => {
     const sc = singlePlot(farm(layout([["pumpkin", 4, 3], ["melon", 4, 5]]), [4, 4]), { ...quiet, stats: { mutationChanceBonus: 0.15 } });
     const g = entry(start(sc), 4, 4, "gloomgourd");
@@ -172,11 +164,13 @@ describe("sanityCheck: what a cell offers", () => {
   });
 
   it("the denominator is the weight sum once it passes the floor", () => {
-    const sc = singlePlot(farm(layout([["pumpkin", 4, 3], ["melon", 4, 5]]), [4, 4]), { ...quiet, config: { blankFillTo: 10 } });
+    // A large Bioanalysis bonus pushes Gloomgourd's weight (30) far past the floor of 100.
+    const sc = singlePlot(farm(layout([["pumpkin", 4, 3], ["melon", 4, 5]]), [4, 4]), { ...quiet, stats: { mutationChanceBonus: 9 } });
     const r = check(start(sc), 4, 4);
-    expect(r.denominator).toBe(30);
-    expect(r.canSpawn[0].chance).toBe(1);
-    expect(r.anyChance).toBe(1);
+    expect(r.denominator).toBeCloseTo(300, 9);
+    expect(r.totalWeight).toBeCloseTo(300, 9);
+    expect(r.canSpawn[0].chance).toBeCloseTo(1, 12);
+    expect(r.anyChance).toBeCloseTo(1, 12);
   });
 
   it("throws for an unknown plot or an off-plot cell", () => {
@@ -227,16 +221,8 @@ describe("sanityCheck on the cells of a multi-cell element", () => {
     expect(check(bare, 5, 5)).toEqual(inner);
   });
 
-  it("'slots only' mode: only the anchor of a multi-cell slot rolls", () => {
-    const s = start(singlePlot(farm(layout([["wheat", 0, 0]], [["godseed", 4, 4]]), ...FARM), { ...quiet, config: { spawnCells: "slotsOnly" } }));
-    expect(check(s, 4, 4).rolls).toBe(true);
-    const inner = check(s, 5, 5);
-    expect(inner.rolls).toBe(false);
-    expect(inner.noRollReason).toMatch(/slot/i);
-  });
-
   it("a non-anchor cell's pool is the one phaseSpawn builds for that cell", () => {
-    const s = start(singlePlot(farm(layout([["pumpkin", 3, 4], ["melon", 3, 6], ["wheat", 0, 0]], [["godseed", 4, 4]]), ...FARM), { ...quiet, config: { blankFillTo: 1 } }));
+    const s = start(singlePlot(farm(layout([["pumpkin", 3, 4], ["melon", 3, 6], ["wheat", 0, 0]], [["godseed", 4, 4]]), ...FARM), quiet));
     const r = check(s, 4, 5); // an edge cell of the slot: its ring (rows 3-5, cols 4-6) holds the pumpkin and the melon
     const plot = structuredClone(s.plots[0]);
     const occ = buildOccupancy(plot);
@@ -244,7 +230,7 @@ describe("sanityCheck on the cells of a multi-cell element", () => {
     const pool: SpawnPool = { ids: [], weights: [] };
     for (const m of candidates) {
       if (!locationOpenFor(plot, occ, 4, 5, m)) continue;
-      const one = buildPool([m], ringCounts(occ, 4, 5, m.size, s.scenario.settings.config), s.scenario.settings.config, () => false);
+      const one = buildPool([m], ringCounts(occ, 4, 5, m.size), () => false);
       pool.ids.push(...one.ids);
       pool.weights.push(...one.weights);
     }
@@ -276,8 +262,9 @@ describe("sanityCheck is read-only", () => {
 });
 
 /**
- * The check agrees with the spawn roll. With slots-only mode and the checked cell as the
- * only slot, only that cell rolls; a floor of 1 means every roll lands on a pool member.
+ * The check agrees with the spawn roll. In every case the checked cell is the only one
+ * (or, for the 3x3, the first in row-major order) that can spawn anything, so nothing
+ * else changes its ring before it rolls. The pool floor is the default 100.
  */
 describe("sanityCheck agrees with phaseSpawn", () => {
   const cases: { name: string; spec: LayoutSpec; row: number; col: number; extra?: (s: SimulationState) => void }[] = [
@@ -292,7 +279,7 @@ describe("sanityCheck agrees with phaseSpawn", () => {
       row: 4,
       col: 4,
       extra: (s) => {
-        s.plots[0].plants[0].water = s.scenario.settings.config.haltWater;
+        s.plots[0].plants[0].water = HALT_WATER;
       },
     },
     {
@@ -301,7 +288,7 @@ describe("sanityCheck agrees with phaseSpawn", () => {
       row: 4,
       col: 4,
       extra: (s) => {
-        s.plots[0].plants[1].water = s.scenario.settings.config.haltWater;
+        s.plots[0].plants[1].water = HALT_WATER;
       },
     },
     { name: "a 3x3 target (godseed) that is short of effects", spec: layout([["wheat", 0, 0]], [["godseed", 4, 4]]), row: 4, col: 4 },
@@ -310,23 +297,22 @@ describe("sanityCheck agrees with phaseSpawn", () => {
   for (const { name, spec, row, col, extra } of cases) {
     it(name, () => {
       // Bioanalysis on, so both must apply the same scaling.
-      const s = start(
-        singlePlot(spec, { ...quiet, config: { spawnCells: "slotsOnly", blankFillTo: 1 }, stats: { mutationChanceBonus: 0.1 } })
-      );
+      const s = start(singlePlot(spec, { ...quiet, stats: { mutationChanceBonus: 0.1 } }));
+
       extra?.(s);
       const r = check(s, row, col);
 
       // 1. Against the engine's pool builder, ring counts and openness test.
       const plot = structuredClone(s.plots[0]);
       const occ = buildOccupancy(plot);
-      const effects = recomputeEffects(plot, s.scenario.settings.config);
+      const effects = recomputeEffects(plot);
       const candidates = candidateMutations(new Set(plot.plants.map((p) => p.kindId)), data);
       const target = plot.slots.find((x) => x.row === row && x.col === col);
       const members = target && !candidates.includes(data.mutations[target.mutationId]) ? [...candidates, data.mutations[target.mutationId]] : candidates;
       const enginePool: SpawnPool = { ids: [], weights: [] };
       for (const m of members) {
         if (!locationOpenFor(plot, occ, row, col, m)) continue;
-        const one = buildPool([m], ringCounts(occ, row, col, m.size, s.scenario.settings.config), s.scenario.settings.config, (x) =>
+        const one = buildPool([m], ringCounts(occ, row, col, m.size), (x) =>
           x.special === "all_positive_crop_effects" ? effects.isSpecialEligible(x.id, [row, col], x.size) : false
         );
         enginePool.ids.push(...one.ids);
@@ -334,11 +320,11 @@ describe("sanityCheck agrees with phaseSpawn", () => {
       }
       const boosted = applyMutationChanceBonus(enginePool, s.scenario.settings.playerStats.mutationChanceBonus);
       expect(ids(r.canSpawn)).toEqual(boosted.ids);
-      const denominator = poolDenominator(boosted.weights, s.scenario.settings.config.blankFillTo);
+      const denominator = poolDenominator(boosted.weights);
       expect(r.denominator).toBeCloseTo(denominator, 9);
       r.canSpawn.forEach((e, i) => {
         expect(e.weight).toBeCloseTo(boosted.weights[i], 9);
-        expect(e.chance).toBeCloseTo(spawnProbability(boosted, e.mutationId, s.scenario.settings.config.blankFillTo), 12);
+        expect(e.chance).toBeCloseTo(spawnProbability(boosted, e.mutationId), 12);
       });
       for (const e of r.cannot) expect(e.chance).toBe(0);
 
@@ -351,22 +337,17 @@ describe("sanityCheck agrees with phaseSpawn", () => {
         t.rng = seedRng(seed);
         const out = engine.run(t, 1).state;
         const spawned = out.plots[0].plants.filter((p) => p.origin === "spawned" && p.row === row && p.col === col);
-        if (allowed.size === 0) {
-          expect(spawned).toEqual([]);
-          continue;
-        }
-        // The floor is 1 and the weights sum to more, so every roll spawns something.
-        expect(spawned).toHaveLength(1);
-        expect(allowed.has(spawned[0].kindId)).toBe(true);
-        tally[spawned[0].kindId] = (tally[spawned[0].kindId] ?? 0) + 1;
+        // At most one spawn, and only a listed one (none when nothing is listed); a blank roll spawns nothing.
+
+        expect(spawned.length).toBeLessThanOrEqual(1);
+        const kind = spawned[0]?.kindId ?? "(blank)";
+        if (spawned.length) expect(allowed.has(kind)).toBe(true);
+        tally[kind] = (tally[kind] ?? 0) + 1;
       }
-      // Their frequencies follow the reported weights (same pool, scaled to the floor-free denominator).
-      const total = r.totalWeight;
-      for (const e of r.canSpawn) {
-        const expected = (e.weight / total) * N;
-        const seen = tally[e.mutationId] ?? 0;
-        expect(Math.abs(seen - expected)).toBeLessThanOrEqual(5 * Math.sqrt(expected * (1 - e.weight / total)) + 2);
-      }
+      // Their frequencies follow the reported chances (weight / max(100, total weight)), blanks included.
+      const band = (p: number, seen: number) => expect(Math.abs(seen - p * N)).toBeLessThanOrEqual(5 * Math.sqrt(N * p * (1 - p)) + 2);
+      for (const e of r.canSpawn) band(e.chance, tally[e.mutationId] ?? 0);
+      band(1 - r.anyChance, tally["(blank)"] ?? 0);
     });
   }
 

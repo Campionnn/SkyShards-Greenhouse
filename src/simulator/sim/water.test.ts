@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { SimConfig } from "../config";
+import { HALT_WATER, type SimConfig } from "../config";
 import type { PolicyOverrides } from "../flow/types";
-import { engine, inject, layout, NEVER_ACTIVE, NO_BASE_CROP_DECAY, plantAt, singlePlot, start, TIMER_ONLY } from "../testHelpers";
+import type { Engine } from "../engine";
+import { ALWAYS_SPAWN, inject as injectWith, layout, NEVER_ACTIVE, NO_BASE_CROP_DECAY, plantAt, singlePlot, start, TIMER_ONLY } from "../testHelpers";
 import { isDry } from "./plants";
-import type { ActivitySchedule, PlantState, SimulationState, TimedEvent } from "./state";
+import type { ActivitySchedule, Origin, PlantState, PlayerStats, SimulationState, TimedEvent } from "./state";
 
 // A plant whose water reaches haltWater (-100) dries out and halts. A dry plant
 // doesn't grow, gives or relays no effects (it still receives them), doesn't
@@ -14,18 +15,40 @@ const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
 
 const HALT = -100;
+
+/** Base crops don't decay (unless a test asks). The same engine sets up, injects and runs. */
+const engine: Engine = NO_BASE_CROP_DECAY;
+const inject = (
+  s: SimulationState,
+  plotId: number,
+  kindId: string,
+  row: number,
+  col: number,
+  origin: Origin,
+  patch: Partial<PlantState> = {},
+  eng: Engine = engine
+) => injectWith(s, plotId, kindId, row, col, origin, patch, eng);
 const ONLINE: ActivitySchedule = { kind: "everyN", n: 1, offset: 0 };
 
-/** An empty plot, only slots roll, base crops don't decay (unless a test asks), the player is away. */
+/** An empty plot (unpainted cells are air, so only slots roll), the player is away. */
 const blank = (
-  opts: { slots?: [string, number, number][]; config?: Partial<SimConfig>; activity?: ActivitySchedule; policies?: PolicyOverrides } = {}
+  opts: {
+    slots?: [string, number, number][];
+    config?: Partial<SimConfig>;
+    stats?: Partial<PlayerStats>;
+    activity?: ActivitySchedule;
+    policies?: PolicyOverrides;
+    eng?: Engine;
+  } = {}
 ): SimulationState =>
   start(
     singlePlot(layout([], opts.slots ?? []), {
-      config: { spawnCells: "slotsOnly", ...NO_BASE_CROP_DECAY, ...opts.config },
+      config: opts.config,
+      stats: opts.stats,
       activity: opts.activity ?? NEVER_ACTIVE,
       policies: opts.policies,
-    })
+    }),
+    opts.eng ?? engine
   );
 
 const held = (s: SimulationState, row: number, col: number) => plantAt(s, 1, row, col)!.held;
@@ -33,14 +56,13 @@ const held = (s: SimulationState, row: number, col: number) => plantAt(s, 1, row
 describe("drying out", () => {
   it("isDry is derived from water alone: at or below haltWater, never for a Dead Plant", () => {
     const s = blank();
-    const config = s.scenario.settings.config;
-    expect(config.haltWater).toBe(HALT);
+    expect(HALT_WATER).toBe(HALT);
     const wheat = inject(s, 1, "wheat", 5, 5, "planted", { water: HALT + 1 });
-    expect(isDry(wheat, config)).toBe(false);
+    expect(isDry(wheat)).toBe(false);
     wheat.water = HALT;
-    expect(isDry(wheat, config)).toBe(true);
+    expect(isDry(wheat)).toBe(true);
     const dead = inject(s, 1, "dead_plant", 0, 0, "placed", { water: HALT, isDeadPlant: true });
-    expect(isDry(dead, config)).toBe(false);
+    expect(isDry(dead)).toBe(false);
   });
 
   it("a dry plant doesn't grow: it stays at its stage and emits growthBlocked {gate: dry} every tick", () => {
@@ -85,9 +107,9 @@ describe("dry plants don't count toward requirements (but still block Lonelily)"
   });
 
   it("a dry neighbour still blocks Lonelily: it is physically there", () => {
-    // blankFillTo 1: an eligible Lonelily (weight 6) takes every roll.
+    // ALWAYS_SPAWN: an eligible Lonelily (weight 6) takes every roll.
     const run = (neighbour: "none" | "dry") => {
-      const s = blank({ slots: [["lonelily", 5, 5]], config: { blankFillTo: 1 } });
+      const s = blank({ slots: [["lonelily", 5, 5]], stats: ALWAYS_SPAWN });
       if (neighbour === "dry") inject(s, 1, "wheat", 4, 5, "planted", { water: HALT });
       return engine.run(s, 30);
     };
@@ -251,8 +273,8 @@ describe("water loss per cycle until fully grown", () => {
 
 describe("everything starts at 0 water", () => {
   it("natural spawns, placed items and planted crops all start at 0", () => {
-    // blankFillTo 1: an eligible Lonelily takes the roll on cycle 0.
-    const s = blank({ slots: [["lonelily", 5, 5]], config: { blankFillTo: 1 } });
+    // ALWAYS_SPAWN: an eligible Lonelily takes the roll on cycle 0.
+    const s = blank({ slots: [["lonelily", 5, 5]], stats: ALWAYS_SPAWN });
     const r = engine.run(s, 1);
     expect(ofKind(r.events, "spawned").map((e) => e.mutationId)).toEqual(["lonelily"]);
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ origin: "spawned", water: 0 });
@@ -265,7 +287,7 @@ describe("everything starts at 0 water", () => {
 
   it("layout plants start at 0: a placed item never drinks, a base crop drinks until the player waters it", () => {
     const sc = (activity: ActivitySchedule) =>
-      start(singlePlot(layout([["chloronite", 5, 5], ["wheat", 2, 2]]), { config: { spawnCells: "slotsOnly", waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 }, activity }));
+      start(singlePlot(layout([["chloronite", 5, 5], ["wheat", 2, 2]]), { config: { waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 }, activity }), engine);
     const away = sc(NEVER_ACTIVE);
     expect(plantAt(away, 1, 5, 5)).toMatchObject({ origin: "placed", water: 0 });
     expect(plantAt(away, 1, 2, 2)).toMatchObject({ origin: "planted", water: 0 });
@@ -279,7 +301,7 @@ describe("everything starts at 0 water", () => {
   });
 
   it("with watering: never a base crop is never raised above 0", () => {
-    const s = start(singlePlot(layout([["wheat", 2, 2]]), { config: { spawnCells: "slotsOnly", ...NO_BASE_CROP_DECAY, waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 }, activity: ONLINE, policies: { watering: "never" } }));
+    const s = start(singlePlot(layout([["wheat", 2, 2]]), { config: { waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 }, activity: ONLINE, policies: { watering: "never" } }), engine);
     expect(plantAt(engine.run(s, 1).state, 1, 2, 2)!.water).toBe(-20);
   });
 
@@ -379,14 +401,14 @@ describe("watering and decay", () => {
 
   it("its decay timer keeps running while it is halted, and it decays on time", () => {
     // Data's 3-day base-crop timer; timer-only, since a minimum would hold a plant that never helped.
-    const s = blank({ config: { decayDaysOverrides: {}, ...TIMER_ONLY } });
-    const p = inject(s, 1, "wheat", 5, 5, "planted", { water: HALT, stage: 2 });
+    const s = blank({ eng: TIMER_ONLY });
+    const p = inject(s, 1, "wheat", 5, 5, "planted", { water: HALT, stage: 2 }, TIMER_ONLY);
     const timer = p.decaySecondsRemaining!;
     expect(timer).toBe(72 * 3600);
-    const one = engine.run(s, 1);
+    const one = TIMER_ONLY.run(s, 1);
     expect(plantAt(one.state, 1, 5, 5)!.decaySecondsRemaining).toBeCloseTo(timer - one.state.lastCycleSeconds);
     const cycles = Math.ceil(timer / one.state.lastCycleSeconds);
-    const gone = engine.run(s, cycles);
+    const gone = TIMER_ONLY.run(s, cycles);
     expect(gone.summary.decayed.wheat).toBe(1);
     expect(plantAt(gone.state, 1, 5, 5)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
   });

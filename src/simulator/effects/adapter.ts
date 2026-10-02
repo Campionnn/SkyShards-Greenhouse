@@ -1,6 +1,5 @@
 import { effectiveEffects, simulateEffects, sortEffects } from "../../utilities/effectSimulation";
 import type { EffectSimulation } from "../../utilities/effectSimulation";
-import type { SimConfig } from "../config";
 import type { EffectId } from "../data/types";
 import { isDry } from "../sim/plants";
 import type { PlotState } from "../sim/state";
@@ -12,13 +11,13 @@ import type { PlotState } from "../sim/state";
 // relays, which is exactly the `isSlot` flag, so it is passed as `isSlot: true`.
 
 /** Recomputes every plant's raw `held` set from the plot. */
-export function recomputeEffects(plot: PlotState, config: Pick<SimConfig, "haltWater">): EffectSimulation {
+export function recomputeEffects(plot: PlotState): EffectSimulation {
   const sim = simulateEffects(
     plot.plants.map((p) => ({
       id: p.kindId,
       position: [p.row, p.col] as [number, number],
       size: p.size,
-      ...(isDry(p, config) ? { isSlot: true } : {}),
+      ...(isDry(p) ? { isSlot: true } : {}),
     }))
   );
   for (const p of plot.plants) p.held = sortEffects(sim.heldAt(p.row, p.col));

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, RotateCcw, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import {
   ARMOR_SET_LABEL,
   ARMOR_SETS,
@@ -10,16 +10,14 @@ import {
   type ActivitySchedule,
   type ArmorSet,
   type ConfigGroup,
-  type MinimumMutations,
-  type MinimumMutationsOverride,
   type PlayerStats,
   type Scenario,
   type ScenarioIssue,
   type SimConfig,
 } from "../../simulator";
 import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui";
-import { CheckboxField, IdSelect, NumberField, NumberInput, SelectField } from "./controls";
-import { ALL_KIND_IDS, kindData, nameOf, priceableItems } from "./format";
+import { CheckboxField, NumberField, NumberInput, SelectField } from "./controls";
+import { nameOf } from "./format";
 import { PolicyDefaultsEditor } from "./FlowEditor";
 import { addPlot, duplicatePlot, exportFlows, importFlows, layoutSummary, nextPlotId, removePlot } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
@@ -204,9 +202,7 @@ export const SettingsPanel: React.FC<{ scenario: Scenario; onChange: (sc: Scenar
   const { settings } = scenario;
   const setSettings = (patch: Partial<Scenario["settings"]>) => onChange({ ...scenario, settings: { ...settings, ...patch } });
   const setConfig = (patch: Partial<SimConfig>) => setSettings({ config: { ...settings.config, ...patch } });
-  // Per-kind decay overrides count once per kind, so "Restore defaults" clears them too.
-  const kindOverrides = new Set([...Object.keys(settings.config.decayDaysOverrides ?? {}), ...Object.keys(settings.config.minimumMutationsOverrides ?? {})]).size;
-  const nonDefault = CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length + kindOverrides;
+  const nonDefault = CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length;
 
   return (
     <Panel title="Settings" icon={<Settings2 />}>
@@ -318,41 +314,6 @@ export const SettingsPanel: React.FC<{ scenario: Scenario; onChange: (sc: Scenar
               </div>
             </div>
           ))}
-          <KindDecayOverrides config={settings.config} onChange={setConfig} />
-          <div>
-            <SectionLabel>NPC prices (coins)</SectionLabel>
-            <p className="text-[11px] text-slate-500 mb-1.5">Wiki NPC sell prices. Edited values are highlighted; mutation items are Bazaar-only (0). Evergreen and Synthesis Chips default to 50,000.</p>
-            <div className="space-y-1.5">
-              {priceableItems().map(({ id, price }) => {
-                const override = settings.config.rareDropValues[id];
-                const changed = typeof override === "number" && override !== price;
-                return (
-                  <div key={id} className="flex items-center gap-1">
-                    <NumberField
-                      className="flex-1"
-                      label={<span className={changed ? "text-amber-200" : ""}>{nameOf(id)}</span>}
-                      title={`Wiki: ${price.toLocaleString()}`}
-                      value={override ?? price}
-                      min={0}
-                      onChange={(v) => setConfig({ rareDropValues: { ...settings.config.rareDropValues, [id]: v } })}
-                    />
-                    <button
-                      className={buttonClass.icon}
-                      title="Back to the wiki price"
-                      disabled={override === undefined}
-                      onClick={() => {
-                        const next = { ...settings.config.rareDropValues };
-                        delete next[id];
-                        setConfig({ rareDropValues: next });
-                      }}
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
           <div>
             <SectionLabel>Not modelled</SectionLabel>
             <ul className="text-[11px] text-slate-500 space-y-0.5">
@@ -370,124 +331,6 @@ export const SettingsPanel: React.FC<{ scenario: Scenario; onChange: (sc: Scenar
         </div>
       )}
     </Panel>
-  );
-};
-
-// ---- Advanced: per-kind decay timer and minimum mutations overrides --------
-
-type MinimumChoice = "data" | "count" | "infinite" | "none";
-
-const describeMinimum = (m: MinimumMutations): string => (m === null ? "none" : m === "infinite" ? "∞" : String(m));
-
-/**
- * Per-kind overrides of the decay timer (`decayDaysOverrides`, days, 0 = never) and minimum
- * mutations (`minimumMutationsOverrides`). Lists only overridden kinds; the picker adds one.
- */
-export const KindDecayOverrides: React.FC<{ config: SimConfig; onChange: (patch: Partial<SimConfig>) => void }> = ({ config, onChange }) => {
-  const days = config.decayDaysOverrides ?? {};
-  const mins = config.minimumMutationsOverrides ?? {};
-  const listed = ALL_KIND_IDS.filter((id) => id in days || id in mins);
-  const addable = ALL_KIND_IDS.filter((id) => !listed.includes(id));
-  const [adding, setAdding] = useState<string>("");
-  const pick = adding && addable.includes(adding) ? adding : (addable[0] ?? "");
-
-  const setDays = (id: string, v: number | undefined) => {
-    const next = { ...days };
-    if (v === undefined) delete next[id];
-    else next[id] = v;
-    onChange({ decayDaysOverrides: next });
-  };
-  const setMin = (id: string, v: MinimumMutationsOverride | undefined) => {
-    const next = { ...mins };
-    if (v === undefined) delete next[id];
-    else next[id] = v;
-    onChange({ minimumMutationsOverrides: next });
-  };
-  const reset = (id: string) => {
-    const d = { ...days };
-    const m = { ...mins };
-    delete d[id];
-    delete m[id];
-    onChange({ decayDaysOverrides: d, minimumMutationsOverrides: m });
-  };
-
-  return (
-    <div>
-      <SectionLabel>
-        <span className="flex items-center gap-1">
-          Decay per kind
-          <InfoHint title="Decay timer and minimum mutations" width={300}>
-            A plant can only decay once its timer has run out and it has helped create its minimum number of mutations; until then the timer extends by
-            the decay extension (24h). Plants of the same kind on a plot that have helped at least once and are fully grown share the count. Minimum: a
-            number, ∞ (never decays) or none (timer only). Decay days 0 = never decays. Empty = the game data.
-          </InfoHint>
-        </span>
-      </SectionLabel>
-      <div className="space-y-1.5">
-        {listed.length === 0 && <p className="text-[11px] text-slate-500">Every kind uses the game data. Add a kind to override its decay timer or minimum.</p>}
-        {listed.map((id) => {
-          const def = kindData(id)!;
-          const o = mins[id];
-          const choice: MinimumChoice = o === undefined ? "data" : o === "infinite" ? "infinite" : o === "none" ? "none" : "count";
-          return (
-            <div key={id} className="bg-slate-700/30 rounded-md px-2 py-1.5 space-y-1">
-              <div className="flex items-center gap-1">
-                <span className="flex-1 min-w-0 truncate text-xs text-amber-200">{nameOf(id)}</span>
-                <button className={buttonClass.icon} title="Back to the game data" onClick={() => reset(id)}>
-                  <RotateCcw className="w-3 h-3" />
-                </button>
-              </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                <span title={`Game data: ${def.decayDays} days`}>Decay days</span>
-                <NumberInput
-                  className={`${inputClass} w-14 text-right`}
-                  min={0}
-                  step={0.5}
-                  value={days[id] ?? def.decayDays}
-                  onChange={(v) => setDays(id, v)}
-                />
-                <span className="ml-1" title={`Game data: ${describeMinimum(def.minimumMutations)}`}>
-                  Minimum
-                </span>
-                <select
-                  className={`${inputClass} w-20`}
-                  value={choice}
-                  onChange={(e) => {
-                    const c = e.target.value as MinimumChoice;
-                    if (c === "data") setMin(id, undefined);
-                    else if (c === "count") setMin(id, typeof def.minimumMutations === "number" ? def.minimumMutations : 10);
-                    else setMin(id, c);
-                  }}
-                >
-                  <option value="data">data ({describeMinimum(def.minimumMutations)})</option>
-                  <option value="count">count</option>
-                  <option value="infinite">∞</option>
-                  <option value="none">none</option>
-                </select>
-                {choice === "count" && (
-                  <NumberInput className={`${inputClass} w-12 text-right`} min={0} integer value={typeof o === "number" ? o : 0} onChange={(v) => setMin(id, v)} />
-                )}
-              </div>
-            </div>
-          );
-        })}
-        {addable.length > 0 && (
-          <div className="flex items-center gap-1">
-            <IdSelect className="flex-1 min-w-0" ids={addable} value={pick} onChange={setAdding} />
-            <button
-              className={buttonClass.neutral}
-              disabled={!pick}
-              onClick={() => {
-                const def = kindData(pick);
-                if (def) setDays(pick, days[pick] ?? def.decayDays);
-              }}
-            >
-              <Plus className="w-3.5 h-3.5" /> Override
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
   );
 };
 

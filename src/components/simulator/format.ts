@@ -1,6 +1,5 @@
 import {
   defaultGameData,
-  defaultNpcPrice,
   describeDebt,
   describeSpotFailure,
   describeCondition,
@@ -10,7 +9,6 @@ import {
   npcPriceSource,
   RARE_CROP_ITEMS,
   RARE_DROP_ITEMS,
-  WIKI_NPC_PRICES,
   type KindDef,
   type SpotReport,
   type TimedEvent,
@@ -131,10 +129,6 @@ export function describeEvent(e: TimedEvent): string {
       return `${nameOf(e.kindId)} dried out${at}: halted until watered (no growth, no effects given, not counted for mutations or unique crops)`;
     case "destroyed":
       return `${nameOf(e.kindId)} destroyed${at} by ${e.by}`;
-    case "minigameFailed":
-      return e.outcome === "retry"
-        ? `${nameOf(e.kindId)} minigame failed${at}: it stays fully grown, try again next session`
-        : `${nameOf(e.kindId)} minigame failed${at}: it was destroyed`;
     case "placed":
       return `${e.replacement ? "Re-placed" : "Placed"} ${nameOf(e.kindId)}${at}${e.origin === "placed" && e.replacement ? " from inventory" : ""}`;
     case "removed":
@@ -188,16 +182,10 @@ export function itemCategory(id: string): ItemCategory {
   return "other";
 }
 
-/** NPC price of an item under a config's overrides (wiki defaults otherwise). */
-export function npcPriceFor(overrides: Record<string, number>): (id: string) => number {
-  const src = npcPriceSource(data, overrides);
+/** NPC price of an item (wiki NPC sell price; mutation items 0). */
+export function npcPriceFor(): (id: string) => number {
+  const src = npcPriceSource(data);
   return (id) => src.price(id);
-}
-
-/** Items whose NPC price the Advanced panel lets you override, with their wiki default. */
-export function priceableItems(): { id: string; price: number }[] {
-  const ids = [...data.cropIds.filter((c) => isHarvestableCrop(data, c)), ...Object.keys(WIKI_NPC_PRICES)];
-  return [...new Set(ids)].map((id) => ({ id, price: defaultNpcPrice(data, id) }));
 }
 
 export const ALL_MUTATION_IDS = data.mutationIds;

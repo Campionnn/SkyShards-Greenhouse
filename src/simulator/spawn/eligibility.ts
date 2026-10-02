@@ -1,4 +1,3 @@
-import type { SimConfig } from "../config";
 import type { MutationDef } from "../data/types";
 import { cellKey, footprint, footprintFits, GRID_SIZE, ringCells } from "../grid/cells";
 import { isDry, isFootprintFree, type Occupancy } from "../sim/plants";
@@ -15,20 +14,14 @@ export interface RingCounts {
   ringOccupied: boolean;
 }
 
-export function ringCounts(
-  occ: Occupancy,
-  row: number,
-  col: number,
-  size: number,
-  config: Pick<SimConfig, "haltWater">
-): RingCounts {
+export function ringCounts(occ: Occupancy, row: number, col: number, size: number): RingCounts {
   const counts: Record<string, number> = {};
   let ringOccupied = false;
   for (const idx of ringCells(row, col, size)) {
     const q = occ[idx];
     if (!q) continue;
     ringOccupied = true;
-    if (isDry(q, config)) continue;
+    if (isDry(q)) continue;
     counts[q.kindId] = (counts[q.kindId] ?? 0) + 1;
   }
   return { counts, ringOccupied };

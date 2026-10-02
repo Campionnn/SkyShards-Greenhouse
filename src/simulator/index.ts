@@ -1,8 +1,20 @@
 // Public simulator API. The single-tick primitive is not exported: time moves only through run().
 
 export { createEngine, type Engine } from "./engine";
-export { CONFIG_META, DEFAULT_CONFIG, MUTATION_CREDIT_ORDERS, withConfigDefaults } from "./config";
-export type { ConfigGroup, ConfigMeta, MinimumMutationsOverride, MutationCreditOrder, SimConfig } from "./config";
+export {
+  CONFIG_META,
+  DECAY_EXTENSION_HOURS,
+  DEFAULT_CONFIG,
+  DEVOURER_ROOT_CHANCE,
+  HALT_WATER,
+  MAX_WATER,
+  MUTATION_CREDIT_ORDERS,
+  ROOT_SPREAD_CHANCE,
+  THUNDERLING_MAX_CHARGE,
+  UNIQUE_CROP_CAP,
+  withConfigDefaults,
+} from "./config";
+export type { ConfigGroup, ConfigMeta, MutationCreditOrder, SimConfig } from "./config";
 export { defaultGameData } from "./data/default";
 export { GameDataError, isHarvestableCrop, kindDef, loadGameData } from "./data/load";
 export type * from "./data/types";

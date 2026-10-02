@@ -1,3 +1,4 @@
+import { JELLYBEAN_MULTIPLIER_CAP } from "../config";
 import type { EffectId } from "../data/types";
 
 /**
@@ -50,8 +51,8 @@ export function chloroniteDropCount(miningFortune: number): number {
   return m / 100;
 }
 
-/** Magic Jellybean: harvestable from stage 12, +1 item per 12 stages after, capped. */
-export function jellybeanMultiplier(stage: number, cap: number): number {
+/** Magic Jellybean: harvestable from stage 12, +1 item per 12 stages after, capped at JELLYBEAN_MULTIPLIER_CAP. */
+export function jellybeanMultiplier(stage: number): number {
   if (stage < 12) return 0;
-  return Math.min(cap, 1 + Math.floor((stage - 12) / 12));
+  return Math.min(JELLYBEAN_MULTIPLIER_CAP, 1 + Math.floor((stage - 12) / 12));
 }

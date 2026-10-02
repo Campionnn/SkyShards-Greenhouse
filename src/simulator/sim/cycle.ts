@@ -31,7 +31,7 @@ export function makeCycleCtx(
     state,
     config: settings.config,
     stats: settings.playerStats,
-    prices: npcPriceSource(env.data, settings.config.rareDropValues),
+    prices: npcPriceSource(env.data),
     cycle: opts.cycle,
     active: opts.active,
     cycleSeconds: opts.cycleSeconds,

@@ -1,6 +1,6 @@
 // Converts older saved scenario JSON (localStorage, exported flow files):
-// flow `stages` -> `steps`, renamed triggers and config keys, reshaped decay
-// config. Pure: returns a converted copy. Unknown input is returned as is.
+// flow `stages` -> `steps`, renamed triggers and config keys, removed config
+// keys dropped. Pure: returns a converted copy. Unknown input is returned as is.
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.isArray(v);
@@ -12,46 +12,42 @@ const RENAMED_CONFIG: Record<string, string> = {
 };
 
 /**
- * The 14 harvestable base crops (not fire / dead_plant / fermento). Hard-coded
- * so migration doesn't depend on game data; scenarioEdit.test.ts checks it.
+ * Config keys that are no longer settings. Their values are now fixed in code
+ * (config.ts constants) or come from data.json (decay timers, minimum
+ * mutations) and the wiki price table (NPC prices). Saved values are dropped.
  */
-export const BASE_CROP_IDS: readonly string[] = [
-  "wheat",
-  "potato",
-  "carrot",
-  "pumpkin",
-  "melon",
-  "cocoa_beans",
-  "sugar_cane",
-  "cactus",
-  "nether_wart",
-  "red_mushroom",
-  "brown_mushroom",
-  "moonflower",
-  "sunflower",
-  "wild_rose",
+export const REMOVED_CONFIG: readonly string[] = [
+  // Older removals.
+  "baseCropDecayHours",
+  "nullStageKindsDecay",
+  // Fixed values and model switches.
+  "weightModel",
+  "supportPerCell",
+  "supportCap",
+  "spawnCells",
+  "maxWater",
+  "harvestWindowCycles",
+  "rootSpreadChance",
+  "bountyRollsPerHarvest",
+  "fleshtrapInitialHunger",
+  "magicJellybeanMultiplierCap",
+  "perfectPlay",
+  "minigameFailChance",
+  "blankFillTo",
+  "haltWater",
+  "cycleBaselineSeconds",
+  "uniqueCropCap",
+  "uniqueCropGrowthPerCrop",
+  "uniqueCropYieldPerCrop",
+  "thunderlingChargePerStage",
+  "thunderlingMaxCharge",
+  "decayExtensionHours",
+  "devourerRootChance",
+  // Per-kind decay overrides (data.json is used) and NPC price overrides.
+  "decayDaysOverrides",
+  "minimumMutationsOverrides",
+  "rareDropValues",
 ];
-
-/** Default of the removed `baseCropDecayHours` key. */
-const OLD_BASE_CROP_DECAY_HOURS = 72;
-
-/**
- * Converts `baseCropDecayHours` to per-crop `decayDaysOverrides` (only if not
- * 72; 0 stays 0 = never; existing overrides win) and drops `nullStageKindsDecay`.
- */
-function migrateDecayConfig(config: Json): void {
-  if ("baseCropDecayHours" in config) {
-    const hours = config.baseCropDecayHours;
-    if (typeof hours === "number" && Number.isFinite(hours) && hours !== OLD_BASE_CROP_DECAY_HOURS) {
-      const overrides: Json = isObj(config.decayDaysOverrides) ? { ...config.decayDaysOverrides } : {};
-      const days = Math.max(0, hours) / 24;
-      for (const id of BASE_CROP_IDS) if (!(id in overrides)) overrides[id] = days;
-      config.decayDaysOverrides = overrides;
-    }
-    delete config.baseCropDecayHours;
-  }
-  delete config.nullStageKindsDecay;
-}
 
 function migrateCondition(c: unknown): unknown {
   if (!isObj(c)) return c;
@@ -91,7 +87,7 @@ export function migrateScenario<T>(raw: T): T {
         delete config[from];
       }
     }
-    migrateDecayConfig(config);
+    for (const key of REMOVED_CONFIG) delete config[key];
     out.settings = { ...settings, config };
   }
   return out as T;

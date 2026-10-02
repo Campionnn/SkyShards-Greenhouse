@@ -11,7 +11,6 @@ import type { PlantState, PlotState } from "./state";
 export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch, why: string): void {
   if (isHarvestable(p)) {
     harvestPlant(plot, p, ctx, scratch);
-    if (plot.plants.includes(p)) destroyPlant(plot, p, ctx, why); // failed "retry" minigame left it standing
     return;
   }
   if (p.isDeadPlant) {
@@ -49,7 +48,7 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
     } else if (replacement) {
       ctx.state.summary.replacements += 1;
     }
-    const p = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, d.origin, ctx.cycle, ctx.cycleSeconds);
+    const p = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, d.origin, ctx.cycle);
     insertPlant(plot, p);
     for (const idx of footprint(d.row, d.col, d.size)) occ[idx] = p;
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, origin: p.origin, replacement });

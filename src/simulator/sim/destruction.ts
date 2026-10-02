@@ -1,3 +1,4 @@
+import { DEVOURER_ROOT_CHANCE, ROOT_SPREAD_CHANCE } from "../config";
 import { cellIndex, cellKey, GRID_SIZE, ringCells, TOTAL_CELLS } from "../grid/cells";
 import { chance, intInclusive } from "../rng";
 import type { CycleCtx } from "./context";
@@ -12,9 +13,9 @@ function willGrow(p: PlantState): boolean {
 
 /**
  * Tick phase "destruction", first in the tick (before effects and growth):
- * - Devourer: while growing, `devourerRootChance` per tick to grow a root into
+ * - Devourer: while growing, `DEVOURER_ROOT_CHANCE` per tick to grow a root into
  *   one of its 8 neighbours, destroying what's there. Each root spreads with
- *   `rootSpreadChance`.
+ *   `ROOT_SPREAD_CHANCE`.
  * - Chorus Fruit: each tick it starts still growing, teleports to any other
  *   cell (air included) and turns it into End Stone. It teleports on the tick
  *   it becomes fully grown, never after.
@@ -30,7 +31,7 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
   );
   for (const src of sources) {
     if (!plot.plants.includes(src)) continue;
-    const p = src.kindId === "devourer" ? config.devourerRootChance : config.rootSpreadChance;
+    const p = src.kindId === "devourer" ? DEVOURER_ROOT_CHANCE : ROOT_SPREAD_CHANCE;
     if (!chance(rng, p)) continue;
     growRoot(plot, src, ctx);
   }

@@ -1,3 +1,4 @@
+import { CYCLE_BASELINE_SECONDS } from "../config";
 import { newRunner } from "../flow/runner";
 import { ScenarioError, validateScenario } from "../flow/validate";
 import { seedRng } from "../rng";
@@ -12,10 +13,9 @@ import type { PlotState, Scenario, SimulationState, TimedEvent } from "./state";
 
 /** Unique base-crop groups standing across all plots, excluding dried-out crops. */
 export function uniqueCropsAcross(state: SimulationState, env: Env): number {
-  const { config } = state.scenario.settings;
   const kinds = new Set<string>();
   for (const plot of state.plots) {
-    for (const p of plot.plants) if (p.origin === "planted" && !p.isDeadPlant && !isDry(p, config)) kinds.add(p.kindId);
+    for (const p of plot.plants) if (p.origin === "planted" && !p.isDeadPlant && !isDry(p)) kinds.add(p.kindId);
   }
   return countUniqueCropGroups(kinds, env.data);
 }
@@ -57,7 +57,7 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
     nextPlantId: 1,
     uniqueCropCount: 0,
     uniqueCropsStanding: 0,
-    lastCycleSeconds: input.settings.config.cycleBaselineSeconds,
+    lastCycleSeconds: CYCLE_BASELINE_SECONDS,
     lastCycleActive: true,
   };
   for (const item of Object.keys(state.inventory)) ledgerRow(state, item);
@@ -77,7 +77,7 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
   }
 
   state.uniqueCropsStanding = uniqueCropsAcross(state, env);
-  state.uniqueCropCount = effectiveUniqueCrops(state.uniqueCropsStanding, input.settings.playerStats.floraShard, input.settings.config.uniqueCropCap);
-  state.lastCycleSeconds = cycleSeconds(input.settings.playerStats, state.uniqueCropCount, input.settings.config);
+  state.uniqueCropCount = effectiveUniqueCrops(state.uniqueCropsStanding, input.settings.playerStats.floraShard);
+  state.lastCycleSeconds = cycleSeconds(input.settings.playerStats, state.uniqueCropCount);
   return { state, events };
 }

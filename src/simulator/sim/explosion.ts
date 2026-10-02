@@ -1,7 +1,7 @@
 import { ringCells } from "../grid/cells";
 import type { CycleCtx } from "./context";
 import { effectiveList } from "../effects/adapter";
-import { buildOccupancy, minimumMutationsOf, removePlant, spawnedDecaySeconds, spawnStageOf } from "./plants";
+import { buildOccupancy, initialDecaySeconds, minimumMutationsOf, removePlant, spawnStageOf } from "./plants";
 import { bump, perPlot } from "./summary";
 import type { PlantState, PlotState } from "./state";
 
@@ -65,9 +65,9 @@ function turnIntoShellfruit(plot: PlotState, q: PlantState, ctx: CycleCtx): void
   q.readyStage = m.growthStages;
   q.fullyGrownAtCycle = null;
   // Fresh natural spawn (timer and counters reset); not from a spawn roll, so it credits nobody.
-  q.decaySecondsRemaining = spawnedDecaySeconds(m, ctx.config, ctx.cycleSeconds);
+  q.decaySecondsRemaining = initialDecaySeconds(ctx.env.data, "shellfruit");
   q.timesMutated = 0;
-  q.mutatesRemaining = minimumMutationsOf("shellfruit", ctx.env.data, ctx.config);
+  q.mutatesRemaining = minimumMutationsOf("shellfruit", ctx.env.data);
   q.water = 0;
   // 0-stage: fully grown on appearing, so latch effects now.
   q.lockedEffects = q.stage >= q.readyStage ? effectiveList(q.held) : null;

@@ -105,11 +105,11 @@ describe("properties", () => {
       fc.property(fc.integer({ min: 0, max: 6 }), fc.integer({ min: 0, max: 6 }), (low, extra) => {
         const build = (stock: number) =>
           scenario([flow([step("a", layout([["chloronite", 1, 1], ["chloronite", 1, 3], ["chloronite", 3, 1]]))])], {
-            // Timer-only: otherwise the Chloronites' minimum would keep them forever and nothing is re-placed.
-            config: { spawnCells: "slotsOnly", ...TIMER_ONLY },
+            // Every other cell is unpainted AIR, so nothing can spawn there.
             inventory: { chloronite: stock },
           });
-        const debts = (stock: number) => engine.run(engine.initState(build(stock)).state, 60, { retainEvents: "none" }).summary.debtEvents;
+        // Timer-only: otherwise the Chloronites' minimum would keep them forever and nothing is re-placed.
+        const debts = (stock: number) => TIMER_ONLY.run(TIMER_ONLY.initState(build(stock)).state, 60, { retainEvents: "none" }).summary.debtEvents;
         return debts(low + extra) <= debts(low);
       }),
       { numRuns: 25 }

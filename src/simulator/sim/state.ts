@@ -304,7 +304,7 @@ export type TickEvent =
   /** Decay timer ran out with minimum mutations unmet and was extended. `combined`: its kind's pool, null when not pooled. */
   | { kind: "decayExtended"; plantId: number; kindId: KindId; row: number; col: number;
       mutatesRemaining: number | "infinite" | null; combined: number | "infinite" | null }
-  /** Water reached haltWater: no growth, no effects given, not counted, until watered. */
+  /** Water reached HALT_WATER: no growth, no effects given, not counted, until watered. */
   | { kind: "driedOut"; plantId: number; kindId: KindId; row: number; col: number }
   | { kind: "harvested"; plantId: number; kindId: KindId; row: number; col: number; origin: Origin;
       drops: Record<ItemId, number>; coinValue: number; rival: boolean }
@@ -314,8 +314,6 @@ export type TickEvent =
   /** The player restored the ground under an empty target cell to what its mutation needs. */
   | { kind: "groundFixed"; row: number; col: number; from: string | null; to: string; mutationId: MutationId }
   | { kind: "destroyed"; plantId: number; kindId: KindId; row: number; col: number; by: string }
-  /** PlantBoy / Stoplight / Phantomleaf minigame failed. "retry": plant stays fully grown; "destroyed": it was lost. */
-  | { kind: "minigameFailed"; plantId: number; kindId: KindId; row: number; col: number; outcome: "retry" | "destroyed" }
   | { kind: "teleported"; plantId: number; kindId: KindId; fromRow: number; fromCol: number; row: number; col: number }
   | { kind: "debt"; item: ItemId; row: number; col: number; needed: number; available: number }
   | { kind: "stepChanged"; fromStep: string; toStep: string; stepIndex: number }

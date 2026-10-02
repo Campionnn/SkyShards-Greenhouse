@@ -1,4 +1,4 @@
-import type { SimConfig } from "../config";
+import { FLESHTRAP_INITIAL_HUNGER, HALT_WATER, type SimConfig } from "../config";
 import { kindDef } from "../data/load";
 import type { GameData, KindDef, KindId, MinimumMutations, MutationDef, Size } from "../data/types";
 import { footprint, TOTAL_CELLS } from "../grid/cells";
@@ -9,19 +9,13 @@ export const DEAD_PLANT = "dead_plant";
 export const DEVOURER_ROOT = "devourer_root";
 export const isRoot = (p: PlantState): boolean => p.kindId === DEVOURER_ROOT;
 
-/** Decay timer in days: `decayDaysOverrides`, else data.json `decay`. 0 = never decays. */
-export function decayDaysOf(def: Pick<KindDef, "id" | "decayDays">, config: Pick<SimConfig, "decayDaysOverrides">): number {
-  return config.decayDaysOverrides?.[def.id] ?? def.decayDays;
+/** Decay timer in days: data.json `decay`. 0 = never decays. */
+export function decayDaysOf(def: Pick<KindDef, "decayDays">): number {
+  return def.decayDays;
 }
 
-/** Minimum mutations with `minimumMutationsOverrides` applied ("none" -> null, timer-only). Unknown kinds (roots): null. */
-export function minimumMutationsOf(
-  kindId: KindId,
-  data: GameData,
-  config: Pick<SimConfig, "minimumMutationsOverrides">
-): MinimumMutations {
-  const o = config.minimumMutationsOverrides?.[kindId];
-  if (o !== undefined) return o === "none" ? null : o;
+/** Minimum mutations from data.json (null = timer only). Unknown kinds (roots): null. */
+export function minimumMutationsOf(kindId: KindId, data: GameData): MinimumMutations {
   return kindDef(data, kindId)?.minimumMutations ?? null;
 }
 
@@ -43,30 +37,15 @@ export function readyStageOf(m: MutationDef, config: SimConfig): number {
   return m.growthStages;
 }
 
-/** Natural spawn's decay timer in seconds, running from spawn (growth time included). null = never decays. */
-export function spawnedDecaySeconds(m: MutationDef, config: SimConfig, cycleSeconds: number): number | null {
-  if (config.harvestWindowCycles > 0) return config.harvestWindowCycles * cycleSeconds;
-  const days = decayDaysOf(m, config);
-  return days > 0 ? days * 86400 : null;
-}
-
 /**
- * Starting decay timer in seconds (null = never). Spawns use `spawnedDecaySeconds`;
- * everything else its kind's decay days. Whether it actually decays at 0 also
- * depends on minimum mutations (sim/decay.ts).
+ * Starting decay timer in seconds (null = never): the kind's data.json decay
+ * days, running from placement or spawn (a spawn's growth time included).
+ * Whether it actually decays at 0 also depends on minimum mutations (sim/decay.ts).
  */
-export function initialDecaySeconds(
-  data: GameData,
-  config: SimConfig,
-  kindId: KindId,
-  origin: Origin,
-  cycleSeconds: number
-): number | null {
-  const m = data.mutations[kindId];
-  if (origin === "spawned") return m ? spawnedDecaySeconds(m, config, cycleSeconds) : null;
+export function initialDecaySeconds(data: GameData, kindId: KindId): number | null {
   const def = kindDef(data, kindId);
   if (!def) return null;
-  const days = decayDaysOf(def, config);
+  const days = decayDaysOf(def);
   return days > 0 ? days * 86400 : null;
 }
 
@@ -78,9 +57,7 @@ export function newPlant(
   row: number,
   col: number,
   origin: Origin,
-  cycle: number,
-  /** Cycle length now, for a spawn's `harvestWindowCycles` timer. */
-  cycleSeconds: number
+  cycle: number
 ): PlantState {
   const def = kindDef(data, kindId);
   if (!def) throw new Error(`Unknown kind "${kindId}"`);
@@ -96,9 +73,9 @@ export function newPlant(
     growthStages: 0,
     readyStage: 0,
     fullyGrownAtCycle: null,
-    decaySecondsRemaining: initialDecaySeconds(data, config, kindId, origin, cycleSeconds),
+    decaySecondsRemaining: initialDecaySeconds(data, kindId),
     timesMutated: 0,
-    mutatesRemaining: minimumMutationsOf(kindId, data, config),
+    mutatesRemaining: minimumMutationsOf(kindId, data),
     water: 0, // everything starts at 0; only player watering raises it
     held: [],
     lockedEffects: null,
@@ -118,7 +95,7 @@ export function newPlant(
     } else {
       plant.stage = spawnStageOf(def.growthStages);
     }
-    if (kindId === "fleshtrap") plant.gate.hunger = config.fleshtrapInitialHunger;
+    if (kindId === "fleshtrap") plant.gate.hunger = FLESHTRAP_INITIAL_HUNGER;
     // Only a growing Thunderling builds charge.
     if (kindId === "thunderling" && origin !== "placed") plant.gate.charge = 0;
     // Priming rules: sim/explosion.ts.
@@ -164,7 +141,7 @@ export function newRoot(state: SimulationState, row: number, col: number, cycle:
  * dead_plant timer and fresh minimum-mutation counters, so it never decays on
  * its own; the player clears it.
  */
-export function convertToDeadPlant(state: SimulationState, data: GameData, config: SimConfig, plant: PlantState): void {
+export function convertToDeadPlant(state: SimulationState, data: GameData, plant: PlantState): void {
   plant.id = state.nextPlantId++;
   plant.kindId = DEAD_PLANT;
   plant.origin = "placed";
@@ -174,9 +151,9 @@ export function convertToDeadPlant(state: SimulationState, data: GameData, confi
   plant.growthStages = 0;
   plant.readyStage = 0;
   plant.fullyGrownAtCycle = null;
-  plant.decaySecondsRemaining = initialDecaySeconds(data, config, DEAD_PLANT, "placed", 0);
+  plant.decaySecondsRemaining = initialDecaySeconds(data, DEAD_PLANT);
   plant.timesMutated = 0;
-  plant.mutatesRemaining = minimumMutationsOf(DEAD_PLANT, data, config);
+  plant.mutatesRemaining = minimumMutationsOf(DEAD_PLANT, data);
   plant.lockedEffects = null;
   plant.held = [];
   plant.skipNextGrowth = false;
@@ -213,13 +190,13 @@ export function isFootprintFree(occ: Occupancy, row: number, col: number, size: 
 }
 
 /**
- * Dried out: water at or below `haltWater` halts the plant. It doesn't grow,
+ * Dried out: water at or below `HALT_WATER` halts the plant. It doesn't grow,
  * give or relay effects (still receives them), or count for requirements or
  * unique crops; it still blocks Lonelily and keeps decaying. Watering clears it.
- * Derived from `water` alone; relies on `haltWater` < 0 so plants that never
+ * Derived from `water` alone; relies on `HALT_WATER` < 0 so plants that never
  * lose water (start 0, placed, roots) can't be dry.
  */
-export const isDry = (p: PlantState, config: Pick<SimConfig, "haltWater">): boolean => !p.isDeadPlant && p.water <= config.haltWater;
+export const isDry = (p: PlantState): boolean => !p.isDeadPlant && p.water <= HALT_WATER;
 
 export const isFullyGrown = (p: PlantState): boolean => !p.isDeadPlant && p.stage >= p.readyStage && p.lockedEffects !== null;
 

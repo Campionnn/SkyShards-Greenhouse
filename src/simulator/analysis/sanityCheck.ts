@@ -77,7 +77,7 @@ export interface SanityEntry {
   canSpawn: boolean;
   /** Weight in the spawn pool after Bioanalysis (0 when it can't spawn). */
   weight: number;
-  /** Chance per spawn roll: weight / max(blankFillTo, sum of weights over the pool). 0 when it can't spawn. */
+  /** Chance per spawn roll: weight / max(SPAWN_POOL_FLOOR, sum of weights over the pool). 0 when it can't spawn. */
   chance: number;
   /** Blocking reasons in check order. Empty when it can spawn. */
   blockers: SanityBlocker[];
@@ -93,12 +93,9 @@ export interface SanityCheckResult {
   occupied: SanityOccupant | null;
   /** The labelled slot's target, when the cell is a slot anchor. */
   slotTarget: MutationId | null;
-  /** False for non-slot cells in "slotsOnly" spawn mode. */
-  rolls: boolean;
-  noRollReason: string | null;
   /** Sum of pool weights after Bioanalysis. */
   totalWeight: number;
-  /** max(blankFillTo, totalWeight). */
+  /** max(SPAWN_POOL_FLOOR, totalWeight). */
   denominator: number;
   /** Chance a roll spawns anything: totalWeight / denominator. */
   anyChance: number;
@@ -110,13 +107,13 @@ export interface SanityCheckResult {
   cannot: SanityEntry[];
 }
 
-const occupantOf = (p: PlantState, config: { haltWater: number }): SanityOccupant => ({
+const occupantOf = (p: PlantState): SanityOccupant => ({
   kindId: p.kindId,
   row: p.row,
   col: p.col,
   size: p.size,
   isDeadPlant: p.isDeadPlant,
-  dry: isDry(p, config),
+  dry: isDry(p),
 });
 
 /** Distinct plants (anchor order) covering any of these cell indices. */
@@ -134,18 +131,18 @@ export function sanityCheck(state: SimulationState, data: GameData, plotId: Plot
   const live = state.plots.find((p) => p.id === plotId);
   if (!live) throw new RangeError(`Sanity Check: no plot ${plotId}`);
   if (!inBounds(row, col)) throw new RangeError(`Sanity Check: (${row}, ${col}) is off the plot`);
-  const { config, playerStats } = state.scenario.settings;
+  const { playerStats } = state.scenario.settings;
 
   // Private copy: the effect simulation writes `held` into plants.
   const plot = structuredClone(live);
   let occupied: SanityOccupant | null = null;
   const standing = buildOccupancy(plot)[cellIndex(row, col)];
   if (standing) {
-    occupied = occupantOf(standing, config);
+    occupied = occupantOf(standing);
     removePlant(plot, standing);
   }
   const occ = buildOccupancy(plot);
-  const effects = recomputeEffects(plot, config);
+  const effects = recomputeEffects(plot);
 
   // Pool membership, as in phaseSpawn.
   const candidates = candidateMutations(new Set(plot.plants.map((p) => p.kindId)), data);
@@ -153,25 +150,24 @@ export function sanityCheck(state: SimulationState, data: GameData, plotId: Plot
   const target = slot ? data.mutations[slot.mutationId] : undefined;
   const poolMuts = target && !candidates.includes(target) ? [...candidates, target] : candidates;
 
-  const rolls = config.spawnCells !== "slotsOnly" || !!slot;
   const ringBySize = new Map<number, RingCounts>();
   const pool: SpawnPool = { ids: [], weights: [] };
   for (const m of poolMuts) {
     if (!locationOpenFor(plot, occ, row, col, m)) continue;
     let ring = ringBySize.get(m.size);
     if (!ring) {
-      ring = ringCounts(occ, row, col, m.size, config);
+      ring = ringCounts(occ, row, col, m.size);
       ringBySize.set(m.size, ring);
     }
     const special = isAllPositiveSpecial(m) ? effects.isSpecialEligible(m.id, [row, col], m.size) : undefined;
-    const w = effectiveWeight(m, ring, config, special);
+    const w = effectiveWeight(m, ring, special);
     if (w > 0) {
       pool.ids.push(m.id);
       pool.weights.push(w);
     }
   }
   const boosted = applyMutationChanceBonus(pool, playerStats.mutationChanceBonus);
-  const denominator = poolDenominator(boosted.weights, config.blankFillTo);
+  const denominator = poolDenominator(boosted.weights);
   const totalWeight = boosted.weights.reduce((a, b) => a + b, 0);
 
   const entries: SanityEntry[] = [];
@@ -186,7 +182,6 @@ export function sanityCheck(state: SimulationState, data: GameData, plotId: Plot
         occ,
         row,
         col,
-        config,
         effects,
         poolKind: m === target && !candidates.includes(m) ? "slotTarget" : candidates.includes(m) ? "candidate" : "no",
         weight,
@@ -202,8 +197,6 @@ export function sanityCheck(state: SimulationState, data: GameData, plotId: Plot
     col,
     occupied,
     slotTarget: slot?.mutationId ?? null,
-    rolls,
-    noRollReason: rolls ? null : "Only target slots roll for spawns (the Spawn cells setting is \"slots only\"), and this cell isn't one.",
     totalWeight,
     denominator,
     anyChance: totalWeight / denominator,
@@ -218,7 +211,6 @@ interface EntryCtx {
   occ: Occupancy;
   row: number;
   col: number;
-  config: SimulationState["scenario"]["settings"]["config"];
   effects: ReturnType<typeof recomputeEffects>;
   poolKind: SanityEntry["pool"];
   weight: number;
@@ -228,10 +220,10 @@ interface EntryCtx {
 }
 
 function entryFor(m: MutationDef, c: EntryCtx): SanityEntry {
-  const { plot, occ, row, col, config } = c;
+  const { plot, occ, row, col } = c;
   const fits = footprintFits(row, col, m.size);
   const cells = fits ? footprint(row, col, m.size) : [];
-  const blockedBy = fits && !isFootprintFree(occ, row, col, m.size) ? plantsAt(occ, cells).map((p) => occupantOf(p, config)) : [];
+  const blockedBy = fits && !isFootprintFree(occ, row, col, m.size) ? plantsAt(occ, cells).map((p) => occupantOf(p)) : [];
   const footprintStatus: SanityFootprint = !fits ? "outOfBounds" : blockedBy.length > 0 ? "occupied" : "fits";
 
   const wrong: { row: number; col: number; have: string | null }[] = [];
@@ -248,13 +240,13 @@ function entryFor(m: MutationDef, c: EntryCtx): SanityEntry {
   const groundOk = wrong.length === 0; // same rule as `groundFits`, per cell (pinned by tests)
 
   // The ring exists only when the footprint is on the plot.
-  const ring = fits ? (c.ring ?? ringCounts(occ, row, col, m.size, config)) : null;
+  const ring = fits ? (c.ring ?? ringCounts(occ, row, col, m.size)) : null;
   const ringPlants = fits ? plantsAt(occ, ringCells(row, col, m.size)) : [];
   const dryByKind: Record<string, number> = {};
   if (fits) {
     for (const idx of ringCells(row, col, m.size)) {
       const q = occ[idx];
-      if (q && isDry(q, config)) dryByKind[q.kindId] = (dryByKind[q.kindId] ?? 0) + 1;
+      if (q && isDry(q)) dryByKind[q.kindId] = (dryByKind[q.kindId] ?? 0) + 1;
     }
   }
   const requirements: SanityRequirement[] = ring
@@ -262,7 +254,7 @@ function entryFor(m: MutationDef, c: EntryCtx): SanityEntry {
     : [];
 
   const isLonelily = requiresZeroAdjacent(m);
-  const ringOccupants = isLonelily && ring ? ringPlants.map((p) => occupantOf(p, config)) : isLonelily ? [] : null;
+  const ringOccupants = isLonelily && ring ? ringPlants.map((p) => occupantOf(p)) : isLonelily ? [] : null;
   const missingEffects =
     isAllPositiveSpecial(m) && fits ? c.effects.missingSpecialEffects(m.id, [row, col], m.size) : isAllPositiveSpecial(m) ? [] : null;
 

@@ -1,6 +1,7 @@
 import { effectiveList, recomputeEffects } from "../effects/adapter";
 import type { FlowStep } from "../flow/types";
 import { cellIndex, cellKey, footprint, footprintFits, ringCells, TOTAL_CELLS } from "../grid/cells";
+import { DECAY_EXTENSION_HOURS, SPAWN_POOL_FLOOR } from "../config";
 import { chance, intInclusive } from "../rng";
 import { candidateMutations } from "../spawn/candidates";
 import { locationOpenFor, ringCounts, type RingCounts } from "../spawn/eligibility";
@@ -37,8 +38,7 @@ import type { PlantState, PlotState, SlotLabel, WatchStatus } from "./state";
  *   so a new spawn does nothing destructive on its spawn tick.
  * - Spawns enter at stage 1 (`spawnStageOf`) and are not grown or watered that cycle; a 0-stage
  *   kind latches at the end of the spawn phase and is harvestable the same cycle.
- * - Spawn before decay: a spawn's timer ticks once on its spawn cycle (harvestWindowCycles N =
- *   N ticks including the spawn tick).
+ * - Spawn before decay: a spawn's timer ticks once on its spawn cycle.
  * - Decay before the player: a timer expiring on a harvest cycle is lost.
  * - A cell freed by the player refills at the next cycle's spawn roll at the earliest.
  * Reordering phases or RNG draws changes every seeded result.
@@ -48,8 +48,8 @@ export const TICK_PHASES: readonly Phase[] = [
   {
     id: "effects",
     summary: "Recompute held effects for every plant (4-way propagation).",
-    run: (plot, ctx, scratch) => {
-      scratch.effects = recomputeEffects(plot, ctx.config);
+    run: (plot, _ctx, scratch) => {
+      scratch.effects = recomputeEffects(plot);
     },
   },
   { id: "growth", summary: "Advance one growth stage unless gated or dried out; latch effects when fully grown.", run: phaseGrowth },
@@ -60,7 +60,7 @@ export const TICK_PHASES: readonly Phase[] = [
       "Water consumers not yet fully grown lose waterLossMin-Max water (default 18-22, x retain/drain) every cycle, advanced or not; at the halt level they dry out (halt until watered) and lose no more.",
     run: phaseWater,
   },
-  { id: "spawn", summary: "Every empty cell (or only slots) rolls once for a spawn (at stage 1; 0-stage kinds latch at once); uptime is booked.", run: phaseSpawn },
+  { id: "spawn", summary: "Every empty cell rolls once for a spawn (at stage 1; 0-stage kinds latch at once); uptime is booked.", run: phaseSpawn },
   {
     id: "decay",
     summary:
@@ -102,7 +102,7 @@ function phaseGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void
     // Glasscorn keeps growing past its window and resets from stage 8 to 1.
     const resets = p.kindId === "glasscorn" && p.growthStages > 0 && p.stage >= p.growthStages;
     if (p.stage < p.growthStages || resets) {
-      if (isDry(p, ctx.config)) {
+      if (isDry(p)) {
         // Checked before the water skip, so a pending skip is kept until watered.
         ctx.emit(plot.id, { kind: "growthBlocked", plantId: p.id, kindId: p.kindId, gate: "dry" });
       } else if (p.skipNextGrowth) {
@@ -195,12 +195,12 @@ export function retainFactor(effective: readonly string[]): number {
  * never drink, and a plant placed mid-session first drinks next tick. Dry plants don't drink.
  */
 function drinks(p: PlantState, ctx: CycleCtx, scratch: TickScratch): boolean {
-  return scratch.notFullyGrown.has(p.id) && consumesWater(p, ctx) && !isDry(p, ctx.config);
+  return scratch.notFullyGrown.has(p.id) && consumesWater(p, ctx) && !isDry(p);
 }
 
 /**
  * Each drinking plant loses waterLossMin..waterLossMax x retainFactor. Below 0 it may skip its next
- * stage. At `haltWater` it dries out and halts until watered (`isDry`); since dry plants don't
+ * stage. At `HALT_WATER` it dries out and halts until watered (`isDry`); since dry plants don't
  * drink, `driedOut` fires once per dry-out.
  * RNG: per drinking plant in plot order, one intInclusive, then one chance if water < 0.
  */
@@ -212,7 +212,7 @@ function phaseWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
     const loss = intInclusive(rng, config.waterLossMin, config.waterLossMax) * retainFactor(effectiveList(p.held));
     p.water -= loss;
     if (p.water < 0 && chance(rng, config.negativeWaterSkipChance)) p.skipNextGrowth = true;
-    if (!isDry(p, config)) continue;
+    if (!isDry(p)) continue;
     ctx.emit(plot.id, { kind: "driedOut", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col });
     bump(ctx.state.summary.driedOut, p.kindId);
   }
@@ -223,14 +223,13 @@ function phaseWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
  * so pooled plants of a kind expiring this tick are judged together (sim/decay.ts). On expiry:
  * - minimum met: decays. A dead_plant leaves an empty cell; anything else becomes a Dead Plant,
  *   and a primed Blastberry explodes.
- * - not met: timer extended by `decayExtensionHours` until positive; re-checked at the next expiry.
+ * - not met: timer extended by `DECAY_EXTENSION_HOURS` until positive; re-checked at the next expiry.
  * Dead Plants decay too. No RNG.
  */
 function phaseDecay(plot: PlotState, ctx: CycleCtx): void {
-  const { config } = ctx;
   const { data } = ctx.env;
   const pools = poolSnapshot(plot);
-  const extension = config.decayExtensionHours * 3600;
+  const extension = DECAY_EXTENSION_HOURS * 3600;
   for (const p of [...plot.plants]) {
     if (!plot.plants.includes(p) || p.decaySecondsRemaining === null) continue;
     p.decaySecondsRemaining -= ctx.cycleSeconds;
@@ -260,7 +259,7 @@ function phaseDecay(plot: PlotState, ctx: CycleCtx): void {
     }
     const primed = isPrimedBlastberry(p);
     const { id, row, col } = p;
-    convertToDeadPlant(ctx.state, data, config, p);
+    convertToDeadPlant(ctx.state, data, p);
     if (primed) explode(plot, { id, row, col }, ctx); // a decaying Blastberry breaks
   }
 }
@@ -274,9 +273,9 @@ function watchedKeys(plot: PlotState, step: FlowStep): Set<string> {
 }
 
 /** Status of an occupied watched slot: its target (growing, or halted if dry) or anything else (blocked). */
-function occupiedStatus(q: PlantState, slot: SlotLabel, config: CycleCtx["config"]): WatchStatus {
+function occupiedStatus(q: PlantState, slot: SlotLabel): WatchStatus {
   if (q.kindId !== slot.mutationId || q.isDeadPlant) return "blocked";
-  return isDry(q, config) ? "halted" : "growing";
+  return isDry(q) ? "halted" : "growing";
 }
 
 /** Record one watched cell-cycle in the per-spot counters and run totals. */
@@ -317,7 +316,7 @@ function recordWatch(plot: PlotState, ctx: CycleCtx, stepId: string, slot: SlotL
 }
 
 /**
- * Each empty cell (or only slots, per `spawnCells`), row-major, draws one weighted roll over every
+ * Each empty cell, row-major, draws one weighted roll over every
  * mutation eligible there; any candidate can win. Multi-cell candidates need their whole footprint
  * (top-left anchored) empty, and a spawn blocks later cells this tick. A slot always considers its
  * target, still gated by ground and ring requirements. Bioanalysis scales all weights uniformly.
@@ -325,16 +324,13 @@ function recordWatch(plot: PlotState, ctx: CycleCtx, stepId: string, slot: SlotL
 function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { config } = ctx;
   const { data } = ctx.env;
-  const effects = scratch.effects ?? recomputeEffects(plot, config);
+  const effects = scratch.effects ?? recomputeEffects(plot);
   const occ = buildOccupancy(plot);
   const candidates = candidateMutations(new Set(plot.plants.map((p) => p.kindId)), data);
 
   const slotAt = new Map<number, SlotLabel>();
   for (const s of plot.slots) slotAt.set(cellIndex(s.row, s.col), s);
-  const locations =
-    config.spawnCells === "slotsOnly"
-      ? [...slotAt.keys()].sort((a, b) => a - b)
-      : Array.from({ length: TOTAL_CELLS }, (_, i) => i);
+  const locations = Array.from({ length: TOTAL_CELLS }, (_, i) => i);
 
   const step = ctx.stepFor(plot.id);
   const watched = watchedKeys(plot, step);
@@ -349,7 +345,7 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
     const watch = !!slot && watched.has(cellKey(row, col));
     const standing = occ[idx];
     if (standing) {
-      if (watch) recordWatch(plot, ctx, step.id, slot!, occupiedStatus(standing, slot!, config));
+      if (watch) recordWatch(plot, ctx, step.id, slot!, occupiedStatus(standing, slot!));
       continue;
     }
     const target = slot ? data.mutations[slot.mutationId] : undefined;
@@ -363,11 +359,11 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
       if (!locationOpenFor(plot, occ, row, col, m)) continue;
       let ring = ringBySize.get(m.size);
       if (!ring) {
-        ring = ringCounts(occ, row, col, m.size, config);
+        ring = ringCounts(occ, row, col, m.size);
         ringBySize.set(m.size, ring);
       }
       const special = m.special === "all_positive_crop_effects" ? effects.isSpecialEligible(m.id, [row, col], m.size) : undefined;
-      const w = effectiveWeight(m, ring, config, special);
+      const w = effectiveWeight(m, ring, special);
       if (m === target) targetWeight = w;
       if (w > 0) {
         pool.ids.push(m.id);
@@ -388,10 +384,10 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
       }
     }
 
-    const winner = rollPool(applyMutationChanceBonus(pool, ctx.stats.mutationChanceBonus), ctx.state.rng, config.blankFillTo);
+    const winner = rollPool(applyMutationChanceBonus(pool, ctx.stats.mutationChanceBonus), ctx.state.rng, SPAWN_POOL_FLOOR);
     if (!winner) continue;
 
-    const plant = newPlant(ctx.state, data, config, winner, row, col, "spawned", ctx.cycle, ctx.cycleSeconds);
+    const plant = newPlant(ctx.state, data, config, winner, row, col, "spawned", ctx.cycle);
     plant.isRival = !!slot && winner !== slot.mutationId;
     insertPlant(plot, plant);
     for (const c of footprint(row, col, plant.size)) occ[c] = plant;
@@ -415,7 +411,7 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
 
   // Always refresh effects, even with no spawn: the player session reads `held` for unlatched
   // harvests (All-in Aloe before its harvest stage). 0-stage spawns latch against this set.
-  scratch.effects = recomputeEffects(plot, config);
+  scratch.effects = recomputeEffects(plot);
   for (const p of grownOnSpawn) latchIfReady(p, plot, ctx);
 }
 

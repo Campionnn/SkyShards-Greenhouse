@@ -6,8 +6,6 @@ import { engine, flow, inject, layout, NEVER_ACTIVE, scenario, step, start } fro
 // up while its target stands there or could spawn there now. Sitting empty
 // without the requirements is the failure; being blocked only lowers uptime.
 
-const slotsOnly = { spawnCells: "slotsOnly" as const };
-
 /** Ashwreath needs two nether wart + two fire in its ring (soul sand is painted by the target). */
 const ASHWREATH_RING: [string, number, number][] = [
   ["nether_wart", 3, 4],
@@ -17,7 +15,7 @@ const ASHWREATH_RING: [string, number, number][] = [
 ];
 
 const one = (spec: LayoutSpec, extra: Partial<FlowStep> = {}, config = {}) =>
-  start(scenario([flow([step("only", spec, [], extra)])], { config: { ...slotsOnly, ...config }, activity: NEVER_ACTIVE }));
+  start(scenario([flow([step("only", spec, [], extra)])], { config, activity: NEVER_ACTIVE }));
 
 describe("target uptime", () => {
   it("a target whose requirements hold is up, and the run is sustainable", () => {
@@ -82,7 +80,7 @@ describe("target uptime", () => {
     const a = layout([], [["ashwreath", 4, 4]]);
     const b = layout(ASHWREATH_RING, [["ashwreath", 4, 4]]);
     const sc = (inventory: Record<string, number>) =>
-      scenario([flow([step("bare", a, [{ kind: "cycles", n: 2 }]), step("ringed", b)], false)], { config: slotsOnly, inventory });
+      scenario([flow([step("bare", a, [{ kind: "cycles", n: 2 }]), step("ringed", b)], false)], { inventory });
     const r = engine.run(start(sc({ fire: 2 })), 5);
     const report = engine.analyse(r.state);
     const byStep = Object.fromEntries(report.spots.map((s) => [s.stepId, s]));

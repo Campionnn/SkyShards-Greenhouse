@@ -154,7 +154,7 @@ export function creditInputs(plot: PlotState, occ: Occupancy, spawned: PlantStat
     const byPlant = new Map<PlantState, Candidate>();
     for (const idx of ring) {
       const q = occ[idx];
-      if (!q || q === spawned || q.kindId !== req.crop || credited.has(q) || isDry(q, ctx.config)) continue;
+      if (!q || q === spawned || q.kindId !== req.crop || credited.has(q) || isDry(q)) continue;
       const c = byPlant.get(q);
       if (c) c.cells += 1;
       else byPlant.set(q, { plant: q, cells: 1, first: idx });

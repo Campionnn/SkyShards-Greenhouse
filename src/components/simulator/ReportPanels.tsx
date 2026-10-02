@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Coins, Minus, Package, Plus, ShieldCheck, ShieldAlert, Trash2 } from "lucide-react";
-import { uptimeRatio, type RunSummary, type SimulationState, type SpotReport, type SustainabilityReport, type UptimeCounts } from "../../simulator";
+import { UNIQUE_CROP_CAP, uptimeRatio, type RunSummary, type SimulationState, type SpotReport, type SustainabilityReport, type UptimeCounts } from "../../simulator";
 import { InfoHint, Panel, SectionLabel, SegmentedControl } from "../ui";
 import { CropImage } from "../shared";
 import { allItemIds, debtText, spotFailureText, formatCoins, formatCount, formatDuration, formatRate, itemCategory, nameOf, npcPriceFor, type ItemCategory } from "./format";
@@ -515,8 +515,7 @@ export const InventoryPanel: React.FC<{
   startingInventory?: Record<string, number>;
   onStartingInventoryChange?: (v: Record<string, number>) => void;
 }> = ({ state, onAddItems, busy = false, startingInventory, onStartingInventoryChange }) => {
-  const settings = state.scenario.settings;
-  const price = useMemo(() => npcPriceFor(settings.config.rareDropValues), [settings.config.rareDropValues]);
+  const price = useMemo(() => npcPriceFor(), []);
   const [mode, setMode] = useState<"total" | "perDay">("total");
   const perDay = mode === "perDay";
   const days = state.elapsedSeconds / 86400;
@@ -570,7 +569,7 @@ export const InventoryPanel: React.FC<{
       description={
         perDay
           ? `Produced per simulated day (${days > 0 ? `${days.toFixed(1)} days so far` : "run it first"}). NPC value made per day: ${formatCoins(total)}.`
-          : `Shared by all plots. Unique crops: ${state.uniqueCropsStanding ?? 0} standing + Flora ${state.scenario.settings.playerStats.floraShard ?? 0} = ${state.uniqueCropCount}/${state.scenario.settings.config.uniqueCropCap}. NPC value of everything held: ${formatCoins(total)}.`
+          : `Shared by all plots. Unique crops: ${state.uniqueCropsStanding ?? 0} standing + Flora ${state.scenario.settings.playerStats.floraShard ?? 0} = ${state.uniqueCropCount}/${UNIQUE_CROP_CAP}. NPC value of everything held: ${formatCoins(total)}.`
       }
       actions={
         <>
