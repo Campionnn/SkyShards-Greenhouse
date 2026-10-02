@@ -6,7 +6,7 @@ import { bump, perPlot } from "./summary";
 import type { PlantState, PlotState } from "./state";
 
 // Blastberry. Breaking a PRIMED Blastberry - harvesting it, clearing it,
-// decay, thirst, or anything destroying it - explodes the 8 surrounding
+// decay, or anything destroying it - explodes the 8 surrounding
 // cells. Everything there is destroyed; a primed Blastberry caught in the
 // blast explodes too (chain reaction). A Turtlellini survives and counts the
 // hit; its second hit turns it into a Shellfruit.

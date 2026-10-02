@@ -33,5 +33,6 @@ export {
   type ArmorSet,
 } from "./economy/rareCrops";
 export { UNMODELLED_RULES } from "./growth/gates";
+export { isDry } from "./sim/plants";
 export { ALOE_FRAGMENT, ALOE_OPTIMAL_STAGE, aloeHarvestItems, aloeRow } from "./growth/aloe";
 export type * from "./sim/state";

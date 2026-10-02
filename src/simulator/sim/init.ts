@@ -6,14 +6,16 @@ import { newScratch, type Env } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { convertAloeFragments, ledgerRow } from "./inventory";
 import { applyStepLayout } from "./placement";
+import { isDry } from "./plants";
 import { zeroSummary } from "./summary";
 import type { PlotState, Scenario, SimulationState, TimedEvent } from "./state";
 
-/** Base crops standing on any plot - the shared unique-crop count. */
+/** Base crops standing on any plot - the shared unique-crop count. A dried-out crop doesn't count. */
 export function uniqueCropsAcross(state: SimulationState, env: Env): number {
+  const { config } = state.scenario.settings;
   const kinds = new Set<string>();
   for (const plot of state.plots) {
-    for (const p of plot.plants) if (p.origin === "planted" && !p.isDeadPlant) kinds.add(p.kindId);
+    for (const p of plot.plants) if (p.origin === "planted" && !p.isDeadPlant && !isDry(p, config)) kinds.add(p.kindId);
   }
   return countUniqueCropGroups(kinds, env.data);
 }

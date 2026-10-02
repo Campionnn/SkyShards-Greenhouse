@@ -205,6 +205,20 @@ export function isFootprintFree(occ: Occupancy, row: number, col: number, size: 
   return footprint(row, col, size).every((idx) => occ[idx] === null);
 }
 
+/**
+ * Dried out (0.27.2): water at or below `haltWater` halts a plant instead of
+ * killing it. A dry plant doesn't grow, gives and relays no effects (it still
+ * receives them), doesn't count toward mutation requirements or the unique
+ * crop bonus, but still physically blocks Lonelily and keeps decaying.
+ * Watering it (player `water` phase) un-halts it.
+ *
+ * Derived from `water` alone, no extra state: only plants that consume water
+ * (base crops, spawns that need watering) can get there. Soggybud never
+ * drains a neighbour below 0 and starts at 0 itself, and placed plants and
+ * roots never lose water - as long as `haltWater` stays below 0.
+ */
+export const isDry = (p: PlantState, config: Pick<SimConfig, "haltWater">): boolean => !p.isDeadPlant && p.water <= config.haltWater;
+
 export const isFullyGrown = (p: PlantState): boolean => !p.isDeadPlant && p.stage >= p.readyStage && p.lockedEffects !== null;
 
 /**

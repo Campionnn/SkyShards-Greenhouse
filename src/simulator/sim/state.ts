@@ -39,7 +39,7 @@ export interface PlantState {
   held: EffectId[];
   /** Effective effects latched when it became fully grown; yield uses these. */
   lockedEffects: EffectId[] | null;
-  /** A Dead Plant left behind by decay or thirst (kindId is then "dead_plant"). */
+  /** A Dead Plant left behind by decay (kindId is then "dead_plant"). Drying out no longer kills: see sim/plants.ts `isDry`. */
   isDeadPlant: boolean;
   /** Spawned into a labelled slot whose target is a different mutation. */
   isRival: boolean;
@@ -252,7 +252,8 @@ export interface RunSummary {
   /** Plants lost to decay, by kind. */
   decayed: Record<KindId, number>;
   destroyed: Record<KindId, number>;
-  diedOfThirst: Record<KindId, number>;
+  /** Plants that dried out (water reached haltWater) and halted until watered, by kind. Counted each time one dries out. */
+  driedOut: Record<KindId, number>;
   /** Items spent placing plants, by item. */
   placedItems: Record<ItemId, number>;
   /** Rare Crops dropped (armor bonus + mutation Ethereal Vine), by item. */
@@ -310,7 +311,8 @@ export type TickEvent =
   | { kind: "rootSpread"; row: number; col: number; fromRow: number; fromCol: number }
   | { kind: "converted"; from: ItemId; to: ItemId; count: number }
   | { kind: "decayed"; plantId: number; kindId: KindId; row: number; col: number }
-  | { kind: "diedOfThirst"; plantId: number; kindId: KindId; row: number; col: number }
+  /** Water reached haltWater: the plant halts (no growth, no effects given, not counted) until watered. */
+  | { kind: "driedOut"; plantId: number; kindId: KindId; row: number; col: number }
   | { kind: "harvested"; plantId: number; kindId: KindId; row: number; col: number; origin: Origin;
       drops: Record<ItemId, number>; coinValue: number; rival: boolean }
   | { kind: "spawned"; plantId: number; mutationId: MutationId; row: number; col: number; rival: boolean; slotTarget: MutationId | null }

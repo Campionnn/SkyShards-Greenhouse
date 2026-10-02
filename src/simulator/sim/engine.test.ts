@@ -37,17 +37,29 @@ describe("death and decay have no freezing mode", () => {
     expect(s.plots[0].plants[0]).not.toHaveProperty("frozen");
   });
 
-  it.each(["thirst", "decay"] as const)("%s kills a plant while the player is away", (cause) => {
+  it("decay kills a plant while the player is away", () => {
+    const s = start(singlePlot(layout([["wheat", 4, 4]]), {
+      activity: NEVER_ACTIVE,
+      config: { ...slotsOnly, waterLossMin: 3, waterLossMax: 3 },
+    }));
+    s.plots[0].plants[0].decaySecondsRemaining = 1;
+    const result = engine.run(s, 1);
+    expect(result.events.some((e) => e.kind === "decayed")).toBe(true);
+    expect(plantAt(result.state, 1, 4, 4)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
+    expect(plantAt(result.state, 1, 4, 4)).not.toHaveProperty("frozen");
+  });
+
+  it("thirst halts a plant while the player is away: it stays standing, dried out, and doesn't grow", () => {
     const s = start(singlePlot(layout([["wheat", 4, 4]]), {
       activity: NEVER_ACTIVE,
       config: { ...slotsOnly, waterLossMin: 3, waterLossMax: 3 },
     }));
     const p = s.plots[0].plants[0];
-    if (cause === "thirst") p.water = s.scenario.settings.config.deathWater;
-    else p.decaySecondsRemaining = 1;
-    const result = engine.run(s, 1);
-    expect(result.events.some((e) => e.kind === (cause === "thirst" ? "diedOfThirst" : "decayed"))).toBe(true);
-    expect(plantAt(result.state, 1, 4, 4)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
+    p.water = s.scenario.settings.config.haltWater;
+    const result = engine.run(s, 3);
+    expect(result.events.some((e) => e.kind === "growthBlocked" && e.gate === "dry")).toBe(true);
+    expect(result.summary.decayed.wheat).toBeUndefined();
+    expect(plantAt(result.state, 1, 4, 4)).toMatchObject({ kindId: "wheat", isDeadPlant: false, stage: p.stage, water: p.water });
     expect(plantAt(result.state, 1, 4, 4)).not.toHaveProperty("frozen");
   });
 });
@@ -111,7 +123,7 @@ describe("vertical slice: one plot, one mutation, spawned and harvested", () => 
     const firstSession = kinds.findIndex((k) => k.endsWith(":playerSession"));
     expect(kinds[firstSession]).toBe("1:playerSession");
     // Nothing from either plot's game tick happens after the first session starts.
-    const tickKinds = new Set(["advanced", "fullyGrown", "spawned", "decayed", "diedOfThirst", "teleported", "rootSpread"]);
+    const tickKinds = new Set(["advanced", "fullyGrown", "spawned", "decayed", "driedOut", "teleported", "rootSpread"]);
     expect(r.events.slice(firstSession).some((e) => tickKinds.has(e.kind))).toBe(false);
   });
 });
@@ -320,17 +332,30 @@ describe("water", () => {
     expect(retainFactor(["water_drain"])).toBeCloseTo(1.3);
   });
 
-  it("#6 water reaching -100 kills the plant (a Dead Plant); -99 does not", () => {
+  it("#6 water reaching -100 dries the plant out (it halts, still standing); -99 does not", () => {
     const a = dry();
     inject(a, 1, "wheat", 5, 5, "planted", { water: -96 });
-    const alive = engine.run(a, 1);
-    expect(plantAt(alive.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", water: -99 });
+    const wet = engine.run(a, 1);
+    expect(plantAt(wet.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", water: -99, stage: 1 });
+    expect(ofKind(wet.events, "driedOut")).toHaveLength(0);
+    // -99 still grows on, and its next stage takes it over the line.
+    const crossed = engine.run(wet.state, 1);
+    expect(ofKind(crossed.events, "driedOut")).toHaveLength(1);
+    expect(plantAt(crossed.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", water: -102, stage: 2 });
 
     const b = dry();
     inject(b, 1, "wheat", 5, 5, "planted", { water: -97 });
-    const dead = engine.run(b, 1);
-    expect(ofKind(dead.events, "diedOfThirst")).toHaveLength(1);
-    expect(plantAt(dead.state, 1, 5, 5)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
+    const dried = engine.run(b, 1);
+    expect(ofKind(dried.events, "driedOut")).toHaveLength(1);
+    expect(ofKind(dried.events, "driedOut")[0]).toMatchObject({ kindId: "wheat", row: 5, col: 5 });
+    expect(dried.summary.driedOut.wheat).toBe(1);
+    expect(plantAt(dried.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", isDeadPlant: false, water: -100, stage: 1 });
+    // Halted from then on: no growth, no more water lost, reported once.
+    const later = engine.run(dried.state, 5);
+    expect(plantAt(later.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", water: -100, stage: 1 });
+    expect(ofKind(later.events, "driedOut")).toHaveLength(0);
+    expect(ofKind(later.events, "growthBlocked").filter((e) => e.gate === "dry")).toHaveLength(5);
+    expect(later.summary.driedOut.wheat).toBe(1);
   });
 
   it("#7 a requires_watering:false mutation never loses water", () => {

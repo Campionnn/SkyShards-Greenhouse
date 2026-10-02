@@ -183,6 +183,24 @@ describe("flow export / import", () => {
     expect(migrateScenario(current)).toEqual(current); // already current: unchanged
   });
 
+  it("renames the old deathWater config to haltWater (0.27.2: plants halt instead of dying)", () => {
+    const saved = withPlots(LAYOUT_A_CODE);
+    const old: Record<string, unknown> = { ...saved.settings.config };
+    delete old.haltWater;
+    old.deathWater = -80;
+    (saved.settings.config as unknown as Record<string, unknown>) = old;
+    const up = migrateScenario(saved);
+    expect(up.settings.config.haltWater).toBe(-80);
+    expect(up.settings.config).not.toHaveProperty("deathWater");
+    expect(saved.settings.config).toHaveProperty("deathWater", -80); // input untouched
+    // A save that somehow has both keeps the current one.
+    const both = withPlots(LAYOUT_A_CODE);
+    (both.settings.config as unknown as Record<string, unknown>).deathWater = -50;
+    const kept = migrateScenario(both);
+    expect(kept.settings.config.haltWater).toBe(-100);
+    expect(kept.settings.config).not.toHaveProperty("deathWater");
+  });
+
   it("rejects files it cannot use, with a readable reason", () => {
     const sc = withPlots(LAYOUT_A_CODE);
     expect(() => importFlows(sc, "nope")).toThrow("not valid JSON");

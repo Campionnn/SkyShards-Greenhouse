@@ -1,5 +1,6 @@
 import type { SimConfig } from "../config";
 import type { MutationDef } from "../data/types";
+import type { RingCounts } from "./eligibility";
 
 /**
  * Mutations whose weight scales with extra matching cells in the ceiling
@@ -33,12 +34,16 @@ export function fullWeightMultiplicity(m: MutationDef): number {
 /**
  * k = how strongly this location offers the mutation; k = 1 is "minimally
  * eligible", 0 is ineligible. Check order mirrors solver/spawn.py:220-257.
- * `counts` is the 8-way ring around the footprint, counted in CELLS.
+ * `ring` is the 8-way ring around the footprint (spawn/eligibility.ts
+ * `ringCounts`): requirement counts in CELLS, with dried-out plants left
+ * out, plus whether anything at all stands there.
  */
-export function multiplicity(m: MutationDef, counts: Record<string, number>, specialEligible?: boolean): number {
-  // 1. Zero-adjacent rule (Lonelily)
+export function multiplicity(m: MutationDef, ring: RingCounts, specialEligible?: boolean): number {
+  const { counts } = ring;
+  // 1. Zero-adjacent rule (Lonelily). It reads plain occupancy, not the
+  //    requirement counts: a dried-out neighbour is still physically there.
   if (requiresZeroAdjacent(m)) {
-    return Object.values(counts).some((n) => n > 0) ? 0 : 1;
+    return ring.ringOccupied ? 0 : 1;
   }
   // 2. All-positive-effects rule (Godseed), decided by the effect simulation
   if (isAllPositiveSpecial(m)) return specialEligible ? 1 : 0;
@@ -59,11 +64,12 @@ export function multiplicity(m: MutationDef, counts: Record<string, number>, spe
 /** The weight this location offers, under the configured weight model. */
 export function effectiveWeight(
   m: MutationDef,
-  counts: Record<string, number>,
+  ring: RingCounts,
   config: Pick<SimConfig, "weightModel" | "supportPerCell" | "supportCap">,
   specialEligible?: boolean
 ): number {
-  const k = multiplicity(m, counts, specialEligible);
+  const { counts } = ring;
+  const k = multiplicity(m, ring, specialEligible);
   if (k <= 0 || m.spawnWeight <= 0) return 0;
 
   if (config.weightModel === "support") {
