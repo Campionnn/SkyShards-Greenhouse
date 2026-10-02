@@ -11,6 +11,30 @@ export function formatChance(p: number): string {
   return `${pct.toFixed(pct >= 1 ? 1 : 2).replace(/\.0+$/, "")}%`;
 }
 
+/**
+ * Which cell of a `size`x`size` element is under the cursor? A multi-cell plant
+ * or target slot is ONE element, so the Sanity Check finds its cell from the
+ * mouse position inside it: offset / (cellSize + gap), clamped to the element.
+ * `rect` is the element's bounding box; its on-screen width is compared with
+ * the layout width so a scaled page still maps correctly. Returns offsets from
+ * the element's top-left cell.
+ */
+export function hoveredCellOffset(
+  clientX: number,
+  clientY: number,
+  rect: { left: number; top: number; width: number; height: number },
+  size: number,
+  cellSize: number,
+  gap: number
+): { dr: number; dc: number } {
+  const span = size * cellSize + (size - 1) * gap;
+  const pitch = cellSize + gap;
+  const sx = rect.width > 0 ? rect.width / span : 1;
+  const sy = rect.height > 0 ? rect.height / span : 1;
+  const pick = (offsetPx: number): number => Math.max(0, Math.min(size - 1, Math.floor(offsetPx / pitch)));
+  return { dc: pick((clientX - rect.left) / sx), dr: pick((clientY - rect.top) / sy) };
+}
+
 export const occupantName = (o: SanityOccupant): string => `${nameOf(o.kindId)}${o.dry ? " (dried out)" : ""}`;
 
 /** One blocker as short text: "needs 2× Wheat (have 1)", "wrong ground: needs Soul Sand", "doesn't fit", ... */

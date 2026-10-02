@@ -19,9 +19,9 @@ import { formatCount, formatDuration, formatRemaining, kindData, nameOf } from "
 import { closestBlocked, describeBlocker, formatChance, occupantName } from "./sanityFormat";
 
 export type TooltipTarget =
-  /** watchStatus: what the uptime check saw at this plant's anchor, when it stands on a checked target cell. */
-  | { kind: "plant"; plant: PlantState; watchStatus?: WatchStatus }
-  /** check: the Sanity Check result, appended to the slot card while the toggle is on. */
+  /** watchStatus: what the uptime check saw at this plant's anchor, when it stands on a checked target cell. check: the Sanity Check of the hovered cell (any cell of a multi-cell plant), appended to the card while the toggle is on. */
+  | { kind: "plant"; plant: PlantState; watchStatus?: WatchStatus; check?: SanityCheckResult }
+  /** check: the Sanity Check of the hovered cell (any cell of a multi-cell slot), appended to the slot card while the toggle is on. */
   | { kind: "slot"; slot: SlotLabel; ineligibleCycles: number; watched?: boolean; watchStatus?: WatchStatus; check?: SanityCheckResult }
   | { kind: "missing"; item: string; row: number; col: number }
   /** Sanity Check on an empty (non-slot) cell: which mutations could spawn here. */
@@ -30,20 +30,31 @@ export type TooltipTarget =
 const WIDTH = 280;
 const EST_HEIGHT = 300;
 const CHECK_EST_HEIGHT = 380;
+const PLANT_CHECK_EST_HEIGHT = 640;
 const OFFSET = 8;
 
 // ---- Sanity Check card (display only: nothing here ranks layouts) ----
 
 const CANT_SHOWN = 6;
 
-export const SanityCheckSection: React.FC<{ result: SanityCheckResult }> = ({ result }) => {
+/** `anchor`: the top-left of the multi-cell slot being hovered, when the checked cell is one of its covered cells. */
+export const SanityCheckSection: React.FC<{ result: SanityCheckResult; anchor?: { row: number; col: number } }> = ({ result, anchor }) => {
   const { shown, more } = closestBlocked(result, CANT_SHOWN);
   return (
     <div className="space-y-2" data-testid="sanity-check">
-      <div className="text-[11px] uppercase tracking-wide text-cyan-300/90">Sanity Check</div>
+      <div className="text-[11px] uppercase tracking-wide text-cyan-300/90">
+        Sanity Check · row {result.row}, col {result.col}
+      </div>
       {result.occupied && (
         <p className="text-amber-300">
-          {occupantName(result.occupied)} stands here. Showing what could spawn once the cell is free.
+          {occupantName(result.occupied)}
+          {result.occupied.size > 1 ? ` (${result.occupied.size}x${result.occupied.size}, top-left at ${result.occupied.row}, ${result.occupied.col})` : ""} stands here.
+          Showing what could spawn once the cell is free.
+        </p>
+      )}
+      {!result.occupied && anchor && (result.row !== anchor.row || result.col !== anchor.col) && (
+        <p className="text-slate-400">
+          Checking this cell on its own ({result.row}, {result.col}), not the target&apos;s top-left ({anchor.row}, {anchor.col}). Only the top-left cell rolls for the slot&apos;s target.
         </p>
       )}
       {result.noRollReason && <p className="text-amber-300">{result.noRollReason}</p>}
@@ -148,7 +159,8 @@ export const SimTooltip: React.FC<{
     if (x < 0) x = Math.max(0, gridWidth - WIDTH);
   }
   const hasCheck = target.kind === "check" || (target.kind === "slot" && !!target.check);
-  const y = Math.max(0, Math.min(top, gridHeight - (hasCheck ? CHECK_EST_HEIGHT : EST_HEIGHT)));
+  const plantCheck = target.kind === "plant" && !!target.check;
+  const y = Math.max(0, Math.min(top, gridHeight - (plantCheck ? PLANT_CHECK_EST_HEIGHT : hasCheck ? CHECK_EST_HEIGHT : EST_HEIGHT)));
 
   const def = kindData(kindId);
   const m: MutationDef | undefined = def?.kind === "mutation" ? def : undefined;
@@ -207,7 +219,7 @@ export const SimTooltip: React.FC<{
 
       {(target.kind === "check" || (target.kind === "slot" && target.check)) && (
         <div className={target.kind === "slot" ? "mt-2 pt-2 border-t border-slate-600/40" : ""}>
-          <SanityCheckSection result={target.kind === "check" ? target.result : target.check!} />
+          <SanityCheckSection result={target.kind === "check" ? target.result : target.check!} anchor={target.kind === "slot" ? target.slot : undefined} />
         </div>
       )}
 
@@ -222,6 +234,11 @@ export const SimTooltip: React.FC<{
         <p className="mt-2 text-amber-400">
           Checked target, dried out: this cell is losing uptime (halted) until the player waters it. That is downtime, not a sustainability failure.
         </p>
+      )}
+      {target.kind === "plant" && target.check && (
+        <div className="mt-2 pt-2 border-t border-slate-600/40">
+          <SanityCheckSection result={target.check} />
+        </div>
       )}
     </div>
   );

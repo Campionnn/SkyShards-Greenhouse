@@ -6,17 +6,20 @@ import {
   isDry,
   sanityCheck,
   type FlowRunnerState,
+  type PlantState,
   type PlotState,
   type SanityCheckResult,
   type ScenarioPlot,
   type SimConfig,
   type SimulationState,
   type TimedEvent,
+  type WatchStatus,
 } from "../../simulator";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { getCellPixelPosition, getGridDimensions } from "../../utilities";
 import { CropImage } from "../shared";
 import { kindData, nameOf } from "./format";
+import { hoveredCellOffset } from "./sanityFormat";
 import { SimTooltip, type TooltipTarget } from "./SimTooltip";
 import { buttonClass } from "./styles";
 
@@ -203,6 +206,35 @@ export const PlotView: React.FC<PlotViewProps> = ({
     return result;
   };
 
+  /** Only change state when the hovered thing or checked cell changed (check results are memoised, so identity means "same cell"). */
+  const hoverIf = (next: TooltipTarget) =>
+    setHover((prev) => {
+      if (prev && prev.kind === "plant" && next.kind === "plant" && prev.plant === next.plant && prev.check === next.check) return prev;
+      if (prev && prev.kind === "slot" && next.kind === "slot" && prev.slot === next.slot && prev.check === next.check) return prev;
+      return next;
+    });
+  /** The cell of a size x size element under the mouse (Sanity Check on: a multi-cell element is one hover target). */
+  const cellUnder = (e: React.MouseEvent<HTMLDivElement>, row: number, col: number, size: number) => {
+    if (size === 1) return { row, col };
+    const { dr, dc } = hoveredCellOffset(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), size, cellSize, gap);
+    return { row: row + dr, col: col + dc };
+  };
+  const hoverPlant = (e: React.MouseEvent<HTMLDivElement>, p: PlantState, watchStatus: WatchStatus | undefined) => {
+    const cell = cellUnder(e, p.row, p.col, p.size);
+    hoverIf({ kind: "plant", plant: p, watchStatus, check: checkAt(cell.row, cell.col) });
+  };
+  const hoverSlot = (e: React.MouseEvent<HTMLDivElement>, s: PlotState["slots"][number], key: string, isWatched: boolean) => {
+    const cell = cellUnder(e, s.row, s.col, s.size);
+    hoverIf({
+      kind: "slot",
+      slot: s,
+      ineligibleCycles: plot.slotIneligibleCycles[key] ?? 0,
+      watched: isWatched,
+      watchStatus: plot.watchStatus?.[key],
+      check: checkAt(cell.row, cell.col),
+    });
+  };
+
   const step = def && runner ? def.flow.steps[runner.stepIndex] : undefined;
   const watchedKeys = new Set(step?.watch ?? plot.slots.map((s) => `${s.row},${s.col}`));
   const occupied = new Set<string>();
@@ -298,16 +330,22 @@ export const PlotView: React.FC<PlotViewProps> = ({
                         : "border-slate-500/60 bg-slate-500/5"
                 }`}
                 style={{ top, left, width: size, height: size }}
-                onMouseEnter={() =>
-                  setHover({
-                    kind: "slot",
-                    slot: s,
-                    ineligibleCycles: plot.slotIneligibleCycles[key] ?? 0,
-                    watched: isWatched,
-                    watchStatus: plot.watchStatus?.[key],
-                    check: checkAt(s.row, s.col),
-                  })
-                }
+                {...(sanityState
+                  ? {
+                      // One element covers the whole footprint: check the cell under the cursor, not the anchor.
+                      onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => hoverSlot(e, s, key, isWatched),
+                      onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => hoverSlot(e, s, key, isWatched),
+                    }
+                  : {
+                      onMouseEnter: () =>
+                        setHover({
+                          kind: "slot",
+                          slot: s,
+                          ineligibleCycles: plot.slotIneligibleCycles[key] ?? 0,
+                          watched: isWatched,
+                          watchStatus: plot.watchStatus?.[key],
+                        }),
+                    })}
                 onMouseLeave={() => setHover(null)}
               >
                 {/* A flex box (not a block) so the inline-flex image has no line-height strut pushing it off-centre. */}
@@ -336,7 +374,12 @@ export const PlotView: React.FC<PlotViewProps> = ({
               <div
                 key={p.id}
                 className="absolute rounded overflow-hidden flex items-center justify-center cursor-default"
-                onMouseEnter={() => setHover({ kind: "plant", plant: p, watchStatus })}
+                {...(sanityState
+                  ? {
+                      onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => hoverPlant(e, p, watchStatus),
+                      onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => hoverPlant(e, p, watchStatus),
+                    }
+                  : { onMouseEnter: () => setHover({ kind: "plant", plant: p, watchStatus }) })}
                 onMouseLeave={() => setHover(null)}
                 style={{
                   top,
