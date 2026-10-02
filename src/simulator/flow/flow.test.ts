@@ -33,7 +33,10 @@ describe("multi-plot: spatially independent, temporally shared", () => {
       )
     );
     expect(alone.uniqueCropCount).toBe(6);
-    expect(together.uniqueCropCount).toBe(12);
+    expect(alone.uniqueCropsStanding).toBe(6);
+    // 12 groups stand, but with Flora 0 (BASELINE_TEST_STATS) the bonus still caps at 10.
+    expect(together.uniqueCropsStanding).toBe(12);
+    expect(together.uniqueCropCount).toBe(10);
     expect(together.lastCycleSeconds).toBeLessThan(alone.lastCycleSeconds);
   });
 

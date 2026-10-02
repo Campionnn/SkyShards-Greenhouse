@@ -10,7 +10,7 @@ export const UniqueCropsPanel: React.FC = () => {
       title="Unique Crops"
       icon={<Sprout />}
       actions={<span className="text-xs font-medium text-slate-300">{value === 0 ? "Off" : value}</span>}
-      description="Keep at least this many different crops in the greenhouse."
+      description="Keep at least this many different crops in the greenhouse. Each gives +2.5% growth speed and yield, up to 10 (your Flora shard counts toward the 10)."
     >
       <input
         type="range"

@@ -1,6 +1,6 @@
 import { endStepOrHold } from "../flow/runner";
 import { isActive } from "../growth/activity";
-import { cycleSeconds } from "../growth/clock";
+import { cycleSeconds, effectiveUniqueCrops } from "../growth/clock";
 import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { uniqueCropsAcross } from "./init";
@@ -52,8 +52,9 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     const cycle = state.cycle;
 
     // 1. Shared aggregates for THIS cycle, across all plots.
-    const uniqueCropCount = uniqueCropsAcross(state, env);
-    const seconds = cycleSeconds(settings.playerStats, uniqueCropCount, settings.config.cycleBaselineSeconds);
+    const uniqueCropsStanding = uniqueCropsAcross(state, env);
+    const uniqueCropCount = effectiveUniqueCrops(uniqueCropsStanding, settings.playerStats.floraShard, settings.config.uniqueCropCap);
+    const seconds = cycleSeconds(settings.playerStats, uniqueCropCount, settings.config);
     const firesAt = state.elapsedSeconds + seconds;
     // playerActions is the master switch: off = the player is never online.
     const active = settings.playerActions !== false && isActive(settings.activity, cycle, firesAt, settings.playerStats.startTimeOfDay);
@@ -86,6 +87,7 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     state.cycle += 1;
     state.elapsedSeconds = firesAt;
     state.uniqueCropCount = uniqueCropCount;
+    state.uniqueCropsStanding = uniqueCropsStanding;
     state.lastCycleSeconds = seconds;
     state.lastCycleActive = active;
     finalizeSummary(state.summary, state.cycle, state.elapsedSeconds);

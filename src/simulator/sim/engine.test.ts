@@ -25,9 +25,9 @@ const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
 const gloomLayout = () => layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]);
 const slotsOnly = { spawnCells: "slotsOnly" as const };
 /** Cycle length with default stats and `unique` unique crop groups standing. */
-const cycleLen = (unique: number) => cycleSeconds({ cropGrowth: 0, speedAttribute: 0, growthUpgradeTier: 0 }, unique, 14400);
-/** Yield with default stats: only the unique-crop bonus (+3% per group) applies. */
-const yieldOf = (base: number, unique: number) => Math.floor(base * (1 + 0.03 * unique) + 1e-9);
+const cycleLen = (unique: number) => cycleSeconds({ cropGrowth: 0, speedAttribute: 0, growthUpgradeTier: 0 }, unique, DEFAULT_CONFIG);
+/** Yield with default stats: only the unique-crop bonus (+2.5% per group) applies. */
+const yieldOf = (base: number, unique: number) => Math.floor(base * (1 + 0.025 * unique) + 1e-9);
 
 describe("death and decay have no freezing mode", () => {
   it("has no freeze setting or toggle and creates plants without frozen state", () => {
@@ -74,10 +74,10 @@ describe("vertical slice: one plot, one mutation, spawned and harvested", () => 
     expect(harvested[0].cycle).toBe(spawned.cycle);
     expect(plantAt(s, 1, 4, 5)).toBeUndefined();
     // The item plus its base-crop bundle reach the inventory; the bundle is revenue.
-    // Pumpkin + melon standing = 2 unique crop groups = +6% yield.
+    // Pumpkin + melon standing = 2 unique crop groups = +5% yield.
     const pumpkin = yieldOf(34, 2);
     const melon = yieldOf(160, 2);
-    // Item count = 1 x yield sum 1.06: one guaranteed, 6% chance of a second.
+    // Item count = 1 x yield sum 1.05: one guaranteed, 5% chance of a second.
     expect([1, 2]).toContain(next.state.inventory.gloomgourd);
     expect(next.state.inventory.pumpkin).toBe(pumpkin);
     expect(next.state.inventory.melon).toBe(melon);
