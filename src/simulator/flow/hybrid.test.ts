@@ -19,7 +19,7 @@ const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
 const stepIdOf = (s: SimulationState) => s.scenario.plots[0].flow.steps[s.flows[0].stepIndex].id;
 
-function hybrid(config: Record<string, unknown> = {}, useExit: Trigger[] = [{ kind: "fullyGrown", mutationId: "magic_jellybean", count: 9 }]) {
+function hybrid(config: Record<string, unknown> = {}, useExit: Trigger[] = [{ kind: "fullyGrown", mutationId: "magic_jellybean", count: 9 }], seed = 7) {
   return scenario(
     [
       flow(
@@ -30,7 +30,7 @@ function hybrid(config: Record<string, unknown> = {}, useExit: Trigger[] = [{ ki
         true
       ),
     ],
-    { seed: 7, config, inventory: { magic_jellybean: 50, chloronite: 500, duskbloom: 500 } }
+    { seed, config, inventory: { magic_jellybean: 50, chloronite: 500, duskbloom: 500 } }
   );
 }
 
@@ -88,7 +88,8 @@ describe("hybrid flows (spawnsFillLayoutInputs)", () => {
   });
 
   it("with spawnsFillLayoutInputs off the growing jellybeans are taken off and all 15 are placed from inventory", () => {
-    const { state, events } = runUntilStep(start(hybrid({ spawnsFillLayoutInputs: false })), "use", 400);
+    // Seed 5: the targets fill slowly enough (cycle 11) that the earliest jellybeans reach stage 12.
+    const { state, events } = runUntilStep(start(hybrid({ spawnsFillLayoutInputs: false }, undefined, 5)), "use", 400);
     // From stage 12 a jellybean is harvested (early, for its stage multiplier); younger ones are broken.
     const broken = ofKind(events, "destroyed").filter((e) => e.kindId === "magic_jellybean");
     const harvested = ofKind(events, "harvested").filter((e) => e.kindId === "magic_jellybean");

@@ -197,13 +197,18 @@ function phaseSoggybud(plot: PlotState, ctx: CycleCtx): void {
   }
 }
 
-/** Loss multiplier: improved retain supersedes the base one; drain adds 30%. */
+/**
+ * Loss multiplier (user-confirmed): "retains watering status by +X%" means
+ * the water lasts (1 + X) times as long, so the loss is divided by 1 + X.
+ * Water Retain (+50%) gives loss / 1.5, Improved Water Retain (+100%,
+ * supersedes the base one) loss / 2 - it halves the loss, never removes it,
+ * so a Godseed (which always holds improved retain) still drinks. Water Drain
+ * amplifies the loss by 30%.
+ */
 export function retainFactor(effective: readonly string[]): number {
-  let f = 1;
-  if (effective.includes("improved_water_retain")) f -= 1;
-  else if (effective.includes("water_retain")) f -= 0.5;
-  if (effective.includes("water_drain")) f += 0.3;
-  return Math.max(0, f);
+  const retain = effective.includes("improved_water_retain") ? 1 : effective.includes("water_retain") ? 0.5 : 0;
+  const drain = effective.includes("water_drain") ? 0.3 : 0;
+  return (1 + drain) / (1 + retain);
 }
 
 /**

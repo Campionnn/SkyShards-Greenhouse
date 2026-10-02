@@ -172,8 +172,8 @@ describe("water loss per cycle until fully grown", () => {
     inject(s, 1, "wheat", 5, 5, "planted");
     const r = engine.run(s, 1);
     const water = plantAt(r.state, 1, 5, 5)!.water;
-    expect(water).toBeGreaterThanOrEqual(100 - 22);
-    expect(water).toBeLessThanOrEqual(100 - 18);
+    expect(water).toBeGreaterThanOrEqual(-22);
+    expect(water).toBeLessThanOrEqual(-18);
   });
 
   it("a gated plant still loses water every cycle it is blocked (asleep Snoozling)", () => {
@@ -197,8 +197,8 @@ describe("water loss per cycle until fully grown", () => {
 
   it("a fully grown plant stops losing water; a plant fully grown from the start never loses any", () => {
     const s = blank({ config: FIXED });
-    inject(s, 1, "wheat", 5, 5, "planted", { stage: 7 }); // grows its last stage on cycle 0
-    inject(s, 1, "wheat", 2, 2, "planted", { stage: 8 }); // already fully grown
+    inject(s, 1, "wheat", 5, 5, "planted", { stage: 7, water: 100 }); // grows its last stage on cycle 0
+    inject(s, 1, "wheat", 2, 2, "planted", { stage: 8, water: 100 }); // already fully grown
     const r = engine.run(s, 5);
     // The cycle it grew its last stage it was still growing, so it drank once; never again.
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 8, water: 80 });
@@ -250,8 +250,8 @@ describe("water loss per cycle until fully grown", () => {
   });
 });
 
-describe("spawned mutations start at 0 water", () => {
-  it("every natural spawn starts at 0; placed items and planted crops start full", () => {
+describe("everything starts at 0 water", () => {
+  it("natural spawns, placed items and planted crops all start at 0", () => {
     // blankFillTo 1: an eligible Lonelily takes the roll on cycle 0.
     const s = blank({ slots: [["lonelily", 5, 5]], config: { blankFillTo: 1 } });
     const r = engine.run(s, 1);
@@ -260,14 +260,28 @@ describe("spawned mutations start at 0 water", () => {
 
     const t = blank();
     expect(inject(t, 1, "startlevine", 1, 1, "spawned").water).toBe(0);
-    expect(inject(t, 1, "startlevine", 3, 3, "placed").water).toBe(100);
-    expect(inject(t, 1, "wheat", 6, 6, "planted").water).toBe(100);
+    expect(inject(t, 1, "startlevine", 3, 3, "placed").water).toBe(0);
+    expect(inject(t, 1, "wheat", 6, 6, "planted").water).toBe(0);
   });
 
-  it("a placed layout item starts full and never drinks", () => {
-    const s = start(singlePlot(layout([["chloronite", 5, 5]]), { config: { spawnCells: "slotsOnly" }, activity: NEVER_ACTIVE }));
-    expect(plantAt(s, 1, 5, 5)).toMatchObject({ origin: "placed", water: 100 });
-    expect(plantAt(engine.run(s, 5).state, 1, 5, 5)!.water).toBe(100);
+  it("layout plants start at 0: a placed item never drinks, a base crop drinks until the player waters it", () => {
+    const sc = (activity: ActivitySchedule) =>
+      start(singlePlot(layout([["chloronite", 5, 5], ["wheat", 2, 2]]), { config: { spawnCells: "slotsOnly", waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 }, activity }));
+    const away = sc(NEVER_ACTIVE);
+    expect(plantAt(away, 1, 5, 5)).toMatchObject({ origin: "placed", water: 0 });
+    expect(plantAt(away, 1, 2, 2)).toMatchObject({ origin: "planted", water: 0 });
+    const r = engine.run(away, 5).state;
+    expect(plantAt(r, 1, 5, 5)!.water).toBe(0);
+    expect(plantAt(r, 1, 2, 2)!.water).toBe(-100); // dried out after 5 cycles, never watered
+    // An online player waters everything to max at the first session.
+    const online = engine.run(sc(ONLINE), 1).state;
+    expect(plantAt(online, 1, 2, 2)!.water).toBe(100);
+    expect(plantAt(online, 1, 5, 5)!.water).toBe(100);
+  });
+
+  it("with watering: never a base crop is never raised above 0", () => {
+    const s = start(singlePlot(layout([["wheat", 2, 2]]), { config: { spawnCells: "slotsOnly", ...NO_BASE_CROP_DECAY, waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 }, activity: ONLINE, policies: { watering: "never" } }));
+    expect(plantAt(engine.run(s, 1).state, 1, 2, 2)!.water).toBe(-20);
   });
 
   it("a fresh spawn drinks below 0 on its first tick; the player's session tops it up", () => {

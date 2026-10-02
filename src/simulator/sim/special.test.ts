@@ -14,8 +14,9 @@ describe("Soggybud", () => {
   it("starts dry, draws water from wet neighbours, and its stage is its water level", () => {
     const s = blank();
     inject(s, 1, "soggybud", 5, 5, "spawned");
-    inject(s, 1, "wheat", 5, 4, "planted");
-    inject(s, 1, "wheat", 5, 6, "planted");
+    // Planted crops start at 0 too: these two have been watered by the player.
+    inject(s, 1, "wheat", 5, 4, "planted", { water: 100 });
+    inject(s, 1, "wheat", 5, 6, "planted", { water: 100 });
     expect(plantAt(s, 1, 5, 5)).toMatchObject({ water: 0, stage: 1 }); // every spawn enters at stage 1
 
     const one = engine.run(s, 1).state;
@@ -29,8 +30,8 @@ describe("Soggybud", () => {
     // Soggybud's own 3-day timer is stretched out so the water mechanic is what this test measures.
     const grown = blank({ kind: "everyN", n: 1, offset: 0 }, { decayDaysOverrides: { ...NO_BASE_CROP_DECAY.decayDaysOverrides, soggybud: 30 } });
     inject(grown, 1, "soggybud", 5, 5, "spawned");
-    inject(grown, 1, "wheat", 5, 4, "planted");
-    inject(grown, 1, "wheat", 5, 6, "planted");
+    inject(grown, 1, "wheat", 5, 4, "planted", { water: 100 });
+    inject(grown, 1, "wheat", 5, 6, "planted", { water: 100 });
     // 2 wheat x 2 water = 4 per tick: stage 10 (100 water) on the 25th tick, then the player harvests it.
     const before = engine.run(grown, 24).state;
     expect(plantAt(before, 1, 5, 5)).toMatchObject({ water: 96, stage: 9 });
@@ -70,7 +71,7 @@ describe("Soggybud", () => {
   it("the water drawn per neighbour is configurable", () => {
     const s = blank(NEVER_ACTIVE, { soggybudWaterPerNeighbour: 25 });
     inject(s, 1, "soggybud", 5, 5, "spawned");
-    inject(s, 1, "melon", 4, 5, "planted");
+    inject(s, 1, "melon", 4, 5, "planted", { water: 100 });
     expect(plantAt(engine.run(s, 1).state, 1, 5, 5)).toMatchObject({ water: 25, stage: 2 });
   });
 });

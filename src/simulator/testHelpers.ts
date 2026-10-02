@@ -113,7 +113,7 @@ export function inject(
   const plot = state.plots.find((p) => p.id === plotId)!;
   const p =
     kindId === DEVOURER_ROOT
-      ? newRoot(state, state.scenario.settings.config, row, col, state.cycle)
+      ? newRoot(state, row, col, state.cycle)
       : newPlant(state, engine.data, state.scenario.settings.config, kindId, row, col, origin, state.cycle, state.lastCycleSeconds);
   Object.assign(p, patch);
   insertPlant(plot, p);

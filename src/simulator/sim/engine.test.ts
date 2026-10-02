@@ -332,12 +332,23 @@ describe("water", () => {
   const dry = (patch: object = {}) =>
     start(singlePlot(layout(), { config: { ...slotsOnly, waterLossMin: 3, waterLossMax: 3, negativeWaterSkipChance: 0, ...patch }, activity: NEVER_ACTIVE }));
 
-  it("#5 retain halves loss; improved retain supersedes it (x0), drain adds 30%", async () => {
+  it("#5 retain +X% divides loss by 1+X (retain /1.5, improved supersedes it /2), drain adds 30%", async () => {
     const { retainFactor } = await import("./tick");
     expect(retainFactor([])).toBe(1);
-    expect(retainFactor(["water_retain"])).toBe(0.5);
-    expect(retainFactor(["water_retain", "improved_water_retain"])).toBe(0);
+    expect(retainFactor(["water_retain"])).toBeCloseTo(1 / 1.5);
+    expect(retainFactor(["improved_water_retain"])).toBe(0.5);
+    expect(retainFactor(["water_retain", "improved_water_retain"])).toBe(0.5);
     expect(retainFactor(["water_drain"])).toBeCloseTo(1.3);
+    expect(retainFactor(["improved_water_retain", "water_drain"])).toBeCloseTo(0.65);
+  });
+
+  it("a Godseed (which always holds improved retain from its own neighbourhood) still drinks", () => {
+    const s = dry({ waterLossMin: 20, waterLossMax: 20 });
+    inject(s, 1, "godseed", 4, 4, "spawned");
+    inject(s, 1, "cactus", 3, 5, "planted", { stage: 8 }); // gives improved_water_retain
+    const r = engine.run(s, 3);
+    expect(plantAt(r.state, 1, 4, 4)!.held).toContain("improved_water_retain");
+    expect(plantAt(r.state, 1, 4, 4)!.water).toBe(-30); // 3 cycles x 20 / 2
   });
 
   it("#6 water reaching -100 dries the plant out (it halts, still standing); -99 does not", () => {

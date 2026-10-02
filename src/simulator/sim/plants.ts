@@ -120,7 +120,10 @@ export function newPlant(
     decaySecondsRemaining: initialDecaySeconds(data, config, kindId, origin, cycleSeconds),
     timesMutated: 0,
     mutatesRemaining: minimumMutationsOf(kindId, data, config),
-    water: config.maxWater,
+    // Everything starts at 0 water (user-confirmed): planted base crops,
+    // placed items and natural spawns alike. Only the player's watering
+    // (player `water` phase) raises it; Soggybud draws from neighbours.
+    water: 0,
     held: [],
     lockedEffects: null,
     isDeadPlant: false,
@@ -145,11 +148,6 @@ export function newPlant(
     // Primed once fully grown (natural) or at the next tick after placing (see sim/explosion.ts).
     if (kindId === "blastberry") plant.gate.primed = false;
     if (kindId === "turtlellini") plant.gate.exploded = 0;
-    // Every natural spawn starts with 0 water (0.27.2 follow-up): one that
-    // needs watering drinks below 0 until the player's next session tops it
-    // up. Soggybud grows by drawing water from its neighbours from there.
-    // Placed items and planted base crops still start at maxWater.
-    if (origin === "spawned") plant.water = 0;
   } else {
     plant.growthStages = def.growthStages ?? 0;
     plant.readyStage = plant.growthStages;
@@ -159,7 +157,7 @@ export function newPlant(
 }
 
 /** A Devourer root in one cell. */
-export function newRoot(state: SimulationState, config: SimConfig, row: number, col: number, cycle: number): PlantState {
+export function newRoot(state: SimulationState, row: number, col: number, cycle: number): PlantState {
   return {
     id: state.nextPlantId++,
     kindId: DEVOURER_ROOT,
@@ -175,7 +173,7 @@ export function newRoot(state: SimulationState, config: SimConfig, row: number, 
     // Not in data.json: no minimum, never credited (never a requirement), never decays.
     timesMutated: 0,
     mutatesRemaining: null,
-    water: config.maxWater,
+    water: 0, // like every plant; a root never drinks or gets drunk from
     held: [],
     lockedEffects: null,
     isDeadPlant: false,
@@ -248,7 +246,7 @@ export function isFootprintFree(occ: Occupancy, row: number, col: number, size: 
  * Watering it (player `water` phase) un-halts it.
  *
  * Derived from `water` alone, no extra state: only plants that consume water
- * (base crops, spawns that need watering) can get there. Every spawn starts
+ * (base crops, spawns that need watering) can get there. Every plant starts
  * at 0 water (above the threshold), Soggybud never drains a neighbour below
  * 0, and placed plants and roots never lose water - as long as `haltWater`
  * stays below 0.

@@ -93,6 +93,6 @@ function growRoot(plot: PlotState, src: PlantState, ctx: CycleCtx): void {
   const row = Math.floor(idx / GRID_SIZE);
   const col = idx % GRID_SIZE;
   if (buildOccupancy(plot)[idx]) return; // an explosion's aftermath can't refill it, but stay safe
-  insertPlant(plot, newRoot(ctx.state, ctx.config, row, col, ctx.cycle));
+  insertPlant(plot, newRoot(ctx.state, row, col, ctx.cycle));
   ctx.emit(plot.id, { kind: "rootSpread", row, col, fromRow: src.row, fromCol: src.col });
 }

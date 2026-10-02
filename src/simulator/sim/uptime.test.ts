@@ -21,7 +21,9 @@ const one = (spec: LayoutSpec, extra: Partial<FlowStep> = {}, config = {}) =>
 
 describe("target uptime", () => {
   it("a target whose requirements hold is up, and the run is sustainable", () => {
-    const s = one(layout(ASHWREATH_RING, [["ashwreath", 4, 4]]));
+    // Water loss pinned to 0: the player is away, and the unwatered nether wart (it starts at 0 water)
+    // would otherwise dry out on cycle 4 and stop counting. This test is about uptime, not water.
+    const s = one(layout(ASHWREATH_RING, [["ashwreath", 4, 4]]), {}, { waterLossMin: 0, waterLossMax: 0 });
     const r = engine.run(s, 5);
     const report = engine.analyse(r.state);
     expect(report.totals.watched).toBe(5);
