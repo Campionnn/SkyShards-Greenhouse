@@ -29,6 +29,8 @@ export const DEFAULT_PLAYER_STATS: PlayerStats = {
   /** Helianthus Armor 4/4: combines the Tater, Cropie, Squash and Fermento tiered bonuses. */
   armorSet: "helianthus",
   startTimeOfDay: 0,
+  /** Flora attribute shard (0.27.2): default 10, the max - a new save gets the full Unique Crop Bonus. */
+  floraShard: 10,
 };
 
 export function defaultSettings(): Settings {

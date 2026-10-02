@@ -180,6 +180,7 @@ const STAT_FIELDS: { key: NumericStat; label: string; min: number; max: number; 
   { key: "plantYieldUpgrade", label: "Plant Yield upgrade", min: 0, max: 0.2, step: 0.02, hint: "0 to 0.20 (+20%)." },
   { key: "evergreenChip", label: "Evergreen Chip", min: 0, max: 0.6, step: 0.02, hint: "0 to 0.60. Applies to all crop-bundle drops, base crops and mutation bundles alike." },
   { key: "mutationChanceBonus", label: "Bioanalysis accessory", min: 0, max: 0.15, step: 0.05, hint: "0 / 0.05 Talisman / 0.10 Ring / 0.15 Artifact. Multiplies the chance for a crop to mutate." },
+  { key: "floraShard", label: "Flora attribute", min: 0, max: 10, hint: "Grants 1-10 Unique Crop Bonus; adds to the unique crops standing (10 max in total)." },
   { key: "miningFortune", label: "Mining Fortune", min: 0, max: 3000, hint: "Chloronite item count (caps at 4 from 2000)." },
   {
     key: "overbloom",

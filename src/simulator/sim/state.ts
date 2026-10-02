@@ -157,6 +157,14 @@ export interface PlayerStats {
   armorSet: ArmorSet;
   /** Hour of day (0..24) at cycle 0, for time-window schedules. */
   startTimeOfDay: number;
+  /**
+   * Flora attribute shard (0.27.2): 0-10, adds that many to the unique crop
+   * groups standing for the Unique Crop Bonus (still capped at `uniqueCropCap`).
+   * Like the rest of PlayerStats, a scenario saved before it existed may be
+   * missing it in storage; `withDefaults` (SimulatorPage.tsx) fills it in, and
+   * the engine (`effectiveUniqueCrops`) treats a missing value as 0 regardless.
+   */
+  floraShard: number;
 }
 
 /** When the player is online. All harvesting, watering, upkeep and gate interaction happens then. */
@@ -276,8 +284,14 @@ export interface SimulationState {
   uptime: Record<string, Record<string, Record<string, SpotUptime>>>;
   summary: RunSummary;
   nextPlantId: number;
-  /** Shared, recomputed every cycle across all plots. */
+  /**
+   * Shared, recomputed every cycle across all plots: the effective unique
+   * crop count the Unique Crop Bonus uses (`effectiveUniqueCrops`), already
+   * capped at `config.uniqueCropCap`.
+   */
   uniqueCropCount: number;
+  /** The raw unique crop groups standing across all plots, before the Flora shard and the cap. */
+  uniqueCropsStanding: number;
   lastCycleSeconds: number;
   lastCycleActive: boolean;
 }

@@ -18,7 +18,7 @@ const perDay = (value: number, summary: RunSummary) => (summary.elapsedSeconds >
 export const MoneyPanel: React.FC<{
   summary: RunSummary;
   previous: RunSummary | null;
-  /** Current cycle length in seconds (one growth stage); it depends on the unique crops standing. */
+  /** Current cycle length in seconds (one growth stage); it depends on the unique crops standing plus the Flora shard. */
   cycleSeconds?: number;
 }> = ({ summary, previous, cycleSeconds }) => {
   const [showPlots, setShowPlots] = useState(false);
@@ -27,7 +27,7 @@ export const MoneyPanel: React.FC<{
     {
       label: "Rare crops",
       get: (s) => s.revenue.rareCrops ?? 0,
-      hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and mutations' own Ethereal Vine. Overbloom raises the chance for both. Harvest yield (Plant Yield upgrade, unique crops, Harvest Boost/Loss) additionally scales only the Ethereal Vine count, not the armor drops. Wiki NPC prices (override in Advanced).",
+      hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and mutations' own Ethereal Vine. Overbloom raises the chance for both. Harvest yield (Plant Yield upgrade, the Unique Crop Bonus, Harvest Boost/Loss) additionally scales only the Ethereal Vine count, not the armor drops. Wiki NPC prices (override in Advanced).",
     },
     { label: "Harvest Bounty", get: (s) => s.revenue.rareDrops, hint: "Bonus Drops rolls (not boosted by Overbloom). Wiki NPC prices; chips and Iridium are not NPC-sellable." },
     { label: "Mutation items", get: (s) => s.revenue.mutationItems, hint: "NPC-only: mutation items are Bazaar-only, so they count as 0 coins. They go to inventory as planting stock. The count itself scales with the greenhouse yield sum (Plant Yield upgrade + unique-crop bonus + Harvest Boost/Loss), not Farming Fortune or Evergreen." },
@@ -74,7 +74,7 @@ export const MoneyPanel: React.FC<{
             <Stat
               label="Time per cycle"
               value={`${formatDuration(cycleSeconds)} ${Math.round(cycleSeconds % 60)}s`}
-              title="One growth stage at the current stats and unique crops standing. It changes if the unique-crop count changes."
+              title="One growth stage at the current stats and the Unique Crop Bonus (crops standing plus the Flora shard, capped at 10). It changes if that count changes."
             />
             <Stat label="Cycles per day" value={`~${(86400 / cycleSeconds).toFixed(1)}`} title="24 h / time per cycle, at the current cycle length." />
           </>
@@ -555,7 +555,7 @@ export const InventoryPanel: React.FC<{
       description={
         perDay
           ? `Produced per simulated day (${days > 0 ? `${days.toFixed(1)} days so far` : "run it first"}). NPC value made per day: ${formatCoins(total)}.`
-          : `Shared by all plots. Unique crops: ${state.uniqueCropCount}/12. NPC value of everything held: ${formatCoins(total)}.`
+          : `Shared by all plots. Unique crops: ${state.uniqueCropsStanding ?? 0} standing + Flora ${state.scenario.settings.playerStats.floraShard ?? 0} = ${state.uniqueCropCount}/${state.scenario.settings.config.uniqueCropCap}. NPC value of everything held: ${formatCoins(total)}.`
       }
       actions={
         <>

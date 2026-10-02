@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-export const MAX_UNIQUE_CROPS = 12;
+/** Unique Crop Bonus cap (0.27.2): 10, including the Flora shard. */
+export const MAX_UNIQUE_CROPS = 10;
 const STORAGE_KEY = "skyshards-unique-crops";
 
 function clamp(value: number): number {

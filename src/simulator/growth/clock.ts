@@ -1,3 +1,4 @@
+import type { SimConfig } from "../config";
 import type { GameData } from "../data/types";
 import type { PlayerStats } from "../sim/state";
 
@@ -7,27 +8,58 @@ export function upgradeTerm(tier: number): number {
   return t === 9 ? 0.5 : 0.05 * t;
 }
 
+/** The Flora attribute shard grants 1-10 Unique Crop Bonus (0.27.2). */
+export const FLORA_SHARD_MAX = 10;
+
+/** A unique crop count clamped to [0, cap]: the bonus is linear up to the cap. */
+function countedUniqueCrops(uniqueCrops: number, cap: number): number {
+  if (!Number.isFinite(uniqueCrops)) return 0;
+  return Math.max(0, Math.min(cap, uniqueCrops));
+}
+
 /**
- * Seconds per growth stage (Greenhouse page):
- *   T = baseline / (1 + 0.025c + 0.0025g + 0.001a + u)
- * c = unique crop groups across ALL plots, g = Crop Growth, a = Speed Attribute.
+ * Unique crops the Unique Crop Bonus counts (0.27.2):
+ *   min(cap, standing + clamp(flora, 0, 10))
+ * `standing` = unique crop groups standing across ALL plots (`countUniqueCropGroups`),
+ * `flora` = the Flora attribute shard (whole crops; missing or invalid = 0).
+ */
+export function effectiveUniqueCrops(standing: number, flora: number | undefined, cap: number): number {
+  const f = typeof flora === "number" && Number.isFinite(flora) ? Math.max(0, Math.min(FLORA_SHARD_MAX, Math.floor(flora))) : 0;
+  const s = Number.isFinite(standing) ? Math.max(0, standing) : 0;
+  return Math.min(cap, s + f);
+}
+
+/**
+ * Seconds per growth stage (Greenhouse page, 0.27.2 unique crop bonus):
+ *   T = baseline / (1 + r*c + 0.0025g + 0.001a + u)
+ * c = unique crops counted (`effectiveUniqueCrops`: groups standing across ALL
+ * plots + Flora), clamped to [0, uniqueCropCap]; r = uniqueCropGrowthPerCrop
+ * (+2.5% each, +25% at 10); g = Crop Growth; a = Speed Attribute;
+ * u = Growth Speed Upgrade term.
  */
 export function cycleSeconds(
   stats: Pick<PlayerStats, "cropGrowth" | "speedAttribute" | "growthUpgradeTier">,
   uniqueCrops: number,
-  baselineSeconds: number
+  config: Pick<SimConfig, "cycleBaselineSeconds" | "uniqueCropCap" | "uniqueCropGrowthPerCrop">
 ): number {
-  const c = Math.max(0, Math.min(12, uniqueCrops));
-  const denom = 1 + 0.025 * c + 0.0025 * stats.cropGrowth + 0.001 * stats.speedAttribute + upgradeTerm(stats.growthUpgradeTier);
-  return baselineSeconds / denom;
+  const c = countedUniqueCrops(uniqueCrops, config.uniqueCropCap);
+  const denom = 1 + config.uniqueCropGrowthPerCrop * c + 0.0025 * stats.cropGrowth + 0.001 * stats.speedAttribute + upgradeTerm(stats.growthUpgradeTier);
+  return config.cycleBaselineSeconds / denom;
 }
 
-/** Unique Greenhouse Crop Bonus to yield: +3% per unique group, to +36%. */
-export function uniqueCropYieldBonus(uniqueCrops: number): number {
-  return 0.03 * Math.max(0, Math.min(12, uniqueCrops));
+/**
+ * Unique Crop Bonus to harvest yield (0.27.2): uniqueCropYieldPerCrop per unique
+ * crop counted, linear up to uniqueCropCap (+2.5% each, +25% at 10). An additive
+ * term of the greenhouse yield sum.
+ */
+export function uniqueCropYieldBonus(uniqueCrops: number, config: Pick<SimConfig, "uniqueCropCap" | "uniqueCropYieldPerCrop">): number {
+  return config.uniqueCropYieldPerCrop * countedUniqueCrops(uniqueCrops, config.uniqueCropCap);
 }
 
-/** How many of the 12 groups have at least one member standing (either member of a merged pair counts). */
+/**
+ * How many of the 12 groups have at least one member standing (either member of
+ * a merged pair counts). The bonus itself caps lower (`uniqueCropCap`).
+ */
 export function countUniqueCropGroups(standingKinds: ReadonlySet<string>, data: GameData): number {
   let n = 0;
   for (const group of data.uniqueCropGroups) {

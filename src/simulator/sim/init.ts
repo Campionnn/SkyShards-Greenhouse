@@ -1,7 +1,7 @@
 import { newRunner } from "../flow/runner";
 import { ScenarioError, validateScenario } from "../flow/validate";
 import { seedRng } from "../rng";
-import { countUniqueCropGroups, cycleSeconds } from "../growth/clock";
+import { countUniqueCropGroups, cycleSeconds, effectiveUniqueCrops } from "../growth/clock";
 import { newScratch, type Env } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { convertAloeFragments, ledgerRow } from "./inventory";
@@ -56,6 +56,7 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
     summary: zeroSummary(input.plots.map((p) => p.id)),
     nextPlantId: 1,
     uniqueCropCount: 0,
+    uniqueCropsStanding: 0,
     lastCycleSeconds: input.settings.config.cycleBaselineSeconds,
     lastCycleActive: true,
   };
@@ -75,7 +76,8 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
     applyStepLayout(plot, ctx.layoutFor(id), ctx, newScratch(), true, "setup");
   }
 
-  state.uniqueCropCount = uniqueCropsAcross(state, env);
-  state.lastCycleSeconds = cycleSeconds(input.settings.playerStats, state.uniqueCropCount, input.settings.config.cycleBaselineSeconds);
+  state.uniqueCropsStanding = uniqueCropsAcross(state, env);
+  state.uniqueCropCount = effectiveUniqueCrops(state.uniqueCropsStanding, input.settings.playerStats.floraShard, input.settings.config.uniqueCropCap);
+  state.lastCycleSeconds = cycleSeconds(input.settings.playerStats, state.uniqueCropCount, input.settings.config);
   return { state, events };
 }

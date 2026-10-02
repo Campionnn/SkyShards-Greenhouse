@@ -58,7 +58,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   }
 
   const effective = new Set(p.lockedEffects ?? effectiveList(p.held));
-  const sum = greenhouseYieldSum(effective, ctx.stats.plantYieldUpgrade, uniqueCropYieldBonus(ctx.uniqueCropCount));
+  const sum = greenhouseYieldSum(effective, ctx.stats.plantYieldUpgrade, uniqueCropYieldBonus(ctx.uniqueCropCount, ctx.config));
   const def = isMutation ? data.mutations[p.kindId] : data.crops[p.kindId];
   // Magic Jellybean: data.json's crop bundle is the stage-12 (x1) amount; the
   // stage multiplier scales the bundle as well as its own item count.

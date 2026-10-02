@@ -56,6 +56,8 @@ export const BASELINE_TEST_STATS: PlayerStats = {
   overbloom: 0,
   armorSet: "none",
   startTimeOfDay: 0,
+  /** 0, so mechanics tests still see exactly the crops they planted. */
+  floraShard: 0,
 };
 
 export function scenario(flows: Flow[], opts: ScenarioOptions = {}): Scenario {
