@@ -332,7 +332,8 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
   const losses = [
     ...Object.entries(summary.decayed).map(([k, n]) => ({ k, n, what: "decayed" })),
     ...Object.entries(summary.destroyed).map(([k, n]) => ({ k, n, what: "destroyed" })),
-    ...Object.entries(summary.diedOfThirst).map(([k, n]) => ({ k, n, what: "died of thirst" })),
+    // Not a loss as such: the plant stands until watered. Counted each time one dries out.
+    ...Object.entries(summary.driedOut).map(([k, n]) => ({ k, n, what: "dried out (halted)" })),
   ].sort((a, b) => b.n - a.n);
   const t = report.totals;
 
@@ -345,7 +346,7 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
         <InfoHint title="How uptime is counted" width={300}>
           Every cycle, at the spawn roll, each checked target cell is one of: growing (its mutation is there), ready (empty and its requirements hold),
           blocked (a rival, Dead Plant or root is in the way) or missing requirements (empty, and the neighbours or ground it needs are not there - for
-          example because a placed item decayed and there was no stock to re-place it). Uptime = (growing + ready) / checked cycles.
+          example because a placed item decayed and there was no stock to re-place it, or a neighbour dried out and doesn't count until watered). Uptime = (growing + ready) / checked cycles.
         </InfoHint>
       }
     >
@@ -437,7 +438,7 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
 
       {losses.length > 0 && (
         <div className="mt-3">
-          <SectionLabel>Losses</SectionLabel>
+          <SectionLabel>Losses and halts</SectionLabel>
           <ul className="text-xs text-slate-300 space-y-0.5">
             {losses.slice(0, 8).map((l) => (
               <li key={`${l.what}-${l.k}`}>

@@ -5,6 +5,7 @@ import { defaultGameData } from "../data/default";
 import { seedRng } from "../rng";
 import { engine, flow, layout, scenario, step, start } from "../testHelpers";
 import { candidateMutations } from "./candidates";
+import type { RingCounts } from "./eligibility";
 import { effectiveWeight, fullWeightMultiplicity, multiplicity } from "./multiplicity";
 import { applyMutationChanceBonus, buildPool, poolDenominator, rollPool, spawnProbability, type SpawnPool } from "./pool";
 
@@ -15,6 +16,8 @@ const data = defaultGameData();
 const M = data.mutations;
 const ceiling = DEFAULT_CONFIG;
 const support = { ...DEFAULT_CONFIG, weightModel: "support" as const };
+/** A ring of plain requirement counts with no dried-out plants (so occupied iff any count > 0). */
+const rc = (counts: Record<string, number>): RingCounts => ({ counts, ringOccupied: Object.values(counts).some((n) => n > 0) });
 const pool = (entries: Record<string, number>): SpawnPool => ({ ids: Object.keys(entries), weights: Object.values(entries) });
 
 describe("pool denominator", () => {
@@ -70,67 +73,73 @@ describe("one roll over the whole pool", () => {
 
 describe("multiplicity", () => {
   it("is 1 for an eligible non-scaling mutation, however many extra sets surround it", () => {
-    expect(multiplicity(M.gloomgourd, { pumpkin: 1, melon: 1 })).toBe(1);
-    expect(multiplicity(M.gloomgourd, { pumpkin: 2, melon: 2 })).toBe(1);
-    expect(multiplicity(M.gloomgourd, { pumpkin: 4, melon: 4 })).toBe(1);
-    expect(multiplicity(M.gloomgourd, { pumpkin: 1 })).toBe(0);
+    expect(multiplicity(M.gloomgourd, rc({ pumpkin: 1, melon: 1 }))).toBe(1);
+    expect(multiplicity(M.gloomgourd, rc({ pumpkin: 2, melon: 2 }))).toBe(1);
+    expect(multiplicity(M.gloomgourd, rc({ pumpkin: 4, melon: 4 }))).toBe(1);
+    expect(multiplicity(M.gloomgourd, rc({ pumpkin: 1 }))).toBe(0);
   });
 
   it("Lonelily needs an empty ring", () => {
-    expect(multiplicity(M.lonelily, {})).toBe(1);
-    expect(multiplicity(M.lonelily, { wheat: 1 })).toBe(0);
+    expect(multiplicity(M.lonelily, rc({}))).toBe(1);
+    expect(multiplicity(M.lonelily, rc({ wheat: 1 }))).toBe(0);
+  });
+
+  it("Lonelily reads plain occupancy: a ring holding only a dried-out plant (no counts) still blocks it", () => {
+    expect(multiplicity(M.lonelily, { counts: {}, ringOccupied: true })).toBe(0);
+    // ...while requirement-based mutations only see the counts.
+    expect(multiplicity(M.dustgrain, { counts: { wheat: 1 }, ringOccupied: true })).toBe(0);
   });
 
   it("Godseed is ineligible by default and eligible only on the effect test", () => {
-    expect(multiplicity(M.godseed, {}, undefined)).toBe(0);
-    expect(multiplicity(M.godseed, {}, true)).toBe(1);
+    expect(multiplicity(M.godseed, rc({}), undefined)).toBe(0);
+    expect(multiplicity(M.godseed, rc({}), true)).toBe(1);
   });
 
   it("Ashwreath's fire is inert: 4 wart + 1 fire is not eligible, extra fire changes nothing", () => {
-    expect(multiplicity(M.ashwreath, { nether_wart: 4, fire: 1 })).toBe(0);
-    expect(multiplicity(M.ashwreath, { nether_wart: 2, fire: 2 })).toBe(1);
-    expect(multiplicity(M.ashwreath, { nether_wart: 2, fire: 5 })).toBe(1);
+    expect(multiplicity(M.ashwreath, rc({ nether_wart: 4, fire: 1 }))).toBe(0);
+    expect(multiplicity(M.ashwreath, rc({ nether_wart: 2, fire: 2 }))).toBe(1);
+    expect(multiplicity(M.ashwreath, rc({ nether_wart: 2, fire: 5 }))).toBe(1);
   });
 
   it("Ashwreath weight scales 15 / 22.5 / 30 with 2 / 3 / 4 wart, and clamps", () => {
     expect(fullWeightMultiplicity(M.ashwreath)).toBe(3);
-    expect(effectiveWeight(M.ashwreath, { nether_wart: 2, fire: 2 }, ceiling)).toBe(15);
-    expect(effectiveWeight(M.ashwreath, { nether_wart: 3, fire: 2 }, ceiling)).toBe(22.5);
-    expect(effectiveWeight(M.ashwreath, { nether_wart: 4, fire: 2 }, ceiling)).toBe(30);
-    expect(effectiveWeight(M.ashwreath, { nether_wart: 6, fire: 2 }, ceiling)).toBe(30);
+    expect(effectiveWeight(M.ashwreath, rc({ nether_wart: 2, fire: 2 }), ceiling)).toBe(15);
+    expect(effectiveWeight(M.ashwreath, rc({ nether_wart: 3, fire: 2 }), ceiling)).toBe(22.5);
+    expect(effectiveWeight(M.ashwreath, rc({ nether_wart: 4, fire: 2 }), ceiling)).toBe(30);
+    expect(effectiveWeight(M.ashwreath, rc({ nether_wart: 6, fire: 2 }), ceiling)).toBe(30);
   });
 
   it("requirement counts are CELLS: a 3x3 Snoozling contributes 9", () => {
     // Puffercloud needs snoozling x2 - one 3x3 Snoozling touching the ring with 2+ cells satisfies it.
-    expect(multiplicity(M.puffercloud, { snoozling: 2, do_not_eat_shroom: 6 })).toBe(1);
+    expect(multiplicity(M.puffercloud, rc({ snoozling: 2, do_not_eat_shroom: 6 }))).toBe(1);
   });
 });
 
 describe("weight models (Q4)", () => {
   it("ceiling: a 2-crop mutation is at full weight once its requirements hold", () => {
-    expect(effectiveWeight(M.gloomgourd, { pumpkin: 1, melon: 1 }, ceiling)).toBe(30);
+    expect(effectiveWeight(M.gloomgourd, rc({ pumpkin: 1, melon: 1 }), ceiling)).toBe(30);
   });
 
   it("property (ceiling): extra matching cells never change a 2-crop mutation's weight", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 4 }), fc.integer({ min: 1, max: 4 }), (p, m) => {
-        return effectiveWeight(M.gloomgourd, { pumpkin: p, melon: m }, ceiling) === 30;
+        return effectiveWeight(M.gloomgourd, rc({ pumpkin: p, melon: m }), ceiling) === 30;
       })
     );
   });
 
   it("support: 25% per matching cell, capped at full weight", () => {
-    expect(effectiveWeight(M.gloomgourd, { pumpkin: 1, melon: 1 }, support)).toBe(15);
-    expect(effectiveWeight(M.gloomgourd, { pumpkin: 2, melon: 2 }, support)).toBe(30);
-    expect(effectiveWeight(M.ashwreath, { nether_wart: 2, fire: 2 }, support)).toBe(15); // agrees with the staff example
-    expect(effectiveWeight(M.lonelily, {}, support)).toBe(6);
+    expect(effectiveWeight(M.gloomgourd, rc({ pumpkin: 1, melon: 1 }), support)).toBe(15);
+    expect(effectiveWeight(M.gloomgourd, rc({ pumpkin: 2, melon: 2 }), support)).toBe(30);
+    expect(effectiveWeight(M.ashwreath, rc({ nether_wart: 2, fire: 2 }), support)).toBe(15); // agrees with the staff example
+    expect(effectiveWeight(M.lonelily, rc({}), support)).toBe(6);
   });
 });
 
 describe("Bioanalysis accessory (mutation chance bonus)", () => {
   it("scales the mutation arm by 1 + bonus while the pool is under the floor", () => {
     // Gloomgourd alone at a location: weight 30, so P(mutate) = 30/100.
-    const base = buildPool([M.gloomgourd], { pumpkin: 1, melon: 1 }, ceiling);
+    const base = buildPool([M.gloomgourd], rc({ pumpkin: 1, melon: 1 }), ceiling);
     expect(spawnProbability(base, "gloomgourd", 100)).toBe(0.3);
     expect(spawnProbability(applyMutationChanceBonus(base, 0.05), "gloomgourd", 100)).toBeCloseTo(0.315); // Talisman
     expect(spawnProbability(applyMutationChanceBonus(base, 0.1), "gloomgourd", 100)).toBeCloseTo(0.33); // Ring
@@ -207,7 +216,7 @@ describe("candidate mutations", () => {
 
   it("Lonelily never shares a location with a requirement-based target, so it cannot dilute one", () => {
     // Lonelily needs an EMPTY ring; any mutation with requirements needs a non-empty one.
-    const p = buildPool([M.gloomgourd, M.lonelily], { pumpkin: 1, melon: 1 }, ceiling);
+    const p = buildPool([M.gloomgourd, M.lonelily], rc({ pumpkin: 1, melon: 1 }), ceiling);
     expect(p.ids).toEqual(["gloomgourd"]);
     expect(spawnProbability(p, "gloomgourd", 100)).toBe(0.3);
   });

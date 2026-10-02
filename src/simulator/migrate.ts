@@ -1,5 +1,5 @@
-// Upgrades scenario JSON saved before the stage -> step rename (localStorage
-// and exported flow files). Pure: returns a converted copy and leaves the
+// Upgrades scenario JSON saved before the stage -> step rename, and config
+// keys renamed since (localStorage and exported flow files). Pure: returns a converted copy and leaves the
 // input untouched. Unknown input is returned as it is; callers validate.
 
 type Json = Record<string, unknown>;
@@ -8,6 +8,8 @@ const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.
 const RENAMED_CONFIG: Record<string, string> = {
   stageBaselineSeconds: "cycleBaselineSeconds",
   keepIdenticalOnStageChange: "keepIdenticalOnStepChange",
+  // 0.27.2: a plant at this water level halts instead of dying.
+  deathWater: "haltWater",
 };
 
 function migrateCondition(c: unknown): unknown {

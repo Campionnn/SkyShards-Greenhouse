@@ -104,8 +104,8 @@ export function describeEvent(e: TimedEvent): string {
     }
     case "decayed":
       return `${nameOf(e.kindId)} decayed${at} and left a Dead Plant`;
-    case "diedOfThirst":
-      return `${nameOf(e.kindId)} died of thirst${at}`;
+    case "driedOut":
+      return `${nameOf(e.kindId)} dried out${at}: halted until watered (no growth, no effects given, not counted for mutations or unique crops)`;
     case "destroyed":
       return `${nameOf(e.kindId)} destroyed${at} by ${e.by}`;
     case "minigameFailed":

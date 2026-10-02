@@ -1,6 +1,7 @@
 import type { SimConfig } from "../config";
 import type { MutationDef } from "../data/types";
 import { weightedPick, type RngState } from "../rng";
+import type { RingCounts } from "./eligibility";
 import { effectiveWeight } from "./multiplicity";
 
 /** A location's spawn pool, in fixed (data.json) order. */
@@ -23,13 +24,13 @@ export function spawnProbability(pool: SpawnPool, id: string, blankFillTo: numbe
 
 export function buildPool(
   mutations: readonly MutationDef[],
-  counts: Record<string, number>,
+  ring: RingCounts,
   config: Pick<SimConfig, "weightModel" | "supportPerCell" | "supportCap">,
   specialEligible?: (m: MutationDef) => boolean
 ): SpawnPool {
   const pool: SpawnPool = { ids: [], weights: [] };
   for (const m of mutations) {
-    const w = effectiveWeight(m, counts, config, specialEligible?.(m));
+    const w = effectiveWeight(m, ring, config, specialEligible?.(m));
     if (w > 0) {
       pool.ids.push(m.id);
       pool.weights.push(w);

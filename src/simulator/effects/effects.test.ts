@@ -69,6 +69,16 @@ describe("effect propagation (4-way cardinal)", () => {
     expect(held(sim, 5, 6)).toEqual([]);
   });
 
+  it("a slot keeps everything it receives, effect_spread included, without becoming a relay (the dried-out plant rule)", () => {
+    // A wheat flagged as a slot between a rose and a potato: it receives effect_spread
+    // and immunity, gives nothing, and takes no relay turn.
+    const sim = simulateEffects([at("wild_rose", 5, 5), at("wheat", 5, 6, { isSlot: true }), at("potato", 5, 7)]);
+    expect(held(sim, 5, 6)).toEqual(["effect_spread", "immunity"]);
+    expect(held(sim, 5, 7)).toEqual([]); // no harvest_boost (not given), nothing relayed
+    expect(held(sim, 5, 5)).toEqual([]); // the rose gets nothing back either
+    expect(sim.relayOrder).toEqual([]);
+  });
+
   it("effects never leave the plot's own grid", () => {
     const sim = simulateEffects([at("wild_rose", 0, 9), at("wheat", 0, 8)]);
     expect(held(sim, 0, 8)).toEqual(["effect_spread"]);

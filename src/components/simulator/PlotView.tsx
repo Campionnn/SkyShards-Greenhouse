@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Eye, Pencil } from "lucide-react";
 import { useFitCellSize } from "../../hooks";
-import type { FlowRunnerState, PlotState, ScenarioPlot, SimConfig, TimedEvent } from "../../simulator";
+import { isDry, type FlowRunnerState, type PlotState, type ScenarioPlot, type SimConfig, type TimedEvent } from "../../simulator";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { getCellPixelPosition, getGridDimensions } from "../../utilities";
 import { CropImage } from "../shared";
@@ -9,12 +9,16 @@ import { kindData, nameOf } from "./format";
 import { SimTooltip, type TooltipTarget } from "./SimTooltip";
 import { buttonClass } from "./styles";
 
-type Mark = "harvested" | "spawned" | "decayed" | "destroyed" | "debt" | "teleported" | "exploded" | "groundFixed" | "minigameRetry";
+type Mark = "harvested" | "spawned" | "decayed" | "dried" | "destroyed" | "debt" | "teleported" | "exploded" | "groundFixed" | "minigameRetry";
+
+/** Tint for a dried-out (halted) plant: washed out and sandy, still clearly a living plant (unlike a Dead Plant's grey). */
+const DRY_FILTER = "sepia(0.85) saturate(0.6) brightness(0.8)";
 
 const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; label: string }> = {
   harvested: { ring: "rgba(234,179,8,0.9)", glyph: "✦", color: "text-yellow-300", label: "harvested" },
   spawned: { ring: "rgba(52,211,153,0.9)", glyph: "+", color: "text-emerald-300", label: "spawned" },
-  decayed: { ring: "rgba(248,113,113,0.9)", glyph: "✕", color: "text-red-300", label: "decayed / died" },
+  decayed: { ring: "rgba(248,113,113,0.9)", glyph: "✕", color: "text-red-300", label: "decayed" },
+  dried: { ring: "rgba(217,119,6,0.95)", glyph: "◌", color: "text-amber-500", label: "dried out (halted until watered)" },
   destroyed: { ring: "rgba(251,146,60,0.9)", glyph: "✕", color: "text-orange-300", label: "destroyed" },
   debt: { ring: "rgba(239,68,68,0.95)", glyph: "!", color: "text-red-400", label: "short of an item" },
   teleported: { ring: "rgba(192,132,252,0.9)", glyph: "»", color: "text-purple-300", label: "teleported here" },
@@ -77,6 +81,10 @@ export const PlotMarkLegend: React.FC = () => (
       dead plant
     </span>
     <span className="flex items-center gap-1">
+      <span className="inline-block w-3 h-3 rounded bg-emerald-500" style={{ filter: DRY_FILTER }} />
+      dried out - halted until watered
+    </span>
+    <span className="flex items-center gap-1">
       <span className="text-[9px] text-amber-300">z</span>
       asleep / rat present / overcharged
     </span>
@@ -97,7 +105,8 @@ function marksFrom(events: TimedEvent[]): Map<string, { mark: Mark; size: number
     const at = (r: number, c: number, mark: Mark, size = 1) => marks.set(`${r},${c}`, { mark, size });
     if (e.kind === "harvested") at(e.row, e.col, "harvested", sizeOf(e.kindId));
     else if (e.kind === "spawned") at(e.row, e.col, "spawned", sizeOf(e.mutationId));
-    else if (e.kind === "decayed" || e.kind === "diedOfThirst") at(e.row, e.col, "decayed", sizeOf(e.kindId));
+    else if (e.kind === "decayed") at(e.row, e.col, "decayed", sizeOf(e.kindId));
+    else if (e.kind === "driedOut") at(e.row, e.col, "dried", sizeOf(e.kindId));
     else if (e.kind === "destroyed") at(e.row, e.col, "destroyed", sizeOf(e.kindId));
     else if (e.kind === "debt") at(e.row, e.col, "debt", sizeOf(e.item));
     else if (e.kind === "teleported") at(e.row, e.col, "teleported");
@@ -152,6 +161,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
     standing: plot.plants.filter((p) => p.origin !== "spawned" && !p.isDeadPlant).length,
     spawns: plot.plants.filter((p) => p.origin === "spawned").length,
     dead: plot.plants.filter((p) => p.isDeadPlant).length,
+    dry: plot.plants.filter((p) => isDry(p, config)).length,
     openSlots: plot.slots.filter((s) => !occupied.has(`${s.row},${s.col}`)).length,
   };
   const missing = openDebts
@@ -252,6 +262,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
             const size = p.size * cellSize + (p.size - 1) * gap;
             const ground = plot.groundOverrides[`${p.row},${p.col}`] ?? plot.groundTiles[`${p.row},${p.col}`];
             const growing = !p.isDeadPlant && p.origin !== "placed" && p.readyStage > 0 && p.stage < p.readyStage;
+            const dry = isDry(p, config);
             return (
               <div
                 key={p.id}
@@ -271,7 +282,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
                       : p.kindId === "devourer_root"
                         ? "inset 0 0 0 2px rgba(190,18,60,0.8)"
                         : undefined,
-                  filter: p.isDeadPlant ? "grayscale(1) brightness(0.55)" : undefined,
+                  filter: p.isDeadPlant ? "grayscale(1) brightness(0.55)" : dry ? DRY_FILTER : undefined,
                 }}
               >
                 <CropImage
@@ -352,6 +363,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
         <span className="text-cyan-300/90">{counts.spawns} natural spawns</span>
         <span>{counts.openSlots} open target cells</span>
         {counts.dead > 0 && <span className="text-red-300/90">{counts.dead} dead plants</span>}
+        {counts.dry > 0 && <span className="text-amber-400/90">{counts.dry} dried out (halted)</span>}
         {missing.length > 0 && <span className="text-red-300">{missing.length} missing (no stock)</span>}
       </div>
     </div>

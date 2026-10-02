@@ -15,8 +15,13 @@ export interface SimConfig {
   // ---- Verified ----
   /** Spawn pool denominator floor: max(blankFillTo, Σweights). */
   blankFillTo: number;
-  /** Water level at which a plant dies (Dead Plant page). */
-  deathWater: number;
+  /**
+   * Water level at or below which a plant dries out and HALTS (0.27.2; it no
+   * longer dies): it stops growing, gives and relays no effects, doesn't count
+   * toward requirements or the unique crop bonus, but still blocks Lonelily
+   * and keeps decaying. Watering un-halts it. Formerly `deathWater`.
+   */
+  haltWater: number;
   waterLossMin: number;
   waterLossMax: number;
   /** Cycle length (one growth stage) before speed bonuses, 4 h. */
@@ -95,7 +100,7 @@ export interface SimConfig {
 
 export const DEFAULT_CONFIG: SimConfig = {
   blankFillTo: 100,
-  deathWater: -100,
+  haltWater: -100,
   waterLossMin: 2,
   waterLossMax: 3,
   cycleBaselineSeconds: 14400,
@@ -155,9 +160,9 @@ export interface ConfigMeta {
 
 export const CONFIG_META: ConfigMeta[] = [
   { key: "blankFillTo", label: "Spawn pool floor", group: "verified", input: { type: "number", min: 1 }, description: "Pool denominator is max(floor, sum of weights); the remainder is the blank." },
-  { key: "deathWater", label: "Death water level", group: "verified", ref: "Q3", input: { type: "number", max: 0 }, description: "A plant dies at or below this water level." },
-  { key: "waterLossMin", label: "Water loss min", group: "verified", input: { type: "number", min: 0 }, description: "Minimum water lost per growth stage, before retain/drain." },
-  { key: "waterLossMax", label: "Water loss max", group: "verified", input: { type: "number", min: 0 }, description: "Maximum water lost per growth stage, before retain/drain." },
+  { key: "haltWater", label: "Halt water level", group: "verified", ref: "Q3", input: { type: "number", max: -1 }, description: "At or below this water level a plant dries out and halts (it no longer dies): it stops growing, gives and relays no effects, and doesn't count for mutation requirements or unique crops. It still blocks Lonelily and keeps decaying. Watering un-halts it. Must stay below 0, so only crops that drink water (base crops, spawns that need watering) can reach it." },
+  { key: "waterLossMin", label: "Water loss min", group: "verified", input: { type: "number", min: 0 }, description: "Minimum water a crop that needs watering loses per growth stage, before retain/drain." },
+  { key: "waterLossMax", label: "Water loss max", group: "verified", input: { type: "number", min: 0 }, description: "Maximum water a crop that needs watering loses per growth stage, before retain/drain." },
   { key: "cycleBaselineSeconds", label: "Cycle baseline (s)", group: "verified", ref: "Q2", input: { type: "number", min: 1 }, description: "Cycle length (one growth stage) before speed bonuses (4 h)." },
   { key: "uniqueCropCap", label: "Unique crop bonus cap", group: "verified", input: { type: "number", min: 0, step: 1 }, description: "Most unique crops the Unique Crop Bonus counts (0.27.2 patch notes: 10). The unique crop groups standing on all plots, plus the Flora shard, count up to this many." },
   { key: "uniqueCropGrowthPerCrop", label: "Unique crop growth bonus", group: "verified", input: { type: "number", min: 0, step: 0.005 }, description: "Growth speed added per unique crop counted (0.27.2 patch notes: +2.5% each, +25% at 10)." },
@@ -166,8 +171,8 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "thunderlingMaxCharge", label: "Thunderling max charge", group: "verified", input: { type: "number", min: 1 }, description: "At this charge a Thunderling stops growing (it still counts for requirements and shares effects) until the player discharges it. No more charge builds above it." },
   { key: "baseCropDecayHours", label: "Base crop decay (h)", group: "verified", input: { type: "number", min: 0 }, description: "Base crops decay this long after planting. 0 = never." },
 
-  { key: "maxWater", label: "Max water", group: "unpublished", ref: "Q3", input: { type: "number", min: 0 }, description: "Water level after watering." },
-  { key: "negativeWaterSkipChance", label: "Negative-water skip chance", group: "unpublished", ref: "Q9", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Chance a stage is skipped while water is below 0." },
+  { key: "maxWater", label: "Max water", group: "unpublished", ref: "Q3", input: { type: "number", min: 0 }, description: "Water level after watering. Watering also un-halts a dried-out plant." },
+  { key: "negativeWaterSkipChance", label: "Negative-water skip chance", group: "unpublished", ref: "Q9", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Chance a stage is skipped while water is below 0 (before it reaches the halt level)." },
   { key: "harvestWindowCycles", label: "Spawn lifetime (cycles)", group: "unpublished", ref: "Q16", input: { type: "number", min: 0 }, description: "How long a natural spawn lives, in cycles from the tick it spawns (growth included). 0 = its own decay timer." },
   { key: "nullStageKindsDecay", label: "Fire/fermento/dead plant decay", group: "unpublished", input: { type: "boolean" }, description: "Placed fire, fermento and dead plants decay on the base-crop timer." },
   { key: "devourerRootChance", label: "Devourer root chance", group: "verified", ref: "Q6", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Chance per tick a Devourer grows a root into one of its 8 neighbouring cells, destroying what is there (40% staff-confirmed)." },

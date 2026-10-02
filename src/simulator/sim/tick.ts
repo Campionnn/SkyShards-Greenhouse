@@ -3,7 +3,7 @@ import type { FlowStep } from "../flow/types";
 import { cellIndex, cellKey, footprint, footprintFits, ringCells, TOTAL_CELLS } from "../grid/cells";
 import { chance, intInclusive } from "../rng";
 import { candidateMutations } from "../spawn/candidates";
-import { locationOpenFor, ringCounts } from "../spawn/eligibility";
+import { locationOpenFor, ringCounts, type RingCounts } from "../spawn/eligibility";
 import { effectiveWeight } from "../spawn/multiplicity";
 import { applyMutationChanceBonus, rollPool, type SpawnPool } from "../spawn/pool";
 import { aloeRow } from "../growth/aloe";
@@ -15,6 +15,7 @@ import {
   buildOccupancy,
   convertToDeadPlant,
   insertPlant,
+  isDry,
   isFootprintFree,
   isRoot,
   newPlant,
@@ -56,13 +57,13 @@ export const TICK_PHASES: readonly Phase[] = [
   {
     id: "effects",
     summary: "Recompute held effects for every plant (4-way propagation).",
-    run: (plot, _ctx, scratch) => {
-      scratch.effects = recomputeEffects(plot);
+    run: (plot, ctx, scratch) => {
+      scratch.effects = recomputeEffects(plot, ctx.config);
     },
   },
-  { id: "growth", summary: "Advance one growth stage unless gated; latch effects when fully grown.", run: phaseGrowth },
+  { id: "growth", summary: "Advance one growth stage unless gated or dried out; latch effects when fully grown.", run: phaseGrowth },
   { id: "soggybud", summary: "Soggybud draws water from its neighbours; stage follows water.", run: phaseSoggybud },
-  { id: "water", summary: "Plants that advanced this cycle lose 2-3 water; thirst kills.", run: phaseWater },
+  { id: "water", summary: "Plants that advanced this cycle lose 2-3 water; at the halt level they dry out (halt until watered).", run: phaseWater },
   { id: "spawn", summary: "Every empty cell (or only slots) rolls once for a spawn (at stage 1; 0-stage kinds latch at once); uptime is booked.", run: phaseSpawn },
   { id: "decay", summary: "Decay timers tick down; expired plants become Dead Plants.", run: phaseDecay },
 ];
@@ -101,7 +102,11 @@ function phaseGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void
     // Glasscorn keeps growing past its window and resets from stage 8 to 1.
     const resets = p.kindId === "glasscorn" && p.growthStages > 0 && p.stage >= p.growthStages;
     if (p.stage < p.growthStages || resets) {
-      if (p.skipNextGrowth) {
+      if (isDry(p, ctx.config)) {
+        // Dried out: halted until the player waters it. Checked before the
+        // water skip, so a pending skip waits until the plant is watered.
+        ctx.emit(plot.id, { kind: "growthBlocked", plantId: p.id, kindId: p.kindId, gate: "dry" });
+      } else if (p.skipNextGrowth) {
         p.skipNextGrowth = false;
         ctx.emit(plot.id, { kind: "growthSkipped", plantId: p.id, kindId: p.kindId, reason: "water" });
       } else {
@@ -189,22 +194,26 @@ export function retainFactor(effective: readonly string[]): number {
   return Math.max(0, f);
 }
 
-/** "After each growth stage, a crop loses between 2-3 Water Level." */
+/**
+ * "After each growth stage, a crop loses between 2-3 Water Level." Below 0
+ * it may skip its next stage. At `haltWater` it dries out (0.27.2): it no
+ * longer dies, it halts (sim/plants.ts `isDry`) until the player waters it.
+ * Only a plant that advanced loses water and a dry plant never advances, so
+ * crossing the threshold happens - and is reported - exactly once per
+ * drying out.
+ */
 function phaseWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { config } = ctx;
   const rng = ctx.state.rng;
-  for (const p of [...plot.plants]) {
-    if (!plot.plants.includes(p) || !scratch.advanced.has(p.id) || !consumesWater(p, ctx)) continue;
+  for (const p of plot.plants) {
+    if (!scratch.advanced.has(p.id) || !consumesWater(p, ctx)) continue;
+    const wasDry = isDry(p, config);
     const loss = intInclusive(rng, config.waterLossMin, config.waterLossMax) * retainFactor(effectiveList(p.held));
     p.water -= loss;
     if (p.water < 0 && chance(rng, config.negativeWaterSkipChance)) p.skipNextGrowth = true;
-    if (p.water > config.deathWater) continue;
-    ctx.emit(plot.id, { kind: "diedOfThirst", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col });
-    bump(ctx.state.summary.diedOfThirst, p.kindId);
-    const primed = isPrimedBlastberry(p);
-    const { id, row, col } = p;
-    convertToDeadPlant(ctx.state, p);
-    if (primed) explode(plot, { id, row, col }, ctx);
+    if (wasDry || !isDry(p, config)) continue;
+    ctx.emit(plot.id, { kind: "driedOut", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col });
+    bump(ctx.state.summary.driedOut, p.kindId);
   }
 }
 
@@ -288,7 +297,7 @@ function recordWatch(plot: PlotState, ctx: CycleCtx, stepId: string, slot: SlotL
 function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { config } = ctx;
   const { data } = ctx.env;
-  const effects = scratch.effects ?? recomputeEffects(plot);
+  const effects = scratch.effects ?? recomputeEffects(plot, config);
   const occ = buildOccupancy(plot);
   const candidates = candidateMutations(new Set(plot.plants.map((p) => p.kindId)), data);
 
@@ -318,18 +327,19 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
     const target = slot ? data.mutations[slot.mutationId] : undefined;
     const poolMuts = target && !candidates.includes(target) ? [...candidates, target] : candidates;
 
-    const countsBySize = new Map<number, Record<string, number>>();
+    // Requirement counts skip dried-out plants; Lonelily reads plain occupancy (spawn/eligibility.ts).
+    const ringBySize = new Map<number, RingCounts>();
     const pool: SpawnPool = { ids: [], weights: [] };
     let targetWeight = 0;
     for (const m of poolMuts) {
       if (!locationOpenFor(plot, occ, row, col, m)) continue;
-      let counts = countsBySize.get(m.size);
-      if (!counts) {
-        counts = ringCounts(occ, row, col, m.size);
-        countsBySize.set(m.size, counts);
+      let ring = ringBySize.get(m.size);
+      if (!ring) {
+        ring = ringCounts(occ, row, col, m.size, config);
+        ringBySize.set(m.size, ring);
       }
       const special = m.special === "all_positive_crop_effects" ? effects.isSpecialEligible(m.id, [row, col], m.size) : undefined;
-      const w = effectiveWeight(m, counts, config, special);
+      const w = effectiveWeight(m, ring, config, special);
       if (m === target) targetWeight = w;
       if (w > 0) {
         pool.ids.push(m.id);
@@ -382,7 +392,7 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
   // stage), and it must see the same plot every tick. No RNG is drawn.
   // A mutation with no growth stages is fully grown as it spawns, so it
   // latches here against that refreshed set rather than at the next growth phase.
-  scratch.effects = recomputeEffects(plot);
+  scratch.effects = recomputeEffects(plot, config);
   for (const p of grownOnSpawn) latchIfReady(p, plot, ctx);
 }
 

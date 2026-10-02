@@ -1,5 +1,5 @@
 import React from "react";
-import { aloeRow, jellybeanMultiplier, type MutationDef, type PlantState, type SimConfig, type SlotLabel, type WatchStatus } from "../../simulator";
+import { aloeRow, isDry, jellybeanMultiplier, type MutationDef, type PlantState, type SimConfig, type SlotLabel, type WatchStatus } from "../../simulator";
 import { effectiveEffects, effectsGivenBy, getCellPixelPosition, getEffectName, sortEffects } from "../../utilities";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage, EffectChips } from "../shared";
@@ -32,6 +32,8 @@ function originLabel(p: PlantState): string {
 function statusOf(p: PlantState, m: MutationDef | undefined, config: SimConfig): { text: string; tone: string } {
   if (p.kindId === "devourer_root") return { text: "Broken by the player next time they are online", tone: "text-amber-300" };
   if (p.isDeadPlant) return { text: "Cleared (dead_plant item) next time the player is online", tone: "text-slate-300" };
+  if (isDry(p, config))
+    return { text: "Dried out - halted until watered (no effects, doesn't count for mutations or unique crops)", tone: "text-red-300" };
   if (p.gate.asleep) return { text: "Asleep - the player wakes it when online", tone: "text-amber-300" };
   if (p.gate.ratAlive) return { text: "A rat is eating it - vacuumed when online", tone: "text-amber-300" };
   if (p.kindId === "thunderling" && (p.gate.charge ?? 0) >= config.thunderlingMaxCharge)
@@ -147,7 +149,9 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
   const growing = !p.isDeadPlant && p.origin !== "placed" && p.kindId !== "devourer_root";
   const effective = effectiveEffects(p.held);
   const cancelled = sortEffects(p.held.filter((e) => !effective.has(e)));
-  const gives = p.isDeadPlant || p.kindId === "devourer_root" ? [] : effectsGivenBy(p.kindId);
+  const dry = isDry(p, config);
+  // A dried-out plant gives nothing (it still receives), the same rule as a designer slot.
+  const gives = p.isDeadPlant || p.kindId === "devourer_root" ? [] : effectsGivenBy(p.kindId, dry);
   const needsWater = p.origin === "planted" || !!m?.requiresWatering;
   const cycles = (s: number) => Math.max(0, Math.ceil(s / cycleSeconds - 1e-9));
 
@@ -171,7 +175,11 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
             {Math.round(p.water)} (stage = water / {config.soggybudWaterPerStage}); drawn from wet neighbours, never watered
           </Row>
         ) : (
-          growing && <Row label="Water">{needsWater ? `${Math.round(p.water)} / ${config.maxWater}` : "does not need water"}</Row>
+          growing && (
+            <Row label="Water" tone={dry ? "text-red-300" : undefined}>
+              {needsWater ? `${Math.round(p.water)} / ${config.maxWater}${dry ? ` (halted at ${config.haltWater} or below)` : ""}` : "does not need water"}
+            </Row>
+          )
         )}
         {!p.isDeadPlant && p.kindId !== "devourer_root" && (
           <Row label="Decay" tone={p.decaySecondsRemaining !== null && cycles(p.decaySecondsRemaining) <= 2 ? "text-red-300" : undefined}>
@@ -234,7 +242,7 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
           </div>
           <div>
             <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-0.5">Gives</div>
-            <EffectChips effects={gives} variant="gives" emptyText="nothing" />
+            <EffectChips effects={gives} variant="gives" emptyText={dry ? "nothing while dried out" : "nothing"} />
           </div>
         </>
       )}
