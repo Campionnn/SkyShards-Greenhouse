@@ -2,10 +2,6 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { loadGreenhouseData, getCropData, getMutationData, getEffectData } from "../services/greenhouseDataService";
 import type { CropDataJSON, MutationDataJSON, EffectDefinition, GreenhouseDataJSON } from "../services/greenhouseDataService";
 
-// =============================================================================
-// Types
-// =============================================================================
-
 interface InfoModalState {
   isOpen: boolean;
   itemId: string | null;
@@ -21,35 +17,25 @@ interface MutationInfoData extends MutationDataJSON {
 }
 
 interface InfoModalContextType {
-  // State
   isOpen: boolean;
   itemId: string | null;
   itemType: "crop" | "mutation" | null;
   isLoading: boolean;
   error: string | null;
   
-  // Data (populated when modal is open)
+  // Set while the modal is open.
   cropData: CropInfoData | null;
   mutationData: MutationInfoData | null;
   effectsMap: Record<string, EffectDefinition>;
   
-  // Full data for requirement lookups
+  // Full data, for requirement lookups.
   allData: GreenhouseDataJSON | null;
   
-  // Actions
   openInfo: (itemId: string) => void;
   closeInfo: () => void;
 }
 
-// =============================================================================
-// Context
-// =============================================================================
-
 const InfoModalContext = createContext<InfoModalContextType | null>(null);
-
-// =============================================================================
-// Provider
-// =============================================================================
 
 export const InfoModalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<InfoModalState>({
@@ -65,7 +51,6 @@ export const InfoModalProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [effectsMap, setEffectsMap] = useState<Record<string, EffectDefinition>>({});
   const [allData, setAllData] = useState<GreenhouseDataJSON | null>(null);
 
-  // Load data on mount
   useEffect(() => {
     loadGreenhouseData()
       .then((data) => {
@@ -83,13 +68,11 @@ export const InfoModalProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setCropData(null);
     setMutationData(null);
     
-    // Ensure data is loaded
     loadGreenhouseData()
       .then((data) => {
         setAllData(data);
         setEffectsMap(data.effects);
         
-        // Try to find the item
         const crop = getCropData(itemId);
         const mutation = getMutationData(itemId);
         
@@ -161,10 +144,6 @@ export const InfoModalProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 };
 
-// =============================================================================
-// Hook
-// =============================================================================
-
 export const useInfoModal = (): InfoModalContextType => {
   const context = useContext(InfoModalContext);
   if (!context) {
@@ -172,10 +151,6 @@ export const useInfoModal = (): InfoModalContextType => {
   }
   return context;
 };
-
-// =============================================================================
-// Helper to get effect description
-// =============================================================================
 
 export const getEffectDescription = (effectId: string, effectsMap: Record<string, EffectDefinition>): string => {
   const effect = effectsMap[effectId] || getEffectData(effectId);

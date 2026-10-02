@@ -11,10 +11,9 @@ interface PanelProps {
 }
 
 /**
- * The one card style used by every side panel on the calculator and
- * designer pages: dark translucent surface, thin border, 16px padding, a
- * header row with an emerald icon, a title and optional right-aligned
- * actions, and an optional muted description line.
+ * Card used by every Calculator and Designer side panel: translucent dark
+ * surface, thin border, 16px padding, header with emerald icon, title and
+ * optional actions, and an optional muted description.
  */
 export const Panel: React.FC<PanelProps> = ({
   title,
@@ -82,7 +81,7 @@ export function SegmentedControl<T extends string>({
   options: SegmentOption<T>[];
   className?: string;
   size?: "xs" | "sm";
-  /** Keep each label on one line (the control then never shrinks below its labels). */
+  /** Keep labels on one line, so the control never shrinks below them. */
   nowrap?: boolean;
 }) {
   const pad = size === "xs" ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm";

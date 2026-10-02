@@ -3,10 +3,8 @@ import type { GameData } from "../data/types";
 import type { Occupancy } from "../sim/plants";
 import type { PlantState } from "../sim/state";
 
-// Mutations with non-default growth rules (SPECIAL_GATES.md), data-driven.
-// A gate blocks growth; the player clears it during an active session
-// (waking, vacuuming, feeding, changing the time). Destruction effects
-// (Devourer, Chorus Fruit, Blastberry) live in sim/destruction.ts.
+// Growth gates (SPECIAL_GATES.md): block growth until the player clears them
+// in an active session. Destruction effects are in sim/destruction.ts.
 
 export const SNOOZLING_SLEEP_STAGES = [5, 10, 15];
 export const CHEESEBITE_RAT_STAGES = [4, 7];
@@ -41,13 +39,11 @@ export const GATES: Record<string, Gate> = {
     },
   },
   noctilume: {
-    // No natural day/night cycle is modelled: the player sets the craved time
-    // whenever they are online, so it advances on online ticks only.
+    // No day/night cycle is modelled: advances only on online ticks, when the player sets the time.
     blocks: (_p, env) => (env.active && env.noctilumeTimeChange ? null : "waiting for the player to set the time"),
   },
   thunderling: {
-    // Charge builds +perStage per stage grown; at the max it stops growing (a growth stop only)
-    // until the player discharges it. A placed Thunderling never grows, so it builds none.
+    // At max charge it stops growing until discharged. Placed Thunderlings never grow, so build none.
     blocks: (p, env) => ((p.gate.charge ?? 0) >= env.config.thunderlingMaxCharge ? "overcharged" : null),
     onAdvanced: (p, env) => {
       p.gate.charge = Math.min(env.config.thunderlingMaxCharge, (p.gate.charge ?? 0) + env.config.thunderlingChargePerStage);
@@ -61,7 +57,7 @@ export const GATES: Record<string, Gate> = {
   },
 };
 
-/** Kinds whose rules are documented but deliberately not modelled, with the reason. */
+/** Documented rules that are not modelled, per kind. */
 export const UNMODELLED_RULES: Record<string, string> = {
   thunderling: "Discharging into Thunder/Storm/Hurricane in a Bottle (bottle charge) is not modelled.",
   fleshtrap: "Feeding bonus drops (+20/+40%, cap +100%) are not modelled.",

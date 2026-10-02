@@ -8,11 +8,10 @@ import type { CropDataJSON, MutationDataJSON } from "../../services/greenhouseDa
 
 interface MutationRequirementGridProps {
   mutationId: string;
-  // Map of crop/mutation IDs to their data for getting ground types
+  // Crop/mutation data by id, for ground types.
   cropDataMap?: Record<string, CropDataJSON | MutationDataJSON>;
 }
 
-// Generate all 10x10 cells
 function generateFullGrid(): [number, number][] {
   const cells: [number, number][] = [];
   for (let row = 0; row < 10; row++) {
@@ -34,7 +33,6 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
-  // Measure container width
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
@@ -51,9 +49,8 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Fetch mutation layout from API
+  // Solve an example layout with one of the mutation on a full grid (15 s limit).
   useEffect(() => {
-    // Cancel previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -98,7 +95,6 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
     return "farmland";
   };
 
-  // Gap between cells
   const gap = 2;
 
   if (loading) {
@@ -123,10 +119,8 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
     );
   }
 
-  // Find the target mutation
   const targetMutation = result.mutations.find(m => m.mutation === mutationId);
   
-  // Build a map of positions to placements for quick lookup
   const placementMap = new Map<string, CropPlacement>();
   for (const placement of result.placements) {
     const key = `${placement.position[0]},${placement.position[1]}`;
@@ -139,8 +133,7 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
     mutationMap.set(key, mutation);
   }
 
-  // Calculate minimum bounding box from all placements and mutations
-  // Account for sizes of both crops and mutations
+  // Bounding box of every placement and mutation footprint.
   let minRow = 10, maxRow = -1, minCol = 10, maxCol = -1;
   
   for (const placement of result.placements) {
@@ -161,7 +154,6 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
     maxCol = Math.max(maxCol, col + size - 1);
   }
   
-  // Fallback if no results
   if (minRow > maxRow) {
     minRow = 0; maxRow = 0; minCol = 0; maxCol = 0;
   }
@@ -169,8 +161,8 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
   let gridRows = maxRow - minRow + 1;
   let gridCols = maxCol - minCol + 1;
 
-  // Ensure minimum 5x5 grid
-  // Only center the target mutation if the original bounding box is 3x3 or smaller
+  // Pad to at least 5x5. Boxes up to 3x3 are centred on the target mutation,
+  // larger ones on the box itself.
   const MIN_GRID_SIZE = 5;
   const originalGridRows = gridRows;
   const originalGridCols = gridCols;
@@ -179,23 +171,18 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
     const targetRows = Math.max(gridRows, MIN_GRID_SIZE);
     const targetCols = Math.max(gridCols, MIN_GRID_SIZE);
     
-    // Only center the mutation if original bounding box is 3x3 or smaller
     if (targetMutation && originalGridRows <= 3 && originalGridCols <= 3) {
-      // Calculate the center of the target mutation
       const [mutRow, mutCol] = targetMutation.position;
       const mutSize = targetMutation.size || 1;
       const mutCenterRow = mutRow + (mutSize - 1) / 2;
       const mutCenterCol = mutCol + (mutSize - 1) / 2;
       
-      // Calculate the desired grid center
       const gridCenterRow = (targetRows - 1) / 2;
       const gridCenterCol = (targetCols - 1) / 2;
       
-      // Calculate how much we need to shift to center the mutation
       const shiftRow = gridCenterRow - mutCenterRow;
       const shiftCol = gridCenterCol - mutCenterCol;
       
-      // Apply the shift to create a centered grid
       minRow = Math.floor(-shiftRow);
       maxRow = minRow + targetRows - 1;
       minCol = Math.floor(-shiftCol);
@@ -204,7 +191,6 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
       gridRows = targetRows;
       gridCols = targetCols;
     } else {
-      // Fallback: center the bounding box if bounding box is larger than 3x3
       const paddingTop = Math.floor((targetRows - gridRows) / 2);
       const paddingLeft = Math.floor((targetCols - gridCols) / 2);
       
@@ -218,17 +204,14 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
     }
   }
 
-  // Build set of cells occupied by multi-cell items (crops and mutations)
-  // so we can skip rendering cells that are covered by a larger item
+  // Non-anchor cells of multi-cell items; the item renders from its top-left cell.
   const occupiedCells = new Set<string>();
   
-  // Mark cells occupied by mutations
   for (const mutation of result.mutations) {
     const [mRow, mCol] = mutation.position;
     const size = mutation.size || 1;
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
-        // Don't mark the top-left cell as occupied (that's where we render from)
         if (r !== 0 || c !== 0) {
           occupiedCells.add(`${mRow + r},${mCol + c}`);
         }
@@ -236,13 +219,11 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
     }
   }
   
-  // Mark cells occupied by multi-cell crops
   for (const placement of result.placements) {
     const [pRow, pCol] = placement.position;
     const size = placement.size || 1;
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size; c++) {
-        // Don't mark the top-left cell as occupied (that's where we render from)
         if (r !== 0 || c !== 0) {
           occupiedCells.add(`${pRow + r},${pCol + c}`);
         }
@@ -250,7 +231,6 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
     }
   }
 
-  // Calculate cell size based on container width and bounding box dimensions
   const boundedCellSize = containerWidth > 0 
     ? Math.floor((containerWidth - (gridCols - 1) * gap) / gridCols) 
     : 28;
@@ -266,17 +246,14 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
           height: boundedGridHeight,
         }}
       >
-        {/* Render grid cells within bounding box */}
         {Array.from({ length: gridRows }).map((_, localRowIdx) =>
           Array.from({ length: gridCols }).map((_, localColIdx) => {
-            // Convert local coords back to original grid coords
             const rowIdx = localRowIdx + minRow;
             const colIdx = localColIdx + minCol;
             const key = `${rowIdx},${colIdx}`;
             const placement = placementMap.get(key);
             const mutation = mutationMap.get(key);
 
-            // Skip cells that are occupied by another item (part of multi-cell crop/mutation)
             if (occupiedCells.has(key)) {
               return null;
             }
@@ -284,7 +261,6 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
             const cellTop = localRowIdx * (boundedCellSize + gap);
             const cellLeft = localColIdx * (boundedCellSize + gap);
 
-            // Render mutation
             if (mutation) {
               const mutationWidth = mutation.size * boundedCellSize + (mutation.size - 1) * gap;
               const mutationHeight = mutation.size * boundedCellSize + (mutation.size - 1) * gap;
@@ -326,7 +302,6 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
               );
             }
 
-            // Render crop placement
             if (placement) {
               const cropSize = placement.size || 1;
               const cropWidth = cropSize * boundedCellSize + (cropSize - 1) * gap;
@@ -367,7 +342,7 @@ export const MutationRequirementGrid: React.FC<MutationRequirementGridProps> = (
               );
             }
 
-            // Empty cell (shouldn't appear in bounding box, but just in case)
+            // Empty cell.
             return (
               <div
                 key={key}

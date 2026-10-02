@@ -1,10 +1,7 @@
 import { gameDataSchema } from "./schema";
 import type { CropDef, GameData, KindDef, MutationDef, Size } from "./types";
 
-/**
- * Every `special` value in data.json and what handles it. An unknown special
- * fails the load: a silently ignored rule produces confidently wrong numbers.
- */
+/** Every handled `special` value. An unknown special fails the load rather than being ignored. */
 export const KNOWN_SPECIALS: Record<string, string> = {
   requires_zero_adjacent: "spawn/multiplicity (Lonelily: empty 8-way ring)",
   all_positive_crop_effects: "spawn/multiplicity (Godseed: effect superset)",
@@ -89,7 +86,7 @@ export function loadGameData(json: unknown): GameData {
     effects[id] = { id, name: e.name, description: e.description };
   }
 
-  // Cross-references: every id a record points at must exist.
+  // Every referenced id must exist.
   const allKinds: KindDef[] = [...Object.values(crops), ...Object.values(mutations)];
   for (const k of allKinds) {
     for (const e of [...k.positiveBuffs, ...k.negativeBuffs]) {
@@ -118,7 +115,7 @@ export function loadGameData(json: unknown): GameData {
       .map((m) => [m.id, [...m.positiveBuffs]])
   );
 
-  // Harvestable crops, with the merged pairs collapsed into one group each.
+  // Harvestable crops, merged pairs collapsed into one group.
   const merged = new Set(MERGED_UNIQUE_GROUPS.flat());
   const uniqueCropGroups: string[][] = [
     ...Object.values(crops)

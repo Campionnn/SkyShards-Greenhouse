@@ -166,7 +166,7 @@ describe("flow export / import", () => {
       ],
     };
     const flow = importFlows(withPlots(LAYOUT_B_CODE), JSON.stringify(old)).plots[0].flow;
-    expect(flow.steps.map((s) => s.id)).toEqual(["stage-1", "stage-2"]); // ids are user data and stay as they are
+    expect(flow.steps.map((s) => s.id)).toEqual(["stage-1", "stage-2"]); // step ids are not renamed
     expect(flow).not.toHaveProperty("stages");
     const renamed = { kind: "stepVisits", count: 3, sinceStep: "stage-1" };
     expect(flow.steps[0].exit).toEqual([{ kind: "group", match: "any", of: [renamed] }]);
@@ -184,7 +184,7 @@ describe("flow export / import", () => {
     expect(migrateScenario(current)).toEqual(current); // already current: unchanged
   });
 
-  it("renames the old deathWater config to haltWater (0.27.2: plants halt instead of dying)", () => {
+  it("renames the deathWater config to haltWater", () => {
     const saved = withPlots(LAYOUT_A_CODE);
     const old: Record<string, unknown> = { ...saved.settings.config };
     delete old.haltWater;
@@ -202,7 +202,7 @@ describe("flow export / import", () => {
     expect(kept.settings.config).not.toHaveProperty("deathWater");
   });
 
-  describe("0.27.2 decay rework: baseCropDecayHours and nullStageKindsDecay", () => {
+  describe("migrates baseCropDecayHours and nullStageKindsDecay", () => {
     const savedWith = (extra: Record<string, unknown>) => {
       const saved = withPlots(LAYOUT_A_CODE);
       (saved.settings.config as unknown as Record<string, unknown>) = { ...saved.settings.config, ...extra };
@@ -256,9 +256,8 @@ describe("flow export / import", () => {
     });
   });
 
-  it("keeps a saved water loss as it is (no migration): the old 2-3 defaults stay until the user restores defaults", () => {
-    // Saves store the full config, so a scenario saved before 0.27.2's 18-22 has 2/3 frozen in. We can't tell
-    // that from a deliberate choice, so it is left alone; the Advanced panel shows it as changed from the default.
+  it("keeps a saved water loss as it is (no migration): a saved 2-3 stays even though the default is 18-22", () => {
+    // Saves store the full config, so a saved value can't be told apart from a deliberate choice.
     const saved = withPlots(LAYOUT_A_CODE);
     saved.settings.config = { ...saved.settings.config, waterLossMin: 2, waterLossMax: 3 };
     const up = migrateScenario(saved);

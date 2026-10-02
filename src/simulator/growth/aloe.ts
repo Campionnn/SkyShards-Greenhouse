@@ -1,11 +1,8 @@
 /**
- * All-in Aloe (hypixelskyblock.minecraft.wiki/w/All-in_Aloe/Table).
- *
- * It can be harvested at ANY growth stage. The stage sets the drop multiplier
- * on All-in Aloe Fragments ("for every 9 All-in Aloe Fragments, the mutation
- * grants 1 All-in Aloe instead"); the crop bundle is fixed. Upon reaching each
- * new stage it rolls that stage's reset chance and, on a hit, goes back to
- * stage 1. Stage 14 maximises expected drops (9.37); it does not decay.
+ * All-in Aloe (wiki All-in_Aloe/Table). Harvestable at any stage; the stage
+ * sets the fragment multiplier (9 fragments = 1 All-in Aloe), the crop bundle
+ * is fixed. Each new stage rolls its reset chance (back to stage 1). Stage 14
+ * maximises expected drops (9.37). Never decays.
  */
 
 export const ALOE_FRAGMENT = "all_in_aloe_fragment";
@@ -49,7 +46,7 @@ export function aloeRow(stage: number) {
   return ALOE_TABLE[Math.max(0, Math.min(ALOE_TABLE.length - 1, Math.floor(stage)))];
 }
 
-/** Items from harvesting an All-in Aloe at `stage`: fragments, 9 of which become one All-in Aloe. */
+/** Harvest at `stage`, with every 9 fragments converted to one All-in Aloe. */
 export function aloeHarvestItems(stage: number): { aloes: number; fragments: number } {
   const total = aloeRow(stage).multiplier;
   return { aloes: Math.floor(total / FRAGMENTS_PER_ALOE), fragments: total % FRAGMENTS_PER_ALOE };

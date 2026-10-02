@@ -1,12 +1,11 @@
 import { z } from "zod";
 
-// The shape of data.json exactly as the backend writes it (snake_case).
-// load.ts is the only place that maps it to the camelCase domain types.
+// Raw data.json shape (snake_case). Only load.ts maps it to the camelCase domain types.
 
 const size = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 const effectList = z.array(z.string());
 const drops = z.record(z.number().nonnegative());
-/** How many spawns a plant must help before it may decay: an int, "infinite" (never), or null (N/A: timer-only). Required. */
+/** Spawns a plant must help before it may decay: int, "infinite" (never), or null (timer only). Required. */
 const minimumMutations = z.union([z.number().int().positive(), z.literal("infinite"), z.null()]);
 
 export const cropSchema = z.object({

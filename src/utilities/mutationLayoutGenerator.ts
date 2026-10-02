@@ -1,8 +1,5 @@
-// =============================================================================
-// Mutation Layout Generator
-// =============================================================================
-// Generates example layouts for mutation requirements using 8-way adjacency.
-// Creates a minimal grid size that fits all requirements around the mutation.
+// Example layouts for a mutation's requirements: the mutation centred in the
+// smallest grid that fits its required crops on 8-way adjacent cells.
 
 import type { MutationRequirementJSON } from "../services/greenhouseDataService";
 
@@ -17,7 +14,6 @@ export interface MutationLayout {
   centerPosition: [number, number];
 }
 
-// 8-way adjacency directions (N, NE, E, SE, S, SW, W, NW)
 const DIRECTIONS_8WAY: [number, number][] = [
   [-1, 0],  // N
   [-1, 1],  // NE
@@ -29,34 +25,20 @@ const DIRECTIONS_8WAY: [number, number][] = [
   [-1, -1], // NW
 ];
 
-/**
- * Calculate the minimum grid size needed to fit a mutation and its requirements.
- * Takes into account the mutation's size and total requirement count.
- */
+/** Mutation plus one ring of cells, or two rings if the first cannot hold every requirement. */
 function calculateGridSize(mutationSize: number, totalRequirements: number): number {
-  // For 1x1 mutations: can have up to 8 adjacent cells
-  // For 2x2 mutations: can have up to 12 adjacent cells (perimeter)
-  // For 3x3 mutations: can have up to 16 adjacent cells (perimeter)
-  
-  // Base grid needs to fit the mutation plus at least one ring of cells
   const baseSize = mutationSize + 2;
   
-  // Calculate how many cells are available in the first ring
   const firstRingCells = (mutationSize + 2) * 4 - 4 + (mutationSize > 1 ? (mutationSize - 1) * 4 : 0);
   
   if (totalRequirements <= firstRingCells) {
     return baseSize;
   }
   
-  // Need a second ring for overflow
   return baseSize + 2;
 }
 
-/**
- * Get all adjacent positions around a multi-cell mutation.
- * For a 1x1 at [1,1], returns the 8 surrounding cells.
- * For a 2x2 at [1,1], returns the 12 perimeter cells.
- */
+/** Cells 8-way adjacent to the mutation's footprint, in row-major order (8 for 1x1, 12 for 2x2). */
 function getAdjacentPositions(
   centerRow: number,
   centerCol: number,
@@ -65,7 +47,6 @@ function getAdjacentPositions(
 ): [number, number][] {
   const positions: [number, number][] = [];
   
-  // For each cell the mutation occupies, check all 8 directions
   const occupiedCells = new Set<string>();
   for (let dr = 0; dr < mutationSize; dr++) {
     for (let dc = 0; dc < mutationSize; dc++) {
@@ -85,17 +66,14 @@ function getAdjacentPositions(
         const newCol = cellCol + dCol;
         const key = `${newRow},${newCol}`;
         
-        // Skip if out of bounds
         if (newRow < 0 || newRow >= gridSize || newCol < 0 || newCol >= gridSize) {
           continue;
         }
         
-        // Skip if it's part of the mutation itself
         if (occupiedCells.has(key)) {
           continue;
         }
         
-        // Skip if already added
         if (adjacentSet.has(key)) {
           continue;
         }
@@ -106,7 +84,6 @@ function getAdjacentPositions(
     }
   }
   
-  // Sort positions in a consistent order (top-left to bottom-right, row by row)
   positions.sort((a, b) => {
     if (a[0] !== b[0]) return a[0] - b[0];
     return a[1] - b[1];
@@ -115,19 +92,15 @@ function getAdjacentPositions(
   return positions;
 }
 
-/**
- * Generate a layout for mutation requirements.
- * Places the mutation in the center and distributes requirements around it.
- */
+/** Centres the mutation and fills adjacent cells with its required crops in order. */
 export function generateMutationLayout(
   mutationId: string,
   mutationSize: number,
   requirements: MutationRequirementJSON[]
 ): MutationLayout {
-  // Calculate total requirements
   const totalRequirements = requirements.reduce((sum, req) => sum + req.count, 0);
   
-  // Handle special case: no requirements (like Lonelily)
+  // No requirements (e.g. Lonelily): just the mutation with a one-cell border.
   if (totalRequirements === 0) {
     const gridSize = mutationSize + 2;
     const centerRow = 1;
@@ -137,7 +110,6 @@ export function generateMutationLayout(
       Array.from({ length: gridSize }, () => null)
     );
     
-    // Place the mutation
     for (let dr = 0; dr < mutationSize; dr++) {
       for (let dc = 0; dc < mutationSize; dc++) {
         grid[centerRow + dr][centerCol + dc] = {
@@ -150,19 +122,15 @@ export function generateMutationLayout(
     return { grid, gridSize, centerPosition: [centerRow, centerCol] };
   }
   
-  // Calculate grid size
   const gridSize = calculateGridSize(mutationSize, totalRequirements);
   
-  // Center position (accounting for mutation size)
   const centerRow = Math.floor((gridSize - mutationSize) / 2);
   const centerCol = Math.floor((gridSize - mutationSize) / 2);
   
-  // Initialize grid
   const grid: (LayoutCell | null)[][] = Array.from({ length: gridSize }, () =>
     Array.from({ length: gridSize }, () => null)
   );
   
-  // Place the mutation in center
   for (let dr = 0; dr < mutationSize; dr++) {
     for (let dc = 0; dc < mutationSize; dc++) {
       grid[centerRow + dr][centerCol + dc] = {
@@ -172,10 +140,8 @@ export function generateMutationLayout(
     }
   }
   
-  // Get adjacent positions
   const adjacentPositions = getAdjacentPositions(centerRow, centerCol, mutationSize, gridSize);
   
-  // Create a flat list of crop IDs to place
   const cropsToPlace: string[] = [];
   for (const req of requirements) {
     for (let i = 0; i < req.count; i++) {
@@ -183,7 +149,6 @@ export function generateMutationLayout(
     }
   }
   
-  // Place crops in adjacent positions
   for (let i = 0; i < cropsToPlace.length && i < adjacentPositions.length; i++) {
     const [row, col] = adjacentPositions[i];
     grid[row][col] = {
@@ -195,11 +160,7 @@ export function generateMutationLayout(
   return { grid, gridSize, centerPosition: [centerRow, centerCol] };
 }
 
-/**
- * Get the ground type for a crop/mutation by its ID.
- * This is a helper for rendering the mini grid with correct textures.
- */
+/** Stub: always returns fallbackGround. */
 export function getGroundTypeForCrop(_cropId: string, fallbackGround: string): string {
-  // This will be populated by the component using the data service
   return fallbackGround;
 }

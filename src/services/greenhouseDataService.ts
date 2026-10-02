@@ -1,12 +1,5 @@
-// =============================================================================
-// Greenhouse Data Service
-// =============================================================================
-// Loads and provides access to the greenhouse data.json file which contains
-// all crop, mutation, and effect definitions with full descriptions.
-
-// =============================================================================
-// Types for the data.json structure
-// =============================================================================
+// Loads and caches /greenhouse/data.json (crop, mutation and effect definitions).
+// Synchronous getters return undefined/empty until loadGreenhouseData resolves.
 
 export interface EffectDefinition {
   name: string;
@@ -57,33 +50,19 @@ export interface GreenhouseDataJSON {
   effects: Record<string, EffectDefinition>;
 }
 
-// =============================================================================
-// Cached Data
-// =============================================================================
-
 let cachedData: GreenhouseDataJSON | null = null;
 let loadPromise: Promise<GreenhouseDataJSON> | null = null;
 
-// =============================================================================
-// Data Loading Functions
-// =============================================================================
-
-/**
- * Load the greenhouse data from the JSON file.
- * Results are cached after the first load.
- */
+/** Fetches data.json once; concurrent calls share the request and a failure allows a retry. */
 export async function loadGreenhouseData(): Promise<GreenhouseDataJSON> {
-  // Return cached data if available
   if (cachedData) {
     return cachedData;
   }
 
-  // Return existing promise if already loading
   if (loadPromise) {
     return loadPromise;
   }
 
-  // Start loading
   loadPromise = fetch("/greenhouse/data.json")
     .then((response) => {
       if (!response.ok) {
@@ -96,17 +75,13 @@ export async function loadGreenhouseData(): Promise<GreenhouseDataJSON> {
       return data;
     })
     .catch((error) => {
-      loadPromise = null; // Reset promise on error to allow retry
+      loadPromise = null;
       throw error;
     });
 
   return loadPromise;
 }
 
-/**
- * Get crop data by ID from the cached data.
- * Returns undefined if data is not loaded or crop doesn't exist.
- */
 export function getCropData(cropId: string): (CropDataJSON & { id: string }) | undefined {
   if (!cachedData) return undefined;
   
@@ -116,10 +91,6 @@ export function getCropData(cropId: string): (CropDataJSON & { id: string }) | u
   return { ...crop, id: cropId };
 }
 
-/**
- * Get mutation data by ID from the cached data.
- * Returns undefined if data is not loaded or mutation doesn't exist.
- */
 export function getMutationData(mutationId: string): (MutationDataJSON & { id: string }) | undefined {
   if (!cachedData) return undefined;
   
@@ -129,18 +100,11 @@ export function getMutationData(mutationId: string): (MutationDataJSON & { id: s
   return { ...mutation, id: mutationId };
 }
 
-/**
- * Get effect definition by ID from the cached data.
- * Returns undefined if data is not loaded or effect doesn't exist.
- */
 export function getEffectData(effectId: string): EffectDefinition | undefined {
   if (!cachedData) return undefined;
   return cachedData.effects[effectId];
 }
 
-/**
- * Get all crops from the cached data.
- */
 export function getAllCrops(): (CropDataJSON & { id: string })[] {
   if (!cachedData) return [];
   
@@ -150,9 +114,6 @@ export function getAllCrops(): (CropDataJSON & { id: string })[] {
   }));
 }
 
-/**
- * Get all mutations from the cached data.
- */
 export function getAllMutations(): (MutationDataJSON & { id: string })[] {
   if (!cachedData) return [];
   
@@ -162,9 +123,6 @@ export function getAllMutations(): (MutationDataJSON & { id: string })[] {
   }));
 }
 
-/**
- * Get all effects from the cached data.
- */
 export function getAllEffects(): (EffectDefinition & { id: string })[] {
   if (!cachedData) return [];
   
@@ -174,24 +132,15 @@ export function getAllEffects(): (EffectDefinition & { id: string })[] {
   }));
 }
 
-/**
- * Check if data is loaded.
- */
 export function isDataLoaded(): boolean {
   return cachedData !== null;
 }
 
-/**
- * Get the raw cached data (for advanced use cases).
- */
 export function getRawData(): GreenhouseDataJSON | null {
   return cachedData;
 }
 
-/**
- * Look up an item by ID - checks both crops and mutations.
- * Returns the item with a type indicator.
- */
+/** Looks the id up as a crop, then as a mutation. */
 export function getItemData(itemId: string): 
   | { type: "crop"; data: CropDataJSON & { id: string } }
   | { type: "mutation"; data: MutationDataJSON & { id: string } }

@@ -18,8 +18,7 @@ import {
 import { decodeDesign, encodeDesign, generatePlacementId, transformAnchor, type LayoutTransform } from "../../utilities";
 import { GROUND_TYPES, type GroundTile, type GroundType } from "../../utilities/designEncoding";
 
-// Immutable edits to a scenario. The simulator never changes a scenario on
-// its own - every change here comes from the user.
+// Immutable scenario edits, all user-initiated; the simulator never changes a scenario itself.
 
 const data = defaultGameData();
 
@@ -58,10 +57,8 @@ export function addPlot(sc: Scenario, layout: StepLayout = { code: EMPTY_LAYOUT_
 }
 
 /**
- * Add a copy of a plot: its whole flow (every step, layout, exit,
- * route, loop, start step, checked targets) and its policy overrides, under
- * the next free plot id. Step ids and routes are per plot, so they carry
- * over as they are. Returns the scenario unchanged when every plot is in use.
+ * Copies a plot (whole flow and policy overrides) under the next free plot id. Step ids and
+ * routes are per plot, so they carry over unchanged. No-op when every plot is in use.
  */
 export function duplicatePlot(sc: Scenario, plotId: number): Scenario {
   const source = sc.plots.find((p) => p.id === plotId);
@@ -71,7 +68,7 @@ export function duplicatePlot(sc: Scenario, plotId: number): Scenario {
   return { ...sc, plots: [...sc.plots, copy].sort((a, b) => a.id - b.id) };
 }
 
-/** The id the next added plot gets, or null when every plot is in use. */
+/** Id for the next added plot, or null when every plot is in use. */
 export function nextPlotId(sc: Scenario): number | null {
   if (sc.plots.length >= MAX_PLOTS) return null;
   return [1, 2, 3].find((n) => !sc.plots.some((p) => p.id === n)) ?? null;
@@ -95,16 +92,12 @@ export function isEmptyLayout(layout: StepLayout): boolean {
   }
 }
 
-/** Nothing worth keeping: every step of every plot is an empty layout (e.g. the starter plot). */
+/** True when every step of every plot is an empty layout (e.g. the starter plot). */
 export function isBlankScenario(sc: Scenario): boolean {
   return sc.plots.every((p) => p.flow.steps.every((s) => isEmptyLayout(s.layout)));
 }
 
-/**
- * Put a layout into the scenario. A blank scenario is replaced outright, so
- * the layout always lands on Plot 1 there. Returns where it went, so the
- * caller can say so (and open the flow editor on a new step).
- */
+/** Puts a layout into the scenario; a blank scenario is replaced, landing it on Plot 1. Returns where it went. */
 export function placeLayout(
   sc: Scenario,
   dest: LayoutDestination,
@@ -122,7 +115,7 @@ export function placeLayout(
   }
   if (!sc.plots.some((p) => p.id === dest.plotId)) return null;
   if (dest.kind === "replacePlot") {
-    // The whole flow goes; the plot's own policy overrides stay.
+    // Replaces the flow; the plot's policy overrides stay.
     const next = updatePlot(sc, dest.plotId, (p) => ({
       ...p,
       flow: { steps: [{ id: "step-1", label, layout, exit: [] }], loop: false, startIndex: 0 },
@@ -132,8 +125,7 @@ export function placeLayout(
   let stepIndex = 0;
   const next = updatePlot(sc, dest.plotId, (p) => {
     const steps = p.flow.steps;
-    // The old last step never had to end; give it a default exit so the plot
-    // actually reaches the new step (the flow editor opens on it).
+    // A final step without an exit would never reach the new step, so give it a default exit.
     const last = steps[steps.length - 1];
     if (last && last.exit.length === 0 && !p.flow.loop) steps[steps.length - 1] = { ...last, exit: [defaultTrigger("cycles")] };
     const step: FlowStep = { id: newStepId(steps), label, layout, exit: [] };
@@ -150,7 +142,7 @@ export interface DestinationOption {
   dest: LayoutDestination;
 }
 
-/** The choices offered for an incoming or picked layout, most likely first. */
+/** Destinations for an incoming or picked layout, most likely first. */
 export function layoutDestinations(sc: Scenario): DestinationOption[] {
   if (isBlankScenario(sc)) return [{ label: "Load as Plot 1", hint: "The scenario is empty", dest: { kind: "newPlot" } }];
   const out: DestinationOption[] = [];
@@ -172,11 +164,8 @@ export function layoutDestinations(sc: Scenario): DestinationOption[] {
 export const FLOWS_FILE_KIND = "skyshards-greenhouse-flows";
 
 /**
- * The shareable part of a scenario: each plot's flow (steps, layouts,
- * exit triggers, loop, start step, full clear, checked targets) and its plot
- * and step policy overrides. Nothing about the player: stats, online
- * schedule, seed, Actions defaults, advanced config and starting inventory
- * stay out.
+ * The shareable part of a scenario: each plot's flow and its plot/step policy overrides.
+ * Player stats, schedule, seed, Actions defaults, advanced config and starting inventory are excluded.
  */
 export interface FlowsFile {
   kind: typeof FLOWS_FILE_KIND;
@@ -189,9 +178,8 @@ export function exportFlows(sc: Scenario): FlowsFile {
 }
 
 /**
- * Read a flows file (or an older full scenario export, of which only the
- * plots are used) into `sc`, replacing its plots and keeping everything else.
- * Throws with a readable message when the file is not usable.
+ * Reads a flows file (or a full scenario export, using only its plots) into `sc`, replacing
+ * its plots. Throws a readable message when the file is unusable.
  */
 export function importFlows(sc: Scenario, text: string): Scenario {
   let parsed: unknown;
@@ -272,9 +260,8 @@ function dropStepConditions(list: Condition[], stepId: string): Condition[] {
 }
 
 /**
- * Delete a step and every reference to it: routes to it go, a `next` to it
- * falls back to the following step, and "step visits since it" counts
- * since the start of the run instead.
+ * Deletes a step and its references: routes to it are removed, a `next` to it falls back to
+ * the following step, and "step visits since it" counts from the start of the run.
  */
 export function deleteStep(p: ScenarioPlot, index: number): ScenarioPlot {
   const gone = p.flow.steps[index];
@@ -372,9 +359,8 @@ export function withWatch(step: FlowStep, watch: string[] | undefined): FlowStep
 }
 
 /**
- * Move a step's watched target keys through a whole-layout transform, so a
- * nudged / rotated / mirrored layout keeps checking the same targets. Uses the
- * step's layout from BEFORE the transform to know each target's size.
+ * Maps watched target keys through a layout transform so a moved/rotated/mirrored layout keeps
+ * checking the same targets. Reads target sizes from the step's pre-transform layout.
  */
 export function transformWatch(step: FlowStep, t: LayoutTransform): FlowStep {
   if (!step.watch) return step;
@@ -393,7 +379,7 @@ export function transformWatch(step: FlowStep, t: LayoutTransform): FlowStep {
   }
 }
 
-/** Drop watched keys that are no longer targets after a layout edit. */
+/** Drops watched keys that aren't targets in the step's layout. */
 export function pruneWatch(step: FlowStep): FlowStep {
   if (!step.watch) return step;
   try {

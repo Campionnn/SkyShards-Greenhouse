@@ -1,20 +1,17 @@
 import type { GameData, ItemId } from "../data/types";
 
 /**
- * NPC-only pricing. Mutation items are Bazaar-only and not NPC-sellable, so
- * they are worth 0 here; the UI labels them "NPC-only". Keep this behind the
- * PriceSource interface so a Bazaar source can slot in without touching the sim.
+ * NPC-only pricing; mutation items are not NPC-sellable, so they are worth 0.
+ * Behind an interface so a Bazaar source can replace it.
  */
 export interface PriceSource {
   price(item: ItemId): number;
 }
 
 /**
- * NPC sell prices of non-crop items, from the Hypixel SkyBlock Wiki (`sell`
- * field of each item's infobox). Base-crop prices come from data.json
- * (`sell_price`), which matches the wiki. Items the wiki lists as not
- * NPC-sellable (Iridium) are 0. The Evergreen and Synthesis Chips default to
- * 50,000 here. `rareDropValues` in the config overrides any of these.
+ * Wiki NPC sell prices of non-crop items (base crops use data.json
+ * `sell_price`). Non-sellable items (Iridium) are 0; Evergreen and Synthesis
+ * Chips default to 50,000. Overridden by config `rareDropValues`.
  */
 export const WIKI_NPC_PRICES: Record<string, number> = {
   seeds: 3,

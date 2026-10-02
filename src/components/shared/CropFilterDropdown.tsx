@@ -19,22 +19,15 @@ export interface CropFilterDropdownProps {
   className?: string;
 }
 
-/**
- * Default color function for filter options
- * Uses centralized rarity color utilities
- */
+/** Rarity colour for rarity filters, default text colour otherwise. */
 export const defaultGetFilterColor = (value: CropFilterCategory): string => {
-  // Rarity-based filters use getRarityTextColor
   if (value === "common" || value === "uncommon" || value === "rare" || value === "epic" || value === "legendary") {
     return getRarityTextColor(value);
   }
-  // Non-rarity filters use default color
   return "text-slate-300";
 };
 
-/**
- * Shared filter dropdown component used in both Calculator and Designer
- */
+/** Crop filter dropdown shared by the Calculator and Designer. */
 export const CropFilterDropdown: React.FC<CropFilterDropdownProps> = ({
   value,
   onChange,
@@ -47,7 +40,6 @@ export const CropFilterDropdown: React.FC<CropFilterDropdownProps> = ({
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {

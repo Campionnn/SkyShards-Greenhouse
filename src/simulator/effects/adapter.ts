@@ -5,21 +5,13 @@ import type { EffectId } from "../data/types";
 import { isDry } from "../sim/plants";
 import type { PlotState } from "../sim/state";
 
-// Effect propagation is NOT reimplemented here: the designer's port of
-// solver/effects.py (4-way cardinal, effect_spread relay in Java-HashMap turn
-// order, slots receive but never give) is the single implementation, so the
-// designer and the simulator can never disagree. Slot labels are not passed
-// in: under the simulator's rules they are ordinary empty cells, and the
-// effect simulation already records what empty cells receive (Godseed).
-//
-// A dried-out plant (sim/plants.ts `isDry`) gives no effects and doesn't
-// relay, but still receives. That is exactly the designer's slot flag: an
-// `isSlot` placement is skipped when direct effects are given and is never a
-// relay, while `give()` still adds to its held set like any other plant
-// (only inert scenery such as Fire refuses what it is given). So a dry plant
-// is passed in as `isSlot: true`, and its `held` stays what it receives.
+// Reuses the designer's effect simulation (utilities/effectSimulation.ts, port
+// of solver/effects.py) so designer and simulator agree. Slot labels are not
+// passed: slots are ordinary empty cells, whose received effects are recorded
+// anyway (Godseed). A dry plant (`isDry`) receives but neither gives nor
+// relays, which is exactly the `isSlot` flag, so it is passed as `isSlot: true`.
 
-/** Recompute every plant's raw held set from the standing layout. Pure function of the plot (and the halt level). */
+/** Recomputes every plant's raw `held` set from the plot. */
 export function recomputeEffects(plot: PlotState, config: Pick<SimConfig, "haltWater">): EffectSimulation {
   const sim = simulateEffects(
     plot.plants.map((p) => ({
@@ -33,7 +25,7 @@ export function recomputeEffects(plot: PlotState, config: Pick<SimConfig, "haltW
   return sim;
 }
 
-/** Effective (post-immunity, improved-overrides-base) effects, as a stable sorted list. */
+/** Effective effects (post-immunity, improved overrides base), sorted. */
 export function effectiveList(raw: Iterable<EffectId>): EffectId[] {
   return sortEffects(effectiveEffects(raw));
 }

@@ -1,9 +1,8 @@
 import type { Rarity } from "../data/types";
 
 /**
- * Harvest Bounty: an independent rarity roll when harvesting a plant that
- * holds Bonus Drops - not a yield multiplier. Staff-sourced rates (Greenhouse
- * page). One roll per harvest unless configured otherwise.
+ * Harvest Bounty: independent roll (not a yield multiplier) when harvesting a
+ * plant holding Bonus Drops. Rates from the wiki Greenhouse page.
  */
 export const HARVEST_BOUNTY: ReadonlyArray<readonly [item: string, chance: number]> = [
   ["burrowing_spores", 0.002],

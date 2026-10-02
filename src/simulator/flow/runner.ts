@@ -4,8 +4,7 @@ import type { FlowRunnerState, PlotState, ScenarioPlot, TickEvent } from "../sim
 import { bump } from "../sim/summary";
 import { conditionsHold, stepExitHolds } from "./triggers";
 
-// One runner per plot. Plots advance through their own step lists on their
-// own schedule; the only coupling between them is the shared inventory.
+// One runner per plot; plots are coupled only through the shared inventory.
 
 export function newRunner(plot: ScenarioPlot, cycle: number): FlowRunnerState {
   const n = plot.flow.steps.length;
@@ -23,7 +22,7 @@ export function newRunner(plot: ScenarioPlot, cycle: number): FlowRunnerState {
   };
 }
 
-/** Feed one event into its plot's in-step trigger counters. Called by ctx.emit as events happen. */
+/** Updates the in-step trigger counters; called by ctx.emit. */
 export function countStepEvent(runner: FlowRunnerState, e: TickEvent): void {
   if (e.kind === "spawned") bump(runner.spawnedInStep, e.mutationId);
   else if (e.kind === "decayed") bump(runner.decayedInStep, e.kindId);
@@ -31,9 +30,8 @@ export function countStepEvent(runner: FlowRunnerState, e: TickEvent): void {
 }
 
 /**
- * Move a plot to a step (default: the following one, wrapping) and lay the
- * new layout out. A player action. Moving to the step it is already on
- * re-enters it: the layout is re-applied and the in-step counters restart.
+ * Player action: move to a step (default next, wrapping) and apply its layout.
+ * Moving to the current step re-enters it and restarts the in-step counters.
  */
 export function transition(
   plot: PlotState,
@@ -57,8 +55,7 @@ export function transition(
 
   ctx.emit(plot.id, { kind: "stepChanged", fromStep: from.id, toStep: to.id, stepIndex: runner.stepIndex });
   applyStepLayout(plot, ctx.layoutFor(plot.id), ctx, scratch, !!to.fullClear);
-  // Reset after laying out: what the player harvested or broke while
-  // clearing the old step belongs to neither step's triggers.
+  // Reset after layout: harvests/breaks during clearing count for neither step.
   runner.cyclesInStep = 0;
   runner.spawnedInStep = {};
   runner.decayedInStep = {};
@@ -66,13 +63,10 @@ export function transition(
 }
 
 /**
- * Where the current step wants to go now, or null to stay:
- * 1. its routes, in order: the first whose conditions hold wins;
- * 2. its normal exit: to `next` if set, otherwise the following step (the
- *    first step on a looping flow). A non-looping flow's last step without
- *    a `next` has nowhere to go: the plot is marked finished and holds it.
- * A route or `next` naming a step that does not exist is ignored
- * (validation reports it as an error).
+ * Target step index, or null to stay. Routes in order first, then the normal
+ * exit (`next`, else the following step). The last step of a non-looping flow
+ * without `next` marks the runner finished. Unknown step ids are ignored
+ * (validation reports them).
  */
 function dueTarget(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState, ctx: CycleCtx): number | null {
   const { steps } = def.flow;
@@ -92,18 +86,15 @@ function dueTarget(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState, 
   }
   const isLast = runner.stepIndex === steps.length - 1;
   if (isLast && !def.flow.loop) {
-    runner.finished = true; // holds its final step (routes can still move it); the other plots keep running
+    runner.finished = true; // routes can still move it
     return null;
   }
   return (runner.stepIndex + 1) % steps.length;
 }
 
 /**
- * The flow step for one plot. A step change is due if one was already
- * pending (it became due while the player was away) or the current step's
- * routes or exit hold now (see `dueTarget`). If the player is online it
- * happens now and this returns true; otherwise it is left pending, with its
- * target, for the next session.
+ * Performs a due step change (pending or `dueTarget`) if the player is online
+ * and returns true; otherwise records it as pending for the next session.
  */
 export function endStepOrHold(
   plot: PlotState,

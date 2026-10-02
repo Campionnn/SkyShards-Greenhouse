@@ -13,30 +13,24 @@ import {
 } from "../utilities";
 
 interface LockedPlacementsContextType {
-  // Locked placements state
   lockedPlacements: LockedPlacement[];
   
-  // Actions
   addLockedPlacement: (placement: Omit<LockedPlacement, "id">) => { success: boolean; error?: string };
   removeLockedPlacement: (id: string) => void;
   moveLockedPlacement: (id: string, newPosition: [number, number]) => { success: boolean; error?: string };
   clearLockedPlacements: () => void;
   
-  // Validation helpers
   isPositionOccupied: (position: [number, number], size: number, excludeId?: string) => boolean;
   isValidPlacement: (position: [number, number], size: number, excludeId?: string) => { valid: boolean; error?: string };
   isValidPlacementPosition: (position: [number, number], size: number) => { valid: boolean; error?: string };
   getLockedPlacementAt: (row: number, col: number) => LockedPlacement | undefined;
   
-  // Convert to API format
   getLocksForAPI: () => LockDefinition[];
   
-  // Placement mode state
   selectedCropForPlacement: SelectedCropForPlacement | null;
   setSelectedCropForPlacement: (crop: SelectedCropForPlacement | null) => void;
   isPlacementMode: boolean;
   
-  // Priority state
   priorities: Record<string, number>;
   setPriority: (cropId: string, priority: number) => void;
   getPriority: (cropId: string) => number;
@@ -50,13 +44,11 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
   const { unlockedCells } = useGridState();
   const { toast } = useToast();
   const [lockedPlacements, setLockedPlacements] = useState<LockedPlacement[]>(() => {
-    // Try to load from localStorage
     const saved = LocalStorageManager.loadLockedPlacements();
     return saved || [];
   });
   const [selectedCropForPlacement, setSelectedCropForPlacement] = useState<SelectedCropForPlacement | null>(null);
   const [priorities, setPriorities] = useState<Record<string, number>>(() => {
-    // Try to load from localStorage
     const saved = LocalStorageManager.loadPriorities();
     return saved || {};
   });
@@ -64,7 +56,6 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
   const [defaultPriorities, setDefaultPriorities] = useState<Record<string, number>>({});
   const isInitialLockedMount = useRef(true);
   
-  // Load default priorities on mount
   useEffect(() => {
     const loadDefaultPriorities = async () => {
       try {
@@ -90,23 +81,20 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     loadDefaultPriorities();
   }, [toast]);
   
-  // Save locked placements to localStorage when they change (but not empty defaults)
   useEffect(() => {
     if (isInitialLockedMount.current) {
       const saved = LocalStorageManager.loadLockedPlacements();
       isInitialLockedMount.current = false;
       if (!saved || saved.length === 0) {
-        return; // Don't save empty array on initial mount
+        return; // don't write an empty list on mount
       }
     }
     LocalStorageManager.saveLockedPlacements(lockedPlacements);
   }, [lockedPlacements]);
   
-  // Save priorities to localStorage when they change
+  // Persist custom priorities once defaults have loaded; none clears the key.
   useEffect(() => {
-    // Only save if we have loaded defaults (to avoid saving empty object on init)
     if (!isLoadingPriorities) {
-      // Only save if there are custom priorities, otherwise clear storage
       if (Object.keys(priorities).length > 0) {
         LocalStorageManager.savePriorities(priorities);
       } else {
@@ -115,25 +103,21 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     }
   }, [priorities, isLoadingPriorities]);
   
-  // Track previous unlockedCells to detect changes
   const prevUnlockedCellsRef = useRef<Set<string>>(unlockedCells);
   
-  // Validate locked placements when grid changes
+  // Drop locked placements whose cells were locked, with a toast.
   useEffect(() => {
-    // Only validate if unlockedCells actually changed
     if (prevUnlockedCellsRef.current === unlockedCells) {
       return;
     }
     prevUnlockedCellsRef.current = unlockedCells;
     
-    // Check if any locked placements are now invalid
     const invalidPlacements: LockedPlacement[] = [];
     
     for (const placement of lockedPlacements) {
       const [row, col] = placement.position;
       const size = placement.size;
       
-      // Check if all cells for this placement are still unlocked
       let isValid = true;
       for (let dr = 0; dr < size; dr++) {
         for (let dc = 0; dc < size; dc++) {
@@ -151,13 +135,11 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
       }
     }
     
-    // Remove invalid placements and show toast
     if (invalidPlacements.length > 0) {
       setLockedPlacements(prev => 
         prev.filter(p => !invalidPlacements.some(inv => inv.id === p.id))
       );
       
-      // Show toast notification
       if (invalidPlacements.length === 1) {
         toast({
           title: "Locked placement removed",
@@ -176,7 +158,6 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     }
   }, [unlockedCells, lockedPlacements, toast]);
   
-  // Check if any cell of a placement at position with size overlaps with existing placements
   const isPositionOccupied = useCallback((
     position: [number, number],
     size: number,
@@ -185,22 +166,20 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     return isPositionOccupiedByPlacements(position, size, lockedPlacements, excludeId);
   }, [lockedPlacements]);
   
-  // Validate if a placement position is valid (checks bounds and unlocked cells only)
+  // Bounds and unlocked cells only; no overlap check.
   const isValidPlacementPosition = useCallback((
     position: [number, number],
     size: number
   ): { valid: boolean; error?: string } => {
-    // Check bounds first
     const boundsValidation = validateGridBounds(position, size);
     if (!boundsValidation.valid) {
       return boundsValidation;
     }
     
-    // Check all cells are unlocked
     return validateAllowedCells(position, size, unlockedCells);
   }, [unlockedCells]);
   
-  // Validate if a placement is valid (includes overlap check for moving existing placements)
+  // Bounds, unlocked cells and overlap (used when moving).
   const isValidPlacement = useCallback((
     position: [number, number],
     size: number,
@@ -211,7 +190,6 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
       return positionValidation;
     }
     
-    // Check no overlap with existing placements (used for drag-moving)
     if (isPositionOccupied(position, size, excludeId)) {
       return { valid: false, error: "Position is occupied by another locked placement" };
     }
@@ -219,7 +197,6 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     return { valid: true };
   }, [isValidPlacementPosition, isPositionOccupied]);
   
-  // Find all placements that overlap with a given position and size
   const getOverlappingPlacements = useCallback((
     position: [number, number],
     size: number,
@@ -228,11 +205,10 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     return findOverlappingPlacements(position, size, lockedPlacements, excludeId);
   }, [lockedPlacements]);
   
-  // Add a new locked placement (overrides any overlapping placements)
+  // Replaces any overlapping locked placements.
   const addLockedPlacement = useCallback((
     placement: Omit<LockedPlacement, "id">
   ): { success: boolean; error?: string } => {
-    // Only validate position (bounds and unlocked cells), not overlap
     const validation = isValidPlacementPosition(placement.position, placement.size);
     if (!validation.valid) {
       return { success: false, error: validation.error };
@@ -243,7 +219,6 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
       id: generatePlacementId("placement"),
     };
     
-    // Remove any overlapping placements and add the new one
     const overlapping = getOverlappingPlacements(placement.position, placement.size);
     const overlappingIds = new Set(overlapping.map(p => p.id));
     
@@ -255,12 +230,10 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     return { success: true };
   }, [isValidPlacementPosition, getOverlappingPlacements]);
   
-  // Remove a locked placement by ID
   const removeLockedPlacement = useCallback((id: string) => {
     setLockedPlacements(prev => prev.filter(p => p.id !== id));
   }, []);
   
-  // Move a locked placement to a new position
   const moveLockedPlacement = useCallback((
     id: string,
     newPosition: [number, number]
@@ -283,12 +256,10 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     return { success: true };
   }, [lockedPlacements, isValidPlacement]);
   
-  // Clear all locked placements
   const clearLockedPlacements = useCallback(() => {
     setLockedPlacements([]);
   }, []);
   
-  // Get the locked placement at a specific cell (if any)
   const getLockedPlacementAt = useCallback((
     row: number,
     col: number
@@ -296,7 +267,6 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     return getPlacementAtCell(row, col, lockedPlacements);
   }, [lockedPlacements]);
   
-  // Convert locked placements to API format
   const getLocksForAPI = useCallback((): LockDefinition[] => {
     return lockedPlacements.map(p => ({
       name: p.crop,
@@ -305,15 +275,14 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
     }));
   }, [lockedPlacements]);
   
-  // Priority management
   const setPriority = useCallback((cropId: string, priority: number) => {
     setPriorities(prev => {
       const defaultValue = defaultPriorities[cropId] || 0;
       
       if (priority === defaultValue) {
-        // Remove from priorities if it matches the default
+        // Only values that differ from the default are stored.
         const { [cropId]: _removed, ...rest } = prev;
-        void _removed; // Suppress unused variable warning
+        void _removed;
         return rest;
       }
       return { ...prev, [cropId]: priority };
@@ -321,7 +290,6 @@ export const LockedPlacementsProvider: React.FC<{ children: React.ReactNode }> =
   }, [defaultPriorities]);
   
   const getPriority = useCallback((cropId: string): number => {
-    // Return custom priority if set, otherwise return default priority, otherwise 0
     if (cropId in priorities) {
       return priorities[cropId];
     }

@@ -26,40 +26,28 @@ export interface HoverInfo {
   offsetY: number;
 }
 
-/**
- * Configuration for the grid interaction hook
- */
 export interface GridInteractionConfig<TPlacement extends BasePlacement, TSelectedItem> {
-  // Grid settings
   cellSize: number;
   gap: number;
   gridRef: React.RefObject<HTMLDivElement | null>;
   
-  // Placement data
   placements: TPlacement[];
   selectedItem: TSelectedItem | null;
   isPlacementMode: boolean;
   
-  // Validation functions
   isValidPlacement: (position: [number, number], size: number, excludeId?: string) => { valid: boolean; error?: string };
   isValidPlacementPosition: (position: [number, number], size: number) => { valid: boolean; error?: string };
   
-  // Callbacks for placement operations
   onAddPlacement: (position: [number, number], offsetX: number, offsetY: number) => [number, number] | null;
   onRemovePlacement: (cell: [number, number]) => void;
   onMovePlacement: (placementId: string, newPosition: [number, number]) => { success: boolean; error?: string };
   
-  // Toast notification function
   showToast: (title: string, description?: string, variant?: "success" | "error" | "warning") => void;
   
-  // Get size of selected item
   getSelectedItemSize: () => number;
 }
 
-/**
- * Core grid interaction logic shared between Calculator and Designer
- * Handles mouse tracking, drag/drop, and paint mode
- */
+/** Grid mouse tracking, drag-to-move and paint mode, shared by the Calculator and the Designer. */
 export function useGridInteractionCore<TPlacement extends BasePlacement, TSelectedItem>({
   cellSize,
   gap,
@@ -76,13 +64,12 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
   getSelectedItemSize,
 }: GridInteractionConfig<TPlacement, TSelectedItem>) {
   
-  // UI state
   const [hoveredPlacementId, setHoveredPlacementId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [paintState, setPaintState] = useState<PaintState | null>(null);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   
-  // Paint tracking ref (avoids stale closure issues during fast mouse movement)
+  // A ref, not state, so fast mouse movement never reads a stale closure.
   const paintDataRef = useRef<{
     lastCell: [number, number] | null;
     lastPlacedPosition: [number, number] | null;
@@ -101,12 +88,11 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
     return getGridCellClampedWithOffsetUtil(clientX, clientY, rect, cellSize, gap);
   }, [gridRef, cellSize, gap]);
   
-  // Wrapper for isValidPlacementPosition to match function signature expected by findNearestValidPosition
   const isValidPositionFn = useCallback((pos: [number, number], size: number) => {
     return isValidPlacementPosition(pos, size);
   }, [isValidPlacementPosition]);
   
-  // Get the adjusted position for placement (position calculation + snap to valid)
+  // Placement position for the cursor, snapped to the nearest valid one.
   const getAdjustedPosition = useCallback((
     cursorCell: [number, number],
     offsetX: number,
@@ -117,7 +103,6 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
     return findNearestValidPosition(basePos, size, isValidPositionFn);
   }, [isValidPositionFn]);
   
-  // Core painting logic
   const handlePaintAtCell = useCallback((
     cell: [number, number],
     offsetX: number,
@@ -126,7 +111,7 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
   ) => {
     const { lastCell, lastPlacedPosition, lastPlacedSize } = paintDataRef.current;
     
-    // Only act if we moved to a new cell
+    // Act once per cell.
     if (lastCell && lastCell[0] === cell[0] && lastCell[1] === cell[1]) {
       return;
     }
@@ -189,7 +174,7 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
     
     const { cell, offsetX, offsetY } = cellInfo;
     
-    // Left click in placement mode - start drag-placing
+    // Left click in placement mode starts paint-placing; right click starts paint-removing.
     if (e.button === 0 && isPlacementMode && selectedItem) {
       e.preventDefault();
       const size = getSelectedItemSize();
@@ -198,7 +183,6 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
       setPaintState({ mode: "place" });
       setHoverInfo(null);
     }
-    // Right click - start drag-removing
     else if (e.button === 2) {
       e.preventDefault();
       onRemovePlacement(cell);
@@ -214,7 +198,6 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
   }, []);
   
   const handlePlacementMouseDown = useCallback((placementId: string, e: React.MouseEvent) => {
-    // Right-click removes
     if (e.button === 2) {
       e.preventDefault();
       e.stopPropagation();
@@ -229,7 +212,7 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
       return;
     }
     
-    // Left-click starts drag move (only if not in placement mode)
+    // Left click starts a move, outside placement mode.
     if (e.button === 0 && !isPlacementMode) {
       e.preventDefault();
       e.stopPropagation();
@@ -240,7 +223,7 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
           placementId,
           startPosition: placement.position,
           currentPosition: placement.position,
-          isDragging: false, // Not dragging yet, waiting for mouse movement
+          isDragging: false, // Set once the mouse moves to another cell.
         });
       }
     }
@@ -250,7 +233,7 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
     if (dragState) {
       const { placementId, startPosition, currentPosition, isDragging } = dragState;
       
-      // Only move if we actually dragged (not just clicked)
+      // A click without movement is not a move.
       if (isDragging && (startPosition[0] !== currentPosition[0] || startPosition[1] !== currentPosition[1])) {
         const moveResult = onMovePlacement(placementId, currentPosition);
         
@@ -281,7 +264,6 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
         if (placement) {
           const adjustedPos = getAdjustedPosition(cellInfo.cell, cellInfo.offsetX, cellInfo.offsetY, placement.size);
           if (adjustedPos) {
-            // Mark as dragging once mouse moves to a different position
             const hasMoved = adjustedPos[0] !== dragState.startPosition[0] || adjustedPos[1] !== dragState.startPosition[1];
             setDragState(prev => prev ? { 
               ...prev, 
@@ -324,25 +306,22 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
       })()
     : null;
   
-  // Cancel any pending drag (used when a click is detected instead of drag)
+  // Cancels a pending drag when the press turns out to be a click.
   const cancelDrag = useCallback(() => {
     setDragState(null);
   }, []);
   
   return {
-    // State
     hoveredPlacementId,
     setHoveredPlacementId,
     dragState,
     paintState,
     hoverInfo,
     
-    // Computed values
     previewPosition,
     previewValidation,
     dragValidation,
     
-    // Event handlers
     handleMouseMove,
     handleMouseLeave,
     handleMouseDown,
@@ -351,7 +330,6 @@ export function useGridInteractionCore<TPlacement extends BasePlacement, TSelect
     handlePlacementMouseDown,
     cancelDrag,
     
-    // Utility functions
     getAdjustedPosition,
   };
 }

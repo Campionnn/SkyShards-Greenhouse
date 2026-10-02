@@ -12,7 +12,6 @@ interface CropConfigurationsPanelProps {
   collapsible?: boolean;
 }
 
-// Item row for a single crop/mutation
 const CropItemRow: React.FC<{
   crop: CropDefinition;
   mutation?: MutationDefinition;
@@ -34,22 +33,18 @@ const CropItemRow: React.FC<{
   onPriorityChange,
   onRowClick,
 }) => {
-  // Show the input value only if it differs from default
   const displayValue = priority !== defaultPriority ? priority.toString() : "";
   const [inputValue, setInputValue] = useState<string>(displayValue);
   
-  // Update inputValue when priority prop changes
   useEffect(() => {
     setInputValue(displayValue);
   }, [displayValue]);
   
-  // Get the rarity color for the name
   const nameColorClass = mutation ? getRarityTextColor(mutation.rarity) : "text-white";
   
   const handlePriorityChange = (value: string) => {
     setInputValue(value);
     if (value === "") {
-      // Reset to default when cleared
       onPriorityChange(defaultPriority);
       return;
     }
@@ -80,7 +75,6 @@ const CropItemRow: React.FC<{
           : "border-slate-600/30 hover:border-slate-500/50"
       } ${onRowClick && mutation ? "cursor-pointer" : ""}`}
     >
-      {/* Image */}
       <CropImage
         cropId={crop.id}
         cropName={crop.name}
@@ -90,16 +84,13 @@ const CropItemRow: React.FC<{
         fallbackClassName="text-xs text-slate-400"
       />
       
-      {/* Name, Size, and Type */}
       <div className="flex-1 min-w-0 flex items-center gap-2">
         <span className={`text-sm font-medium truncate ${nameColorClass}`}>
           {crop.name}
         </span>
       </div>
       
-      {/* Buttons - Larger touch targets */}
       <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-        {/* Info Button */}
         <button
           onClick={onInfoClick}
           className="p-2.5 hover:bg-slate-700/50 rounded-lg transition-colors text-slate-400 hover:text-blue-400"
@@ -108,7 +99,6 @@ const CropItemRow: React.FC<{
           <Info className="w-5 h-5" />
         </button>
         
-        {/* Edit Button */}
         <button
           onClick={onEditClick}
           className={`p-2.5 rounded-lg transition-colors flex items-center gap-1 ${
@@ -126,7 +116,6 @@ const CropItemRow: React.FC<{
         </button>
       </div>
       
-      {/* Priority Input - Stacked */}
       <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-col items-center gap-0.5">
           <span 
@@ -166,7 +155,6 @@ const CropItemRow: React.FC<{
   );
 };
 
-// Locked placement item in the list
 const LockedPlacementItem: React.FC<{
   placement: { id: string; crop: string; position: [number, number]; size: number };
   cropName: string;
@@ -219,20 +207,18 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
   
   const { openInfo } = useInfoModal();
   const [priorityWarningDismissed, setPriorityWarningDismissed] = useState(false);
-  // Collapsed by default unless the user has already customised something here
+  // Collapsed by default unless priorities or locks are already set.
   const [open, setOpen] = useState(() => {
     if (!collapsible) return true;
     const custom = Object.keys(LocalStorageManager.loadPriorities() || {}).length > 0;
     return custom || (LocalStorageManager.loadLockedPlacements() || []).length > 0;
   });
 
-  // Use shared filtering hook
   const { searchTerm, setSearchTerm, filter, setFilter, filteredCrops } = useCropFiltering({
     crops,
-    mutations: [], // Not needed since we use getMutationDef from context
+    mutations: [], // Mutation defs come from getMutationDef.
   });
   
-  // Check if any priorities differ from defaults
   const hasPriorities = useMemo(() => {
     return Object.keys(priorities).some((cropId) => {
       const currentPriority = priorities[cropId] || 0;
@@ -241,7 +227,6 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
     });
   }, [priorities, defaultPriorities]);
   
-  // Listen for Escape key to cancel placement mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && selectedCropForPlacement) {
@@ -253,18 +238,15 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [selectedCropForPlacement, setSelectedCropForPlacement]);
   
-  // Handle info button click
   const handleInfoClick = useCallback((crop: CropDefinition) => {
     openInfo(crop.id);
   }, [openInfo]);
   
-  // Handle edit button click (toggle placement mode)
+  // Toggles placement mode for the crop.
   const handleEditClick = useCallback((crop: CropDefinition) => {
     if (selectedCropForPlacement?.id === crop.id) {
-      // Toggle off
       setSelectedCropForPlacement(null);
     } else {
-      // Select this crop for placement
       const selection: SelectedCropForPlacement = {
         id: crop.id,
         name: crop.name,
@@ -275,7 +257,6 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
     }
   }, [selectedCropForPlacement, setSelectedCropForPlacement]);
   
-  // Get display name for locked placement
   const getLockedPlacementName = useCallback((cropId: string): string => {
     const def = getCropDef(cropId);
     if (def) return def.name;
@@ -284,7 +265,7 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
     return cropId;
   }, [getCropDef, getMutationDef]);
   
-  // Handle clicking on a mutation row to add it to targets
+  // Clicking a mutation row adds it to the targets.
   const handleMutationRowClick = useCallback((crop: CropDefinition) => {
     if (crop.isMutation) {
       addMutation(crop.id, crop.name);
@@ -293,11 +274,9 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
   
   return (
     <div className={`flex flex-col gap-3 ${collapsible ? "" : "h-full"} ${className}`}>
-      {/* Main Panel - Crop priorities & locks */}
       <div className={`bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 flex flex-col overflow-hidden min-h-0 ${
         collapsible ? (open ? "h-[460px]" : "") : "flex-1"
       }`}>
-        {/* Header */}
         <div className={`flex items-center justify-between gap-2 flex-shrink-0 min-h-[24px] ${open ? "mb-3" : ""}`}>
           <div className="flex items-center gap-2 min-w-0">
             <SlidersHorizontal className="w-4 h-4 text-emerald-400 flex-shrink-0" />
@@ -341,7 +320,6 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
         )}
         {open && (<>
         
-        {/* Search and Filter Row */}
         <SearchFilterHeader
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
@@ -350,7 +328,7 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
           className="mb-3 flex-shrink-0"
         />
         
-        {/* Priority Warning - dismissible, once per session */}
+        {/* Dismissible priority warning (per session). */}
         {hasPriorities && !priorityWarningDismissed && (
           <div className="flex items-start gap-2 p-2 mb-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
             <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -367,7 +345,6 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
           </div>
         )}
         
-        {/* Crops List - Constrained height */}
         <div className="flex-1 overflow-y-auto space-y-2 min-h-0 scrollbar-dark">
           {filteredCrops.length === 0 ? (
             <div className="text-center py-4 text-sm text-slate-500">
@@ -400,7 +377,6 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
         </>)}
       </div>
 
-      {/* Locked Placements Summary - Separate panel below */}
       {lockedPlacements.length > 0 && (
         <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">

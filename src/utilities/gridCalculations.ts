@@ -85,7 +85,6 @@ export function getPlacementPosition(
     col = cursorCell[1] - offset;
   }
   
-  // Clamp to valid grid bounds
   row = Math.max(0, Math.min(GRID_SIZE - size, row));
   col = Math.max(0, Math.min(GRID_SIZE - size, col));
   
@@ -97,15 +96,14 @@ export function findNearestValidPosition(
   size: number,
   isValidPositionFn: (pos: [number, number], size: number) => { valid: boolean }
 ): [number, number] | null {
-  // Check if target position is valid
   const validation = isValidPositionFn(targetPos, size);
   if (validation.valid) return targetPos;
   
-  // Search in expanding squares for a valid position
+  // Search outward ring by ring for the nearest valid position.
   for (let radius = 1; radius <= Math.max(GRID_SIZE, GRID_SIZE); radius++) {
     for (let dr = -radius; dr <= radius; dr++) {
       for (let dc = -radius; dc <= radius; dc++) {
-        if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue; // Only check perimeter
+        if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue; // ring perimeter only
         
         const testRow = targetPos[0] + dr;
         const testCol = targetPos[1] + dc;

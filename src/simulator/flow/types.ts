@@ -34,9 +34,7 @@ export type Trigger =
   | { kind: "targetsFilled"; count: number }
   /**
    * The plot has entered the current step at least `count` times (this visit
-   * included), counted since it last entered `sinceStep` (a step id), or
-   * since the run started when that is omitted. "Every 3rd time through
-   * step 2, go to step 3" = a route on step 2 with stepVisits(3, since step 3).
+   * included) since it last entered step `sinceStep`, or since the run start.
    */
   | { kind: "stepVisits"; count: number; sinceStep?: string };
 
@@ -68,12 +66,9 @@ export interface StepRoute {
 
 export type SpawnedHarvestPolicy = "whenFullyGrown" | "beforeDecay" | "never";
 /**
- * A natural spawn standing in as a layout input (hybrid flows, see
- * `spawnsFillLayoutInputs`):
- * - keep: leave it standing while the layout uses it; it is harvested when a
- *   step change clears it (if fully grown), or just before it would decay.
- * - harvest: treat it like any other spawn (spawnedHarvest); the layout
- *   input is then re-placed from inventory.
+ * A natural spawn used as a layout input (hybrid flows, `spawnsFillLayoutInputs`):
+ * - keep: leave it; harvested when a step change clears it (if fully grown) or just before decay.
+ * - harvest: follow spawnedHarvest; the input is then re-placed from inventory.
  */
 export type LayoutInputSpawnPolicy = "keep" | "harvest";
 export type BaseCropUpkeepPolicy = "leaveUntilDecay" | "harvestWhenGrown" | "harvestBeforeDecay";
@@ -99,9 +94,8 @@ export interface Policies {
   /** Clear Dead Plants and re-place missing layout plants from inventory. */
   replaceDecayed: boolean;
   /**
-   * Restore the ground under empty target footprints when it no longer matches
-   * the target mutation (e.g. Chorus Fruit left End Stone on a slot).
-   * Optional so policies saved before it existed still load (missing = on).
+   * Restore the ground under empty target footprints that no longer matches
+   * the target (e.g. Chorus Fruit End Stone). Missing = on.
    */
   fixGround?: boolean;
 }
@@ -118,30 +112,21 @@ export interface FlowStep {
   exit: Condition[];
   /** How `exit` combines (default "all", AND). */
   exitMatch?: ConditionMatch;
-  /**
-   * Step id the normal exit goes to. Omitted = the following step (or the
-   * first step on a looping flow; a non-looping flow holds its last step).
-   */
+  /** Normal exit target. Omitted = next step; past the end, step 0 if looping, else stay. */
   next?: string;
   /** Conditional jumps to chosen steps, checked in order before the normal exit. */
   routes?: StepRoute[];
   policies?: PolicyOverrides;
   /** Break every plant on entry instead of keeping identical ones. */
   fullClear?: boolean;
-  /**
-   * Target cells whose uptime the sustainability check records, as slot
-   * anchor keys ("row,col"). Omitted = every target in the layout; [] = none.
-   */
+  /** Slot anchor keys ("row,col") whose uptime is recorded. Omitted = all targets; [] = none. */
   watch?: string[];
 }
 
-/**
- * One plot's flow. Steps run in order unless a step's `next` or
- * `routes` send the plot elsewhere; they never reference another plot.
- */
+/** One plot's flow. Steps run in order unless `next`/`routes` redirect; never references another plot. */
 export interface Flow {
   steps: FlowStep[];
   loop: boolean;
-  /** Step the plot starts on; lets a user offset plots deliberately. */
+  /** Step the plot starts on. */
   startIndex: number;
 }

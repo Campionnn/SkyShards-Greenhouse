@@ -27,15 +27,11 @@ function parseWeight(raw: string): number | null {
 }
 
 /**
- * Per-effect weights for the solver. A weight is worth that fraction of one
- * plain mutation spot: 0.3 on Harvest Boost means "a spot whose mutation
- * holds Harvest Boost counts as 1.3 spots". Negative effects get negative
- * weights. Anything left at 0 is ignored.
+ * Per-effect solver weights, as a fraction of one mutation spot: 0.3 on Harvest Boost makes a spot
+ * holding it count as 1.3 spots. Negative effects get negative weights; 0 is ignored.
  *
- * Inputs are plain text fields with a per-field draft, so partial entries
- * like "-", "0." or "-0.2" survive while typing; the stored weight only
- * updates once the text parses, and the field is tidied on blur. Arrow keys
- * step by 0.1 (Shift: 1).
+ * Text inputs keep a per-field draft so partial entries ("-", "0.") survive typing; the weight
+ * updates once the text parses and is tidied on blur. Arrow keys step 0.1 (Shift: 1).
  */
 export const EffectWeightsPanel: React.FC = () => {
   const { effectWeights, setEffectWeight, resetEffectWeights, weightsOverridden, canOverrideWeights, setKeepWeights } =
@@ -159,9 +155,8 @@ export const EffectWeightsPanel: React.FC = () => {
                     ? "border-rose-500/40 focus:border-rose-500/70"
                     : "border-slate-600/30 focus:border-blue-500/50";
               return (
-                // A div, not a <label>: a label wrapping the buttons would bind to
-                // the first button (clicks and hover on the row would hit "-").
-                // Only the name is a label, pointing at the input.
+                // A div, not a <label>: a wrapping label would bind clicks on the row to the first
+                // button ("-"). Only the name is a label, pointing at the input.
                 <div
                   key={effectId}
                   className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 min-w-0 ${

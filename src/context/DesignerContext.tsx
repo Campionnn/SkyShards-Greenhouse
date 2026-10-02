@@ -31,8 +31,8 @@ import {
   type DesignerMode,
 } from "./designerContextValue";
 
-// The context object, its types and `useDesigner` live in designerContextValue.ts,
-// so this file only exports a component (React Fast Refresh needs that).
+// The context object, types and `useDesigner` live in designerContextValue.ts so
+// this file exports only a component, as React Fast Refresh requires.
 export type {
   DesignerContextType,
   DesignerMode,
@@ -80,24 +80,21 @@ function normalizeGroundTiles(tiles: GroundTile[], placements: DesignerPlacement
 
 interface DesignerProviderProps {
   children: React.ReactNode;
-  /**
-   * Starting placements. Without them the provider restores the designer's
-   * saved layout from localStorage.
-   */
+  /** Starting placements; when omitted, the saved layout is restored from localStorage. */
   initialPlacements?: { inputs: DesignerPlacement[]; targets: DesignerPlacement[]; groundTiles?: GroundTile[] };
-  /** Save to / restore from localStorage (the Designer page). Off for embedded editors. */
+  /** Save to and restore from localStorage (Designer page); off for embedded editors. */
   persist?: boolean;
   /**
-   * Called whenever the placements change after mount. `transform` is set
-   * when the change was a whole-layout nudge / rotate / mirror, so an owner
-   * can move anything it keys by cell (e.g. the simulator's watched targets).
+   * Called on every placement change after mount. `transform` is set for a
+   * whole-layout nudge/rotate/mirror so the owner can move cell-keyed data
+   * (e.g. the simulator's watched targets).
    */
   onChange?: (inputs: DesignerPlacement[], targets: DesignerPlacement[], groundTiles: GroundTile[], transform?: LayoutTransform) => void;
 }
 
 export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, initialPlacements, persist = true, onChange }) => {
   const [mode, setMode] = useState<DesignerMode>("inputs");
-  // Load both lists together so overlaps between them can be resolved
+  // Both lists are loaded together so overlaps between them can be resolved.
   const [savedPlacements] = useState(() => initialPlacements
     ? resolveOverlaps(initialPlacements.inputs, initialPlacements.targets)
     : resolveOverlaps(
@@ -125,27 +122,25 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
   const isInitialInputsMount = useRef(true);
   const isInitialTargetsMount = useRef(true);
   
-  // Save input placements to localStorage when they change (but not empty defaults)
   useEffect(() => {
     if (!persist) return;
     if (isInitialInputsMount.current) {
       const saved = LocalStorageManager.loadDesignerInputs();
       isInitialInputsMount.current = false;
       if (!saved || saved.length === 0) {
-        return; // Don't save empty array on initial mount
+        return; // don't write an empty list on mount
       }
     }
     LocalStorageManager.saveDesignerInputs(inputPlacements);
   }, [inputPlacements, persist]);
   
-  // Save target placements to localStorage when they change (but not empty defaults)
   useEffect(() => {
     if (!persist) return;
     if (isInitialTargetsMount.current) {
       const saved = LocalStorageManager.loadDesignerTargets();
       isInitialTargetsMount.current = false;
       if (!saved || saved.length === 0) {
-        return; // Don't save empty array on initial mount
+        return; // don't write an empty list on mount
       }
     }
     LocalStorageManager.saveDesignerTargets(targetPlacements);
@@ -156,12 +151,10 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
   }, [groundTiles, persist]);
 
   // ---- Edits and undo / redo -------------------------------------------------
-  // `layoutRef` is the source of truth: every edit reads the LATEST layout from
-  // it and writes the result back synchronously, then mirrors it into React
-  // state for rendering. A fast drag fires several edits before React renders
-  // once, so reading render-time state here would lose cells and split undo
-  // steps. History is recorded in the same synchronous call (not in an effect)
-  // so a whole paint / erase stroke is always exactly one undo step.
+  // `layoutRef` is the source of truth: each edit reads the latest layout from
+  // it and writes back synchronously, then mirrors it into React state. A fast
+  // drag fires several edits per render, so render-time state would lose cells.
+  // History is recorded in the same call, so one stroke is one undo step.
   const layoutRef = useRef<LayoutSnapshot<DesignerPlacement>>({ inputs: inputPlacements, targets: targetPlacements, groundTiles });
   const [history, setHistory] = useState<LayoutHistory<DesignerPlacement>>(emptyHistory);
   const historyRef = useRef(history);
@@ -182,7 +175,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
   onChangeRef.current = onChange;
   const pendingTransformRef = useRef<LayoutTransform | undefined>(undefined);
 
-  /** Put a layout on screen (only the lists that actually changed). */
+  /** Shows a layout, updating only the lists that changed. */
   const show = useCallback((next: LayoutSnapshot<DesignerPlacement>) => {
     const prev = layoutRef.current;
     layoutRef.current = next;
@@ -191,10 +184,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     if (next.groundTiles !== prev.groundTiles) setGroundTiles(next.groundTiles);
   }, []);
 
-  /**
-   * Apply one edit to the latest layout. `fn` returns the next layout, or
-   * null for "nothing to do". Edits inside a stroke share one undo step.
-   */
+  /** Applies one edit; `fn` returns the next layout or null for no-op. Edits in a stroke share an undo step. */
   const apply = useCallback((
     fn: (layout: LayoutSnapshot<DesignerPlacement>) => LayoutSnapshot<DesignerPlacement> | null,
     transform?: LayoutTransform
@@ -209,7 +199,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     return true;
   }, [recorder, show]);
 
-  // Report edits to an embedding owner (not the initial state).
+  // Report changes after mount to the embedding owner.
   const isInitialChangeMount = useRef(true);
   useEffect(() => {
     if (isInitialChangeMount.current) {
@@ -234,7 +224,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     if (!step) return false;
     historyRef.current = step.history;
     setHistory(step.history);
-    // A transform is undone by its inverse, so cell-keyed owner data can follow.
+    // Report the inverse transform so cell-keyed owner data follows.
     restore(step.entry.snapshot, step.entry.transform && invertTransform(step.entry.transform));
     return true;
   }, [recorder, restore]);
@@ -273,14 +263,11 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     apply(l => ({ ...l, groundTiles: normalizeGroundTiles(tiles, [...l.inputs, ...l.targets]) }));
   }, [apply]);
 
-  // All placements combined (for overlap checking and display)
   const allPlacements = useMemo(() => {
     return [...inputPlacements, ...targetPlacements];
   }, [inputPlacements, targetPlacements]);
 
-  // Effect propagation across the whole design. Inputs are real plants that
-  // push their buffs; targets are slots - they mark where a mutation *can*
-  // spawn, so they receive effects but never give any (same as the solver).
+  // Inputs are plants that give buffs; targets are slots that only receive (as in the solver).
   const effectSimulation = useMemo(() => {
     return simulateEffects([
       ...inputPlacements.map(p => ({ id: p.cropId, position: p.position, size: p.size })),
@@ -288,7 +275,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     ]);
   }, [inputPlacements, targetPlacements]);
   
-  // Check if position is occupied by any placement (inputs or targets)
   const isPositionOccupied = useCallback((
     position: [number, number],
     size: number,
@@ -297,7 +283,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     return isPositionOccupiedByPlacements(position, size, allPlacements, excludeId);
   }, [allPlacements]);
   
-  // Validate position (bounds only - designer treats all cells as unlocked)
+  // Bounds only: every designer cell counts as unlocked.
   const isValidPlacementPosition = useCallback((
     position: [number, number],
     size: number
@@ -305,7 +291,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     return validateGridBounds(position, size);
   }, []);
   
-  // Validate placement (includes overlap check)
   const isValidPlacement = useCallback((
     position: [number, number],
     size: number,
@@ -323,7 +308,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     return { valid: true };
   }, [isValidPlacementPosition, isPositionOccupied]);
   
-  // Add placement to current mode's list
   const addPlacement = useCallback((
     placement: Omit<DesignerPlacement, "id">
   ): { success: boolean; error?: string } => {
@@ -340,7 +324,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     const size = placement.size;
     
     apply(l => {
-      // Painting over an existing placement replaces it
+      // Painting over existing placements replaces them.
       const overlappingIds = new Set(findOverlappingPlacements(placement.position, size, [...l.inputs, ...l.targets]).map(p => p.id));
       const dropOverlapping = (list: DesignerPlacement[]) => {
         const next = list.filter(p => !overlappingIds.has(p.id));
@@ -350,7 +334,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       let targets = dropOverlapping(l.targets);
       if (mode === "inputs") inputs = [...inputs, newPlacement];
       else targets = [...targets, newPlacement];
-      // The crop or slot owns its ground over its entire footprint.
+      // A placement replaces ground tiles under its footprint.
       const ground = l.groundTiles.filter(t =>
         t.position[0] < row || t.position[0] >= row + size || t.position[1] < col || t.position[1] >= col + size
       );
@@ -360,7 +344,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     return { success: true };
   }, [isValidPlacementPosition, apply, mode]);
   
-  // Remove placement from either list
   const removePlacement = useCallback((id: string) => {
     apply(l => {
       const inputs = l.inputs.filter(p => p.id !== id);
@@ -374,7 +357,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     });
   }, [apply]);
   
-  // Move placement
   const movePlacement = useCallback((
     id: string,
     newPosition: [number, number]
@@ -408,7 +390,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     return { success: true };
   }, [apply]);
   
-  // Clear functions
   const clearInputPlacements = useCallback(() => {
     apply(l => (l.inputs.length ? { ...l, inputs: [] } : null));
   }, [apply]);
@@ -438,23 +419,20 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     return { success: true, droppedGround: next.droppedGround };
   }, [apply]);
   
-  // Get placement at position
   const getPlacementAt = useCallback((
     row: number,
     col: number
   ): DesignerPlacement | undefined => {
-    // The latest layout, so an erase stroke faster than React renders still finds each piece.
+    // Reads layoutRef so a fast erase stroke finds pieces not yet rendered.
     const l = layoutRef.current;
     return getPlacementAtCell(row, col, [...l.inputs, ...l.targets]);
   }, [allPlacements]); // eslint-disable-line react-hooks/exhaustive-deps -- new identity whenever the layout renders
   
-  // Load from solver result
   const loadFromSolverResult = useCallback((
     crops: Array<{ id: string; name: string; position: [number, number]; size: number }>,
     mutations: Array<{ id: string; name: string; position: [number, number]; size: number }>,
     tiles: GroundTile[] = []
   ) => {
-    // Convert crops to input placements
     const newInputs: DesignerPlacement[] = crops.map(crop => ({
       id: generatePlacementId("designer"),
       cropId: crop.id,
@@ -464,7 +442,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       isMutation: false,
     }));
     
-    // Convert mutations to target placements
     const newTargets: DesignerPlacement[] = mutations.map(mutation => ({
       id: generatePlacementId("designer"),
       cropId: mutation.id,
@@ -475,7 +452,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     }));
     
     const resolved = resolveOverlaps(newInputs, newTargets);
-    // Loading a layout by mistake can be undone too.
+    // Undoable.
     apply(() => ({
       inputs: resolved.inputs,
       targets: resolved.targets,
@@ -485,13 +462,12 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     setSelectedCropState(null);
   }, [apply]);
   
-  // Get possible mutations based on current input placements
+  // Spots where each mutation's requirements are met by the current inputs.
   const getPossibleMutations = useCallback((
     mutations: MutationDefinition[]
   ): Array<{ mutation: MutationDefinition; positions: [number, number][] }> => {
     const results: Array<{ mutation: MutationDefinition; positions: [number, number][] }> = [];
     
-    // Build a map of what crops are at each cell
     const cropAtCell = new Map<string, string>();
     for (const placement of inputPlacements) {
       const [row, col] = placement.position;
@@ -502,12 +478,10 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       }
     }
     
-    // For each mutation, check if requirements can be satisfied
     for (const mutation of mutations) {
       const validPositions: [number, number][] = [];
 
-      // Godseed-style: the spot must hold every required effect. Only spots
-      // free of input crops count (a mutation cannot spawn on top of crops).
+      // Effect-based (godseed): the spot must hold every required effect and be free of input crops.
       if (SPECIAL_EFFECT_SETS[mutation.id]) {
         for (let row = 0; row <= 10 - mutation.size; row++) {
           for (let col = 0; col <= 10 - mutation.size; col++) {
@@ -529,36 +503,31 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
         continue;
       }
 
-      // Try each possible position for the mutation
       for (let row = 0; row <= 10 - mutation.size; row++) {
         for (let col = 0; col <= 10 - mutation.size; col++) {
-          // Check if position is valid (unlocked cells)
           const posValid = isValidPlacementPosition([row, col], mutation.size);
           if (!posValid.valid) continue;
           
-          // Count adjacent cells by crop type
           const adjacentCropCounts = new Map<string, Set<string>>();
           
-          // Get all adjacent cells (cells touching the mutation area)
+          // Distinct neighbouring cells per crop, 8-way around the footprint.
           for (let dr = 0; dr < mutation.size; dr++) {
             for (let dc = 0; dc < mutation.size; dc++) {
               const cellRow = row + dr;
               const cellCol = col + dc;
               
-              // Check all 8 directions (including diagonals)
               const neighbors = [
-                [cellRow - 1, cellCol],     // North
-                [cellRow + 1, cellCol],     // South
-                [cellRow, cellCol - 1],     // West
-                [cellRow, cellCol + 1],     // East
-                [cellRow - 1, cellCol - 1], // Northwest
-                [cellRow - 1, cellCol + 1], // Northeast
-                [cellRow + 1, cellCol - 1], // Southwest
-                [cellRow + 1, cellCol + 1], // Southeast
+                [cellRow - 1, cellCol],
+                [cellRow + 1, cellCol],
+                [cellRow, cellCol - 1],
+                [cellRow, cellCol + 1],
+                [cellRow - 1, cellCol - 1],
+                [cellRow - 1, cellCol + 1],
+                [cellRow + 1, cellCol - 1],
+                [cellRow + 1, cellCol + 1],
               ];
               
               for (const [nr, nc] of neighbors) {
-                // Skip if inside the mutation area
                 if (nr >= row && nr < row + mutation.size && 
                     nc >= col && nc < col + mutation.size) continue;
                 
@@ -567,14 +536,12 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
                   if (!adjacentCropCounts.has(crop)) {
                     adjacentCropCounts.set(crop, new Set());
                   }
-                  // Track unique cell positions for this crop type
                   adjacentCropCounts.get(crop)!.add(`${nr},${nc}`);
                 }
               }
             }
           }
           
-          // Check if all requirements are satisfied (both crop type AND count)
           const requirementsMet = mutation.requirements.every(req => {
             const cellsOfThisCrop = adjacentCropCounts.get(req.crop);
             return cellsOfThisCrop && cellsOfThisCrop.size >= req.count;
@@ -594,7 +561,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     return results;
   }, [inputPlacements, isValidPlacementPosition, effectSimulation]);
   
-  // Get validation info for a target placement
+  // Which requirements of a target placement are met.
   const getTargetValidation = useCallback((
     targetId: string,
     mutations: MutationDefinition[]
@@ -604,13 +571,12 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       return { isValid: false, missingRequirements: [], satisfiedRequirements: [], effectRequirements: [] };
     }
 
-    // Find the mutation definition
     const mutationDef = mutations.find(m => m.id === target.cropId);
     if (!mutationDef) {
       return { isValid: false, missingRequirements: [], satisfiedRequirements: [], effectRequirements: [] };
     }
 
-    // Godseed-style: an effect condition on the spot instead of crop counts
+    // Effect-based (godseed): checks held effects instead of crop counts.
     const requiredEffects = SPECIAL_EFFECT_SETS[mutationDef.id];
     if (requiredEffects) {
       const missing = new Set(
@@ -628,7 +594,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       };
     }
     
-    // Build a map of what crops are at each cell
     const cropAtCell = new Map<string, string>();
     for (const placement of inputPlacements) {
       const [row, col] = placement.position;
@@ -639,7 +604,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       }
     }
     
-    // Count adjacent cells by crop type for this target position
+    // Distinct neighbouring cells per crop, 8-way around the footprint.
     const [row, col] = target.position;
     const adjacentCropCounts = new Map<string, Set<string>>();
     
@@ -674,7 +639,6 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       }
     }
     
-    // Check requirements and collect missing ones
     const missingRequirements: Array<RequirementInfo> = [];
     const satisfiedRequirements: Array<RequirementInfo> = [];
     let isValid = true;

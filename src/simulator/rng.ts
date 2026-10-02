@@ -1,10 +1,7 @@
 /**
- * Seeded PRNG: xoshiro128** over a plain 4-word state.
- *
- * The state is an ordinary array that lives inside SimulationState, so it
- * survives structuredClone / postMessage / JSON and a run can be split at any
- * cycle boundary without changing the stream. The engine must never call
- * Math.random.
+ * Seeded xoshiro128** PRNG. State is a plain 4-word array inside
+ * SimulationState, so it survives structuredClone/JSON and a run can be split
+ * at any cycle without changing the stream. The engine never uses Math.random.
  */
 
 export type RngState = [number, number, number, number];
@@ -58,9 +55,8 @@ export function chance(s: RngState, p: number): boolean {
 }
 
 /**
- * One draw over weighted entries against `denominator` (>= the weight sum).
- * The remainder of the denominator is the blank: returns -1. Consumes exactly
- * one number, whatever the outcome.
+ * One weighted draw against `denominator` (>= weight sum); the remainder is
+ * blank (-1). Always consumes exactly one number.
  */
 export function weightedPick(s: RngState, weights: readonly number[], denominator: number): number {
   const roll = nextFloat(s) * denominator;

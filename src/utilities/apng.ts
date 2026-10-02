@@ -1,13 +1,8 @@
 /**
- * Minimal APNG decoder.
- *
- * `parseApng` is pure: it splits an (A)PNG into one standalone PNG per frame
- * plus the frame's placement/timing, so each frame can be decoded by the
- * browser's own PNG decoder. `decodeApngFrames` then composites those frames
- * onto canvases following the APNG dispose/blend rules, yielding one full
- * frame per canvas.
- *
- * A plain (non-animated) PNG yields a single frame.
+ * Minimal APNG decoder. `parseApng` (pure) splits an (A)PNG into standalone
+ * per-frame PNGs plus placement/timing, so the browser decodes each frame;
+ * `decodeApngFrames` composites them per the APNG dispose/blend rules into one
+ * full canvas per frame. A plain PNG yields a single frame.
  */
 
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -100,9 +95,7 @@ function concat(parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
 /** Chunks that describe the image data layout and must be copied into every frame PNG. */
 const SHARED_CHUNKS = new Set(['PLTE', 'tRNS', 'gAMA', 'cHRM', 'sRGB', 'iCCP', 'sBIT']);
 
-/**
- * Splits an APNG into standalone per-frame PNGs with their placement/timing.
- */
+/** Splits an APNG into standalone per-frame PNGs with their placement/timing. */
 export function parseApng(input: ArrayBuffer | Uint8Array<ArrayBuffer>): ApngInfo {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const chunks = readChunks(bytes);
@@ -171,8 +164,7 @@ export function parseApng(input: ArrayBuffer | Uint8Array<ArrayBuffer>): ApngInf
         blendOp: v.getUint8(25),
       };
     } else if (chunk.type === 'IDAT' && current) {
-      // IDAT only belongs to the animation when an fcTL precedes it;
-      // otherwise it is a hidden default image and is skipped.
+      // IDAT without a preceding fcTL is a hidden default image; skip it.
       data.push(chunk.data);
     } else if (chunk.type === 'fdAT' && current) {
       data.push(chunk.data.subarray(4)); // drop the sequence number
@@ -184,9 +176,7 @@ export function parseApng(input: ArrayBuffer | Uint8Array<ArrayBuffer>): ApngInf
   return { width, height, numPlays, frames };
 }
 
-/**
- * Fetches an (A)PNG and returns one fully composited canvas per frame.
- */
+/** Fetches an (A)PNG and returns one fully composited canvas per frame. */
 export async function decodeApngFrames(url: string): Promise<HTMLCanvasElement[]> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);

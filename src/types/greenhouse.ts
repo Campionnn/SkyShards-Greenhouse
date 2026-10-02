@@ -1,9 +1,9 @@
 export interface CropDefinition {
-  id: string; // The key used in API and for images
-  name: string; // Display name
+  id: string; // API key and image file name
+  name: string;
   size: number;
   priority: number;
-  ground: string; // Ground type (farmland, sand, soul_sand, mycelium, netherrack, end_stone)
+  ground: string; // farmland, sand, soul_sand, mycelium, netherrack or end_stone
   growth_stages: number | null;
   positive_buffs: string[];
   negative_buffs: string[];
@@ -12,17 +12,17 @@ export interface CropDefinition {
 }
 
 export interface MutationRequirement {
-  crop: string; // This is the crop ID
+  crop: string; // crop id
   count: number;
 }
 
 export interface MutationDefinition {
-  id: string; // The key used in API and for images
-  name: string; // Display name
+  id: string; // API key and image file name
+  name: string;
   size: number;
   ground: string;
   requirements: MutationRequirement[];
-  special?: string; // Special spawn conditions
+  special?: string; // special spawn condition
   rarity: string;
   growth_stages: number;
   positive_buffs: string[];
@@ -35,13 +35,13 @@ export interface MutationGoal {
   mutation: string;
   maximize: boolean;
   count: number | null;
-  // Per-target override of the request-level effect weights (merged key by key)
+  // Per-target override of the request effect weights, merged key by key.
   effect_weights?: Record<string, number>;
 }
 
-// Lock object for pre-placed crops/mutations
+// A pre-placed crop or mutation.
 export interface LockDefinition {
-  name: string; // Crop/mutation ID
+  name: string; // crop or mutation id
   size: number;
   position: [number, number];
 }
@@ -51,21 +51,19 @@ export interface SolveRequest {
   targets: MutationGoal[];
   priorities?: Record<string, number>;
   locks?: LockDefinition[];
-  // How much each crop effect on the spawned target is worth, in units of one
-  // plain mutation spot (0.5 = a spot with this effect counts as 1.5 spots).
-  // Negative effects should get negative weights. Missing/0 = ignored.
+  // Value of each effect on a spawned target, in plain mutation spots (0.5 = a
+  // spot with this effect counts as 1.5). Negative effects take negative
+  // weights; missing or 0 = ignored.
   effect_weights?: Record<string, number>;
-  // Plants the solver may place freely as effect sources (defaults to every
-  // buff-carrying base crop). Only consulted when effect_weights is set.
+  // Plants the solver may place as effect sources (default: every base crop
+  // with buffs). Used only when effect_weights is set.
   buff_crops?: string[];
-  // UNIQUE_CROPS: at least this many distinct crop groups on the grid (0-12)
+  // Minimum distinct crop groups on the grid (0-12).
   unique_crops?: number;
-  // Seconds the solver may run. Only honoured by the local solver; the public
-  // API always uses its own budget.
+  // Solver time budget in seconds; the public API ignores it.
   time_limit?: number;
 }
 
-// Unified placement/mutation format - uses position/size
 export interface CropPlacement {
   crop: string;
   position: [number, number];
@@ -77,9 +75,9 @@ export interface MutationResult {
   mutation: string;
   position: [number, number];
   size: number;
-  // Effects the mutation holds once spawned here (after immunity / improved-override rules)
+  // Effects held once spawned here, after immunity and improved-override rules.
   effects?: string[];
-  // This spot's contribution to the score (spawn rate plus weighted effect value)
+  // Contribution to the score: spawn rate plus weighted effect value.
   value?: number;
 }
 
@@ -89,20 +87,19 @@ export interface SolveResponse {
   placements: CropPlacement[];
   mutations: MutationResult[];
   cache_hit?: string;
-  // Seconds the solver was given (absent when answered from the cache without solving)
+  // Seconds the solver was given; absent when answered from the cache.
   time_limit?: number | null;
-  // What the solver maximizes: expected spawns/tick of the maximize targets
-  // plus the weighted effect value over every target spot
+  // Objective: expected spawns/tick of maximize targets plus weighted effect
+  // value over all target spots.
   score?: number;
   effect_value?: number;
   expected_spawns_per_tick?: number;
-  // Effect weights actually used, resolved per target mutation
+  // Effect weights used, resolved per target mutation.
   effect_weights?: Record<string, Record<string, number>>;
-  // Free buff-source crops the solver was allowed to place
+  // Buff-source crops the solver could place.
   buff_crops?: string[];
-  // UNIQUE_CROPS
   unique_crops?: { requested: number; target: number; achieved: number; crops: string[] };
-  // Internal effect-model statistics (debug info, not shown)
+  // Debug statistics; not displayed.
   effect_model_stats?: Record<string, unknown>;
 }
 
@@ -135,14 +132,14 @@ export interface JobProgress {
   best_bound: number | null;
   current_activity: string;
   elapsed_seconds: number;
-  // Live preview of current best solution
+  // Current best solution, for live preview.
   preview_placements: CropPlacement[] | null;
   preview_mutations: MutationResult[] | null;
   preview_cells_used: number | null;
-  // Seconds the solver was given (newer API versions only)
+  // Absent from older API versions.
   time_limit_seconds?: number | null;
-  // Decoded objective (newer API versions only; absent on older local solvers).
-  // The objective is lexicographic: score first, then fewer priority points, then fewer cells.
+  // Decoded objective; absent from older API and local solver versions.
+  // Lexicographic: score, then fewer priority points, then fewer cells.
   stage?: "maximizing" | "tie_breaking" | null;
   tie_break?: "priority" | "cells" | null;
   has_score?: boolean | null;
@@ -206,8 +203,8 @@ export interface GridCell {
 }
 
 export interface SelectedMutation {
-  id: string; // The mutation ID (key), used for API calls
-  name: string; // Display name for UI
+  id: string; // mutation id
+  name: string;
   mode: "maximize" | "target";
   targetCount: number;
 }
@@ -226,14 +223,13 @@ export interface ExpansionState {
 }
 
 export interface LockedPlacement {
-  id: string; // Unique ID for React keys and tracking
-  crop: string; // Crop/mutation ID (e.g., "pumpkin", "gloomgourd")
+  id: string; // unique per placement
+  crop: string; // crop or mutation id, e.g. "pumpkin"
   position: [number, number];
   size: number;
-  ground: string; // Ground type for rendering texture
+  ground: string;
 }
 
-// Filter categories for crop/mutation list
 export type CropFilterCategory =
   | "all"
   | "crops"
@@ -244,7 +240,6 @@ export type CropFilterCategory =
   | "epic"
   | "legendary";
 
-// Selected crop for placement mode
 export interface SelectedCropForPlacement {
   id: string;
   name: string;
@@ -252,12 +247,10 @@ export interface SelectedCropForPlacement {
   ground: string;
 }
 
-// Get crop image path (uses crop ID, not display name)
 export function getCropImagePath(cropId: string): string {
   return `/greenhouse/crops/${cropId}.png`;
 }
 
-// Get ground texture image path
 export function getGroundImagePath(groundType: string): string {
   return `/greenhouse/ground/${groundType}.png`;
 }

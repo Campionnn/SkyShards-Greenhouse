@@ -27,9 +27,9 @@ const TOOLTIP_EST_HEIGHT = 150;
 const OFFSET = 8;
 
 /**
- * Floating "has / gives" card anchored to a grid cell. Positioned inside the
- * grid container (which is `position: relative`), so it never pushes other
- * content around. Flips to the left when it would overflow the grid.
+ * Floating "has / gives" card anchored to a grid cell, positioned inside the
+ * relative grid container so it never shifts layout. Flips left when it would
+ * overflow the grid.
  */
 export const EffectTooltip: React.FC<EffectTooltipProps> = ({
   id,

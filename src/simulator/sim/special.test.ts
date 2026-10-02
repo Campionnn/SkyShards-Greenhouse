@@ -26,8 +26,7 @@ describe("Soggybud", () => {
     const five = engine.run(s, 5).state;
     expect(plantAt(five, 1, 5, 5)).toMatchObject({ water: 20, stage: 2 });
 
-    // The player keeps the wheat watered; wheat decay is off so the neighbours stay put, and the
-    // Soggybud's own 3-day timer is stretched out so the water mechanic is what this test measures.
+    // Wheat watered and not decaying; the Soggybud's timer is stretched to 30 days so only water limits growth.
     const grown = blank({ kind: "everyN", n: 1, offset: 0 }, { decayDaysOverrides: { ...NO_BASE_CROP_DECAY.decayDaysOverrides, soggybud: 30 } });
     inject(grown, 1, "soggybud", 5, 5, "spawned");
     inject(grown, 1, "wheat", 5, 4, "planted", { water: 100 });
@@ -41,8 +40,8 @@ describe("Soggybud", () => {
   });
 
   it("with only 2 neighbours its 3-day timer runs out before it finishes growing", () => {
-    // 4 water a tick means 25 ticks to mature, but a spawn only lives 3 days (~18-19 cycles).
-    // Timer-only: it never helped a mutation, so its minimum (8) would otherwise extend it.
+    // 4 water a tick means 25 ticks to mature; the 3-day timer runs out after ~18-19 cycles.
+    // Timer-only, so its unmet minimum (8) doesn't extend it.
     const s = blank(NEVER_ACTIVE, TIMER_ONLY);
     inject(s, 1, "soggybud", 5, 5, "spawned");
     inject(s, 1, "wheat", 5, 4, "planted");

@@ -22,7 +22,7 @@ export const MutationTargets: React.FC = () => {
   
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   
-  // Sync inputValues with selectedMutations
+  // Keep the count drafts in step with selectedMutations; empty or "0" drafts are left mid-edit.
   useEffect(() => {
     setInputValues(prev => {
       const newInputValues = { ...prev };
@@ -39,7 +39,7 @@ export const MutationTargets: React.FC = () => {
               hasChanges = true;
             }
           } else if (currentInputValue === "" || currentInputValue === "0") {
-            // User cleared input or typed invalid value
+            // Mid-edit: leave the draft alone.
           } else if (!isNaN(currentInputNum!) && currentInputNum !== mutation.targetCount) {
             newInputValues[mutation.id] = mutation.targetCount.toString();
             hasChanges = true;
@@ -59,17 +59,15 @@ export const MutationTargets: React.FC = () => {
     });
   }, [selectedMutations]);
 
-  // available mutations
   const availableMutations = mutations.filter(
     (m) => !selectedMutations.some((s) => s.id === m.id)
   );
 
-  // Check for multiple maximize targets
   const hasMultipleMaximize = useMemo(() => {
     return selectedMutations.filter((m) => m.mode === "maximize").length > 1;
   }, [selectedMutations]);
 
-  // Check for mutations with special rules not yet implemented
+  // Mutations whose special rules the solver doesn't model.
   const hasSpecialRuleMutations = useMemo(() => {
     const specialRuleMutationIds = ["shellfruit", "jerryflower"];
     return selectedMutations.some((m) => specialRuleMutationIds.includes(m.id.toLowerCase()));
@@ -130,7 +128,6 @@ export const MutationTargets: React.FC = () => {
       }
     >
 
-      {/* selected mutations */}
       <div className="space-y-2 mb-3">
         {selectedMutations.map((selected) => {
           const mutation = mutations.find((m) => m.id === selected.id);
@@ -259,7 +256,6 @@ export const MutationTargets: React.FC = () => {
         )}
       </div>
 
-      {/* Warning for multiple maximize targets */}
       {hasMultipleMaximize && (
         <div className="flex items-start gap-2 p-2.5 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-md">
           <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -269,7 +265,6 @@ export const MutationTargets: React.FC = () => {
         </div>
       )}
 
-      {/* Warning for special rule mutations */}
       {hasSpecialRuleMutations && (
         <div className="flex items-start gap-2 p-2.5 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-md">
           <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -279,7 +274,6 @@ export const MutationTargets: React.FC = () => {
         </div>
       )}
 
-      {/* Godseed note */}
       {selectedMutations.some((m) => m.id === "godseed") && (
         <div className="flex items-start gap-2 p-2.5 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-md">
           <Target className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
@@ -290,7 +284,6 @@ export const MutationTargets: React.FC = () => {
         </div>
       )}
 
-      {/* mutation search */}
       {availableMutations.length > 0 && (
         <MutationAutocomplete
           mutations={mutations}

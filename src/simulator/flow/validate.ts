@@ -34,11 +34,7 @@ function isKnownItem(data: GameData, item: string): boolean {
   );
 }
 
-/**
- * Reject scenarios that cannot run, and warn about flows that can never
- * leave a step - that class of mistake is otherwise invisible until a run
- * just sits there. Validation never changes the scenario.
- */
+/** Errors for scenarios that cannot run; warnings for steps that can never exit. Does not modify the scenario. */
 export function validateScenario(scenario: Scenario, data: GameData): ScenarioIssue[] {
   const issues: ScenarioIssue[] = [];
   const err = (path: string, message: string) => issues.push({ level: "error", path, message });

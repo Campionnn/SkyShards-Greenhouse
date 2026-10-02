@@ -18,7 +18,7 @@ export function getDefaultUnlockedCells(): Set<string> {
   return cells;
 }
 
-// check if a cell is adjacent to any unlocked cell
+/** True if a cardinal neighbour of the cell is unlocked. */
 export function isAdjacentToUnlocked(row: number, col: number, unlockedCells: Set<string>): boolean {
   const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
   
@@ -33,7 +33,7 @@ export function isAdjacentToUnlocked(row: number, col: number, unlockedCells: Se
   return false;
 }
 
-// all cells that can be expanded to
+/** Locked in-grid cells cardinally adjacent to an unlocked cell. */
 export function getExpandableCells(unlockedCells: Set<string>): Set<string> {
   const expandable = new Set<string>();
   const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -57,7 +57,6 @@ export function getExpandableCells(unlockedCells: Set<string>): Set<string> {
   return expandable;
 }
 
-// Export shared constants and utilities
 export * from "./styles";
 export * from "./cropFilters";
 export * from "./cropMapping";

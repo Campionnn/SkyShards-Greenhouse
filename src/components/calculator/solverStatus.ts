@@ -1,12 +1,11 @@
 /**
- * Plain-language meaning of every status the solver reports, shared by the
- * live progress panel and the result header. Players regularly mistake
- * "Feasible" for "bad" and "cached" for "stale"; these texts are the fix.
+ * Plain-language meaning of every solver status, shared by the progress panel and the result header.
+ * The texts make clear that "Feasible" is not "bad" and "cached" is not "stale".
  */
 import type { JobProgress } from "../../types/greenhouse";
 import type { ResolvedEndpoint } from "../../services/solverEndpoint";
 
-/** Everything the page knows about a solve that is still running. */
+/** A solve still running. */
 export interface SolveSession {
   phase: "submitting" | "queued" | "running" | "cancelling";
   /** Date.now() when Solve was pressed. */
@@ -155,11 +154,9 @@ export const TONE_BADGE: Record<Tone, string> = {
 export type SolveStage = "submitting" | "queued" | "building" | "maximizing" | "tie_breaking";
 
 /**
- * Where a running job is. The solver's objective is lexicographic: first the
- * highest score, then (among layouts with that score) the fewest priority
- * points, then the fewest cells. The API reports which of those it is still
- * working on in progress.stage; older local solvers do not, and then the
- * solve counts as maximizing throughout.
+ * Where a running job is. The objective is lexicographic: highest score, then fewest priority
+ * points, then fewest cells. progress.stage reports which one is in progress; without it
+ * (some local solvers) the solve counts as maximizing throughout.
  */
 export function stageFromProgress(progress: JobProgress | null): SolveStage {
   if (!progress) return "building";
@@ -209,8 +206,7 @@ export interface BestSoFar {
 }
 
 /**
- * Best-layout numbers for the progress panel. Newer APIs send them as fields;
- * older ones only inside the activity text:
+ * Best-layout numbers for the progress panel, from progress fields or, when absent, the activity text:
  *   "Found 12 solutions, best score 3.456 (8 mutations, 40 cells, priority 2)"
  *   "Found 12 solutions, best has 8 mutations"
  *   "Found 12 solutions, best uses 40 cells"

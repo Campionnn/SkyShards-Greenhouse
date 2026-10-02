@@ -148,10 +148,10 @@ describe("sanityCheck: what a cell offers", () => {
     const r = check(s, 4, 4);
     expect(r.occupied).toMatchObject({ kindId: "wheat", row: 4, col: 4, dry: false });
     expect(ids(r.canSpawn)).toEqual(["gloomgourd"]); // computed with the wheat removed from occupancy
-    // Not the occupant itself counted toward anything: a wheat-only ring has no Dustgrain.
+    // The occupant doesn't count toward its own cell's requirements.
     const t = start(singlePlot(farm(layout([["wheat", 4, 3], ["wheat", 4, 4]])), quiet));
     expect(entry(t, 4, 4, "dustgrain").requirements).toEqual([{ crop: "wheat", needed: 2, have: 1, dry: 0 }]);
-    // Anchoring a 2x2 on a cell covered by a plant that began earlier: removes that plant too.
+    // A cell covered by a plant anchored elsewhere reports that plant.
     const covered = start(singlePlot(farm(layout([["wheat", 5, 5]])), quiet));
     expect(check(covered, 5, 5).occupied?.kindId).toBe("wheat");
   });
@@ -202,7 +202,7 @@ describe("sanityCheck on the cells of a multi-cell element", () => {
     }
     expect(centre.row).toBe(5);
     expect(centre.col).toBe(5);
-    // Anchor: the wheat at (4,3) is in the ring, so Lonelily is blocked. Centre: ring rows 4-6 x cols 4-6 is empty once the Godseed is gone.
+    // The anchor's ring holds the wheat at (4,3); the centre's ring is empty once the Godseed is removed.
     expect(ids(anchor.canSpawn)).not.toContain("lonelily");
     expect(entry(s, 4, 4, "lonelily").blockers[0]).toMatchObject({ kind: "ringNotEmpty" });
     expect(ids(centre.canSpawn)).toContain("lonelily");
@@ -222,7 +222,7 @@ describe("sanityCheck on the cells of a multi-cell element", () => {
     expect(inner.occupied).toBeNull();
     expect(ids(anchor.canSpawn)).not.toContain("lonelily");
     expect(ids(inner.canSpawn)).toContain("lonelily");
-    // The inner cell is evaluated exactly like the same cell with no slot there at all (what phaseSpawn does for a non-slot cell).
+    // The inner cell is evaluated like the same cell with no slot, as phaseSpawn does.
     const bare = start(singlePlot(farm(layout([["wheat", 4, 3]]), ...FARM, [4, 3]), quiet));
     expect(check(bare, 5, 5)).toEqual(inner);
   });
@@ -276,9 +276,8 @@ describe("sanityCheck is read-only", () => {
 });
 
 /**
- * The key property: the check agrees with what the spawn roll does. Slots-only
- * mode with the checked cell as the only slot means that cell is the only one
- * rolling, and a floor of 1 means the roll always lands on a pool member.
+ * The check agrees with the spawn roll. With slots-only mode and the checked cell as the
+ * only slot, only that cell rolls; a floor of 1 means every roll lands on a pool member.
  */
 describe("sanityCheck agrees with phaseSpawn", () => {
   const cases: { name: string; spec: LayoutSpec; row: number; col: number; extra?: (s: SimulationState) => void }[] = [
@@ -310,14 +309,14 @@ describe("sanityCheck agrees with phaseSpawn", () => {
 
   for (const { name, spec, row, col, extra } of cases) {
     it(name, () => {
-      // Bioanalysis on, to prove the same scaling is used by both.
+      // Bioanalysis on, so both must apply the same scaling.
       const s = start(
         singlePlot(spec, { ...quiet, config: { spawnCells: "slotsOnly", blankFillTo: 1 }, stats: { mutationChanceBonus: 0.1 } })
       );
       extra?.(s);
       const r = check(s, row, col);
 
-      // 1. Against the engine's own pool builder (spawn/pool.ts) fed by the engine's own ring counts and openness test.
+      // 1. Against the engine's pool builder, ring counts and openness test.
       const plot = structuredClone(s.plots[0]);
       const occ = buildOccupancy(plot);
       const effects = recomputeEffects(plot, s.scenario.settings.config);
@@ -343,7 +342,7 @@ describe("sanityCheck agrees with phaseSpawn", () => {
       });
       for (const e of r.cannot) expect(e.chance).toBe(0);
 
-      // 2. Against real spawn rolls: whatever the roll lands on is something the check said can spawn.
+      // 2. Against real spawn rolls: every spawn is one the check listed.
       const allowed = new Set(ids(r.canSpawn));
       const tally: Record<string, number> = {};
       const N = 150;

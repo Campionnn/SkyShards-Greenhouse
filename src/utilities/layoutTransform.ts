@@ -1,7 +1,6 @@
-// Whole-layout transforms for the 10x10 designer grid: nudge (shift), rotate
-// and mirror. Pure functions over anchor positions (top-left cell) and square
-// footprints, so a 2x2 or 3x3 piece keeps covering the same cells after a
-// rotation or mirror of the grid.
+// Whole-layout nudge, rotate and mirror for the 10x10 designer grid. Pure
+// functions over top-left anchors and square footprints, so a 2x2 or 3x3
+// piece covers the same transformed cells.
 
 import type { GroundTile } from "./designEncoding";
 
@@ -19,9 +18,8 @@ export interface TransformablePiece {
 }
 
 /**
- * New anchor of a size x size piece. Rotation and mirroring are about the
- * whole grid, so they always stay in bounds; a nudge may not (see
- * `fitsGrid`).
+ * New anchor of a size x size piece. Rotations and mirrors stay in bounds; a
+ * nudge may not (see `fitsGrid`).
  *
  * - rotate cw: cell (r, c) -> (c, N-1-r)
  * - rotate ccw: cell (r, c) -> (N-1-c, r)
@@ -54,9 +52,9 @@ export interface TransformedLayout<P extends TransformablePiece> {
 }
 
 /**
- * Apply a transform to a whole layout. Returns null when a nudge would push a
- * crop or target off the grid; ground tiles that fall off are dropped instead
- * so a fully painted floor never blocks a nudge.
+ * Transforms a whole layout. Returns null when a nudge would push a crop or
+ * target off the grid; ground tiles that fall off are dropped so a fully
+ * painted floor never blocks a nudge.
  */
 export function transformLayout<P extends TransformablePiece>(
   layout: { inputs: P[]; targets: P[]; groundTiles: GroundTile[] },

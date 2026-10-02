@@ -14,7 +14,7 @@ import { useSimulation } from "../hooks/useSimulation";
 import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, migrateScenario, scenarioFromShareCodes, type Scenario } from "../simulator";
 import { extractLayoutCode, LocalStorageManager, readIncomingLayout, SOURCE_LABEL, type IncomingLayout } from "../utilities";
 
-/** Saved scenarios from older versions may use old names or miss newer settings; upgrade them and fill from the defaults. */
+/** Migrates a saved scenario and fills missing settings from the defaults. */
 function withDefaults(saved: Scenario): Scenario {
   const sc = migrateScenario(saved);
   const base = defaultSettings();
@@ -39,7 +39,7 @@ function initialScenario(params: URLSearchParams): Scenario {
   return addPlot({ plots: [], startingInventory: {}, settings: defaultSettings() });
 }
 
-/** Debounce scenario edits so typing in a field does not restart the simulation on every keystroke. */
+/** Debounces scenario edits so typing doesn't restart the simulation on every keystroke. */
 function useDebounced<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -61,10 +61,10 @@ export const SimulatorPage: React.FC = () => {
   const editingPlot = editing?.plotId ?? null;
   const setEditingPlot = (plotId: number | null) => setEditing(plotId === null ? null : { plotId, step: 0 });
   const [focus, setFocus] = useState<string>(ALL);
-  // A layout sent here by a Simulate button, or the picker opened from the Scenario panel.
+  // A layout handed over by a Simulate button on another page.
   const [incoming, setIncoming] = useState<IncomingLayout | null>(() => readIncomingLayout(location.state));
   const [picking, setPicking] = useState(false);
-  /** Sanity Check inspector: while on, hovering an empty cell or slot shows which mutations could spawn there. */
+  /** Sanity Check inspector: hovering an empty cell or slot shows which mutations could spawn there. */
   const [sanityCheckOn, setSanityCheckOn] = useState(false);
   const settled = useDebounced(scenario, 300);
   const { view, run, step, stepBack, undo, stop, reset, addItems } = useSimulation(settled);
@@ -73,7 +73,7 @@ export const SimulatorPage: React.FC = () => {
     LocalStorageManager.saveSimulatorScenario(settled);
   }, [settled]);
 
-  // Take the handoff out of the history entry, so a reload or Back does not offer it again.
+  // Clear the handoff from the history entry so a reload or Back doesn't offer it again.
   useEffect(() => {
     const fresh = readIncomingLayout(location.state);
     if (!fresh) return;

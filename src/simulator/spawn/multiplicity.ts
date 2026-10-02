@@ -3,9 +3,8 @@ import type { MutationDef } from "../data/types";
 import type { RingCounts } from "./eligibility";
 
 /**
- * Mutations whose weight scales with extra matching cells in the ceiling
- * model. Ashwreath only (solver/spawn.py SCALING_QUIRKS): fire is not a real
- * crop, so only adjacent nether wart moves the weight, one wart at a time.
+ * Ceiling-model weight scaling with extra matching cells (solver/spawn.py).
+ * Ashwreath only: each nether wart beyond the requirement adds weight.
  */
 export const SCALING_QUIRKS: Record<string, { scalingCrop: string; fullWeightCount: number }> = {
   ashwreath: { scalingCrop: "nether_wart", fullWeightCount: 4 },
@@ -32,24 +31,20 @@ export function fullWeightMultiplicity(m: MutationDef): number {
 }
 
 /**
- * k = how strongly this location offers the mutation; k = 1 is "minimally
- * eligible", 0 is ineligible. Check order mirrors solver/spawn.py:220-257.
- * `ring` is the 8-way ring around the footprint (spawn/eligibility.ts
- * `ringCounts`): requirement counts in CELLS, with dried-out plants left
- * out, plus whether anything at all stands there.
+ * How strongly a location offers the mutation: 0 ineligible, 1 minimally
+ * eligible. Check order mirrors solver/spawn.py:220-257.
  */
 export function multiplicity(m: MutationDef, ring: RingCounts, specialEligible?: boolean): number {
   const { counts } = ring;
-  // 1. Zero-adjacent rule (Lonelily). It reads plain occupancy, not the
-  //    requirement counts: a dried-out neighbour is still physically there.
+  // 1. Lonelily: plain occupancy (a dry neighbour still blocks)
   if (requiresZeroAdjacent(m)) {
     return ring.ringOccupied ? 0 : 1;
   }
-  // 2. All-positive-effects rule (Godseed), decided by the effect simulation
+  // 2. Godseed, from the effect simulation
   if (isAllPositiveSpecial(m)) return specialEligible ? 1 : 0;
-  // 3. No requirements and no rule above: an unmodelled special never spawns
+  // 3. Unmodelled special without requirements never spawns
   if (m.requirements.length === 0) return 0;
-  // 4. Every requirement met at least once
+  // 4. Every requirement met
   for (const r of m.requirements) {
     if ((counts[r.crop] ?? 0) < r.count) return 0;
   }
@@ -73,8 +68,7 @@ export function effectiveWeight(
   if (k <= 0 || m.spawnWeight <= 0) return 0;
 
   if (config.weightModel === "support") {
-    // Wiki/staff model: each matching adjacent requirement cell adds support, capped.
-    // Mutations without crop requirements (Lonelily, Godseed) are fully supported.
+    // Each matching ring cell adds support, capped. No requirements (Lonelily, Godseed) = full weight.
     if (m.requirements.length === 0) return m.spawnWeight;
     let matching = 0;
     for (const r of m.requirements) {
@@ -83,7 +77,7 @@ export function effectiveWeight(
     return m.spawnWeight * Math.min(config.supportCap, config.supportPerCell * matching);
   }
 
-  // Ceiling model: the listed weight is reached the moment requirements hold.
+  // Ceiling model: full weight once requirements hold.
   const q = SCALING_QUIRKS[m.id];
   const scaling = scalingRequirement(m);
   if (q && scaling) {

@@ -1,5 +1,4 @@
-// Public surface of the greenhouse simulator. The single-tick primitive is
-// deliberately NOT exported: callers advance time only through run().
+// Public simulator API. The single-tick primitive is not exported: time moves only through run().
 
 export { createEngine, type Engine } from "./engine";
 export { CONFIG_META, DEFAULT_CONFIG, MUTATION_CREDIT_ORDERS, withConfigDefaults } from "./config";
@@ -43,7 +42,6 @@ export {
 } from "./economy/rareCrops";
 export { UNMODELLED_RULES } from "./growth/gates";
 export { decayDaysOf, isDry, minimumMutationsOf } from "./sim/plants";
-// Read-only minimum-mutation helpers for the UI (pure; never mutate a state).
 export { combinedRemaining, decayStatus, isPooled, minimumMet, wouldDecayWithin } from "./sim/decay";
 export type { DecayStatus, MutatesRemaining } from "./sim/decay";
 export { ALOE_FRAGMENT, ALOE_OPTIMAL_STAGE, aloeHarvestItems, aloeRow } from "./growth/aloe";

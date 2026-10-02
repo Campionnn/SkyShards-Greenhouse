@@ -110,19 +110,18 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
   onClick,
 }) => {
   const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
-  const CLICK_THRESHOLD = 5; // pixels - movement less than this is considered a click
+  const CLICK_THRESHOLD = 5; // px; less movement counts as a click
   
   const { totalWidth, totalHeight, imageWidth, imageHeight } = calculateCropImageDimensions(placement.size, cellSize, gap);
   const { top, left } = getCellPixelPosition(placement.position[0], placement.position[1], cellSize, gap);
   
-  // Determine if this is an invalid target
   const isInvalidTarget = !isInput && validationInfo && !validationInfo.isValid;
   
-  // Glow colors: no glow for inputs, blue glow for valid targets (only when showing image), red border for invalid targets
+  // Valid targets glow blue (when the image shows); invalid targets get a red border instead.
   const baseGlow = isInput
     ? undefined
     : isInvalidTarget
-      ? undefined // No glow for invalid, we use border instead
+      ? undefined
       : showImage ? "0 0 8px rgba(0, 200, 255, 1), inset 0 0 8px rgba(0, 200, 255, 1)" : undefined;
   const hoverGlow = "0 0 8px rgba(239, 68, 68, 0.8), inset 0 0 8px rgba(239, 68, 68, 0.4)";
   
@@ -140,10 +139,10 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "visible", // Allow tooltip to overflow
+    overflow: "visible", // lets the tooltip overflow
     boxShadow: isHovered ? hoverGlow : baseGlow,
-    border: isInvalidTarget ? "2px solid #ef4444" : undefined, // Red border for invalid
-    zIndex: isDragging ? 20 : (isHovered && isInvalidTarget ? 30 : 10), // Higher z-index when showing tooltip
+    border: isInvalidTarget ? "2px solid #ef4444" : undefined,
+    zIndex: isDragging ? 20 : (isHovered && isInvalidTarget ? 30 : 10), // raised while its tooltip shows
     cursor: isDragging ? "grabbing" : (isPlacementMode ? "crosshair" : "grab"),
     opacity: isDragging ? 0.8 : 1,
     transition: isDragging ? "none" : "transform 0.15s ease, box-shadow 0.15s ease",
@@ -287,12 +286,11 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
     selectedGround,
   } = useDesigner();
   
-  // Expose grid element via ref
   useImperativeHandle(ref, () => ({
     getGridElement: () => gridRef.current,
   }), []);
   
-  // Designer always uses a full 10x10 grid with all cells "unlocked"
+  // Every cell of the designer grid is unlocked.
   const allCellsUnlocked = useMemo(() => {
     const cells = new Set<string>();
     for (let r = 0; r < 10; r++) {
@@ -323,15 +321,14 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
     handlePlacementMouseDown,
   } = useDesignerGridPlacement({ cellSize, gap, gridRef });
   
-  // Floating effects card for the hovered placement (not while dragging)
+  // Effects card for the hovered placement, hidden while dragging.
   const hoveredEffects = useMemo(() => {
     if (!hoveredPlacementId || dragState?.isDragging) return null;
     const placement = allPlacements.find(p => p.id === hoveredPlacementId);
     if (!placement) return null;
     const raw = effectSimulation.heldOver(placement.position, placement.size);
     const has = effectiveEffects(raw);
-    // A target is a slot: it shows where the mutation can spawn, so it gives
-    // nothing. The same plant placed as an input does give its buffs.
+    // Targets are slots and give nothing; the same plant as an input does.
     const isSlot = targetPlacements.some(t => t.id === placement.id);
     return {
       placement,
@@ -342,7 +339,6 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
     };
   }, [hoveredPlacementId, dragState, allPlacements, targetPlacements, effectSimulation]);
 
-  // Get ground type for a crop
   const getGroundType = (cropId: string): string => {
     const cropDef = getCropDef(cropId);
     const mutationDef = getMutationDef(cropId);
@@ -366,7 +362,6 @@ return (
         onContextMenu={handleContextMenu}
         onMouseUp={handleMouseUp}
       >
-      {/* Background grid cells */}
       <GridBackground cellSize={cellSize} gap={gap} unlockedCells={allCellsUnlocked} variant="gray" />
       {/* Crop and target footprints render their own implicit ground. */}
       {groundTiles.map(({ ground, position: [row, col] }) => {
@@ -376,7 +371,6 @@ return (
           style={{ top, left, width: cellSize, height: cellSize, backgroundImage: `url(${getGroundImagePath(ground)})`, backgroundSize: "cover" }} />;
       })}
       
-      {/* Input placements */}
       {inputPlacements.map((placement) => {
         const isBeingDragged = dragState?.placementId === placement.id && dragState?.isDragging;
         const isHovered = hoveredPlacementId === placement.id && !isBeingDragged && !isPlacementMode;
@@ -411,7 +405,6 @@ return (
         );
       })}
       
-      {/* Target placements */}
       {targetPlacements.map((placement) => {
         const isBeingDragged = dragState?.placementId === placement.id && dragState?.isDragging;
         const isHovered = hoveredPlacementId === placement.id && !isBeingDragged && !isPlacementMode;
@@ -420,7 +413,6 @@ return (
           ? { ...placement, position: dragState.currentPosition }
           : placement;
         
-        // Get validation info for this target
         const validationInfo = getTargetValidation(placement.id, mutations);
         
         return (
@@ -469,7 +461,7 @@ return (
         />
       )}
 
-      {/* Drag preview validation overlay */}
+      {/* Drag target validity */}
       {dragState?.isDragging && dragValidation && (
         <DragValidationOverlay
           position={dragState.currentPosition}
@@ -492,7 +484,7 @@ return (
             opacity: 0.7, zIndex: 15 }} />;
       })()}
 
-      {/* Placement preview (when not dragging) */}
+      {/* Placement preview, hidden while dragging */}
       {previewPosition && selectedCropForPlacement && !dragState?.isDragging && !paintState && (
         <DesignerPlacementPreview
           position={previewPosition}

@@ -30,12 +30,10 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  // Available mutations
   const availableMutations = useMemo(() => {
     return mutations.filter((m) => !excludeIds.includes(m.id));
   }, [mutations, excludeIds]);
 
-  // Debounced search function
   const debouncedSearch = useMemo(
     () =>
       debounce((searchQuery: string) => {
@@ -130,7 +128,7 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
   const handleInputFocus = useCallback(() => {
     if (isSelecting) return;
 
-    // show all available mutations when empty query
+    // An empty query lists every available mutation.
     if (query.trim() === "") {
       setSuggestions(availableMutations);
       setIsOpen(availableMutations.length > 0);
@@ -139,7 +137,6 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
     }
   }, [isSelecting, query, availableMutations, debouncedSearch]);
 
-  // click outside to close
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -160,7 +157,6 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
     };
   }, []);
 
-  // scroll focused item into view
   useEffect(() => {
     if (focusedIndex >= 0 && listRef.current) {
       const items = listRef.current.querySelectorAll("li");
@@ -171,7 +167,7 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
     }
   }, [focusedIndex]);
 
-  // show dropdown after selection if input is still focused and there are available mutations
+  // Reopen the list after a selection while the input keeps focus.
   useEffect(() => {
     if (!isSelecting && availableMutations.length > 0 && document.activeElement === inputRef.current) {
       setSuggestions(availableMutations);
@@ -179,7 +175,6 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
     }
   }, [availableMutations, isSelecting]);
 
-  // format mutation name
   const formatName = (name: string) => name.replace(/_/g, " ");
 
   return (

@@ -6,9 +6,7 @@ import { drive } from "./driver";
 import type { SessionSnapshot, WorkerRequest, WorkerResponse } from "./protocol";
 import { createTimeline, type Timeline } from "./timeline";
 
-// The session worker: it owns the simulation state for one scenario. Every
-// Step and Run arrives as the same "run" message. The timeline keeps enough
-// of the past to go back (by replaying forward from a saved state).
+// Session worker: owns the simulation state for one scenario; the timeline keeps history for going back.
 
 const engine = createEngine();
 let scenario: Scenario | null = null;
@@ -20,7 +18,7 @@ const post = (msg: WorkerResponse) => (self as unknown as DedicatedWorkerGlobalS
 const snapshot = (s: SimulationState): SessionSnapshot => ({ state: s, report: engine.analyse(s) });
 
 function initialise(reqId: number, next: Scenario) {
-  // A run still in flight belongs to the previous session: let it end at its next slice.
+  // Stop an in-flight run of the previous session at its next slice.
   if (busy) stopRequested = true;
   const warnings = engine.validate(next).filter((i) => i.level === "warning");
   const init = engine.initState(next);
@@ -95,7 +93,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       } finally {
         busy = false;
       }
-      // A new scenario may have arrived while this run was in flight; its result belongs to the old one.
+      // Discard if a new scenario arrived during the run.
       if (timeline !== tl) return;
       tl.endRun(result.state, result.cyclesRun);
       post({

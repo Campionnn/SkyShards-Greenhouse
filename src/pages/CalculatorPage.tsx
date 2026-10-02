@@ -24,15 +24,12 @@ export const CalculatorPage: React.FC = () => {
   const { toast } = useToast();
   const uniqueCrops = useUniqueCrops(); // UNIQUE_CROPS
 
-  // Modal state
   const [isGridModalOpen, setIsGridModalOpen] = useState(false);
   const [isFirstTimeModalOpen, setIsFirstTimeModalOpen] = useState(false);
 
-  // Check if user is a first-time visitor
+  // First-visit modal: only when nothing is customised and the visit flag is unset.
   useEffect(() => {
-    // Small delay to ensure contexts have initialized
     const timer = setTimeout(() => {
-      // Check if the user has actually customized anything
       const gridConfig = LocalStorageManager.loadGridConfig();
       const mutationTargets = LocalStorageManager.loadMutationTargets();
       const designerInputs = LocalStorageManager.loadDesignerInputs();
@@ -41,43 +38,37 @@ export const CalculatorPage: React.FC = () => {
       const priorities = LocalStorageManager.loadPriorities();
       const hasVisited = localStorage.getItem("skyshards-has-visited");
       
-      // Check if grid config is the default (12 cells in a 4x4 diamond pattern)
+      // The default grid is 12 cells in a 4x4 diamond.
       const isDefaultGrid = gridConfig && gridConfig.size === 12;
       
-      // Check if there's any actual user data (non-empty, non-default)
       const hasUserData = 
-        (!isDefaultGrid && gridConfig && gridConfig.size > 0) || // Non-default grid
-        (mutationTargets && mutationTargets.length > 0) || // Has mutation targets
-        (designerInputs && designerInputs.length > 0) || // Has designer inputs
-        (designerTargets && designerTargets.length > 0) || // Has designer targets
-        (lockedPlacements && lockedPlacements.length > 0) || // Has locked placements
-        (priorities && Object.keys(priorities).length > 0); // Has custom priorities
+        (!isDefaultGrid && gridConfig && gridConfig.size > 0) ||
+        (mutationTargets && mutationTargets.length > 0) ||
+        (designerInputs && designerInputs.length > 0) ||
+        (designerTargets && designerTargets.length > 0) ||
+        (lockedPlacements && lockedPlacements.length > 0) ||
+        (priorities && Object.keys(priorities).length > 0);
       
-      // If no user data AND hasn't visited before, show the first-time modal
       if (!hasUserData && !hasVisited) {
         setIsFirstTimeModalOpen(true);
       }
       
-      // Mark as visited
       localStorage.setItem("skyshards-has-visited", "true");
-    }, 100); // Small delay to let contexts initialize
+    }, 100); // Let the contexts initialise first.
     
     return () => clearTimeout(timer);
   }, []);
 
-  // Solver state
   const [error, setError] = useState<SolveErrorInfo | null>(null);
   const [result, setResult] = useState<SolveResponse | null>(null);
   const [previewResult, setPreviewResult] = useState<SolveResponse | null>(null);
-  // Live solve status; null when nothing is running
+  // Live solve status; null when nothing is running.
   const [session, setSession] = useState<SolveSession | null>(null);
-  // Facts about the finished solve
   const [runMeta, setRunMeta] = useState<SolveRunMeta | null>(null);
   const isLoading = session !== null;
 
-  // Abort controller for cancellation
   const abortControllerRef = useRef<AbortController | null>(null);
-  // Latest preview, readable from the async solve without a stale closure
+  // Latest preview, readable from the async solve without a stale closure.
   const previewRef = useRef<SolveResponse | null>(null);
 
   const handleSolve = useCallback(async () => {
@@ -96,7 +87,6 @@ export const CalculatorPage: React.FC = () => {
     const startedAt = Date.now();
     const settings = loadLocalSolverSettings();
 
-    // Reset state
     setError(null);
     setResult(null);
     setPreviewResult(null);
@@ -117,7 +107,6 @@ export const CalculatorPage: React.FC = () => {
     let lastSolutions: number | null = null;
 
     try {
-      // Convert selected mutations to API format
       const targets: MutationGoal[] = selectedMutations.map((m) => ({
         mutation: m.id,
         maximize: m.mode === "maximize",
@@ -187,9 +176,8 @@ export const CalculatorPage: React.FC = () => {
       });
     } catch (err) {
       if (err instanceof SolveCancelledError) {
-        // Stopped before the server handed back a result: keep the live preview if there was one.
-        // (typed explicitly: TS narrows the ref to null after the reset above,
-        // not knowing the callbacks set it meanwhile)
+        // Stopped before a result arrived: keep the live preview, if any. The cast is needed because
+        // TS narrows the ref to null after the reset above, unaware the callbacks set it since.
         const preview = previewRef.current as SolveResponse | null;
         if (preview) {
           setResult({ ...preview, status: "CANCELLED" });
@@ -229,14 +217,13 @@ export const CalculatorPage: React.FC = () => {
 
   const unlockedCount = unlockedCells.size;
 
-  // Determine what to show in the results area
   const displayResult = result || previewResult;
 
   return (
     <>
       <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl">
         <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[320px_minmax(0,1fr)_380px] gap-4 lg:gap-6 lg:items-start">
-          {/* Left column: setup. Sticky on desktop, scrolls internally when tall, Solve pinned. */}
+          {/* Setup column: sticky on desktop, scrolls internally, Solve pinned below. */}
           <aside className="order-2 lg:order-1 flex flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-7rem)]">
             <div className="flex-1 min-h-0 lg:overflow-y-auto scrollbar-dark space-y-3 lg:pr-1">
               <Panel
@@ -268,7 +255,6 @@ export const CalculatorPage: React.FC = () => {
               <LocalSolverPanel />
             </div>
 
-            {/* Solve */}
             <button
               onClick={isLoading ? handleCancel : handleSolve}
               disabled={dataLoading}
@@ -289,7 +275,6 @@ export const CalculatorPage: React.FC = () => {
             </button>
           </aside>
 
-          {/* Centre column: the solution */}
           <div className="order-1 lg:order-2 min-w-0">
             <SolverResults
               result={displayResult}
@@ -302,20 +287,17 @@ export const CalculatorPage: React.FC = () => {
             />
           </div>
 
-          {/* Right column: crop priorities & locks, full height, sticky */}
           <div className="order-3 flex flex-col min-h-0 h-[500px] lg:h-[calc(100vh-2rem)] lg:sticky lg:top-4">
             <CropConfigurationsPanel className="flex-1 overflow-hidden" />
           </div>
         </div>
       </div>
 
-      {/* Grid Manager Modal */}
       <GridManagerModal
         isOpen={isGridModalOpen}
         onClose={() => setIsGridModalOpen(false)}
       />
 
-      {/* First Time Visitor Modal */}
       <FirstTimeVisitorModal
         isOpen={isFirstTimeModalOpen}
         onClose={() => setIsFirstTimeModalOpen(false)}

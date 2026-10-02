@@ -19,9 +19,9 @@ import { formatCount, formatDuration, formatRemaining, kindData, nameOf } from "
 import { closestBlocked, describeBlocker, formatChance, occupantName } from "./sanityFormat";
 
 export type TooltipTarget =
-  /** watchStatus: what the uptime check saw at this plant's anchor, when it stands on a checked target cell. check: the Sanity Check of the hovered cell (any cell of a multi-cell plant), appended to the card while the toggle is on. */
+  /** watchStatus: uptime status at the anchor, when on a checked target. check: Sanity Check of the hovered cell, while the toggle is on. */
   | { kind: "plant"; plant: PlantState; watchStatus?: WatchStatus; check?: SanityCheckResult }
-  /** check: the Sanity Check of the hovered cell (any cell of a multi-cell slot), appended to the slot card while the toggle is on. */
+  /** check: Sanity Check of the hovered cell (any cell of a multi-cell slot), while the toggle is on. */
   | { kind: "slot"; slot: SlotLabel; ineligibleCycles: number; watched?: boolean; watchStatus?: WatchStatus; check?: SanityCheckResult }
   | { kind: "missing"; item: string; row: number; col: number }
   /** Sanity Check on an empty (non-slot) cell: which mutations could spawn here. */
@@ -33,11 +33,11 @@ const CHECK_EST_HEIGHT = 380;
 const PLANT_CHECK_EST_HEIGHT = 640;
 const OFFSET = 8;
 
-// ---- Sanity Check card (display only: nothing here ranks layouts) ----
+// ---- Sanity Check card (display only) ----
 
 const CANT_SHOWN = 6;
 
-/** `anchor`: the top-left of the multi-cell slot being hovered, when the checked cell is one of its covered cells. */
+/** `anchor`: top-left of the hovered multi-cell slot, when the checked cell is one of its covered cells. */
 export const SanityCheckSection: React.FC<{ result: SanityCheckResult; anchor?: { row: number; col: number } }> = ({ result, anchor }) => {
   const { shown, more } = closestBlocked(result, CANT_SHOWN);
   return (
@@ -265,15 +265,15 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
   const effective = effectiveEffects(p.held);
   const cancelled = sortEffects(p.held.filter((e) => !effective.has(e)));
   const dry = isDry(p, config);
-  // A dried-out plant gives nothing (it still receives), the same rule as a designer slot.
+  // A dried-out plant gives no effects but still receives them, like a designer slot.
   const gives = p.isDeadPlant || p.kindId === "devourer_root" ? [] : effectsGivenBy(p.kindId, dry);
   const needsWater = p.origin === "planted" || !!m?.requiresWatering;
   const cycles = (s: number) => Math.max(0, Math.ceil(s / cycleSeconds - 1e-9));
   const isRootPlant = p.kindId === "devourer_root";
-  // Minimum mutations: its counters, its kind's pool on this plot, and whether it would decay if its timer ran out now.
+  // Minimum-mutation counters, the kind's pool on this plot, and whether an expiring timer would decay it.
   const decay = decayStatus(plot, p);
   const decayCycles = p.decaySecondsRemaining !== null ? cycles(p.decaySecondsRemaining) : Infinity;
-  // Red only when it would actually decay soon - not when the timer is about to be extended.
+  // Red only when it would actually decay, not when the timer would be extended.
   const decaysSoon = decay.minimumMet && decayCycles <= 2;
 
   return (

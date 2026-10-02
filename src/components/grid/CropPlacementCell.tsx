@@ -50,7 +50,7 @@ export interface LockedPlacementCellProps {
   onCancelDrag?: () => void;
 }
 
-// Click detection threshold in pixels
+// px; less movement between mousedown and mouseup counts as a click.
 const CLICK_THRESHOLD = 5;
 
 export const LockedPlacementCell: React.FC<LockedPlacementCellProps> = ({
@@ -92,31 +92,26 @@ export const LockedPlacementCell: React.FC<LockedPlacementCellProps> = ({
   };
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Store the initial position for click detection
     mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
     hasDraggedRef.current = false;
     
-    // Call the original mousedown handler for drag
     onMouseDown(e);
   }, [onMouseDown]);
 
   const handleMouseMove = useCallback(() => {
-    // If we're tracking a potential click and mouse moved significantly, mark as dragged
     if (mouseDownPosRef.current && !hasDraggedRef.current) {
       hasDraggedRef.current = true;
     }
   }, []);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    // Check if this was a click (not a drag)
     if (mouseDownPosRef.current && onClick) {
       const dx = Math.abs(e.clientX - mouseDownPosRef.current.x);
       const dy = Math.abs(e.clientY - mouseDownPosRef.current.y);
       
-      // If mouse moved less than threshold, treat as click
       if (dx < CLICK_THRESHOLD && dy < CLICK_THRESHOLD) {
         e.stopPropagation();
-        // Cancel any pending drag state before opening modal
+        // Cancel the pending drag before opening the info modal.
         onCancelDrag?.();
         onClick();
       }
@@ -332,7 +327,7 @@ export const MutationCell: React.FC<MutationCellProps> = ({
   const style: React.CSSProperties = {
     ...baseStyle,
     boxShadow: showImage ? "0 0 8px rgba(0, 200, 255, 1), inset 0 0 8px rgba(0, 200, 255, 1)" : "",
-    zIndex: 5, // Above crops
+    zIndex: 5, // above crops
     cursor: onClick ? "pointer" : undefined,
   };
 

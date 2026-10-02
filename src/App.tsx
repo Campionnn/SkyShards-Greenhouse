@@ -13,17 +13,15 @@ const AboutPage = lazy(() => import("./pages/AboutPage").then((module) => ({ def
 const ContactPage = lazy(() => import("./pages/ContactPage").then((module) => ({ default: module.ContactPage })));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 
-// Component to handle redirect from /?layout=X to /designer?layout=X
+// Redirects /?layout=X to /designer?layout=X; otherwise renders the calculator.
 const IndexRouteWithRedirect: React.FC = () => {
   const [searchParams] = useSearchParams();
   const layoutCode = searchParams.get("layout");
   
-  // If layout param exists, redirect to designer with the same param
   if (layoutCode) {
     return <Navigate to={`/designer?layout=${layoutCode}`} replace />;
   }
   
-  // Otherwise, show the calculator page
   return (
     <Suspense fallback={<LoadingSpinner />}>
       <CalculatorPage />
@@ -39,7 +37,7 @@ const LoadingSpinner = () => (
 
 const AppWithProviders = () => {
   usePageTitle();
-  usePreloadGroundImages(); // Preload ground textures on mount
+  usePreloadGroundImages();
   return <Layout />;
 };
 

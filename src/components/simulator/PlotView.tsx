@@ -36,7 +36,7 @@ type Mark =
   | "groundFixed"
   | "minigameRetry";
 
-/** Tint for a dried-out (halted) plant: washed out and sandy, still clearly a living plant (unlike a Dead Plant's grey). */
+/** Sandy tint for a dried-out (halted) plant, distinct from a Dead Plant's grey. */
 const DRY_FILTER = "sepia(0.85) saturate(0.6) brightness(0.8)";
 
 const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; label: string }> = {
@@ -53,10 +53,10 @@ const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; lab
   minigameRetry: { ring: "rgba(250,204,21,0.9)", glyph: "↻", color: "text-yellow-400", label: "minigame failed, retry next session" },
 };
 
-/** Footprint size of a plant / item id (large mutations mark their whole footprint). */
+/** Footprint size of a plant or item id, so large mutations mark their whole footprint. */
 const sizeOf = (id: string): number => kindData(id)?.size ?? 1;
 
-/** Key for the grid marks; they show what happened in the last simulated cycle. */
+/** Legend for the grid marks (events of the last simulated cycle). */
 export const PlotMarkLegend: React.FC = () => (
   <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
     {(Object.keys(MARK_STYLE) as Mark[]).map((m) => (
@@ -143,7 +143,7 @@ function marksFrom(events: TimedEvent[]): Map<string, { mark: Mark; size: number
     else if (e.kind === "teleported") at(e.row, e.col, "teleported");
     else if (e.kind === "exploded") at(e.row, e.col, "exploded");
     else if (e.kind === "groundFixed") at(e.row, e.col, "groundFixed");
-    // A destroyed one already shows the "destroyed" mark; only the retry (plant left standing) needs its own.
+    // A destroyed outcome already gets the "destroyed" mark; only a retry (plant still standing) needs its own.
     else if (e.kind === "minigameFailed" && e.outcome === "retry") at(e.row, e.col, "minigameRetry", sizeOf(e.kindId));
   }
   return marks;
@@ -155,18 +155,14 @@ export interface PlotViewProps {
   def: ScenarioPlot | undefined;
   events: TimedEvent[];
   onEditFlow?: () => void;
-  /** Largest cell size in px (the focused single-plot view uses a bigger one). */
+  /** Largest cell size in px. */
   maxCell?: number;
   /** Unresolved shortfalls ("plot:row,col:item"): layout plants the player could not afford to re-place. */
   openDebts?: string[];
-  /** For the hover cards: current cycle length and the scenario's config. */
+  /** Hover-card inputs. */
   cycleSeconds: number;
   config: SimConfig;
-  /**
-   * The Sanity Check inspector: pass the snapshot state to turn it on. Hovering
-   * an empty cell (or a target slot) then shows which mutations could spawn
-   * there. Omitted = off, and no extra hover targets exist.
-   */
+  /** Snapshot state for the Sanity Check inspector; omitted = off, with no extra hover targets. */
   sanityState?: SimulationState;
 }
 
@@ -188,7 +184,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
   const { cellSize, gap } = useFitCellSize(fitRef, { max: maxCell, min: 16 });
   const { width, height } = getGridDimensions(cellSize, gap);
   const marks = useMemo(() => marksFrom(events), [events]);
-  // Sanity Check results, memoised per hovered cell for as long as it is the same snapshot state.
+  // Sanity Check results, memoised per cell for the current snapshot state.
   const checkCache = useRef<{ state: SimulationState; plotId: number; results: Map<string, SanityCheckResult> } | null>(null);
   const checkAt = (row: number, col: number): SanityCheckResult | undefined => {
     if (!sanityState) return undefined;
@@ -206,14 +202,14 @@ export const PlotView: React.FC<PlotViewProps> = ({
     return result;
   };
 
-  /** Only change state when the hovered thing or checked cell changed (check results are memoised, so identity means "same cell"). */
+  /** Sets state only when the hovered thing or checked cell changed (memoised check results compare by identity). */
   const hoverIf = (next: TooltipTarget) =>
     setHover((prev) => {
       if (prev && prev.kind === "plant" && next.kind === "plant" && prev.plant === next.plant && prev.check === next.check) return prev;
       if (prev && prev.kind === "slot" && next.kind === "slot" && prev.slot === next.slot && prev.check === next.check) return prev;
       return next;
     });
-  /** The cell of a size x size element under the mouse (Sanity Check on: a multi-cell element is one hover target). */
+  /** Cell under the mouse within a size x size element (a multi-cell element is one hover target). */
   const cellUnder = (e: React.MouseEvent<HTMLDivElement>, row: number, col: number, size: number) => {
     if (size === 1) return { row, col };
     const { dr, dc } = hoveredCellOffset(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), size, cellSize, gap);
@@ -332,7 +328,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
                 style={{ top, left, width: size, height: size }}
                 {...(sanityState
                   ? {
-                      // One element covers the whole footprint: check the cell under the cursor, not the anchor.
+                      // One element covers the footprint: check the cell under the cursor, not the anchor.
                       onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => hoverSlot(e, s, key, isWatched),
                       onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => hoverSlot(e, s, key, isWatched),
                     }
@@ -348,7 +344,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
                     })}
                 onMouseLeave={() => setHover(null)}
               >
-                {/* A flex box (not a block) so the inline-flex image has no line-height strut pushing it off-centre. */}
+                {/* Flex, not block: avoids a line-height strut pushing the inline-flex image off-centre. */}
                 <div className={`flex items-center justify-center ${isWatched ? "opacity-45 grayscale-[40%]" : "opacity-25 grayscale"}`}>
                   <CropImage cropId={s.mutationId} cropName={nameOf(s.mutationId)} width={size * 0.6} height={size * 0.6} showFallback={false} />
                 </div>
@@ -366,7 +362,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
             const ground = plot.groundOverrides[`${p.row},${p.col}`] ?? plot.groundTiles[`${p.row},${p.col}`];
             const growing = !p.isDeadPlant && p.origin !== "placed" && p.readyStage > 0 && p.stage < p.readyStage;
             const dry = isDry(p, config);
-            // A checked target standing on its own slot but dried out: downtime (uptime status `halted`).
+            // Checked target standing on its slot but dried out: uptime status `halted`.
             const anchor = `${p.row},${p.col}`;
             const watchStatus = watchedKeys.has(anchor) ? plot.watchStatus?.[anchor] : undefined;
             const halted = watchStatus === "halted";
@@ -439,8 +435,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
             const { top, left } = getCellPixelPosition(r, c, cellSize, gap);
             const span = cells * cellSize + (cells - 1) * gap;
             const style = MARK_STYLE[mark];
-            // A new shortfall also opens a "missing" overlay on the same cell, which already draws its own "!";
-            // keep the ring (it shows the shortfall is new this cycle) but drop the second glyph.
+            // The "missing" overlay on this cell already draws "!": keep the ring (new this cycle), drop the duplicate glyph.
             const showGlyph = !(mark === "debt" && missingKeys.has(key));
             return (
               <div

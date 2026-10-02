@@ -11,14 +11,11 @@ import { buttonClass, inputClass } from "./styles";
 
 const perDay = (value: number, summary: RunSummary) => (summary.elapsedSeconds > 0 ? value / (summary.elapsedSeconds / 86400) : 0);
 
-/**
- * The running ledger: this call's delta, the cumulative total, and the
- * per-day rate. Categorised, because a net number hides where money comes from.
- */
+/** Ledger by category: this call's delta, cumulative total and per-day rate. */
 export const MoneyPanel: React.FC<{
   summary: RunSummary;
   previous: RunSummary | null;
-  /** Current cycle length in seconds (one growth stage); it depends on the unique crops standing plus the Flora shard. */
+  /** Current cycle length in seconds (one growth stage); depends on standing unique crops plus the Flora shard. */
   cycleSeconds?: number;
 }> = ({ summary, previous, cycleSeconds }) => {
   const [showPlots, setShowPlots] = useState(false);
@@ -335,20 +332,16 @@ export const UptimeTree: React.FC<{ spots: SpotReport[] }> = ({ spots }) => {
   );
 };
 
-/**
- * The uptime test: do the target cells you marked (every target by default)
- * always stay able to grow their mutation? Debt is shown as a likely cause.
- */
+/** Uptime of the checked target cells (every target by default), with debt shown as a likely cause. */
 export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summary: RunSummary }> = ({ report, summary }) => {
   const [showAll, setShowAll] = useState(false);
   const watched = report.items.filter((i) => i.consumed > 0 || i.shortfall > 0);
   const losses = [
     ...Object.entries(summary.decayed).map(([k, n]) => ({ k, n, what: "decayed" })),
     ...Object.entries(summary.destroyed).map(([k, n]) => ({ k, n, what: "destroyed" })),
-    // Not a loss either: the timer ran out before its minimum mutations were met, so it stood on (+24h each).
-    // Summaries from before the decay rework have no `extended`.
+    // Not a loss: the timer ran out before the minimum was met, so it stood on (+24h each). Older saved summaries lack `extended`.
     ...Object.entries(summary.extended ?? {}).map(([k, n]) => ({ k, n, what: "decay timers extended (minimum not met)" })),
-    // Not a loss as such: the plant stands until watered. Counted each time one dries out.
+    // Not a loss: the plant stands until watered. Counted each time one dries out.
     ...Object.entries(summary.driedOut).map(([k, n]) => ({ k, n, what: "dried out (halted)" })),
   ].sort((a, b) => b.n - a.n);
   const t = report.totals;
@@ -509,10 +502,9 @@ function applyDelta(base: Record<string, number>, delta: Record<string, number>)
 }
 
 /**
- * The shared inventory, grouped, with NPC values. There is one inventory and
- * one way to change it: before the first cycle, a change IS the starting
- * inventory (saved with the scenario); once the run has started, it changes
- * the live run, and can be kept as part of the start.
+ * The shared inventory, grouped, with NPC values. Before the first cycle a change edits the
+ * starting inventory (saved with the scenario); after that it changes the live run, and can be
+ * kept as part of the start.
  */
 export const InventoryPanel: React.FC<{
   state: SimulationState;
@@ -530,9 +522,9 @@ export const InventoryPanel: React.FC<{
   const days = state.elapsedSeconds / 86400;
   const injected = Object.entries(state.summary.injected).filter(([, n]) => n !== 0);
   const canEditStart = !!startingInventory && !!onStartingInventoryChange;
-  // Nothing has happened yet: the inventory is the starting inventory, so edit that.
+  // Nothing has run yet, so changes edit the starting inventory.
   const atStart = canEditStart && state.cycle === 0 && injected.length === 0;
-  // Show the edited starting inventory straight away (the restart is debounced).
+  // Show the edited starting inventory immediately; the restart is debounced.
   const held = atStart ? startingInventory : state.inventory;
   const canChange = atStart || !!onAddItems;
 
@@ -547,10 +539,8 @@ export const InventoryPanel: React.FC<{
 
   const grouped = useMemo(() => {
     const out: Record<ItemCategory, { id: string; qty: number; gross: number; net: number; unit: number; value: number }[]> = { mutation: [], crop: [], rareCrop: [], other: [] };
-    // Total: what is held now. Per day: what the run has produced, per simulated day
-    // (starting stock and items you added are not production). Mutations also get gross
-    // (produced) and net (produced minus what the run spent placing them) figures, over
-    // the whole run in Total mode and per simulated day in Per day mode.
+    // Total: held now. Per day: produced per simulated day (starting stock and added items excluded).
+    // Mutations also get gross (produced) and net (produced minus spent placing), per mode.
     const div = perDay ? days : 1;
     const ids = perDay ? Object.keys(state.ledger) : [...new Set([...Object.keys(held), ...Object.keys(state.ledger)])];
     for (const id of ids) {
@@ -560,7 +550,7 @@ export const InventoryPanel: React.FC<{
       const gross = row && div > 0 ? row.produced / div : 0;
       const net = row && div > 0 ? (row.produced - row.consumed) / div : 0;
       const qty = perDay ? gross : have;
-      // A mutation that is only ever spent (never produced) still shows, with a negative net.
+      // A mutation that is only spent, never produced, still shows with a negative net.
       if (qty <= 0 && !(category === "mutation" && (gross > 0 || net !== 0))) continue;
       const unit = price(id);
       out[category].push({ id, qty, gross, net, unit, value: unit * qty });
@@ -624,7 +614,6 @@ export const InventoryPanel: React.FC<{
           // Mutations: held (Total only), gross and net. Everything else: count and NPC value.
           const showValue = !isMut;
           const showHeld = isMut && !perDay;
-          // A remove-all button per row, while the inventory can be changed.
           const showRemove = !perDay && canChange;
           const cols = 4 + (showHeld ? 1 : 0) + (showRemove ? 1 : 0);
           const gridCols = ["", "", "", "", "grid-cols-[auto_1fr_auto_auto]", "grid-cols-[auto_1fr_auto_auto_auto]", "grid-cols-[auto_1fr_auto_auto_auto_auto]"][cols];

@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-/**
- * One remembered "show solver details" preference, shared by the live
- * progress panel and the result summary: players who don't care about the
- * numbers collapse it once and never see them again.
- */
+/** Persisted "show solver details" preference, shared by the progress panel and the result summary. */
 const KEY = "skyshards-solver-details-open";
 const EVENT = "skyshards-solver-details-changed";
 
@@ -30,7 +26,7 @@ export function useSolverDetailsOpen(): [boolean, () => void] {
     try {
       localStorage.setItem(KEY, next ? "1" : "0");
     } catch {
-      // not persisted; still toggles for this page
+      // Storage unavailable: toggle for this page only.
     }
     setOpen(next);
     window.dispatchEvent(new CustomEvent(EVENT));

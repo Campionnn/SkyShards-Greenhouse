@@ -8,9 +8,7 @@ export interface CropSearchInputProps {
   className?: string;
 }
 
-/**
- * Shared search input component used in both Calculator and Designer
- */
+/** Crop search input shared by the Calculator and Designer. */
 export const CropSearchInput: React.FC<CropSearchInputProps> = ({
   value,
   onChange,

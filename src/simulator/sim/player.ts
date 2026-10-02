@@ -7,12 +7,7 @@ import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLY
 import { layoutInputAt, maintainLayout } from "./placement";
 import type { PlantState, PlotState } from "./state";
 
-/**
- * Would this plant actually decay before the player's next session? Its
- * timer runs out by then AND its minimum mutations are met now (current
- * counters, sim/decay.ts `wouldDecayWithin`). One that would only be
- * extended is not about to decay. Never online again: any timer counts.
- */
+/** Timer runs out before the next session and its minimum is met (`wouldDecayWithin`). Never online again: any timer counts. */
 function decaysBeforeNextSession(plot: PlotState, p: PlantState, ctx: CycleCtx): boolean {
   const k = ctx.cyclesUntilNextActive();
   return wouldDecayWithin(plot, p, Number.isFinite(k) ? k * ctx.cycleSeconds : Infinity);
@@ -23,7 +18,7 @@ function water(plot: PlotState, ctx: CycleCtx): void {
   for (const p of plot.plants) if (p.kindId !== "soggybud") p.water = ctx.config.maxWater; // Soggybud can't be watered
 }
 
-/** Special-mutation interactions: wake Snoozling, vacuum the Cheesebite rat, discharge Thunderling, feed Fleshtrap. */
+/** Wake Snoozling, vacuum the Cheesebite rat, discharge Thunderling, feed Fleshtrap. */
 function tendGates(plot: PlotState, ctx: CycleCtx): void {
   const g = ctx.policiesFor(plot.id).gateInteractions;
   for (const p of plot.plants) {
@@ -36,7 +31,7 @@ function tendGates(plot: PlotState, ctx: CycleCtx): void {
   }
 }
 
-/** Devourer roots: the player breaks them (they drop nothing). */
+/** Break Devourer roots (no drops). */
 function clearRoots(plot: PlotState, ctx: CycleCtx): void {
   if (!ctx.policiesFor(plot.id).gateInteractions.clearRoots) return;
   for (const p of [...plot.plants]) {
@@ -47,11 +42,9 @@ function clearRoots(plot: PlotState, ctx: CycleCtx): void {
 }
 
 /**
- * Natural spawns. All-in Aloe (any stage) and Magic Jellybean (from 12) drop
- * if taken early, but the player waits for their target stage (Aloe:
- * aloeHarvestStage; Jellybean: fully grown at 120). A spawn the current layout uses as an input
- * (hybrid flows) is left standing under `layoutInputSpawns: "keep"`
- * unless it would decay before the next session.
+ * Harvest natural spawns. Aloe and Jellybean wait for their target stage
+ * (aloeHarvestStage, 120). Under `layoutInputSpawns: "keep"` a spawn used as a
+ * layout input stays unless it would decay before the next session.
  */
 function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const policies = ctx.policiesFor(plot.id);
@@ -74,7 +67,7 @@ function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
   }
 }
 
-/** Base-crop upkeep: harvest and replant in the same phase, so the ring never breaks. */
+/** Harvest and replant base crops in one phase so the ring never breaks. */
 function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const upkeep = ctx.policiesFor(plot.id).baseCropUpkeep;
   if (upkeep === "leaveUntilDecay") return;
@@ -89,11 +82,7 @@ function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
   }
 }
 
-/**
- * The flow: a step change that became due while the player was away
- * happens now; otherwise the current step's exit triggers are checked and,
- * if they all hold, the plot moves on (the new layout is laid out).
- */
+/** Apply a step change that came due while offline, or check exit triggers and move on. */
 function stepChange(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { def, runner } = ctx.flowFor(plot.id);
   scratch.stepChanged = endStepOrHold(plot, def, runner, ctx, scratch, true);
@@ -101,18 +90,15 @@ function stepChange(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
 
 /** Clear Dead Plants, take spawns off layout cells and re-place what the layout is missing. */
 function maintain(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
-  if (scratch.stepChanged) return; // entering the step just laid the whole layout out
+  if (scratch.stepChanged) return; // the step change already laid the layout out
   if (!ctx.policiesFor(plot.id).replaceDecayed) return;
   maintainLayout(plot, ctx.layoutFor(plot.id), ctx, scratch);
 }
 
 /**
- * Ground upkeep: every target slot's footprint must stand on its mutation's
- * ground. Where the ground has been changed in play (Chorus Fruit leaves End
- * Stone), the player swaps the block back. Only free cells can be fixed - a
- * plant standing on a wrong block has to go first (harvest / maintain run
- * before this phase). Ground blocks are not tracked in the inventory, so this
- * costs nothing.
+ * Restore each target slot's required ground on free footprint cells (e.g.
+ * after Chorus Fruit End Stone). Occupied cells are skipped. Free: ground
+ * blocks aren't tracked in inventory.
  */
 function fixGround(plot: PlotState, ctx: CycleCtx): void {
   if (ctx.policiesFor(plot.id).fixGround === false) return;
@@ -136,15 +122,10 @@ function fixGround(plot: PlotState, ctx: CycleCtx): void {
 }
 
 /**
- * The player session: everything the player does while online, in order.
- * It runs only on active cycles (the activity schedule), AFTER the game tick
- * of every plot - the player acts at some point during the cycle, not at the
- * tick itself. Plots take their sessions in plotOrder and share the
- * inventory in that order.
- *
- * To change what the player does or when, edit this list. Policies are read
- * per phase, so a step change mid-session applies the new step's
- * policies to the phases after it.
+ * Player session phases, in order. Runs only on active cycles, after every
+ * plot's game tick; plots go in plotOrder and draw on the shared inventory in
+ * that order. Policies are read per phase, so after a mid-session step change
+ * later phases use the new step's policies.
  */
 export const PLAYER_PHASES: readonly Phase[] = [
   {
@@ -169,7 +150,7 @@ export const PLAYER_PHASES: readonly Phase[] = [
   { id: "fixGround", summary: "Swap wrong ground blocks under empty target cells back to what the target needs (fixGround).", run: fixGround },
 ];
 
-/** One plot's player session. INTERNAL - only sim/run.ts calls it, on active cycles. */
+/** Internal: only sim/run.ts calls this, on active cycles. */
 export function runPlayerSession(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   for (const phase of PLAYER_PHASES) phase.run(plot, ctx, scratch);
 }

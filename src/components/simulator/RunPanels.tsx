@@ -8,7 +8,7 @@ import { describeEvent, formatCoins, formatDuration, spotFailureText } from "./f
 import { buttonClass, inputClass } from "./styles";
 import { NumberInput } from "./controls";
 
-/** Visible bound for one Run (the reference tool uses 1-500); the engine itself is uncapped. */
+/** UI cap on cycles per Run, matching the reference tool's 1-500; the engine is uncapped. */
 const MAX_RUN = 500;
 
 // ---- Run controls -----------------------------------------------------------

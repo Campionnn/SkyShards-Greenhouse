@@ -18,8 +18,7 @@ import { nameOf } from "./format";
 import { layoutDestinations, type LayoutDestination } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
 
-// Pick a layout from the Calculator, the Designer or the saved layouts (or a
-// pasted share link) and say where it goes. Nothing here runs the engine.
+// Picks a layout (Calculator, Designer, saved layouts or a pasted share link) and where it goes.
 
 type Preview = { inputs: { cropId: string; position: [number, number] }[]; targets: { cropId: string; position: [number, number] }[] };
 
@@ -50,7 +49,7 @@ function sourceFromCode(key: string, from: HandoffSource, code: string, title: s
   }
 }
 
-/** Everything the user has on this device: last Calculator result, the Designer's current layout, saved layouts. */
+/** Layouts stored on this device: last Calculator result, current Designer layout, saved layouts. */
 function gatherLayoutSources(): LayoutSource[] {
   const out: LayoutSource[] = [];
   const last = LocalStorageManager.loadLastSolverLayout();
@@ -67,7 +66,7 @@ function gatherLayoutSources(): LayoutSource[] {
       const s = sourceFromCode("designer", "designer", code, "Current Designer layout", summarizeTargets(dt, nameOf) ?? "Designer layout");
       if (s) out.push(s);
     } catch {
-      // A corrupt saved design is simply not offered.
+      // A corrupt saved design is not offered.
     }
   }
   for (const l of [...loadLayouts()].sort((a, b) => b.modifiedAt - a.modifiedAt)) {
@@ -76,7 +75,7 @@ function gatherLayoutSources(): LayoutSource[] {
       const s = sourceFromCode(`saved:${l.id}`, "saved", code, l.name, l.name);
       if (s) out.push(s);
     } catch {
-      // skip
+      // A corrupt saved layout is not offered.
     }
   }
   return out;
@@ -158,10 +157,9 @@ function useDialogChrome(onClose: () => void) {
 }
 
 /**
- * The layout picker. With `scenario` it ends in a choice of where the layout
- * goes (new plot / replace / next step); with `onUse` it ends in one button
- * (used by the flow editor for the current step). `incoming` skips the
- * list: the layout was already chosen on another page.
+ * With `scenario`, ends in a destination choice (new plot / replace / next step); with `onUse`,
+ * in one button (the flow editor's current step). `incoming` skips the list: the layout was
+ * chosen on another page.
  */
 type PickerProps = {
   title: string;

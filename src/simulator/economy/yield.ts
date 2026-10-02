@@ -1,22 +1,15 @@
 import type { EffectId } from "../data/types";
 
 /**
- * Expected drop multiplier from Farming Fortune.
- *
- * The Farming Fortune page: "farming fortune of 260 -> 3x drops every time and
- * a 60% chance to get 4x drops", i.e. an expected 1 + FF/100 = 3.6. ECONOMICS.md
- * §1.1 prints floor(ff/100) + (ff%100)/100 = 2.6, which contradicts its own
- * quote (and gives zero drops at FF 0), so the quote is implemented. The
- * extra-drop chance is taken as its expectation, not rolled.
+ * Expected Farming Fortune drop multiplier, 1 + FF/100 (wiki: FF 260 = 3x plus
+ * 60% for 4x). ECONOMICS.md §1.1's floor formula contradicts its own quote and
+ * is not used. The extra drop is taken as its expectation, not rolled.
  */
 export function farmingFortuneMultiplier(ff: number): number {
   return 1 + Math.max(0, ff) / 100;
 }
 
-/**
- * The greenhouse yield multiplier sum. All terms are additive; improved
- * harvest boost overrides the base one. `effective` is the post-immunity set.
- */
+/** Additive greenhouse yield sum; improved harvest boost overrides the base one. `effective` is post-immunity. */
 export function greenhouseYieldSum(effective: ReadonlySet<EffectId>, plantYieldUpgrade: number, uniqueCropBonus: number): number {
   let sum = 1 + plantYieldUpgrade + uniqueCropBonus;
   if (effective.has("improved_harvest_boost")) sum += 0.3;
@@ -25,11 +18,7 @@ export function greenhouseYieldSum(effective: ReadonlySet<EffectId>, plantYieldU
   return sum;
 }
 
-/**
- * Drops of one harvest, floored per item. Evergreen Chip is the only
- * multiplicative term; it applies to every crop-bundle drop, whether the
- * plant harvested is a base crop or a mutation's own crop bundle.
- */
+/** Crop-bundle drops of one harvest, floored per item. Evergreen Chip is the only multiplicative term. */
 export function harvestYield(baseDrops: Record<string, number>, ffMultiplier: number, yieldSum: number, evergreen: number): Record<string, number> {
   const factor = ffMultiplier * yieldSum * (1 + evergreen);
   const out: Record<string, number> = {};
@@ -41,12 +30,9 @@ export function harvestYield(baseDrops: Record<string, number>, ffMultiplier: nu
 }
 
 /**
- * How yield scales a mutation's OWN item count (Ashwreath dropping Ashwreath,
- * Chloronite's Mining-Fortune count, Magic Jellybean's stage multiplier,
- * All-in Aloe's fragment total): the greenhouse yield sum multiplies the base
- * count, the floor is guaranteed, and the fractional remainder is the chance
- * of one more. Farming Fortune and Evergreen do NOT apply here - those only
- * scale the crop-bundle drops (`harvestYield`).
+ * Scales a mutation's own item count (Ashwreath, Chloronite, Jellybean, Aloe)
+ * by the yield sum: floor guaranteed, fraction is the chance of one more.
+ * Farming Fortune and Evergreen apply only to crop bundles (`harvestYield`).
  */
 export function yieldScaledCount(base: number, yieldSum: number): { whole: number; frac: number } {
   const expected = Math.max(0, base) * Math.max(0, yieldSum);
@@ -54,11 +40,7 @@ export function yieldScaledCount(base: number, yieldSum: number): { whole: numbe
   return { whole, frac: expected - whole };
 }
 
-/**
- * Chloronite's item count from Mining Fortune (staff-sourced ladder, wiki):
- * M>=2000 -> 4; M>=1000 -> 3 + (M-1000)/1000; M>=500 -> 2 + (M-500)/500;
- * M>=100 -> 1 + (M-100)/400; else M/100.
- */
+/** Chloronite item count from Mining Fortune (wiki ladder), capped at 4 from 2000. */
 export function chloroniteDropCount(miningFortune: number): number {
   const m = Math.max(0, miningFortune);
   if (m >= 2000) return 4;

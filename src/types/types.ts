@@ -125,7 +125,6 @@ export interface LevelDropdownProps {
   tooltipType?: string;
 }
 
-// calculation results
 export interface CalculationResultsProps {
   result: CalculationResult;
   data: Data;
@@ -141,7 +140,6 @@ export interface CalculationResultsProps {
   materialsOnly?: boolean;
 }
 
-// fusion tree
 export interface RecipeTreeNodeProps {
   tree: RecipeTree;
   data: Data;
@@ -155,7 +153,6 @@ export interface RecipeTreeNodeProps {
   ironManView: boolean;
 }
 
-// searchbar
 export interface ShardAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
@@ -175,7 +172,6 @@ export interface SuggestionItemProps {
   setFocusedIndex: (index: number) => void;
 }
 
-// Alternative recipe types
 export interface AlternativeRecipeOption {
   recipe: Recipe | null;
   cost: number;
@@ -192,11 +188,10 @@ export interface AlternativeSelectionContext {
   requiredQuantity?: number;
 }
 
-// Component props interfaces
 export interface AlternativeRecipeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // Changed: alternatives is now grouped
+  // Direct recipe plus alternatives grouped by key.
   alternatives: { direct: AlternativeRecipeOption | null; grouped: Record<string, AlternativeRecipeOption[]> };
   onSelect: (recipe: Recipe | null) => void;
   shardName: string;

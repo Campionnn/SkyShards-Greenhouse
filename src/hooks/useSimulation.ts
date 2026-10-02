@@ -58,7 +58,7 @@ function trimLog(events: TimedEvent[], currentCycle: number): TimedEvent[] {
 export function useSimulation(scenario: Scenario | null) {
   const workerRef = useRef<Worker | null>(null);
   const reqIdRef = useRef(0);
-  /** Responses to requests older than the latest init belong to a previous scenario. */
+  /** reqId of the latest init/reset; older responses belong to a previous scenario and are dropped. */
   const epochRef = useRef(0);
   const [view, setView] = useState<SimulationView>(initialView);
 
@@ -75,7 +75,7 @@ export function useSimulation(scenario: Scenario | null) {
             ...initialView,
             status: "ready",
             snapshot: msg.snapshot,
-            // Setup lays every plot out; that shows on the grids, not as a hundred log lines.
+            // Setup lays out every plot; that shows on the grids, not as log lines.
             lastCycleEvents: [],
             log: [],
             warnings: msg.warnings,
@@ -93,7 +93,7 @@ export function useSimulation(scenario: Scenario | null) {
               status: "ready",
               snapshot: msg.snapshot,
               history: msg.history,
-              // The deltas and grid marks described a step that no longer happened.
+              // The deltas and grid marks described the step that was undone.
               previousSummary: null,
               lastCycleEvents: [],
               log: v.log.filter((e) => e.cycle < cycle),
@@ -170,10 +170,10 @@ export function useSimulation(scenario: Scenario | null) {
     send({ type: "reset", reqId });
   }, [send]);
 
-  /** Add (negative = remove) items in the live run's inventory; the run keeps its cycle and history. */
+  /** Adds (negative = removes) items in the live run's inventory, keeping its cycle and history. */
   const addItems = useCallback((items: Record<string, number>) => send({ type: "addItems", reqId: ++reqIdRef.current, items }), [send]);
 
-  /** Go back exactly one cycle (the opposite of Step). */
+  /** Goes back exactly one cycle. */
   const stepBack = useCallback(() => {
     setView((v) => (v.status === "ready" ? { ...v, status: "running", progress: null } : v));
     send({ type: "back", reqId: ++reqIdRef.current, to: "cycle" });

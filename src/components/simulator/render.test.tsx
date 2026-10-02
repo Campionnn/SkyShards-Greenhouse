@@ -118,7 +118,7 @@ describe("simulator panels render", () => {
     const plot = s.plots[0];
     const view = (on: boolean) =>
       renderToString(<PlotView plot={plot} runner={s.flows[0]} def={s.scenario.plots[0]} events={[]} cycleSeconds={s.lastCycleSeconds} config={s.scenario.settings.config} sanityState={on ? s : undefined} />);
-    // Same markup with the toggle on or off at rest (the hover targets are handlers, not DOM): it renders either way.
+    // Hover targets are handlers, not DOM, so both render the same at rest.
     expect(view(true).replace(/<!-- -->/g, "")).toContain("Plot 1");
     expect(view(false).replace(/<!-- -->/g, "")).toContain("Plot 1");
 
@@ -154,7 +154,7 @@ describe("simulator panels render", () => {
       <SimTooltip target={{ kind: "slot", slot: plot.slots[0], ineligibleCycles: 0 }} cellSize={40} gap={2} gridWidth={420} gridHeight={420} cycleSeconds={14400} config={s.scenario.settings.config} plot={plot} />
     );
     expect(noCheck).not.toContain("Sanity Check");
-    // The Plot view renders the sanity-check card for a hovered empty cell only through TooltipTarget "check", never as default DOM.
+    // The Plot view shows the check card only via a hovered TooltipTarget "check".
     expect(view(true)).not.toContain("Can spawn here now");
   });
 
@@ -165,7 +165,7 @@ describe("simulator panels render", () => {
     const tip = (target: React.ComponentProps<typeof SimTooltip>["target"]) =>
       renderToString(<SimTooltip target={target} cellSize={40} gap={2} gridWidth={420} gridHeight={420} cycleSeconds={14400} config={s.scenario.settings.config} plot={plot} />).replace(/<!-- -->/g, "");
 
-    // A Godseed standing on the 3x3: the card is unchanged without a check, and gains the section (for the hovered cell) with one.
+    // A Godseed on the 3x3: the card gains a check section for the hovered cell only when given one.
     const godseed = startOf(singlePlot({ ...layout([["wheat", 4, 3]]), groundTiles: farmland }, { config: { spawnCells: "allEmpty" } }));
     const gs = inject(godseed, 1, "godseed", 4, 4, "placed");
     const plain = tip({ kind: "plant", plant: gs });
@@ -179,7 +179,7 @@ describe("simulator panels render", () => {
     expect(withCheck).toContain("Lonelily");
     expect(withCheck).toContain(plain.slice(plain.indexOf("Type"), plain.indexOf("Gives"))); // the plant card itself is untouched
 
-    // A slot card hovered at an inner cell says which cell is checked, and that it is not the target's anchor.
+    // A slot card hovered at an inner cell names that cell and notes it is not the anchor.
     const slot = plot.slots[0];
     const inner = sanityCheck(s, engine.data, 1, 5, 5);
     const slotHtml = tip({ kind: "slot", slot, ineligibleCycles: 0, check: inner });

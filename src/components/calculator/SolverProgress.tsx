@@ -40,10 +40,7 @@ const Stat: React.FC<{ icon: React.ReactNode; label: string; value: React.ReactN
   </div>
 );
 
-/**
- * Step tracker. Labels sit under the dots with an equal-width column per
- * step, so they never compete with the connector lines for room.
- */
+/** Step tracker. Each step gets an equal-width column so labels under the dots never compete with the connectors. */
 const Stepper: React.FC<{ stage: SolveStage; local: boolean; hasScore: boolean }> = ({ stage, local, hasScore }) => {
   const current = stageIndex(stage);
   const steps = stageSteps({ local, hasScore });
@@ -55,7 +52,6 @@ const Stepper: React.FC<{ stage: SolveStage; local: boolean; hasScore: boolean }
         const active = idx === current;
         return (
           <li key={s.key} className="relative flex-1 min-w-0 flex flex-col items-center" title={s.hint}>
-            {/* connector to the previous step */}
             {i > 0 && (
               <span
                 className={`absolute top-2 right-1/2 w-full h-px ${done || active ? "bg-emerald-500/60" : "bg-slate-700"}`}
@@ -87,10 +83,7 @@ const Stepper: React.FC<{ stage: SolveStage; local: boolean; hasScore: boolean }
   );
 };
 
-/**
- * Live status of a running solve: where it is, how it is going, and what
- * every number means. Nothing is truncated; long activity text wraps.
- */
+/** Live status of a running solve, with hints for every number. Long activity text wraps rather than truncating. */
 export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session }) => {
   const now = useNow(true);
   const { progress, endpoint } = session;
@@ -100,7 +93,7 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
   const stage: SolveStage =
     session.phase === "submitting" ? "submitting" : session.phase === "queued" ? "queued" : stageFromProgress(progress);
 
-  // Only fixed-count targets and no effects: nothing to score, the solve is all tie-break.
+  // Only fixed-count targets and no effects: nothing to score, so the solve is all tie-break.
   const hasScore = progress?.has_score !== false;
   const hasPriority = progress?.has_priority === true;
   const best = bestSoFar(progress);
@@ -108,8 +101,8 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
   const pct = progress?.percentage ?? null;
   const serverElapsed = progress ? progress.elapsed_seconds : null;
   const elapsed = serverElapsed ?? wall;
-  // The budget the solver actually got: reported by the API once solving
-  // starts; before that (or on older local solvers) the limit we sent, if any.
+  // Budget the solver got, reported once solving starts; until then (or from local solvers that
+  // don't report it), the limit that was sent, if any.
   const budget = progress?.time_limit_seconds ?? session.timeLimit ?? null;
   const remaining = budget !== null && serverElapsed !== null ? Math.max(0, budget - serverElapsed) : null;
   const [detailsOpen, toggleDetails] = useSolverDetailsOpen();
@@ -167,7 +160,6 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
 
   return (
     <div className="mb-4 bg-slate-700/30 border border-slate-600/30 rounded-lg p-3" aria-live="polite">
-      {/* Title row */}
       <div className={`flex items-start gap-2 ${detailsOpen ? "mb-3" : "mb-2"}`}>
         {stage === "queued" ? (
           <Clock className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
@@ -190,7 +182,6 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
 
       {detailsOpen && <Stepper stage={stage} local={!!endpoint?.local} hasScore={hasScore} />}
 
-      {/* Progress bar */}
       <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-slate-400">
         <span className="flex items-center gap-1">
           {stage === "queued" ? "Queue" : "Progress"}
@@ -235,7 +226,6 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
 
       {detailsOpen && (
         <>
-          {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
             <Stat
               icon={<Timer />}
@@ -317,7 +307,6 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
             )}
           </div>
 
-          {/* Raw activity, in full */}
           {progress?.current_activity && (
             <p className="mt-2 text-[11px] text-slate-500 break-words" title="Latest message from the solver">
               <span className="text-slate-400">Solver:</span> {progress.current_activity}

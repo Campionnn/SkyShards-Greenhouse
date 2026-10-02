@@ -5,10 +5,10 @@ import { engine, inject, layout, NEVER_ACTIVE, NO_BASE_CROP_DECAY, plantAt, sing
 import { isDry } from "./plants";
 import type { ActivitySchedule, PlantState, SimulationState, TimedEvent } from "./state";
 
-// 0.27.2: a plant whose water reaches haltWater (-100) dries out and HALTS
-// instead of dying. A dry plant doesn't grow, gives and relays no effects
-// (it still receives them), doesn't count toward requirements or the unique
-// crop bonus, still blocks Lonelily, and keeps decaying. Watering un-halts it.
+// A plant whose water reaches haltWater (-100) dries out and halts. A dry plant
+// doesn't grow, gives or relays no effects (it still receives them), doesn't
+// count toward requirements or the unique crop bonus, still blocks Lonelily,
+// and keeps decaying. Watering un-halts it.
 
 const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
@@ -66,7 +66,7 @@ describe("drying out", () => {
 });
 
 describe("dry plants don't count toward requirements (but still block Lonelily)", () => {
-  it("a dry wheat no longer satisfies Dustgrain: the checked target drops to `requirements` and never spawns", () => {
+  it("a dry wheat doesn't satisfy Dustgrain: the checked target drops to `requirements` and never spawns", () => {
     const setup = (dryOne: boolean) => {
       const s = blank({ slots: [["dustgrain", 4, 5]] });
       inject(s, 1, "wheat", 3, 5, "planted", { stage: 8 }); // fully grown: never drinks, so stays wet
@@ -102,7 +102,7 @@ describe("dry plants give and relay no effects, but still receive them", () => {
   it.each([
     // Melon drinks water, so it can dry out for real.
     ["melon", "planted"],
-    // Gloomgourd doesn't need watering, so in play it never dries; forced here to pin the effect rule itself.
+    // Gloomgourd never dries in play (no watering); forced dry to test the effect rule.
     ["gloomgourd", "spawned"],
   ] as const)("a dry %s gives no water_retain (and still receives what its neighbours give)", (giver, origin) => {
     const setup = (dry: boolean) => {
@@ -158,10 +158,9 @@ describe("unique crops", () => {
   });
 });
 
-// 0.27.2 follow-up (Phase 2b): a water consumer loses waterLossMin..Max
-// (default 18-22) x retain/drain EVERY cycle while it is not fully grown -
-// advanced, gated, skipped or blocked - and none once fully grown or dried
-// out. Spawns start at 0 water.
+// A water consumer loses waterLossMin..Max x retain/drain every cycle while not
+// fully grown (advanced, gated, skipped or blocked), and nothing once fully
+// grown or dried out.
 describe("water loss per cycle until fully grown", () => {
   /** A fixed loss of 20 a cycle and no below-0 skips, so the numbers are exact. */
   const FIXED = { waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 };
@@ -334,7 +333,7 @@ describe("uptime: a dried-out target on its own slot is `halted`", () => {
     expect(report.totals).toMatchObject({ watched: 2, blocked: 2, halted: 0 });
   });
 
-  it("a dry neighbour still gives `requirements` (Phase 2), not halted", () => {
+  it("a dry neighbour still gives `requirements`, not halted", () => {
     const s = blank({ slots: [["dustgrain", 4, 5]] });
     inject(s, 1, "wheat", 3, 5, "planted", { stage: 8 });
     inject(s, 1, "wheat", 5, 5, "planted", { water: HALT, stage: 2 });
@@ -379,7 +378,7 @@ describe("watering and decay", () => {
   });
 
   it("its decay timer keeps running while it is halted, and it decays on time", () => {
-    // The data's 3-day base-crop timer; timer-only decay (its minimum would otherwise hold it: it never helped).
+    // Data's 3-day base-crop timer; timer-only, since a minimum would hold a plant that never helped.
     const s = blank({ config: { decayDaysOverrides: {}, ...TIMER_ONLY } });
     const p = inject(s, 1, "wheat", 5, 5, "planted", { water: HALT, stage: 2 });
     const timer = p.decaySecondsRemaining!;

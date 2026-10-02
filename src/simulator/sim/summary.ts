@@ -4,11 +4,7 @@ export function zeroUptime(): UptimeCounts {
   return { watched: 0, growing: 0, ready: 0, requirements: 0, blocked: 0, halted: 0 };
 }
 
-/**
- * Share of watched cell-cycles the spot was usable (target standing and not
- * dried out, or free to spawn). 1 when nothing was watched. Halted, blocked
- * and requirements cycles are all downtime.
- */
+/** (growing + ready) / watched; 1 when nothing was watched. */
 export function uptimeRatio(u: UptimeCounts): number {
   return u.watched > 0 ? (u.growing + u.ready) / u.watched : 1;
 }
@@ -54,7 +50,7 @@ export function perPlot(summary: RunSummary, plotId: PlotId): PerPlotSummary {
   return (summary.perPlot[k] ??= zeroPerPlot());
 }
 
-/** Recompute the derived figures so revenue categories and costs reconcile to profit exactly. */
+/** Recompute derived totals; revenue categories minus costs equal profit exactly. */
 export function finalizeSummary(summary: RunSummary, cyclesRun: number, elapsedSeconds: number): void {
   summary.cyclesRun = cyclesRun;
   summary.elapsedSeconds = elapsedSeconds;

@@ -1,9 +1,8 @@
 /**
- * Moving layouts between the Calculator, the Designer and the Simulator
- * without share links. A "Simulate" button navigates to /simulator with the
- * layout in the router state; the Simulator's layout picker reads the
- * Designer's current layout, the last Calculator result and the saved
- * layouts straight from localStorage.
+ * Passing layouts from the Calculator and Designer to the Simulator without
+ * share links. "Simulate" navigates to /simulator with the layout in router
+ * state; the Simulator's picker also reads the Designer layout, the last
+ * Calculator result and saved layouts from localStorage.
  */
 
 import { encodeDesign, type GroundTile } from "./designEncoding";
@@ -51,10 +50,7 @@ export function readIncomingLayout(state: unknown): IncomingLayout | null {
   };
 }
 
-/**
- * Package a layout for the Simulator. It is named after its most common
- * targets, falling back to `fallbackName`.
- */
+/** Packages a layout for the Simulator, named after its most common targets or `fallbackName`. */
 export function makeIncomingLayout(
   layout: { inputs: Cell[]; targets: Cell[]; groundTiles?: GroundTile[] },
   from: HandoffSource,
@@ -87,9 +83,8 @@ const overlaps = (a: { position: [number, number]; size: number }, b: { position
 };
 
 /**
- * The full layout shown by the Calculator: the user's locked placements plus
- * the solver's crops (skipping any that sit on a lock) as inputs, and the
- * solver's mutations as targets.
+ * The Calculator's full layout: locked placements plus solver crops not on a
+ * lock as inputs, and solver mutations as targets.
  */
 export function solverResultCells(
   result: { placements?: { crop: string; position: [number, number]; size: number }[]; mutations?: { mutation: string; position: [number, number]; size: number }[] } | null,

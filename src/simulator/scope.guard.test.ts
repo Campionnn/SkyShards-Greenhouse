@@ -3,9 +3,8 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as publicApi from "./index";
 
-// Structural guards, in the spirit of SkyShards-API tools/check_docs.py. The
-// simulator EVALUATES one scenario: it never generates, ranks, compares or
-// repairs layouts, and time only moves through run().
+// Structural guards: the simulator evaluates one scenario. It never generates,
+// ranks, compares or repairs layouts, and time only moves through run().
 
 const ROOT = __dirname;
 

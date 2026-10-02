@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-/** Unique Crop Bonus cap (0.27.2): 10, including the Flora shard. */
+/** Unique Crop Bonus cap: 10, including the Flora shard. */
 export const MAX_UNIQUE_CROPS = 10;
 const STORAGE_KEY = "skyshards-unique-crops";
 
@@ -18,7 +18,7 @@ function read(): number {
   }
 }
 
-// A tiny module-level store so the panel and the solve button share one value.
+// Module-level store so the panel and the solve button share one value.
 let current = read();
 const listeners = new Set<() => void>();
 
@@ -28,7 +28,7 @@ export function setUniqueCrops(value: number) {
     if (current === 0) localStorage.removeItem(STORAGE_KEY);
     else localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
   } catch {
-    // storage full or disabled: keep the in-memory value
+    // Storage full or disabled: keep the in-memory value.
   }
   listeners.forEach((l) => l());
 }

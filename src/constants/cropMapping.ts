@@ -1,4 +1,5 @@
-// Predefined crop and mutation IDs for compact encoding
+// Crop and mutation ids for the layout share format, which stores their indices
+// (mutations offset by CROP_IDS.length). Changing the order breaks existing codes.
 
 export const CROP_IDS = [
   "wheat",
@@ -63,7 +64,6 @@ export const MUTATION_IDS = [
   "timestalk",
 ] as const;
 
-// Create reverse lookup maps
 export const CROP_TO_INDEX: Record<string, number> = {};
 CROP_IDS.forEach((id, index) => {
   CROP_TO_INDEX[id] = index;

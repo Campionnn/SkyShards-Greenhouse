@@ -26,9 +26,8 @@ export function layoutSpecOf(layout: StepLayout, data: GameData): { layout: Layo
 }
 
 /**
- * Resolve a step layout against game data. Base crops are `planted` (free,
- * they grow); everything else - mutation items, fire, fermento, dead plants -
- * is `placed` from inventory (costs 1, goes in fully grown).
+ * Resolves a step layout. Base crops are `planted` (free, grow); everything else
+ * is `placed` from inventory (costs 1, fully grown).
  */
 export function resolveLayout(layout: StepLayout, data: GameData): { resolved: ResolvedLayout; issues: string[] } {
   const { layout: spec, issues } = layoutSpecOf(layout, data);
@@ -55,10 +54,9 @@ export function resolveLayout(layout: StepLayout, data: GameData): { resolved: R
     }
     resolved.slots.push({ mutationId: s.mutationId, row: s.row, col: s.col, size: (s.size ?? m.size) as Size });
   }
-  // Unpainted cells are air. A target or a layout plant implies physical
-  // ground across its footprint, including old share codes without paint.
-  // Keep that ground when a plant is harvested, destroyed, or moved; only
-  // entering another step replaces the layout's ground.
+  // Unpainted cells are air, except target and plant footprints, which imply
+  // ground (also for share codes without paint). That ground persists until
+  // the next step's layout replaces it.
   const knownGround = new Set(["farmland", "sand", "soul_sand", "mycelium", "netherrack", "end_stone"]);
   for (const t of spec.groundTiles ?? []) {
     if (!Number.isInteger(t.row) || !Number.isInteger(t.col) || !footprintFits(t.row, t.col, 1)) {

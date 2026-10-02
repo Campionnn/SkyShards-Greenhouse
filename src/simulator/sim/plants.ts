@@ -5,22 +5,16 @@ import { footprint, TOTAL_CELLS } from "../grid/cells";
 import type { Origin, PlantState, PlotState, SimulationState } from "./state";
 
 export const DEAD_PLANT = "dead_plant";
-/** A Devourer root: its own entity (not in data.json), cleared by the player. */
+/** Devourer root: not in data.json; the player clears it. */
 export const DEVOURER_ROOT = "devourer_root";
 export const isRoot = (p: PlantState): boolean => p.kindId === DEVOURER_ROOT;
 
-/**
- * A kind's decay timer in DAYS: `decayDaysOverrides` first (any kind, crops
- * included), else data.json (`decay`). 0 = it never decays.
- */
+/** Decay timer in days: `decayDaysOverrides`, else data.json `decay`. 0 = never decays. */
 export function decayDaysOf(def: Pick<KindDef, "id" | "decayDays">, config: Pick<SimConfig, "decayDaysOverrides">): number {
   return config.decayDaysOverrides?.[def.id] ?? def.decayDays;
 }
 
-/**
- * A kind's minimum mutation value with `minimumMutationsOverrides` applied
- * ("none" = N/A, timer-only). Unknown kinds (Devourer roots) have none.
- */
+/** Minimum mutations with `minimumMutationsOverrides` applied ("none" -> null, timer-only). Unknown kinds (roots): null. */
 export function minimumMutationsOf(
   kindId: KindId,
   data: GameData,
@@ -32,19 +26,13 @@ export function minimumMutationsOf(
 }
 
 /**
- * The stage a natural spawn enters at. Mutations appear at stage 1 (not 0),
- * so an N-stage mutation needs N-1 growth ticks and a 0-stage one (Gloomgourd,
- * Lonelily, Shellfruit...) is fully grown the tick it spawns. Capped at the
- * kind's own stage count so a 0-stage mutation stays at 0.
+ * Stage a natural spawn enters at: 1, so an N-stage mutation needs N-1 growth
+ * ticks. 0-stage kinds (Gloomgourd, Lonelily, Shellfruit) stay at 0, fully grown on spawn.
  */
 export const spawnStageOf = (growthStages: number): number => Math.min(1, growthStages);
 
 export const JELLYBEAN = "magic_jellybean";
-/**
- * From this stage a Magic Jellybean the player breaks early (stage change,
- * blocking a layout cell) still drops its items and bundle (x1 at 12, rising).
- * The player's own harvest still waits for stage 120.
- */
+/** From this stage a Jellybean broken early still drops (x1 at 12). Normal harvest waits for stage 120. */
 export const JELLYBEAN_MIN_HARVEST_STAGE = 12;
 
 /** Stage at which a kind counts as fully grown and harvestable. */
@@ -55,11 +43,7 @@ export function readyStageOf(m: MutationDef, config: SimConfig): number {
   return m.growthStages;
 }
 
-/**
- * A natural spawn's decay timer in seconds (Q16b). It runs from the tick the
- * mutation spawns - it does NOT wait until it is fully grown, so the stages it
- * spends growing come out of the same timer. null = it never decays.
- */
+/** Natural spawn's decay timer in seconds, running from spawn (growth time included). null = never decays. */
 export function spawnedDecaySeconds(m: MutationDef, config: SimConfig, cycleSeconds: number): number | null {
   if (config.harvestWindowCycles > 0) return config.harvestWindowCycles * cycleSeconds;
   const days = decayDaysOf(m, config);
@@ -67,13 +51,9 @@ export function spawnedDecaySeconds(m: MutationDef, config: SimConfig, cycleSeco
 }
 
 /**
- * The timer a freshly planted / placed / spawned plant starts with, in
- * seconds; null = it never decays. Only the TIMER: whether it actually decays
- * when the timer runs out also depends on its minimum mutations (sim/decay.ts).
- * - a natural spawn: `spawnedDecaySeconds` (harvestWindowCycles, else its decay days);
- * - anything else: its kind's decay days (`decayDaysOf`): 3 for base crops
- *   and dead_plant, 0 (never) for fire and fermento, the mutation's own for
- *   placed items.
+ * Starting decay timer in seconds (null = never). Spawns use `spawnedDecaySeconds`;
+ * everything else its kind's decay days. Whether it actually decays at 0 also
+ * depends on minimum mutations (sim/decay.ts).
  */
 export function initialDecaySeconds(
   data: GameData,
@@ -83,7 +63,6 @@ export function initialDecaySeconds(
   cycleSeconds: number
 ): number | null {
   const m = data.mutations[kindId];
-  // A natural spawn decays from the tick it appears, even while it grows.
   if (origin === "spawned") return m ? spawnedDecaySeconds(m, config, cycleSeconds) : null;
   const def = kindDef(data, kindId);
   if (!def) return null;
@@ -120,10 +99,7 @@ export function newPlant(
     decaySecondsRemaining: initialDecaySeconds(data, config, kindId, origin, cycleSeconds),
     timesMutated: 0,
     mutatesRemaining: minimumMutationsOf(kindId, data, config),
-    // Everything starts at 0 water (user-confirmed): planted base crops,
-    // placed items and natural spawns alike. Only the player's watering
-    // (player `water` phase) raises it; Soggybud draws from neighbours.
-    water: 0,
+    water: 0, // everything starts at 0; only player watering raises it
     held: [],
     lockedEffects: null,
     isDeadPlant: false,
@@ -136,16 +112,16 @@ export function newPlant(
     plant.growthStages = def.growthStages;
     plant.readyStage = readyStageOf(def, config);
     if (origin === "placed") {
-      // Placed items go in fully grown: an input and buff source, never harvested.
+      // Placed items go in fully grown and are never harvested.
       plant.stage = def.growthStages;
       plant.fullyGrownAtCycle = cycle;
     } else {
       plant.stage = spawnStageOf(def.growthStages);
     }
     if (kindId === "fleshtrap") plant.gate.hunger = config.fleshtrapInitialHunger;
-    // A spawned Thunderling grows and so builds charge; a placed one never grows.
+    // Only a growing Thunderling builds charge.
     if (kindId === "thunderling" && origin !== "placed") plant.gate.charge = 0;
-    // Primed once fully grown (natural) or at the next tick after placing (see sim/explosion.ts).
+    // Priming rules: sim/explosion.ts.
     if (kindId === "blastberry") plant.gate.primed = false;
     if (kindId === "turtlellini") plant.gate.exploded = 0;
   } else {
@@ -170,10 +146,10 @@ export function newRoot(state: SimulationState, row: number, col: number, cycle:
     readyStage: 0,
     fullyGrownAtCycle: cycle,
     decaySecondsRemaining: null,
-    // Not in data.json: no minimum, never credited (never a requirement), never decays.
+    // No minimum, never credited, never decays, never drinks.
     timesMutated: 0,
     mutatesRemaining: null,
-    water: 0, // like every plant; a root never drinks or gets drunk from
+    water: 0,
     held: [],
     lockedEffects: null,
     isDeadPlant: false,
@@ -184,11 +160,9 @@ export function newRoot(state: SimulationState, row: number, col: number, cycle:
 }
 
 /**
- * Turn a plant into the Dead Plant it leaves behind (same footprint, a real
- * dead_plant). It gets the dead_plant timer (3 days, overrides applied) and
- * fresh counters (helped 0 times, its own minimum of 10 left): having never
- * helped, it doesn't decay on its own - the player clears it at the next
- * session.
+ * Turn a plant into a dead_plant in place (new id, same footprint) with the
+ * dead_plant timer and fresh minimum-mutation counters, so it never decays on
+ * its own; the player clears it.
  */
 export function convertToDeadPlant(state: SimulationState, data: GameData, config: SimConfig, plant: PlantState): void {
   plant.id = state.nextPlantId++;
@@ -225,7 +199,7 @@ export function removePlant(plot: PlotState, plant: PlantState): void {
 
 export type Occupancy = (PlantState | null)[];
 
-/** cell index -> the plant covering it. Every footprint cell maps to the same plant. */
+/** Cell index -> plant covering it (every footprint cell). */
 export function buildOccupancy(plot: PlotState): Occupancy {
   const occ: Occupancy = new Array(TOTAL_CELLS).fill(null);
   for (const p of plot.plants) {
@@ -239,27 +213,19 @@ export function isFootprintFree(occ: Occupancy, row: number, col: number, size: 
 }
 
 /**
- * Dried out (0.27.2): water at or below `haltWater` halts a plant instead of
- * killing it. A dry plant doesn't grow, gives and relays no effects (it still
- * receives them), doesn't count toward mutation requirements or the unique
- * crop bonus, but still physically blocks Lonelily and keeps decaying.
- * Watering it (player `water` phase) un-halts it.
- *
- * Derived from `water` alone, no extra state: only plants that consume water
- * (base crops, spawns that need watering) can get there. Every plant starts
- * at 0 water (above the threshold), Soggybud never drains a neighbour below
- * 0, and placed plants and roots never lose water - as long as `haltWater`
- * stays below 0.
+ * Dried out: water at or below `haltWater` halts the plant. It doesn't grow,
+ * give or relay effects (still receives them), or count for requirements or
+ * unique crops; it still blocks Lonelily and keeps decaying. Watering clears it.
+ * Derived from `water` alone; relies on `haltWater` < 0 so plants that never
+ * lose water (start 0, placed, roots) can't be dry.
  */
 export const isDry = (p: PlantState, config: Pick<SimConfig, "haltWater">): boolean => !p.isDeadPlant && p.water <= config.haltWater;
 
 export const isFullyGrown = (p: PlantState): boolean => !p.isDeadPlant && p.stage >= p.readyStage && p.lockedEffects !== null;
 
 /**
- * Does taking this plant off give its drops (rather than just breaking it)?
- * Only natural spawns and base crops. All-in Aloe drops at any stage, Magic
- * Jellybean from stage 12 - before the stage the player normally waits for
- * (e.g. when a step change removes it).
+ * Whether removing it gives drops: fully grown spawns and base crops, plus
+ * spawned All-in Aloe at any stage and Jellybean from stage 12.
  */
 export const isHarvestable = (p: PlantState): boolean =>
   (p.origin === "spawned" || p.origin === "planted") &&

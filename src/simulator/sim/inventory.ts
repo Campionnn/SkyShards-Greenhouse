@@ -19,10 +19,7 @@ export function ledgerRow(state: SimulationState, item: ItemId): LedgerRow {
   return row;
 }
 
-/**
- * All-in Aloe Fragments have no other use: every 9 in the inventory turn into
- * one All-in Aloe straight away (recorded as fragments consumed, aloe produced).
- */
+/** Convert every 9 All-in Aloe Fragments in inventory into one All-in Aloe. Returns aloes made. */
 export function convertAloeFragments(state: SimulationState): number {
   const have = state.inventory[ALOE_FRAGMENT] ?? 0;
   const aloes = Math.floor(have / FRAGMENTS_PER_ALOE);
@@ -34,7 +31,7 @@ export function convertAloeFragments(state: SimulationState): number {
   return aloes;
 }
 
-/** Items entering the shared inventory (harvests, cleared dead plants). */
+/** Add produced items to the shared inventory. */
 export function credit(state: SimulationState, item: ItemId, qty: number): void {
   if (qty <= 0) return;
   const row = ledgerRow(state, item);
@@ -48,14 +45,13 @@ export interface SpendRequest {
   row: number;
   col: number;
   action: string;
-  /** Re-placing something that decayed or was destroyed (a recurring cost). */
+  /** Re-placing something that decayed or was destroyed. */
   replacement: boolean;
 }
 
 /**
- * A REQUIRED spend (placing a mutation item / fire / fermento / dead plant).
- * Inventory never goes negative: a spend that cannot be covered is recorded
- * as debt - once per (plot, cell, item) episode - and the action fails.
+ * Required spend. Inventory never goes negative: an uncovered spend fails and
+ * records debt once per (plot, cell, item) episode.
  */
 export function spend(
   state: SimulationState,
@@ -110,10 +106,8 @@ export function spend(
 }
 
 /**
- * The user adds (or, with a negative quantity, removes) items in the live
- * run's inventory. Pure: returns a new state. Not revenue and not "produced"
- * in the ledger (sustainability stays about what the layout makes itself);
- * tracked in summary.injected instead. Inventory never goes below 0.
+ * Manually add (or remove, if negative) inventory items. Pure. Tracked in
+ * summary.injected, not as revenue or ledger production. Clamped at 0.
  */
 export function injectItems(input: SimulationState, items: Record<ItemId, number>): SimulationState {
   const state = structuredClone(input);
@@ -131,7 +125,7 @@ export function injectItems(input: SimulationState, items: Record<ItemId, number
   return state;
 }
 
-/** Forget a plot's open shortfall episodes (its layout changed, so the cells may no longer be needed). */
+/** Close a plot's open debt episodes (called on layout change). */
 export function closePlotDebts(state: SimulationState, plotId: PlotId): void {
   const prefix = `${plotId}:`;
   for (const key of Object.keys(state.openDebts)) {

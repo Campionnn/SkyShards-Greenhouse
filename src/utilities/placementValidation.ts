@@ -1,33 +1,23 @@
 import { GRID_SIZE } from "../constants";
 
-/**
- * Base placement interface that all placement types must implement
- * Used for generic validation functions
- */
+/** Minimal placement shape used by the generic validators. */
 export interface BasePlacement {
   id: string;
   position: [number, number];
   size: number;
 }
 
-/**
- * Result of a validation check
- */
 export interface ValidationResult {
   valid: boolean;
   error?: string;
 }
 
-/**
- * Generate a unique ID for a placement
- */
+/** Random placement id: `${prefix}-${timestamp}-${random}`. */
 export function generatePlacementId(prefix: string = "placement"): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-/**
- * Check if two placements overlap
- */
+/** True if two square placements overlap. */
 export function doPlacementsOverlapByPlacement<T extends BasePlacement>(
   placementA: T,
   placementB: T
@@ -37,24 +27,16 @@ export function doPlacementsOverlapByPlacement<T extends BasePlacement>(
   const aSize = placementA.size;
   const bSize = placementB.size;
   
-  // Check for overlap between the two squares
   const noOverlap = 
-    aRow + aSize <= bRow ||      // A is above B
-    bRow + bSize <= aRow ||      // A is below B
-    aCol + aSize <= bCol ||      // A is to the left of B
-    bCol + bSize <= aCol;        // A is to the right of B
+    aRow + aSize <= bRow ||
+    bRow + bSize <= aRow ||
+    aCol + aSize <= bCol ||
+    bCol + bSize <= aCol;
   
   return !noOverlap;
 }
 
-/**
- * Check if a position with given size overlaps with any placement in the list
- * @param position - The position to check
- * @param size - The size of the placement
- * @param placements - List of existing placements
- * @param excludeId - Optional ID to exclude from the check (for moving)
- * @returns true if position is occupied
- */
+/** True if the square at position/size overlaps any placement except excludeId. */
 export function isPositionOccupiedByPlacements<T extends BasePlacement>(
   position: [number, number],
   size: number,
@@ -69,12 +51,11 @@ export function isPositionOccupiedByPlacements<T extends BasePlacement>(
     const [pRow, pCol] = placement.position;
     const pSize = placement.size;
     
-    // Check for overlap between the two squares
     const noOverlap = 
-      row + size <= pRow ||      // New placement is above
-      pRow + pSize <= row ||     // New placement is below
-      col + size <= pCol ||      // New placement is to the left
-      pCol + pSize <= col;       // New placement is to the right
+      row + size <= pRow ||
+      pRow + pSize <= row ||
+      col + size <= pCol ||
+      pCol + pSize <= col;
     
     if (!noOverlap) return true;
   }
@@ -82,14 +63,7 @@ export function isPositionOccupiedByPlacements<T extends BasePlacement>(
   return false;
 }
 
-/**
- * Find all placements that overlap with a given position and size
- * @param position - The position to check
- * @param size - The size of the placement
- * @param placements - List of existing placements
- * @param excludeId - Optional ID to exclude from the check
- * @returns Array of overlapping placements
- */
+/** Placements (except excludeId) overlapping the square at position/size. */
 export function findOverlappingPlacements<T extends BasePlacement>(
   position: [number, number],
   size: number,
@@ -105,12 +79,11 @@ export function findOverlappingPlacements<T extends BasePlacement>(
     const [pRow, pCol] = placement.position;
     const pSize = placement.size;
     
-    // Check for overlap between the two squares
     const noOverlap = 
-      row + size <= pRow ||      // New placement is above
-      pRow + pSize <= row ||     // New placement is below
-      col + size <= pCol ||      // New placement is to the left
-      pCol + pSize <= col;       // New placement is to the right
+      row + size <= pRow ||
+      pRow + pSize <= row ||
+      col + size <= pCol ||
+      pCol + pSize <= col;
     
     if (!noOverlap) {
       overlapping.push(placement);
@@ -120,13 +93,7 @@ export function findOverlappingPlacements<T extends BasePlacement>(
   return overlapping;
 }
 
-/**
- * Get the placement at a specific cell position
- * @param row - Row index
- * @param col - Column index
- * @param placements - List of placements to search
- * @returns The placement at the cell, or undefined
- */
+/** The placement covering the cell, if any. */
 export function getPlacementAtCell<T extends BasePlacement>(
   row: number,
   col: number,
@@ -146,13 +113,7 @@ export function getPlacementAtCell<T extends BasePlacement>(
   return undefined;
 }
 
-/**
- * Validate that a position is within grid bounds
- * @param position - The position to validate
- * @param size - The size of the placement
- * @param gridSize - The grid size (default: GRID_SIZE from constants)
- * @returns Validation result
- */
+/** Fails if any cell of the placement lies outside the grid. */
 export function validateGridBounds(
   position: [number, number],
   size: number,
@@ -160,7 +121,6 @@ export function validateGridBounds(
 ): ValidationResult {
   const [row, col] = position;
   
-  // Check all cells for this placement are within grid bounds
   if (row < 0 || col < 0 || row + size > gridSize || col + size > gridSize) {
     return { valid: false, error: "Placement would be outside the grid" };
   }
@@ -168,13 +128,7 @@ export function validateGridBounds(
   return { valid: true };
 }
 
-/**
- * Validate that all cells of a placement are in the allowed cells set
- * @param position - The position to validate
- * @param size - The size of the placement
- * @param allowedCells - Set of allowed cell keys (e.g., "row,col")
- * @returns Validation result
- */
+/** Fails unless every cell of the placement is in allowedCells ("row,col" keys). */
 export function validateAllowedCells(
   position: [number, number],
   size: number,
@@ -182,7 +136,6 @@ export function validateAllowedCells(
 ): ValidationResult {
   const [row, col] = position;
   
-  // Check all cells for this placement are in the allowed set
   for (let dr = 0; dr < size; dr++) {
     for (let dc = 0; dc < size; dc++) {
       const cellKey = `${row + dr},${col + dc}`;
@@ -195,14 +148,7 @@ export function validateAllowedCells(
   return { valid: true };
 }
 
-/**
- * Validate that a position doesn't overlap with existing placements
- * @param position - The position to validate
- * @param size - The size of the placement
- * @param placements - List of existing placements
- * @param excludeId - Optional ID to exclude from the check (for moving)
- * @returns Validation result
- */
+/** Fails if the placement overlaps another (except excludeId). */
 export function validateNoOverlap<T extends BasePlacement>(
   position: [number, number],
   size: number,

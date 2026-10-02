@@ -1,13 +1,10 @@
 /**
- * Turns the many ways a solve can fail into something a player can act on.
- *
- * Failures reach us three ways:
- * - HTTP errors on submit/poll: `{detail: "..."}` from FastAPI
- * - a job with status "failed": the worker stores
- *   `"<ExceptionType>: <str(e)>\n<last traceback lines>"`, and for the solver's
- *   HTTPExceptions str(e) is `"<code>: <detail>"`, e.g.
- *   `"HTTPException: 503: No solution found\n  File ..."`
- * - network errors (fetch throws TypeError)
+ * Converts solve failures into actionable messages. Failure sources:
+ * - HTTP errors on submit/poll: FastAPI `{detail: "..."}`.
+ * - Jobs with status "failed": the worker stores
+ *   `"<ExceptionType>: <str(e)>\n<traceback tail>"`; for solver HTTPExceptions
+ *   str(e) is `"<code>: <detail>"`, e.g. `"HTTPException: 503: No solution found"`.
+ * - Network errors (fetch throws TypeError).
  */
 
 export type SolveErrorKind =
@@ -84,7 +81,7 @@ export function parseJobError(raw: string | null | undefined): SolveErrorInfo {
     };
   }
 
-  // "SomeError: message" -> show the message part
+  // "SomeError: message" -> show the message.
   const typed = firstLine.match(/^([A-Za-z_][\w.]*(?:Error|Exception)):\s*(.*)$/);
   return {
     kind: "server",

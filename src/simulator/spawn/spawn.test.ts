@@ -9,8 +9,7 @@ import type { RingCounts } from "./eligibility";
 import { effectiveWeight, fullWeightMultiplicity, multiplicity } from "./multiplicity";
 import { applyMutationChanceBonus, buildPool, poolDenominator, rollPool, spawnProbability, type SpawnPool } from "./pool";
 
-// Ported from SkyShards-API tests/test_spawn_weights.py, plus the assertions
-// IMPLEMENTATION_TS §9.2 says the source suite does not pin.
+// Spawn weights, multiplicity, pool building and rolling (mirrors SkyShards-API tests/test_spawn_weights.py).
 
 const data = defaultGameData();
 const M = data.mutations;
@@ -176,9 +175,7 @@ describe("Bioanalysis accessory (mutation chance bonus)", () => {
   });
 
   it("the engine reads the stat: a 15% bonus spawns strictly more over one run", () => {
-    // One labelled slot is the only cell that rolls, so the spawn count is a
-    // clean read on the pool's mutation arm. Fully grown spawns are harvested
-    // each session (the defaults), which frees the slot again.
+    // Only the one slot rolls, and harvesting each session frees it again.
     const spec = layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]);
     const spawned = (bonus: number) => {
       const sc = scenario([flow([step("only", spec)])], {

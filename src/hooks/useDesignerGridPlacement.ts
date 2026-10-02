@@ -22,20 +22,17 @@ export interface UseDesignerGridPlacementOptions {
 }
 
 export interface UseDesignerGridPlacementReturn {
-  // State
   hoveredPlacementId: string | null;
   setHoveredPlacementId: React.Dispatch<React.SetStateAction<string | null>>;
   dragState: DragState | null;
   paintState: PaintState | null;
   hoverInfo: HoverInfo | null;
   
-  // Computed values
   previewPosition: [number, number] | null;
   groundPreviewPosition: [number, number] | null;
   previewValidation: { valid: boolean; error?: string } | null;
   dragValidation: { valid: boolean; error?: string } | null;
   
-  // Event handlers
   handleMouseMove: (e: React.MouseEvent) => void;
   handleMouseLeave: () => void;
   handleMouseDown: (e: React.MouseEvent) => void;
@@ -69,7 +66,7 @@ export function useDesignerGridPlacement({
   } = useDesigner();
   const { toast } = useToast();
 
-  // A paint / erase stroke (mouse down -> drag -> up) is one undo step.
+  // A paint/erase stroke (mouse down, drag, up) is one undo step.
   const startStroke = useCallback(() => {
     beginEdit();
     const finish = () => {
@@ -79,7 +76,7 @@ export function useDesignerGridPlacement({
     window.addEventListener("mouseup", finish);
   }, [beginEdit, endEdit]);
 
-  // ESC key handler to deselect crop
+  // Escape deselects the crop or ground.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -92,7 +89,7 @@ export function useDesignerGridPlacement({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setSelectedCropForPlacement, setSelectedGround]);
 
-  // Adapter functions to match the core hook's expected interface
+  // Adapters to the core hook's callback interface.
   const handleAddPlacement = useCallback((
     cell: [number, number],
     offsetX: number,
@@ -104,7 +101,6 @@ export function useDesignerGridPlacement({
     }
     if (!selectedCropForPlacement) return null;
     
-    // Calculate position
     const basePos = getPlacementPosition(cell, offsetX, offsetY, selectedCropForPlacement.size);
     const adjustedPos = findNearestValidPosition(basePos, selectedCropForPlacement.size, isValidPlacementPosition);
     if (!adjustedPos) return null;
@@ -152,7 +148,7 @@ export function useDesignerGridPlacement({
     return selectedGround ? 1 : selectedCropForPlacement?.size || 1;
   }, [selectedCropForPlacement, selectedGround]);
   
-  // Keep ground hover visual-only; use the shared core for its existing paint/drag behavior.
+  // Ground hover is visual only; painting and dragging go through the shared core.
   const interaction = useGridInteractionCore({
     cellSize,
     gap,
@@ -192,5 +188,4 @@ export function useDesignerGridPlacement({
   };
 }
 
-// Re-export types
 export type { DragState as DesignerDragState, PaintState as DesignerPaintState, HoverInfo as DesignerHoverInfo };

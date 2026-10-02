@@ -2,9 +2,8 @@ import { toPng } from 'html-to-image';
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 import { decodeApngFrames } from './apng';
 
-// Crops whose icon is an animated PNG (APNG). Each frame is shown for 1s, which
-// matches the 1 fps of exported GIFs. Frame counts are read from the files
-// themselves, so editing an icon's frames needs no code change here.
+// Crops whose icon is an APNG. Each frame lasts 1s, matching the 1 fps GIF
+// export. Frame counts are read from the files themselves.
 export const ANIMATED_CROPS: ReadonlySet<string> = new Set([
   'all_in_aloe',
   'fire',
@@ -27,7 +26,7 @@ export interface ExportOptions {
   inputCrops: CropInfo[];
   targetCrops: CropInfo[];
   showTargets: boolean;
-  // Optional: animated frames for GIF exports
+  // Per-crop icon frames and the frame to draw, for GIF exports.
   animatedFrames?: Map<string, HTMLCanvasElement[]>;
   frameIndex?: number;
 }
@@ -37,15 +36,12 @@ export interface ExportResult {
   dataUrl: string;
 }
 
-// Image cache for crop icons
 const cropImageCache = new Map<string, HTMLImageElement>();
 
-// Cache for decoded animated-icon frames
+// Decoded APNG frames, keyed by URL.
 const animatedFrameCache = new Map<string, HTMLCanvasElement[]>();
 
-/**
- * Loads a crop image and caches it
- */
+/** Loads a crop icon (cached); resolves null on failure. */
 async function loadCropImage(cropId: string): Promise<HTMLImageElement | null> {
   if (cropImageCache.has(cropId)) {
     return cropImageCache.get(cropId)!;
@@ -71,9 +67,7 @@ async function loadCropImage(cropId: string): Promise<HTMLImageElement | null> {
   }
 }
 
-/**
- * Pre-loads all crop images needed for the footer (used for PNG export)
- */
+/** Pre-loads the footer's crop icons. Currently unused. */
 async function _preloadCropImages(cropInfos: CropInfo[]): Promise<Map<string, HTMLImageElement>> {
   const imageMap = new Map<string, HTMLImageElement>();
   
@@ -89,12 +83,9 @@ async function _preloadCropImages(cropInfos: CropInfo[]): Promise<Map<string, HT
   return imageMap;
 }
 
-// Suppress unused warning - function is available for future use
 void _preloadCropImages;
 
-/**
- * Extracts all frames from an animated PNG as canvas elements
- */
+/** Decodes every frame of an APNG to canvases (cached); empty on failure. */
 async function extractAnimatedFrames(url: string): Promise<HTMLCanvasElement[]> {
   const cached = animatedFrameCache.get(url);
   if (cached) return cached;
@@ -109,9 +100,7 @@ async function extractAnimatedFrames(url: string): Promise<HTMLCanvasElement[]> 
   }
 }
 
-/**
- * Renders text with shadow for better visibility
- */
+/** Draws bold text with a 1px drop shadow. */
 function drawPixelatedText(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -126,19 +115,15 @@ function drawPixelatedText(
   ctx.textAlign = align;
   ctx.textBaseline = 'top';
   
-  // Draw shadow for better visibility
   ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
   ctx.fillText(text, x + 1, y + 1);
   
-  // Draw main text
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
   ctx.restore();
 }
 
-/**
- * Draws a rounded rectangle path
- */
+/** Builds a rounded-rectangle path. */
 function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -160,10 +145,7 @@ function roundRect(
   ctx.closePath();
 }
 
-/**
- * Calculates the footer height based on crop content
- * Note: targetCrops are always included in calculations and display, regardless of showTargets
- */
+/** Footer layout metrics. Targets are always listed, regardless of showTargets. */
 function calculateFooterHeight(
   inputCrops: CropInfo[],
   targetCrops: CropInfo[],
@@ -180,12 +162,11 @@ function calculateFooterHeight(
   const itemsPerRow = Math.max(1, Math.floor(availableWidth / itemWidth));
   
   const inputRows = inputCrops.length > 0 ? Math.ceil(inputCrops.length / itemsPerRow) : 0;
-  // Always calculate target rows for display, regardless of showTargets
   const targetRows = targetCrops.length > 0 ? Math.ceil(targetCrops.length / itemsPerRow) : 0;
   
   let height = padding;
   
-  // Targets first
+  // Targets section comes before inputs.
   if (targetRows > 0) {
     height += sectionHeaderHeight + (targetRows * itemHeight);
   }
@@ -204,31 +185,27 @@ function calculateFooterHeight(
   return { height, itemHeight, itemsPerRow, padding, sectionGap };
 }
 
-/**
- * Adds watermark and info overlay to a canvas
- */
+/** Wraps the grid canvas with a title header and a crop-count footer. */
 async function addOverlay(
   canvas: HTMLCanvasElement,
   options: ExportOptions
 ): Promise<HTMLCanvasElement> {
   const { watermarkUrl, watermarkTitle, inputCrops, targetCrops, scale, animatedFrames, frameIndex } = options;
   
-  // Calculate dimensions
   const headerHeight = 38 * scale;
   const headerPadding = 16 * scale;
-  const outerPadding = 20 * scale; // Padding around the entire image
-  const gridPadding = 24 * scale; // Additional padding around just the grid
+  const outerPadding = 20 * scale; // around the whole image
+  const gridPadding = 24 * scale; // extra, around the grid only
   const totalWidth = canvas.width + (gridPadding * 2);
   const { height: footerHeight, itemHeight, itemsPerRow, padding, sectionGap } = calculateFooterHeight(
     inputCrops, targetCrops, scale, totalWidth
   );
   
-  // Pre-load crop images
-  // Always load target crop images for the footer, even if they're hidden on the grid
+  // Target icons are loaded even when targets are hidden on the grid.
   const allCrops = [...inputCrops, ...targetCrops];
   const cropImages = new Map<string, HTMLImageElement | HTMLCanvasElement>();
   
-  // Load images - use animated frames if available, otherwise load static
+  // Prefer the current animation frame; fall back to the static icon.
   for (const crop of allCrops) {
     if (animatedFrames && frameIndex !== undefined) {
       const frames = animatedFrames.get(crop.cropId);
@@ -244,31 +221,25 @@ async function addOverlay(
   }
   
   const outputCanvas = document.createElement('canvas');
-  // Add outer padding to all sides
   outputCanvas.width = canvas.width + (gridPadding * 2) + (outerPadding * 2);
   outputCanvas.height = canvas.height + headerHeight + footerHeight + (gridPadding * 2) + (outerPadding * 2);
   
   const ctx = outputCanvas.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
   
-  // Fill background
   ctx.fillStyle = '#0F172A';
   ctx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
   
-  // Draw header background with outer padding
   ctx.fillStyle = 'rgba(15, 23, 42, 1)';
   ctx.fillRect(outerPadding, outerPadding, outputCanvas.width - (outerPadding * 2), headerHeight);
   
-  // Draw header text - make "Greenhouse Designer" bigger and brighter
-  const headerFontSize = 24 * scale; // Increased from 14
-  drawPixelatedText(ctx, watermarkTitle, outerPadding + headerPadding, outerPadding + (headerHeight - headerFontSize) / 2, headerFontSize, '#e2e8f0'); // Brighter color
+  const headerFontSize = 24 * scale;
+  drawPixelatedText(ctx, watermarkTitle, outerPadding + headerPadding, outerPadding + (headerHeight - headerFontSize) / 2, headerFontSize, '#e2e8f0');
   const urlFontSize = 14 * scale;
   drawPixelatedText(ctx, watermarkUrl, outputCanvas.width - outerPadding - headerPadding, outerPadding + (headerHeight - urlFontSize) / 2 + 2, urlFontSize, '#6ee7b7', 'right');
   
-  // Draw the original grid with both outer and grid padding
   ctx.drawImage(canvas, outerPadding + gridPadding, outerPadding + headerHeight + gridPadding);
   
-  // Draw footer with crop info
   if (footerHeight > 0) {
     const footerY = outerPadding + headerHeight + canvas.height + (gridPadding * 2);
     
@@ -284,7 +255,6 @@ async function addOverlay(
     
     let currentY = footerY + padding;
     
-    // Helper to draw a crop item
     const drawCropItem = (
       crop: CropInfo,
       x: number,
@@ -329,8 +299,7 @@ async function addOverlay(
       drawPixelatedText(ctx, countText, x + itemWidth - itemPadding, textY, countFontSize, countColor, 'right');
     };
     
-    // Draw TARGETS first (reversed order)
-    // Always show targets in footer for counts, even if hidden on grid
+    // Targets first, shown even when hidden on the grid.
     if (targetCrops.length > 0) {
       const targetTotal = targetCrops.reduce((sum, c) => sum + c.count, 0);
       drawPixelatedText(ctx, `TARGETS (${targetTotal})`, outerPadding + padding, currentY, sectionFontSize, '#a78bfa');
@@ -348,7 +317,6 @@ async function addOverlay(
       currentY += targetRows * itemHeight;
     }
     
-    // Draw INPUTS second
     if (inputCrops.length > 0) {
       if (targetCrops.length > 0) currentY += sectionGap;
       
@@ -369,28 +337,24 @@ async function addOverlay(
   return outputCanvas;
 }
 
-/**
- * Captures the grid element as a PNG image
- */
+/** Captures the grid element as a PNG, optionally with the overlay. */
 export async function captureGridAsPng(
   element: HTMLElement,
   options: ExportOptions
 ): Promise<ExportResult> {
   const { scale } = options;
   
-  // Fixed dimensions for consistent exports across devices
-  // 10x10 grid with 48px cells and 2px gap = 498px (10*48 + 9*2)
+  // Exports are normalised to a fixed size so they match across devices:
+  // 10 cells * 48px + 9 gaps * 2px = 498px.
   const FIXED_GRID_SIZE = 498;
   
-  // Get the actual current size of the element
   const actualWidth = element.offsetWidth;
   const actualHeight = element.offsetHeight;
   
-  // Calculate scale factor to normalize to fixed size
   const scaleToFixed = FIXED_GRID_SIZE / actualWidth;
   
   const dataUrl = await toPng(element, {
-    pixelRatio: scale * scaleToFixed, // Combine export scale with normalization scale
+    pixelRatio: scale * scaleToFixed,
     backgroundColor: '#1e293b',
     cacheBust: true,
     skipAutoScale: true,
@@ -404,7 +368,6 @@ export async function captureGridAsPng(
         if (tagName === 'script' || tagName === 'noscript') {
           return false;
         }
-        // Exclude elements marked for GIF export exclusion
         if (node.hasAttribute('data-gif-exclude')) {
           return false;
         }
@@ -420,7 +383,6 @@ export async function captureGridAsPng(
     img.src = dataUrl;
   });
   
-  // Create canvas at the fixed target size
   const canvas = document.createElement('canvas');
   canvas.width = FIXED_GRID_SIZE * scale;
   canvas.height = FIXED_GRID_SIZE * scale;
@@ -445,26 +407,19 @@ export async function captureGridAsPng(
   };
 }
 
-/**
- * Checks if any placements contain animated crops
- */
+/** True if any of the crop ids has an animated icon. */
 export function hasAnimatedCrops(cropIds: string[]): boolean {
   return cropIds.some(id => ANIMATED_CROPS.has(id));
 }
 
-/**
- * Least common multiple of the given frame counts, so every animation
- * completes a whole number of loops in the exported GIF.
- */
+/** LCM of the frame counts, so every animation loops a whole number of times. */
 export function getLcmFrameCount(frameCounts: number[]): number {
   const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
   const lcm = (a: number, b: number): number => (a * b) / gcd(a, b);
   return frameCounts.reduce((acc, val) => lcm(acc, val), 1);
 }
 
-/**
- * Pre-loads all animated crop frames for the given crop IDs
- */
+/** Decodes icon frames for every animated crop among the ids. */
 async function preloadAnimatedFrames(cropIds: string[]): Promise<Map<string, HTMLCanvasElement[]>> {
   const uniqueIds = [...new Set(cropIds.filter(id => ANIMATED_CROPS.has(id)))];
   
@@ -483,21 +438,17 @@ async function preloadAnimatedFrames(cropIds: string[]): Promise<Map<string, HTM
   return frameMap;
 }
 
-/**
- * Generates a global palette from all frames for consistent colors
- * This is similar to ffmpeg's palettegen
- */
+/** Builds one 256-colour palette shared by all frames (like ffmpeg palettegen). */
 function generateGlobalPalette(frames: HTMLCanvasElement[]): number[][] {
-  // Sample pixels from all frames
   const allPixels: number[] = [];
-  const sampleRate = Math.max(1, Math.floor(frames.length / 3)); // Sample every Nth frame
+  const sampleRate = Math.max(1, Math.floor(frames.length / 3));
   
   for (let i = 0; i < frames.length; i += sampleRate) {
     const canvas = frames[i];
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     
-    // Sample every 4th pixel to reduce computation
+    // Every 4th pixel (16 bytes) is enough for quantisation.
     for (let j = 0; j < imageData.data.length; j += 16) {
       allPixels.push(
         imageData.data[j],
@@ -508,7 +459,6 @@ function generateGlobalPalette(frames: HTMLCanvasElement[]): number[][] {
     }
   }
   
-  // Quantize to 256 colors
   const palette = quantize(new Uint8Array(allPixels), 256, {
     format: 'rgba4444',
     oneBitAlpha: true,
@@ -517,9 +467,7 @@ function generateGlobalPalette(frames: HTMLCanvasElement[]): number[][] {
   return palette;
 }
 
-/**
- * Captures the grid as an animated GIF using gifenc for Discord-compatible output
- */
+/** Captures the grid as an animated GIF (gifenc, Discord-compatible). */
 export async function captureGridAsGif(
   element: HTMLElement,
   options: ExportOptions,
@@ -530,13 +478,12 @@ export async function captureGridAsGif(
   
   onProgress?.(5);
   
-  // Pre-load all animated icon frames
   const animatedFrames = await preloadAnimatedFrames(cropIds);
   const totalFrames = getLcmFrameCount([...animatedFrames.values()].map(f => f.length));
   
   onProgress?.(15);
   
-  // Find all animated img elements
+  // <img> elements showing animated icons; their src is swapped per frame.
   const animatedImgInfo: Array<{
     img: HTMLImageElement;
     cropId: string;
@@ -554,31 +501,25 @@ export async function captureGridAsGif(
     }
   }
   
-  // Store original sources
   const originalSources = new Map<HTMLImageElement, string>();
   for (const info of animatedImgInfo) {
     originalSources.set(info.img, info.img.src);
   }
   
-  // Fixed dimensions for consistent exports across devices
-  // 10x10 grid with 48px cells and 2px gap = 498px (10*48 + 9*2)
+  // Fixed export size; see captureGridAsPng.
   const FIXED_GRID_SIZE = 498;
   
-  // Get the actual current size of the element
   const actualWidth = element.offsetWidth;
   const actualHeight = element.offsetHeight;
   
-  // Calculate scale factor to normalize to fixed size
   const scaleToFixed = FIXED_GRID_SIZE / actualWidth;
   
-  // Capture all frames first
   const frameCanvases: HTMLCanvasElement[] = [];
   
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     const progressPercent = 15 + ((frameIndex / totalFrames) * 35);
     onProgress?.(progressPercent);
     
-    // Update each animated image to the correct frame
     for (const info of animatedImgInfo) {
       const frames = animatedFrames.get(info.cropId);
       if (frames && frames.length > 0) {
@@ -586,12 +527,11 @@ export async function captureGridAsGif(
       }
     }
     
-    // Wait for images to update
+    // Let the swapped image sources render before capturing.
     await new Promise(resolve => setTimeout(resolve, 50));
     
-    // Capture this frame
     const dataUrl = await toPng(element, {
-      pixelRatio: scale * scaleToFixed, // Combine export scale with normalization scale
+      pixelRatio: scale * scaleToFixed,
       backgroundColor: '#1e293b',
       cacheBust: true,
       skipAutoScale: true,
@@ -617,7 +557,6 @@ export async function captureGridAsGif(
       img.src = dataUrl;
     });
     
-    // Create canvas at the fixed target size
     const canvas = document.createElement('canvas');
     canvas.width = FIXED_GRID_SIZE * scale;
     canvas.height = FIXED_GRID_SIZE * scale;
@@ -625,7 +564,7 @@ export async function captureGridAsGif(
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     
-    // Add overlay with correct frame for animated crops in footer
+    // Footer icons use the same frame index as the grid.
     const outputCanvas = options.includeWatermark
       ? await addOverlay(canvas, { ...options, animatedFrames, frameIndex })
       : canvas;
@@ -633,7 +572,6 @@ export async function captureGridAsGif(
     frameCanvases.push(outputCanvas);
   }
   
-  // Restore original sources
   for (const info of animatedImgInfo) {
     info.img.src = info.originalSrc;
   }
@@ -644,17 +582,14 @@ export async function captureGridAsGif(
     throw new Error('No frames captured');
   }
   
-  // Generate global palette from all frames (like ffmpeg's palettegen)
   const palette = generateGlobalPalette(frameCanvases);
   
   onProgress?.(60);
   
-  // Create GIF using gifenc
   const width = frameCanvases[0].width;
   const height = frameCanvases[0].height;
   const gif = GIFEncoder();
   
-  // Encode each frame
   for (let i = 0; i < frameCanvases.length; i++) {
     const progressPercent = 60 + ((i / frameCanvases.length) * 35);
     onProgress?.(progressPercent);
@@ -663,13 +598,13 @@ export async function captureGridAsGif(
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.getImageData(0, 0, width, height);
     
-    // Apply the global palette to this frame (like ffmpeg's paletteuse with dither=none)
+    // No dithering (like ffmpeg paletteuse dither=none).
     const index = applyPalette(imageData.data, palette);
     
     gif.writeFrame(index, width, height, {
       palette,
-      delay: 1000, // 1000ms = 1fps
-      dispose: 1, // Do not dispose - keep previous frame (more compatible)
+      delay: 1000, // 1 fps
+      dispose: 1, // keep previous frame; most widely supported
     });
   }
   
@@ -677,11 +612,9 @@ export async function captureGridAsGif(
   
   onProgress?.(95);
   
-  // Get the GIF bytes
   const bytes = gif.bytes();
   const blob = new Blob([bytes], { type: 'image/gif' });
   
-  // Convert to data URL
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -694,9 +627,7 @@ export async function captureGridAsGif(
   return { blob, dataUrl };
 }
 
-/**
- * Copies a blob to the clipboard
- */
+/** Copies a PNG blob to the clipboard. Returns false for other types or on failure. */
 export async function copyBlobToClipboard(blob: Blob): Promise<boolean> {
   try {
     if (!navigator.clipboard || !navigator.clipboard.write) {
@@ -712,16 +643,14 @@ export async function copyBlobToClipboard(blob: Blob): Promise<boolean> {
       return true;
     }
     
-    // GIF not well supported in clipboard
+    // Browsers do not reliably accept GIFs on the clipboard.
     return false;
   } catch {
     return false;
   }
 }
 
-/**
- * Downloads a blob as a file
- */
+/** Triggers a browser download of the blob. */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -733,9 +662,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/**
- * Aggregates crop info by counting duplicates
- */
+/** Counts placements per crop, in first-seen order. */
 export function aggregateCropInfo(
   placements: Array<{ cropId: string; cropName: string }>
 ): CropInfo[] {

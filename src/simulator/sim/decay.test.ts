@@ -21,10 +21,10 @@ import { combinedRemaining, creditInputs, decayStatus, isPooled, minimumMet, wou
 import { buildOccupancy } from "./plants";
 import type { ActivitySchedule, PlantState, SimulationState, TimedEvent } from "./state";
 
-// 0.27.2 minimum mutations (user-confirmed rules). A plant may only decay once
-// its timer has run out AND it has helped create its minimum number of
-// mutations; until then the timer is extended by 24h. Plants of the same kind
-// on a plot that have helped at least once and are fully grown share the count.
+// Minimum mutations: a plant decays only once its timer has run out AND it has
+// helped create its minimum number of mutations; until then the timer is
+// extended by 24 h. Fully grown plants of one kind on a plot that have helped
+// at least once share the count.
 
 /** The two things creditInputs reads from a cycle context: the config and the run's RNG. */
 const fakeCtx = (s: SimulationState) => ({ state: s, config: s.scenario.settings.config }) as unknown as CycleCtx;
@@ -155,8 +155,7 @@ describe("credit at spawn", () => {
   });
 
   it("two spawns in one tick: each credits its own ring, a shared neighbour is credited by both", () => {
-    // Two Dustgrain targets two cells apart share the wheat at (3,5). The first spawn stands in the
-    // second's ring but isn't one of its requirements, so it isn't credited.
+    // Two Dustgrain targets two cells apart share the wheat at (3,5).
     const s = blank({ slots: [["dustgrain", 4, 4], ["dustgrain", 4, 6]] });
     for (const [r, c] of [[3, 4], [3, 5], [3, 6], [3, 7]]) inject(s, 1, "wheat", r, c, "planted", grownCrop(8));
     const r = engine.run(s, 1);
@@ -171,9 +170,8 @@ describe("credit at spawn", () => {
   });
 
   it("an earlier same-tick spawn that IS a requirement counts as a neighbour and is credited by the later one", () => {
-    // Choconut (2 cocoa) at (4,4) spawns first (row-major); Chocoberry at (4,6) needs 6 Choconut + 2 Gloomgourd.
-    // Its ring (3,5) (3,6) (3,7) (4,5) (4,7) (5,5) (5,6) (5,7) holds 5 placed Choconut + 2 Gloomgourd. The new
-    // Choconut at (4,4) is outside that ring, so put the 6th in: the Choconut target sits at (4,5) instead.
+    // Choconut (2 cocoa) at (4,5) spawns first (row-major) inside the ring of Chocoberry at (4,6),
+    // which needs 6 Choconut + 2 Gloomgourd; the ring already holds 5 placed Choconut + 2 Gloomgourd.
     const s = blank({ slots: [["choconut", 4, 5], ["chocoberry", 4, 6]] });
     inject(s, 1, "cocoa_beans", 3, 4, "planted", grownCrop(6));
     inject(s, 1, "cocoa_beans", 5, 4, "planted", grownCrop(6));
@@ -284,8 +282,7 @@ describe("decay check", () => {
 
   it("not pooled: decays once its own remaining is <= 0", () => {
     const s = blank();
-    // Helped 8 times already but not pooled... a placed plant that helped is pooled, so use a growing crop:
-    // a spawned Startlevine (12 stages) still growing, credited 6 times (its minimum).
+    // Still-growing Startlevines (12 stages, minimum 6) are not pooled: (5,5) has met its minimum, (7,7) has 1 left.
     inject(s, 1, "startlevine", 5, 5, "spawned", { stage: 3, timesMutated: 6, mutatesRemaining: 0, decaySecondsRemaining: 1 });
     inject(s, 1, "startlevine", 7, 7, "spawned", { stage: 3, timesMutated: 5, mutatesRemaining: 1, decaySecondsRemaining: 1 });
     const r = engine.run(s, 1);
@@ -356,7 +353,7 @@ describe("pool", () => {
   });
 
   it("the pool is snapshotted once per tick: pooled plants whose timers run out together decay together", () => {
-    // Pool -3 + 2 = -1. Without the snapshot, the first decaying (leaving the pool) would leave +2 for the other.
+    // Pool -3 + 2 = -1 for both. Without a snapshot the second would see +2 after the first leaves.
     const together = blank();
     inject(together, 1, "wheat", 3, 4, "planted", grownCrop(8, { timesMutated: 15, mutatesRemaining: -3, decaySecondsRemaining: 1 }));
     inject(together, 1, "wheat", 3, 6, "planted", grownCrop(8, { timesMutated: 10, mutatesRemaining: 2, decaySecondsRemaining: 1 }));
@@ -523,9 +520,8 @@ describe("Dead Plants", () => {
     // Consumed by the harvest, never decayed; the player re-places them from stock.
     expect(s.summary.decayed.dead_plant).toBeUndefined();
     expect(s.ledger.dead_plant.consumed).toBeGreaterThanOrEqual(4 * harvests.length);
-    // A Zombud spawn credits all 4, and its harvest consumes them. The same 4 dead plants on soul sand also
-    // let Witherbloom spawn as a rival in the slot (credited too), but between two Zombud harvests they never
-    // reach their minimum of 10.
+    // The 4 dead plants also let Witherbloom spawn as a rival (credited too), but each Zombud
+    // harvest consumes them before they reach their minimum of 10.
     expect(s.summary.rivals.spawned).toBeGreaterThan(0);
     expect(maxHelped).toBeGreaterThanOrEqual(1);
     expect(maxHelped).toBeLessThan(10);

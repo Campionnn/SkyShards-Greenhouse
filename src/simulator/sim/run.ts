@@ -12,22 +12,16 @@ import type { BatchResult, PlotId, PlotState, RunOptions, SimulationState, TickE
 const now = () => globalThis.performance?.now() ?? 0;
 
 /**
- * THE entry point: advance the scenario by `ticks` cycles. `run(state, 1)`
- * is a step - there is deliberately no separate step function.
+ * The only stepping path: advance `ticks` cycles. A single step is `run(state, 1)`.
+ * Pure (input is cloned). All persistent data lives in the returned state, so
+ * run(s, 100) === run(run(s, 50).state, 50) === 100 x run(_, 1).
  *
- * Pure: the input state is never mutated. Everything that must survive a call
- * boundary (RNG, cycle, clock, plots, inventory, flow runners, the cumulative
- * summary) lives in the returned state, so
- *   run(s, 100) === run(run(s, 50).state, 50) === 100 x run(_, 1)
- *
- * Per cycle, in order:
- *   1. shared aggregates (unique crops -> cycle length, the activity schedule)
- *   2. game tick: every plot's TICK_PHASES (sim/tick.ts), in plotOrder
- *   3. every flow counts one more cycle in its step
- *   4. player: on an active cycle every plot's PLAYER_PHASES (sim/player.ts),
- *      in plotOrder - the player acts during the cycle, after the game has
- *      ticked. On an inactive cycle, exit triggers are only checked and a
- *      due step change waits for the next session.
+ * Per cycle:
+ *   1. shared aggregates (unique crops -> cycle length, activity)
+ *   2. game tick: every plot's TICK_PHASES, in plotOrder
+ *   3. every flow's cyclesInStep += 1
+ *   4. active: every plot's PLAYER_PHASES, in plotOrder; inactive: exit
+ *      triggers checked only, a due step change waits for the next session
  *   5. advance the clock
  */
 export function run(env: Env, input: SimulationState, ticks: number, opts: RunOptions = {}): BatchResult {
@@ -51,12 +45,12 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     }
     const cycle = state.cycle;
 
-    // 1. Shared aggregates for THIS cycle, across all plots.
+    // 1. Shared aggregates.
     const uniqueCropsStanding = uniqueCropsAcross(state, env);
     const uniqueCropCount = effectiveUniqueCrops(uniqueCropsStanding, settings.playerStats.floraShard, settings.config.uniqueCropCap);
     const seconds = cycleSeconds(settings.playerStats, uniqueCropCount, settings.config);
     const firesAt = state.elapsedSeconds + seconds;
-    // playerActions is the master switch: off = the player is never online.
+    // playerActions === false: never online.
     const active = settings.playerActions !== false && isActive(settings.activity, cycle, firesAt, settings.playerStats.startTimeOfDay);
 
     const cycleEvents: TimedEvent[] = [];
@@ -68,13 +62,13 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
       if (plot) plots.push({ plot, scratch: newScratch() });
     }
 
-    // 2. Game tick: every plot, instantly.
+    // 2. Game tick.
     for (const { plot, scratch } of plots) tickPlot(plot, ctx, scratch);
 
-    // 3. The step has seen one more cycle.
+    // 3. Step cycle count.
     for (const runner of state.flows) runner.cyclesInStep += 1;
 
-    // 4. The player, some time during the cycle.
+    // 4. Player session.
     for (const { plot, scratch } of plots) {
       if (active) runPlayerSession(plot, ctx, scratch);
       else {
@@ -83,7 +77,7 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
       }
     }
 
-    // 5. Advance the shared clock.
+    // 5. Clock.
     state.cycle += 1;
     state.elapsedSeconds = firesAt;
     state.uniqueCropCount = uniqueCropCount;

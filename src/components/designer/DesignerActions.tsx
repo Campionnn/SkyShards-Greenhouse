@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Save, FolderOpen, Share2, Clipboard, X, Image, Film, Download, ClipboardCopy, Loader2, FlaskConical } from "lucide-react";
 import { LayoutClearControls, LayoutTransformControls } from "./LayoutTools";
 
-// API base URL for share links
 const SHARE_BASE_URL = "https://api.skyshards.com/share";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDesigner, useGreenhouseData } from "../../context";
@@ -55,26 +54,22 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   const { toast } = useToast();
   const navigate = useNavigate();
   
-  // State for modals
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [savedLayouts, setSavedLayouts] = useState<SavedLayout[]>([]);
   
-  // Export state
   const [exportStep, setExportStep] = useState<ExportStep>("choose-format");
   const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null);
   const [exportProgress, setExportProgress] = useState(0);
   const [currentExportBlob, setCurrentExportBlob] = useState<Blob | null>(null);
   const [hasExportedOnce, setHasExportedOnce] = useState(false);
   
-  // Reload layouts when load modal opens
   useEffect(() => {
     if (isLoadModalOpen) {
       setSavedLayouts(loadLayouts());
     }
   }, [isLoadModalOpen]);
   
-  // Reset export state
   const resetExportState = useCallback(() => {
     setExportStep("choose-format");
     setExportFormat(null);
@@ -82,20 +77,17 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     setCurrentExportBlob(null);
   }, []);
   
-  // Open save modal
   const handleOpenSave = useCallback(() => {
     if (inputPlacements.length === 0 && targetPlacements.length === 0 && groundTiles.length === 0) {
-      return; // Button is disabled, but just in case
+      return; // the button is disabled in this state
     }
     setIsSaveModalOpen(true);
   }, [inputPlacements.length, targetPlacements.length, groundTiles.length]);
   
-  // Save layout
   const handleSaveLayout = useCallback((name: string, overwriteId?: string) => {
     const now = Date.now();
     
     if (overwriteId) {
-      // Overwrite existing layout
       const success = updateLayout(overwriteId, {
         name,
         modifiedAt: now,
@@ -126,7 +118,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         });
       }
     } else {
-      // Create new layout
       const newLayout: SavedLayout = {
         id: generateLayoutId(),
         name,
@@ -157,7 +148,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [inputPlacements, targetPlacements, groundTiles, toast]);
   
-  // Open load modal
   const handleOpenLoad = useCallback(() => {
     const layouts = loadLayouts();
     if (layouts.length === 0) {
@@ -173,9 +163,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     setIsLoadModalOpen(true);
   }, [toast]);
   
-  // Load layout
   const handleLoadLayout = useCallback((layout: SavedLayout) => {
-    // Get size and name info from crop definitions
     const crops = layout.inputs.map(p => {
       const cropDef = getCropDef(p.cropId);
       const mutationDef = getMutationDef(p.cropId);
@@ -211,7 +199,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     });
   }, [loadFromSolverResult, getCropDef, getMutationDef, toast]);
   
-  // Delete layout
   const handleDeleteLayout = useCallback((layoutId: string) => {
     const success = deleteLayout(layoutId);
     if (success) {
@@ -230,7 +217,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [toast]);
   
-  // Rename layout
   const handleRenameLayout = useCallback((layoutId: string, newName: string) => {
     const success = renameLayout(layoutId, newName);
     if (success) {
@@ -250,11 +236,10 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [toast]);
   
-  // State for import modal
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importText, setImportText] = useState("");
   
-  // Export design as shareable URL to clipboard
+  // Copies a share link to the clipboard.
   const handleExportCode = useCallback(() => {
     try {
       const encoded = encodeDesign(inputPlacements, targetPlacements, groundTiles);
@@ -268,12 +253,11 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         duration: 3000,
       });
       
-      // Pre-generate the share image in the background (don't await)
-      // This ensures the image is ready when Discord crawls the link
+      // Pre-render the share image so it is ready when Discord crawls the link.
       fetch(`${SHARE_BASE_URL}/prepare?layout=${encoded}`, {
         method: 'POST',
       }).catch(err => {
-        // Silent fail - image will be generated on-demand if needed
+        // Non-fatal: the image is generated on demand.
         console.warn('Failed to pre-generate share image:', err);
       });
       
@@ -287,20 +271,19 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [inputPlacements, targetPlacements, groundTiles, toast]);
   
-  // Hand the layout straight to the Simulator (no share link needed)
+  // Opens the layout in the Simulator via router state.
   const handleSimulate = useCallback(() => {
     const nameOf = (id: string) => getMutationDef(id)?.name || getCropDef(id)?.name || id.replace(/_/g, " ");
     const layout = makeIncomingLayout({ inputs: inputPlacements, targets: targetPlacements, groundTiles }, "designer", nameOf, "Designer layout");
     navigate("/simulator", { state: simulatorHandoffState(layout) });
   }, [inputPlacements, targetPlacements, groundTiles, getCropDef, getMutationDef, navigate]);
 
-  // Open import modal
   const handleOpenImport = useCallback(() => {
     setImportText("");
     setIsImportModalOpen(true);
   }, []);
   
-  // Import design from URL or base64 gzipped string
+  // Imports from a share URL, designer URL or raw layout code.
   const handleImportFromText = useCallback(() => {
     if (!importText.trim()) {
       toast({
@@ -316,7 +299,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       const layoutCode = extractLayoutCode(importText);
       const { inputs, targets, groundTiles: importedGround } = decodeDesign(layoutCode);
       
-      // Get size info from crop definitions
       const crops = inputs.map(p => {
         const cropDef = getCropDef(p.cropId);
         const mutationDef = getMutationDef(p.cropId);
@@ -361,7 +343,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [importText, loadFromSolverResult, getCropDef, getMutationDef, toast]);
   
-  // Get export options
   const getExportOptions = useCallback((): ExportOptions => {
     const inputCrops = aggregateCropInfo(inputPlacements);
     const targetCrops = aggregateCropInfo(targetPlacements);
@@ -377,7 +358,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     };
   }, [inputPlacements, targetPlacements, showTargets]);
   
-  // Handle export format selection
   const handleSelectExportFormat = useCallback(async (format: ExportFormat) => {
     if (!gridRef?.current) {
       toast({
@@ -411,18 +391,16 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       
       if (format === "png") {
         result = await captureGridAsPng(gridElement, options);
-        // PNG: show copy/download options
         setCurrentExportBlob(result.blob);
         setExportStep("choose-action");
       } else {
-        // GIF: auto-download (clipboard doesn't support GIF well)
+        // GIFs are downloaded directly; browsers do not reliably copy them.
         const cropIds = [
           ...inputPlacements.map(p => p.cropId),
           ...(showTargets ? targetPlacements.map(p => p.cropId) : []),
         ];
         result = await captureGridAsGif(gridElement, options, cropIds, setExportProgress);
         
-        // Auto-download the GIF
         const filename = `SkyShards-designer-${Date.now()}.gif`;
         downloadBlob(result.blob, filename);
         
@@ -446,7 +424,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [gridRef, getExportOptions, inputPlacements, targetPlacements, showTargets, toast, resetExportState]);
   
-  // Handle download
   const handleDownload = useCallback(() => {
     if (!currentExportBlob) return;
     
@@ -462,7 +439,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     resetExportState();
   }, [currentExportBlob, exportFormat, toast, resetExportState]);
   
-  // Handle copy to clipboard
   const handleCopyToClipboard = useCallback(async () => {
     if (!currentExportBlob) return;
     
@@ -477,7 +453,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       });
       resetExportState();
     } else {
-      // Clipboard failed, offer download instead
+      // Fall back to a download.
       toast({
         title: "Clipboard not supported",
         description: "Downloading image instead...",
@@ -490,7 +466,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   
   const totalPlacements = inputPlacements.length + targetPlacements.length + groundTiles.length;
   
-  // Animation variants for button transitions
   const buttonVariants = {
     initial: { opacity: 0, x: -20 },
     animate: { opacity: 1, x: 0 },

@@ -1,12 +1,8 @@
-/**
- * Color mapping for crop/mutation preview in the layout load modal
- * These colors are used ONLY for the mini grid preview to show layout structure
- */
+/** Cell colours for the mini layout preview in the load-layout modal (only used there). */
 
 export const CROP_PREVIEW_COLORS: Record<string, string> = {
-  // Default colors
-  _default_input: '#10b981',      // emerald - for all input crops
-  _default_target: '#6b7280',     // gray - for unknown mutations
+  _default_input: '#10b981',      // emerald, inputs without a colour
+  _default_target: '#6b7280',     // gray, targets without a colour
   
   wheat: '#C2A459',
   potato: '#D9AA51',
@@ -68,18 +64,11 @@ export const CROP_PREVIEW_COLORS: Record<string, string> = {
     timestalk: '#36597D',
 };
 
-/**
- * Get preview color for a crop/mutation in the grid preview
- * @param cropId - The crop/mutation ID
- * @param isTarget - Whether this is a target mutation (vs input crop)
- * @returns Hex color string
- */
+/** Preview hex colour for a crop or mutation, falling back to the input/target default. */
 export function getCropPreviewColor(cropId: string, isTarget: boolean = false): string {
-  // Check if this crop/mutation has a specific color defined
   if (CROP_PREVIEW_COLORS[cropId]) {
     return CROP_PREVIEW_COLORS[cropId];
   }
   
-  // Fallback: targets get gray, inputs get emerald
   return isTarget ? CROP_PREVIEW_COLORS._default_target : CROP_PREVIEW_COLORS._default_input;
 }

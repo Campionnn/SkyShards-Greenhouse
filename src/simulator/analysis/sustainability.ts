@@ -3,9 +3,9 @@ import type { DebtEvent, PlotId, SimulationState, UptimeCounts } from "../sim/st
 import { uptimeRatio, zeroUptime } from "../sim/summary";
 
 export type ItemStatus =
-  /** Needed more than it had at some point: the layout went into debt on it. */
+  /** Went into debt at some point. */
   | "bottleneck"
-  /** Consumed but never produced: it can only come from the starting inventory. */
+  /** Consumed, never produced: comes only from the starting inventory. */
   | "externally-seeded"
   /** Produced more than consumed, never short. */
   | "surplus"
@@ -21,7 +21,7 @@ export interface ItemReport {
   shortfall: number;
   firstStockoutCycle: number | null;
   status: ItemStatus;
-  /** A mutation that never decays (no timer, or an Infinite minimum): placed once, it never needs replacing. Data values; overrides aren't applied. */
+  /** Never decays (no timer or infinite minimum), per data.json; overrides ignored. */
   permanent: boolean;
 }
 
@@ -43,34 +43,28 @@ export interface SpotReport extends UptimeCounts {
 
 export interface SustainabilityReport {
   /**
-   * The uptime test: true iff no watched target cell ever sat empty without
-   * the requirements to grow its mutation. Blocked cycles (a rival, a Dead
-   * Plant) and halted ones (the target standing there dried out) lower
-   * uptime but are not a sustainability failure.
+   * True iff no watched cell ever sat empty without its requirements.
+   * Blocked and halted cycles lower uptime but don't fail this.
    */
   sustainable: boolean;
   /** Watched cell-cycles across every plot and step. */
   totals: UptimeCounts;
-  /** totals as a ratio; 1 when nothing has been watched yet. */
+  /** Ratio of totals; 1 when nothing watched yet. */
   uptime: number;
-  /** Every watched spot that has been watched at least once, lowest uptime first. */
+  /** Watched spots, lowest uptime first. */
   spots: SpotReport[];
-  /** The headline failure: the earliest cycle a watched spot lacked its requirements. */
+  /** Earliest cycle a watched spot lacked its requirements. */
   firstFailure: SpotReport | null;
-  /** The first time the layout needed an item it did not have (a common cause of lost uptime). */
+  /** First item shortage (a common cause of lost uptime). */
   firstDebt: DebtEvent | null;
   debts: DebtEvent[];
   debtCount: number;
-  /** Failed placement attempts - how long cells sat empty for want of stock. */
+  /** Failed placement attempts (cells left empty for lack of stock). */
   unfilledCellCycles: number;
   items: ItemReport[];
 }
 
-/**
- * Sustainability is "do the target cells you care about always stay able to
- * grow their mutation?" - measured, never fixed. Which cells count is chosen
- * per step (`FlowStep.watch`, default every target).
- */
+/** Whether watched target cells (`FlowStep.watch`) always stay able to grow their mutation. Measures only. */
 export function analyseSustainability(state: SimulationState, data: GameData): SustainabilityReport {
   const items: ItemReport[] = Object.entries(state.ledger)
     .map(([item, row]) => {
@@ -92,7 +86,6 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
         shortfall: row.shortfall,
         firstStockoutCycle: row.firstStockoutCycle,
         status,
-        // No timer, or a minimum that is never met (Magic Jellybean): placed once, it never decays.
         permanent: !!m && (m.decayDays === 0 || m.minimumMutations === "infinite"),
       };
     })
@@ -118,7 +111,7 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
           ready: s.ready,
           requirements: s.requirements,
           blocked: s.blocked,
-          // Spots recorded before `halted` existed have none.
+          // Optional in older saved states.
           halted: s.halted ?? 0,
           uptime: uptimeRatio(s),
           firstRequirementsCycle: s.firstRequirementsCycle,

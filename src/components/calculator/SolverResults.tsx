@@ -44,7 +44,7 @@ interface SolverResultsProps {
   onRetry?: () => void;
 }
 
-// Represents a crop/mutation placement on the grid
+// A crop or mutation placement on the grid.
 interface PlacementItem {
   id: string;
   name: string;
@@ -191,7 +191,6 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
   const gridRef = useRef<HTMLDivElement>(null);
   const { width: gridWidth, height: gridHeight } = getGridDimensions(cellSize, gap);
 
-  // Handle sending current grid content to designer
   const handleSendToDesigner = useCallback(() => {
     const inputs: Array<{ id: string; name: string; position: [number, number]; size: number }> = [];
     const targets: Array<{ id: string; name: string; position: [number, number]; size: number }> = [];
@@ -250,7 +249,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     return makeIncomingLayout(cells, "calculator", nameOf, "Calculator result");
   }, [result, lockedPlacements, nameOf]);
 
-  // Remember each finished result, so the Simulator's layout picker can offer it later.
+  // Save each finished result for the Simulator's layout picker.
   const isFinalResult = !!result && !session && result.status !== "SOLVING";
   useEffect(() => {
     if (isFinalResult && currentLayout) {
@@ -311,8 +310,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
       seen.add(key);
       sims.push({ id, position, size, isSlot });
     };
-    // Crops and locks are real plants; the target mutations are slots, which
-    // receive effects but never give any (see utilities/effectSimulation).
+    // Crops and locks are plants; target mutations are slots, which receive effects but give none.
     for (const p of result?.placements || []) add(p.crop, p.position, p.size);
     for (const m of result?.mutations || []) add(m.mutation, m.position, m.size, true);
     for (const l of lockedPlacements) add(l.crop, l.position, l.size);
@@ -325,7 +323,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     return { has, suppressed: [...raw].filter(e => !has.has(e)), gives: effectsGivenBy(id, isSlot) };
   }, [effectSim]);
 
-  // Whatever is hovered: a solver crop/mutation, or a locked placement (not while dragging)
+  // The hovered solver crop/mutation or locked placement (none while dragging).
   const hoveredEffects = useMemo(() => {
     if (dragState?.isDragging) return null;
     let item: PlacementItem | null = hoveredEffectItem;
@@ -481,7 +479,6 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     placementCounts.set(p.crop, e);
   });
 
-  // Header wording
   let headerIcon: React.ReactNode = <Grid3X3 className="w-4 h-4 text-emerald-400" />;
   let headerText = "Solution";
   if (isSolving) {
@@ -506,7 +503,6 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
 
   return (
     <Card>
-      {/* Header */}
       <div className="flex items-center gap-2 mb-3 min-h-[24px]">
         {headerIcon}
         <h3 className="text-sm font-medium text-slate-200">{headerText}</h3>
@@ -553,7 +549,6 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
       {/* Final result status + stats */}
       {isFinal && <ResultSummary result={result} meta={runMeta ?? null} unlockedCount={unlockedCount} />}
 
-      {/* Grid */}
       <SectionLabel
         actions={
           hasResult ? (
@@ -579,7 +574,6 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
         hasLockedPlacements={lockedPlacements.length > 0}
       />
 
-      {/* Targets */}
       {hasResult && (
         <div className="mb-4">
           <SectionLabel>Mutations</SectionLabel>
@@ -587,7 +581,6 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
         </div>
       )}
 
-      {/* Crop Placements */}
       {hasResult && (
         <div className="mb-1">
           <SectionLabel>Crops to plant</SectionLabel>

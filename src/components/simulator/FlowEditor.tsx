@@ -42,9 +42,9 @@ import { buttonClass, inputClass } from "./styles";
 // ---- Embedded layout editor ------------------------------------------------
 
 /**
- * The Designer's own grid and palette, mounted on a private, non-persisted
- * DesignerProvider so editing a step never touches the Designer page's saved
- * layout. Lowercase inputs are planted; targets are EMPTY labelled cells.
+ * The Designer's grid and palette on a private, non-persisted DesignerProvider, so editing
+ * a step never touches the Designer page's saved layout. Inputs are planted; targets are
+ * empty labelled cells.
  */
 const StepLayoutEditor: React.FC<{ layout: StepLayout; onChange: (layout: StepLayout, transform?: LayoutTransform) => void }> = ({ layout, onChange }) => {
   const { toast } = useToast();
@@ -144,11 +144,7 @@ const StepLayoutEditor: React.FC<{ layout: StepLayout; onChange: (layout: StepLa
 const PICK_CELL = 26;
 const PICK_GAP = 2;
 
-/**
- * Pick which of this step's target cells the sustainability check records.
- * `watch` undefined = every target (and it follows layout edits); a list pins
- * the choice to those anchors.
- */
+/** Picks the step's target cells the uptime check records. `watch` undefined = every target (follows layout edits); a list pins those anchors. */
 export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] | undefined) => void }> = ({ step, onChange }) => {
   const placements = useMemo(() => {
     try {
@@ -357,11 +353,7 @@ const MatchToggle: React.FC<{ match: ConditionMatch; onChange: (m: ConditionMatc
   </div>
 );
 
-/**
- * A condition list with an AND / OR switch. Entries are single conditions or
- * nested groups (each with its own switch), so things like
- * "(A or B) and C" can be built.
- */
+/** Condition list with an AND / OR switch; entries may be nested groups, e.g. "(A or B) and C". */
 export const ConditionListEditor: React.FC<{
   list: Condition[];
   match: ConditionMatch;
@@ -491,7 +483,7 @@ const RoutesEditor: React.FC<{ routes: StepRoute[]; steps: StepOption[]; current
   );
 };
 
-/** "N. label" for a step id, or the raw id if it no longer exists. */
+/** "N. label" for a step id, or the raw id if the step doesn't exist. */
 function stepNamer(steps: FlowStep[]): (id: string) => string {
   return (id) => {
     const i = steps.findIndex((s) => s.id === id);

@@ -16,10 +16,8 @@ import { useDesigner } from "../../context";
 import { useToast } from "../ui/toastContext";
 import { canNudge, describeTransform, type LayoutTransform } from "../../utilities";
 
-// Layout-wide tools shared by the Designer page and the simulator's embedded
-// stage editor: nudge / rotate / mirror the whole layout, and clear parts of
-// it. Both read the nearest DesignerProvider, so they act on whichever layout
-// they are mounted next to.
+// Whole-layout tools (nudge, rotate, mirror, clear) for the Designer page and
+// the simulator's stage editor. They act on the nearest DesignerProvider.
 
 /** One icon button inside a joined ToolGroup: the group draws the border and dividers. */
 const segmentButton =
@@ -37,7 +35,7 @@ interface LayoutToolsProps {
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = IS_MAC ? "⌘" : "Ctrl";
 
-/** Typing somewhere keeps the browser's own text undo. */
+/** Text fields keep the browser's native undo. */
 function isTextEntry(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
@@ -46,10 +44,7 @@ function isTextEntry(target: EventTarget | null): boolean {
 const historyButton =
   "flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-200 disabled:opacity-40 disabled:hover:bg-slate-700/30 disabled:hover:text-slate-300 disabled:cursor-not-allowed cursor-pointer";
 
-/**
- * Undo / redo buttons for the nearest DesignerProvider, plus the keyboard
- * shortcuts (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y). Mount one per provider.
- */
+/** Undo/redo buttons and shortcuts (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y). Mount one per provider. */
 export const LayoutHistoryControls: React.FC<{ className?: string }> = ({ className = "" }) => {
   const { undo, redo, canUndo, canRedo } = useDesigner();
 
@@ -165,7 +160,7 @@ export const LayoutClearControls: React.FC<LayoutToolsProps> = ({ className = ""
   } = useDesigner();
   const { toast } = useToast();
   const [confirmAll, setConfirmAll] = useState(false);
-  // Clearing by mistake is the easy one to regret: offer undo right on the toast.
+  // Clear toasts carry an Undo action.
   const undoAction = { label: "Undo", onClick: () => { undo(); } };
   const total = inputPlacements.length + targetPlacements.length + groundTiles.length;
 

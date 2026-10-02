@@ -3,10 +3,9 @@ import { engine, flow, inject, layout, plantAt, scenario, step, start, TIMER_ONL
 import type { SimulationState, TimedEvent } from "../sim/state";
 import type { Trigger } from "./types";
 
-// Hybrid flows: a mutation grown in one step is used as an input of the
-// next step while it is still growing. The user's example: grow 9 Magic
-// Jellybeans (120 stages, never decay) in a sugar cane + duskbloom layout,
-// then use those same 9 jellybeans - still growing - as Chorus Fruit inputs.
+// Hybrid flows: a mutation grown in one step is an input of the next step while
+// still growing. Scenario: grow 9 Magic Jellybeans (120 stages, never decay),
+// then use the same still-growing jellybeans as Chorus Fruit inputs.
 
 /** Sugar cane + duskbloom around 9 empty Magic Jellybean targets (sand). */
 const JELLYBEAN_CODE = "M9MprTE0rElMTEoEYj09vUTHJEcgBrFIFsMPAA";
@@ -102,7 +101,7 @@ describe("hybrid flows (spawnsFillLayoutInputs)", () => {
   });
 
   it("layoutInputSpawns: harvest treats a spawn used as an input like any other spawn", () => {
-    // One fully grown spawned wheat-ring input... use a quick mutation: a spawned chloronite where the layout places one.
+    // A fully grown spawned chloronite on a cell where the layout places one.
     const spec = layout([["chloronite", 4, 4]]);
     const keep = start(scenario([flow([step("a", spec)])], { config: { spawnCells: "slotsOnly" } }));
     const plot = keep.plots[0];
@@ -115,14 +114,14 @@ describe("hybrid flows (spawnsFillLayoutInputs)", () => {
     harvest.scenario.settings.policies.layoutInputSpawns = "harvest";
     const r = engine.run(harvest, 1);
     expect(ofKind(r.events, "harvested").map((e) => e.kindId)).toEqual(["chloronite"]);
-    // ...and the layout input is then re-placed from inventory (with the chloronite it just dropped).
+    // The layout input is then re-placed from inventory (with the chloronite it just dropped).
     expect(ofKind(r.events, "placed").map((e) => [e.kindId, e.origin])).toEqual([["chloronite", "placed"]]);
     expect(plantAt(r.state, 1, 4, 4)).toMatchObject({ kindId: "chloronite", origin: "placed" });
   });
 
   it("a kept input is still harvested just before it would decay", () => {
     const spec = layout([["chloronite", 4, 4]]);
-    // Timer-only: this is about the timer; with its minimum (8) unmet it would just be extended, not decay.
+    // Timer-only: with its minimum (8) unmet it would be extended instead of decaying.
     const s = start(scenario([flow([step("a", spec)])], { config: { spawnCells: "slotsOnly", ...TIMER_ONLY } }));
     s.plots[0].plants = [];
     inject(s, 1, "chloronite", 4, 4, "spawned", { stage: 10, decaySecondsRemaining: 14400 * 2 + 1 });

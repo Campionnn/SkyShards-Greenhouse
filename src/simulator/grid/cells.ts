@@ -1,10 +1,7 @@
 /**
- * Plot geometry. A plot is a full 10x10 grid (Q1: a fresh greenhouse is fully
- * unlocked). Cells are addressed by index `row * 10 + col`.
- *
- * The game uses TWO adjacency rules, and they must never be mixed:
- * - CARDINAL (4-way) for crop effects - see utilities/effectSimulation.ts
- * - RING8 (8-way, diagonals included) for mutation spawn requirements
+ * Plot geometry: a fully unlocked 10x10 grid (Q1), cell index `row * 10 + col`.
+ * Two adjacency rules, never mixed: CARDINAL (4-way) for crop effects, RING8
+ * (8-way) for mutation spawn requirements.
  */
 
 export const GRID_SIZE = 10;
@@ -49,11 +46,7 @@ export function footprint(row: number, col: number, size: number): number[] {
 
 const ringCache = new Map<number, number[]>();
 
-/**
- * The 8-way ring around a whole footprint: every on-plot cell touching it,
- * diagonals included, excluding the footprint itself. Requirement counts are
- * taken over these cells (in CELLS, not entities).
- */
+/** On-plot cells 8-way adjacent to a footprint. Requirements count cells here, not entities. */
 export function ringCells(row: number, col: number, size: number): number[] {
   const k = cellIndex(row, col) * 4 + size;
   let out = ringCache.get(k);

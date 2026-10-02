@@ -18,7 +18,6 @@ export const GridManager: React.FC<GridManagerProps> = ({
   const rows = Array.from({ length: GRID_SIZE }, (_, i) => i);
   const cols = Array.from({ length: GRID_SIZE }, (_, i) => i);
   
-  // Drag painting state
   const [isDragging, setIsDragging] = useState(false);
   const paintModeRef = useRef<'lock' | 'unlock' | null>(null);
   const hasDraggedRef = useRef(false);
@@ -41,7 +40,7 @@ export const GridManager: React.FC<GridManagerProps> = ({
     }
   }, [isDragging]);
   
-  // Add document-level mouse up listener to handle painting outside grid
+  // End the paint stroke even when the mouse is released outside the grid.
   useEffect(() => {
     if (isDragging) {
       document.addEventListener('mouseup', handleMouseUp);

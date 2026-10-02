@@ -4,18 +4,15 @@ import type { ExpansionStep } from "../types/greenhouse";
 import { LocalStorageManager } from "../utilities";
 
 interface GridStateContextType {
-  // grid state
   unlockedCells: Set<string>;
   expandableCells: Set<string>;
   
-  // Actions
   toggleCell: (row: number, col: number) => void;
   unlockCell: (row: number, col: number) => void;
   lockCell: (row: number, col: number) => void;
   selectAll: () => void;
   resetToDefault: () => void;
   
-  // Helpers
   isCellUnlocked: (row: number, col: number) => boolean;
   isCellExpandable: (row: number, col: number) => boolean;
   getUnlockedCellsArray: () => [number, number][];
@@ -32,27 +29,22 @@ const GridStateContext = createContext<GridStateContextType | null>(null);
 
 export const GridStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [unlockedCells, setUnlockedCells] = useState<Set<string>>(() => {
-    // Try to load from localStorage first
     const saved = LocalStorageManager.loadGridConfig();
     if (saved && saved.size > 0) {
       return saved;
     }
-    // Fall back to default
     return getDefaultUnlockedCells();
   });
   const [expansionSteps, setExpansionStepsState] = useState<ExpansionStep[]>([]);
   const isInitialMount = useRef(true);
   
-  // Save to localStorage whenever unlockedCells changes (but not on initial mount with defaults)
+  // Persist changes; the default grid is not written on mount.
   useEffect(() => {
     if (isInitialMount.current) {
-      // Check if we loaded from localStorage
       const saved = LocalStorageManager.loadGridConfig();
       if (saved && saved.size > 0) {
-        // We loaded from localStorage, so future changes should save
         isInitialMount.current = false;
       } else {
-        // We're using defaults, don't save yet
         isInitialMount.current = false;
         return;
       }
@@ -60,7 +52,6 @@ export const GridStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     LocalStorageManager.saveGridConfig(unlockedCells);
   }, [unlockedCells]);
   
-  // Compute expandable cells whenever unlocked cells change
   const expandableCells = useMemo(() => getExpandableCells(unlockedCells), [unlockedCells]);
   
   const isCellUnlocked = useCallback((row: number, col: number): boolean => {
@@ -78,12 +69,11 @@ export const GridStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (next.has(key)) {
         next.delete(key);
       } else {
-        // Allow unlocking any cell without adjacency restriction
+        // No adjacency requirement.
         next.add(key);
       }
       return next;
     });
-    // Clear expansion overlay when grid changes
     setExpansionStepsState([]);
   }, []);
   
@@ -91,12 +81,12 @@ export const GridStateProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const key = `${row},${col}`;
     setUnlockedCells(prev => {
       if (prev.has(key)) return prev;
-      // Allow unlocking any cell without adjacency restriction
+      // No adjacency requirement.
       const next = new Set(prev);
       next.add(key);
       return next;
     });
-    // Update expansion steps - remove the first step if it matches this cell
+    // Unlocking the next expansion step advances the overlay; any other cell clears it.
     setExpansionStepsState(prev => {
       if (prev.length > 0 && prev[0].cell[0] === row && prev[0].cell[1] === col) {
         return prev.slice(1).map((step, i) => ({ ...step, order: i + 1 }));

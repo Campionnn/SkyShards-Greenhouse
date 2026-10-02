@@ -2,24 +2,15 @@ import type { Engine } from "../engine";
 import type { ItemId } from "../data/types";
 import type { SimulationState } from "../sim/state";
 
-// The session's past, so the UI can go back. Time only moves forward through
-// run(); going back means taking the nearest saved state at or before the
-// target cycle and replaying forward with run(). Determinism makes the result
-// identical to the state the session actually passed through (the RNG lives
-// in the state).
-//
-// Saved states:
-//  - the setup state (cycle 0), always kept;
-//  - periodic checkpoints the driver hands over at multiples of `every`
-//    cycles, thinned (and `every` doubled) whenever there are more than
-//    MAX_PERIODIC of them, so memory stays bounded at any run length;
-//  - the state right after every inventory change (never thinned: replaying
-//    across the change would lose it);
-//  - a small cache of recent per-cycle states, so repeated Back clicks and
-//    Back after single Steps are instant.
-//
-// The history is linear: going back discards everything after the target, and
-// Step / Run simply re-simulate from there.
+// Session history for going back. Going back replays forward with run() from
+// the nearest saved state at or before the target; determinism (RNG in state)
+// makes that exact. Saved states:
+//  - the setup state, always kept;
+//  - periodic checkpoints at multiples of `every`, thinned (doubling `every`)
+//    beyond MAX_PERIODIC so memory stays bounded;
+//  - the state after each inventory change (never thinned; replay can't recreate it);
+//  - a small cache of recent per-cycle states for fast repeated Back.
+// History is linear: going back discards everything after the target.
 
 export type UndoableAction =
   /** A Step (cycles = 1) or a Run of `cycles` cycles that started at `fromCycle`. */
@@ -28,9 +19,9 @@ export type UndoableAction =
   | { kind: "items"; cycle: number; items: Record<ItemId, number> };
 
 export interface HistoryInfo {
-  /** The session is past its setup, so it can go back one cycle. */
+  /** Past the setup state. */
   canStepBack: boolean;
-  /** What Undo would take back, newest first. */
+  /** What Undo would take back. */
   lastAction: UndoableAction | null;
 }
 
@@ -42,7 +33,7 @@ export const RECENT_STATES = 48;
 const DENSE_REPLAY = 32;
 
 interface Checkpoint {
-  /** Monotonic id: the order checkpoints were saved in. */
+  /** Monotonic save order. */
   seq: number;
   cycle: number;
   state: SimulationState;
@@ -51,7 +42,7 @@ interface Checkpoint {
 
 interface ActionEntry {
   action: UndoableAction;
-  /** Where the session was just before the action: its cycle and the last checkpoint saved by then. */
+  /** Position just before the action: cycle and last checkpoint seq. */
   cycle: number;
   seq: number;
 }
@@ -59,18 +50,18 @@ interface ActionEntry {
 export interface Timeline {
   current(): SimulationState;
   info(): HistoryInfo;
-  /** The driver should hand over the state at every multiple of this cycle count. */
+  /** Cycle interval at which the driver hands over checkpoints. */
   checkpointEvery(): number;
   checkpoint(state: SimulationState): void;
-  /** Call before a Step / Run starts... */
+  /** Call before a Step / Run. */
   beginRun(): void;
-  /** ...and with its final state once it ends (also when stopped early). */
+  /** Call with the final state after a Step / Run, including when stopped early. */
   endRun(state: SimulationState, cyclesRun: number): void;
-  /** The live inventory changed without time moving. */
+  /** Inventory changed without time moving. */
   itemsChanged(next: SimulationState, items: Record<ItemId, number>): void;
   /** Go back exactly one cycle; null at the setup state. */
   stepBack(): SimulationState | null;
-  /** Take back the last Step / Run / inventory change; null when there is nothing left. */
+  /** Take back the last Step / Run / inventory change; null if none. */
   undo(): { state: SimulationState; action: UndoableAction } | null;
 }
 
@@ -96,7 +87,7 @@ export function createTimeline(engine: Engine, initial: SimulationState, opts: T
   function remember(state: SimulationState) {
     recent.set(state.cycle, state);
     while (recent.size > RECENT) {
-      // Keep the cycles closest to where the session is.
+      // Evict the cycle farthest from the current one.
       let far: number | null = null;
       for (const c of recent.keys()) {
         if (far === null || Math.abs(c - current.cycle) > Math.abs(far - current.cycle)) far = c;
@@ -116,7 +107,7 @@ export function createTimeline(engine: Engine, initial: SimulationState, opts: T
     }
   }
 
-  /** The state at `cycle` on the current history (every saved state is at or before it). */
+  /** State at `cycle`; every saved state must be at or before it. */
   function reconstruct(cycle: number): SimulationState {
     let start = checkpoints[checkpoints.length - 1].state;
     for (const [c, s] of recent) {
@@ -132,7 +123,7 @@ export function createTimeline(engine: Engine, initial: SimulationState, opts: T
     return s;
   }
 
-  /** Drop undo entries that start at or after the current position; shorten a run that was partly stepped back. */
+  /** Drops undo entries at or after the current position; shortens a partly stepped-back run. */
   function dropStaleActions() {
     while (actions.length) {
       const top = actions[actions.length - 1];
@@ -174,7 +165,7 @@ export function createTimeline(engine: Engine, initial: SimulationState, opts: T
     },
     itemsChanged(next, items) {
       actions.push({ action: { kind: "items", cycle: current.cycle, items }, cycle: current.cycle, seq: lastSeq() });
-      // A cached state at this cycle is from before the change.
+      // Cached states at this cycle predate the change.
       forgetRecent((c) => c >= next.cycle);
       checkpoints.push({ seq: ++seq, cycle: next.cycle, state: next, periodic: false });
       moveTo(next);
@@ -192,7 +183,7 @@ export function createTimeline(engine: Engine, initial: SimulationState, opts: T
       const entry = actions.pop();
       if (!entry) return null;
       checkpoints = checkpoints.filter((c) => c.seq <= entry.seq);
-      // An items entry starts at the same cycle it changed: the cached state there is the changed one.
+      // For an items entry, the cached state at its cycle already includes the change.
       forgetRecent((c) => (entry.action.kind === "items" ? c >= entry.cycle : c > entry.cycle));
       moveTo(reconstruct(entry.cycle));
       return { state: current, action: entry.action };

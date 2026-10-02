@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { effectiveEffects, relayTableSize, simulateEffects, type SimPlacement } from "../../utilities/effectSimulation";
 
-// Ported from SkyShards-API tests/test_effects.py, run against the frontend's
-// effect port (the one implementation the designer and the simulator share).
+// Effect simulation shared by the designer and the simulator (mirrors SkyShards-API tests/test_effects.py).
 
 const at = (id: string, row: number, col: number, extra: Partial<SimPlacement> = {}): SimPlacement => ({
   id,
@@ -85,8 +84,7 @@ describe("effect propagation (4-way cardinal)", () => {
   });
 
   it("Fire is inert scenery: it never holds a received effect and so can never relay one", () => {
-    // Fire sits right next to a Wild Rose (effect_spread) and a wheat (immunity):
-    // both would normally be picked up and relayed onward.
+    // Fire sits next to a Wild Rose (effect_spread) and a wheat (immunity).
     const sim = simulateEffects([at("wild_rose", 5, 5), at("wheat", 5, 4), at("fire", 5, 6), at("wheat", 5, 7)]);
     expect(held(sim, 5, 6)).toEqual([]);
     // The plant past Fire gets nothing, because inert Fire never relays.

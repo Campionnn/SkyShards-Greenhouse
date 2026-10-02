@@ -7,12 +7,12 @@ import type { Condition, ConditionMatch, Trigger } from "./types";
 export interface TriggerView {
   plot: PlotState;
   runner: FlowRunnerState;
-  /** The SHARED inventory. No trigger may look at another plot. */
+  /** Shared inventory. Triggers never read another plot. */
   inventory: Readonly<Record<string, number>>;
   cycleSeconds: number;
 }
 
-/** Plants whose ripeness a trigger can talk about: base crops and natural spawns. */
+/** Base crops and natural spawns (the plants growth triggers consider). */
 const growable = (plot: PlotState) => plot.plants.filter((p) => !p.isDeadPlant && (p.origin === "planted" || p.origin === "spawned"));
 
 /** Pure: does this trigger hold at the end of the current cycle? */
@@ -47,8 +47,7 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
       return t.count <= 0 ? filled === slots.length : filled >= t.count;
     }
     case "decayImminent":
-      // Would actually decay (timer runs out AND minimum mutations met now), not just be extended.
-      // Dead plants don't count - neither leftovers nor layout-placed ones (only they could decay since 0.27.2).
+      // Actually decays (timer out and minimum mutations met), not just extended. Dead plants excluded.
       return v.plot.plants.some((p) => p.kindId !== DEAD_PLANT && !p.isDeadPlant && wouldDecayWithin(v.plot, p, t.withinCycles * v.cycleSeconds));
     case "plantDecayed":
       return (v.runner.decayedInStep[t.kindId] ?? 0) >= 1;
@@ -59,12 +58,7 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
   }
 }
 
-/**
- * How many times the plot has entered its current step (this visit
- * included), counting back to the last time it entered `sinceStep`, or to
- * the start of the run. Read from the runner's history, so it needs no
- * extra state.
- */
+/** Entries into the current step (this one included) since `sinceStep` was last entered or run start; from history. */
 export function stepVisits(runner: FlowRunnerState, sinceStep?: string): number {
   const h = runner.history;
   const current = h[h.length - 1]?.stepId;
@@ -76,7 +70,7 @@ export function stepVisits(runner: FlowRunnerState, sinceStep?: string): number 
   return n;
 }
 
-/** Pure: does this condition (a leaf trigger or an AND / OR group) hold? An empty group never holds. */
+/** Leaf trigger or AND/OR group. An empty group never holds. */
 export function conditionHolds(c: Condition, v: TriggerView): boolean {
   if (c.kind === "group") return conditionsHold(c.of, c.match, v);
   return triggerHolds(c, v);
@@ -88,7 +82,7 @@ export function conditionsHold(list: readonly Condition[], match: ConditionMatch
   return match === "any" ? list.some((c) => conditionHolds(c, v)) : list.every((c) => conditionHolds(c, v));
 }
 
-/** A step's normal exit. An empty exit list holds the step forever. */
+/** A step's normal exit. An empty list never exits. */
 export function stepExitHolds(exit: readonly Condition[], v: TriggerView, match?: ConditionMatch): boolean {
   return conditionsHold(exit, match, v);
 }

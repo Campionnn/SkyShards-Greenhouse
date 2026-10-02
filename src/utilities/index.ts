@@ -18,38 +18,15 @@ export function debounce<TArgs extends unknown[], TReturn>(
   };
 }
 
-// Grid calculation utilities
 export * from "./gridCalculations";
-
-// Placement validation utilities
 export * from "./placementValidation";
-
-// Rarity color utilities
 export * from "./rarity";
-
-// Design encoding/decoding utilities
 export * from "./designEncoding";
-
-// Layout storage and migration utilities
 export * from "./layoutStorage";
-
-// Mutation layout generator
 export * from "./mutationLayoutGenerator";
-
-// Local storage manager
 export * from "./localStorageManager";
-
-// Grid export utilities
 export * from "./gridExport";
-
-// Crop effect propagation (port of the API solver simulation)
 export * from "./effectSimulation";
-
-// Whole-layout nudge / rotate / mirror
 export * from "./layoutTransform";
-
-// Designer undo / redo
 export * from "./layoutHistory";
-
-// Calculator / Designer -> Simulator layout handoff
 export * from "./layoutHandoff";

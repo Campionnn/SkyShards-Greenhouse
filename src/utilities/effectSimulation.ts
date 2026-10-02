@@ -1,33 +1,28 @@
 /**
- * Crop effect propagation - a TypeScript port of the API's solver/effects.py.
+ * Crop effect propagation; a port of the API's solver/effects.py.
  *
- * Game rules (measured in game; see the API docstring for the evidence):
- * 1. Direct effects: every plant gives its listed buffs (positive + negative)
- *    to its four cardinal neighbours, all at once. Nothing holds its own
- *    listed buffs.
- * 2. Relays: every plant that now HOLDS effect_spread - it stands next to
- *    something listing it, such as a wild rose - gets exactly one turn, and
- *    on it gives everything it holds (except effect_spread) to its
- *    neighbours. What it receives after its turn is not passed on. A lone
- *    rose relays nothing; the plants next to it do.
+ * Game rules (measured in game; evidence in the API docstring):
+ * 1. Direct: every plant gives its listed buffs (positive and negative) to its
+ *    four cardinal neighbours, simultaneously. No plant holds its own buffs.
+ * 2. Relays: every plant that holds effect_spread (it neighbours something
+ *    listing it, e.g. a wild rose) takes exactly one turn, giving everything it
+ *    holds except effect_spread to its neighbours. Effects received after its
+ *    turn are not passed on. A lone rose relays nothing; its neighbours do.
  * 3. Turn order is Java HashMap iteration: slot (13 * column + row) % table,
  *    ascending, ties by row then column. The table starts at 16 and doubles
- *    whenever the relay count exceeds 75% of it, so 13, 25, 49 and 97 relays
- *    each reorder every turn on the plot.
- * - Effects are a set. Immunity cancels negatives for the plant that holds
- *   it (it still relays them). improved_x hides x.
- * - A multi-cell plant is one entity: one shared effect set, one turn keyed
- *   at its top-left position.
- * - A mutation SLOT (a solver target / a designer target) gives nothing and
- *   never relays: it marks where the mutation *can* spawn, not a plant
- *   standing there. Slots still receive - that is what gets scored. A
- *   mutation placed as an input crop, or locked onto the grid, is a real
- *   plant and does give.
- * - Godseed (special "all_positive_crop_effects") has no crop requirements:
- *   a spot is eligible when its (empty) cells receive every positive effect
- *   godseed lists - the slot rule above, applied to eligibility.
- * Unlike the API simulator, this one also records what EMPTY tiles receive
- * (the designer shows godseed candidate spots); empty tiles never relay.
+ *    when the relay count exceeds 75% of it, so 13, 25, 49 and 97 relays each
+ *    reorder every turn on the plot.
+ * - Effects are a set. Immunity cancels negatives for its holder, which still
+ *   relays them. improved_x hides x.
+ * - A multi-cell plant is one entity: one effect set, one turn keyed at its
+ *   top-left cell.
+ * - A mutation slot (solver or designer target) marks where a mutation can
+ *   spawn: it receives (that is what gets scored) but never gives or relays.
+ *   A mutation placed as an input or locked onto the grid is a real plant.
+ * - Godseed ("all_positive_crop_effects") has no crop requirements: a spot is
+ *   eligible when its empty cells receive every positive effect it lists.
+ * Unlike the API simulator, empty tiles record what they receive (for godseed
+ * candidate spots); they never relay.
  */
 
 import greenhouseData from "../../public/greenhouse/data.json";
@@ -83,12 +78,9 @@ export function relaySlot(position: [number, number], table: number): number {
 const buffCache = new Map<string, PlantBuffs | undefined>();
 
 /**
- * Kinds that are inert scenery - mutation ingredients with no growth, no
- * drops and no buffs of their own (Fire: "not a real crop", see
- * simulator/spawn/multiplicity.ts NON_SUPPORTING). They must never hold or
- * spread any effect: not their own (data.json already lists none for Fire),
- * and not one received from a neighbour either - e.g. standing next to a
- * Wild Rose must not let Fire pick up effect_spread and take a relay turn.
+ * Inert scenery: mutation ingredients with no growth, drops or buffs (see
+ * NON_SUPPORTING in simulator/spawn/multiplicity.ts). They never hold or spread
+ * any effect, including ones received, so Fire next to a Wild Rose never relays.
  */
 const EFFECT_INERT_KINDS: ReadonlySet<string> = new Set(["fire"]);
 
@@ -113,10 +105,7 @@ export function getPlantBuffs(id: string): PlantBuffs | undefined {
   return out;
 }
 
-/**
- * Effects a plant gives to its cardinal neighbours (its listed buffs).
- * A slot gives nothing - see the module docstring.
- */
+/** Effects a plant gives its cardinal neighbours (its listed buffs). Slots give nothing. */
 export function effectsGivenBy(id: string, isSlot = false): string[] {
   const b = getPlantBuffs(id);
   if (!b || isSlot) return [];
@@ -173,7 +162,7 @@ interface SimPlant {
   buffs: PlantBuffs;
   has: Set<string>;
   isSlot: boolean;
-  /** Fire and other inert scenery: never holds anything it's given, so it can never spread either. */
+  /** Inert scenery (Fire): holds nothing it is given, so never relays. */
   isInert: boolean;
 }
 
@@ -251,8 +240,6 @@ export function simulateEffects(
 
   const give = (plant: SimPlant, payload: Set<string>) => {
     const { plants: near, empty } = neighbours(plant);
-    // Inert scenery (Fire) never holds anything given to it, so it can
-    // neither carry an effect nor become a relay from one.
     for (const q of near) {
       if (q.isInert) continue;
       for (const e of payload) q.has.add(e);

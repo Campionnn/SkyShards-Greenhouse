@@ -13,11 +13,11 @@ import { REMOTE_API_BASE, loadLocalSolverSettings, resolveSolverEndpoint } from 
 import type { ResolvedEndpoint } from "./solverEndpoint";
 import { SolveError, describeHttpError, networkError, parseJobError } from "./solverErrors";
 
-// Polling interval for job status checks (ms)
+// Job status poll interval (ms).
 const POLL_INTERVAL = 500;
-// Consecutive failed status polls tolerated before giving up (network blips)
+// Consecutive failed polls tolerated before giving up.
 const MAX_POLL_FAILURES = 6;
-// After Stop is pressed, how long to wait for the server to hand back its partial result
+// How long after Stop to wait for the server's partial result.
 const CANCEL_GRACE_MS = 8000;
 
 /** Thrown when the user stopped a solve and no partial layout was available. */
@@ -28,11 +28,7 @@ export class SolveCancelledError extends Error {
   }
 }
 
-/**
- * Pull a readable message out of an API error body. FastAPI sends
- * `{detail: string}` for HTTPExceptions and `{detail: [{loc, msg}, ...]}` for
- * request validation errors.
- */
+/** Readable message from a FastAPI error body: `{detail: string}` or `{detail: [{loc, msg}, ...]}`. */
 async function readErrorDetail(response: Response, fallback: string): Promise<string> {
   const data = await response.json().catch(() => null);
   const detail = data?.detail;
@@ -58,10 +54,7 @@ export interface SolveRunInfo {
   queuedSeconds: number | null;
 }
 
-/**
- * Submit a solve job to the queue.
- * Returns the job ID for status polling.
- */
+/** Submits a solve job and returns its id. */
 export async function submitSolveJob(request: SolveRequest, endpoint?: ResolvedEndpoint): Promise<string> {
   const target = endpoint ?? (await resolveSolverEndpoint());
   // The local solver honours a per-solve time limit (the public API ignores it).
@@ -124,7 +117,7 @@ export interface SolveJobCallbacks {
   onProgress?: (progress: JobProgress) => void;
   onQueuePosition?: (position: number) => void;
   onPreviewUpdate?: (result: SolveResponse) => void;
-  /** Which server took the job (local solver, or remote - possibly as a fallback). */
+  /** Which server took the job (local, or remote including as a fallback). */
   onEndpoint?: (endpoint: ResolvedEndpoint) => void;
   /** The job was accepted by the server. */
   onSubmitted?: (jobId: string) => void;
@@ -154,33 +147,27 @@ function runInfoFrom(status: JobStatusResponse | null, endpoint: ResolvedEndpoin
 }
 
 /**
- * Run a solve through the job queue.
- *
- * Resolves with the final layout, including when the user pressed Stop and the
- * server handed back the best layout found so far (result.status "CANCELLED").
- * Rejects with SolveCancelledError when stopped without any layout, and with
- * SolveError (see solverErrors.ts) for everything else, including the solver
- * finding no layout at all.
+ * Runs a solve through the job queue. Resolves with the final layout, or the
+ * best partial layout after Stop (result.status "CANCELLED"). Rejects with
+ * SolveCancelledError when stopped without a layout, otherwise SolveError
+ * (including when no layout exists).
  */
 export async function solveGreenhouseWithJob(
   request: SolveRequest,
   callbacks?: SolveJobCallbacks,
   abortSignal?: AbortSignal
 ): Promise<SolveOutcome> {
-  // Pick the server (local solver if enabled and running, else the public API)
   const endpoint = await resolveSolverEndpoint();
   callbacks?.onEndpoint?.(endpoint);
   const base = endpoint.base;
 
   if (abortSignal?.aborted) throw new SolveCancelledError();
 
-  // Submit the job
   const jobId = await submitSolveJob(request, endpoint);
   callbacks?.onSubmitted?.(jobId);
 
-  // Stop: ask the server to stop, then keep polling briefly so the partial
-  // result the worker saves (status "completed", result.status "CANCELLED")
-  // still reaches the page.
+  // On Stop, ask the server to cancel and keep polling briefly so the partial
+  // result it saves still arrives.
   let cancelRequestedAt: number | null = null;
   const onAbort = () => {
     if (cancelRequestedAt !== null) return;
@@ -226,7 +213,6 @@ export async function solveGreenhouseWithJob(
           if (status.progress) {
             callbacks?.onProgress?.(status.progress);
             if (status.progress.preview_placements && status.progress.preview_mutations && callbacks?.onPreviewUpdate) {
-              // Both preview and final result use the same position/size format
               callbacks.onPreviewUpdate({
                 status: "SOLVING",
                 total_cells_used: status.progress.preview_cells_used || 0,
@@ -249,8 +235,8 @@ export async function solveGreenhouseWithJob(
           });
 
         case "failed":
-          // Stopping before any layout was found makes the engine raise
-          // "No solution found": that is the user's stop, not a real failure.
+          // Stopping before any layout exists makes the engine raise
+          // "No solution found"; treat it as a cancel.
           if (cancelRequestedAt !== null) throw new SolveCancelledError();
           throw new SolveError(parseJobError(status.error));
 
@@ -287,10 +273,7 @@ export async function optimizeExpansion(request: ExpansionRequest): Promise<Expa
   return response.json();
 }
 
-/**
- * Solve greenhouse synchronously (direct response, no job queue).
- * Used for quick solves like mutation requirement previews.
- */
+/** Synchronous solve without the job queue, for quick solves such as mutation previews. */
 export async function solveGreenhouseDirect(
   cells: [number, number][],
   targets: MutationGoal[],

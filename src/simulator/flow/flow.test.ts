@@ -58,7 +58,7 @@ describe("multi-plot: spatially independent, temporally shared", () => {
         flow([step("grow", layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]))]),
         flow([step("use", layout([["gloomgourd", 2, 2]]))]),
       ],
-      // Timer-only: the placed Gloomgourd on plot 2 never helps a mutation, so its minimum (10) would otherwise keep it forever.
+      // Timer-only: plot 2's Gloomgourd never helps, so its minimum (10) would keep it forever.
       { config: { ...slotsOnly, ...TIMER_ONLY }, seed: 5 }
     );
     const s = start(sc);
@@ -72,7 +72,7 @@ describe("multi-plot: spatially independent, temporally shared", () => {
   });
 
   it("the shared inventory is contended in plotOrder", () => {
-    // Both placed Chloronites decay on cycle 17 (timer-only: they never help); one spare in stock goes to whichever plot ticks first.
+    // Both Chloronites decay on cycle 17 (timer-only); the one spare goes to the plot that ticks first.
     const two = (order: number[]) =>
       engine.run(
         start(

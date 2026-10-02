@@ -16,7 +16,6 @@ export const GridManagerModal: React.FC<GridManagerModalProps> = ({ isOpen, onCl
   const unlockedCount = unlockedCells.size;
   const totalCells = 100;
 
-  // Close modal on escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
@@ -28,7 +27,6 @@ export const GridManagerModal: React.FC<GridManagerModalProps> = ({ isOpen, onCl
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
-  // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -40,7 +38,6 @@ export const GridManagerModal: React.FC<GridManagerModalProps> = ({ isOpen, onCl
     };
   }, [isOpen]);
 
-  // Click outside to close
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
       onClose();
@@ -58,7 +55,6 @@ export const GridManagerModal: React.FC<GridManagerModalProps> = ({ isOpen, onCl
         ref={modalRef}
         className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] my-auto overflow-y-auto"
       >
-        {/* Modal Header */}
         <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-700 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
           <h2 className="text-lg sm:text-xl font-semibold text-slate-100">Grid Manager</h2>
           <button
@@ -70,13 +66,10 @@ export const GridManagerModal: React.FC<GridManagerModalProps> = ({ isOpen, onCl
           </button>
         </div>
 
-        {/* Modal Content */}
         <div className="p-4 sm:p-6">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 lg:gap-6">
-            {/* Grid Section */}
             <div>
               <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
-                {/* Grid Controls */}
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-slate-300">
@@ -103,12 +96,10 @@ export const GridManagerModal: React.FC<GridManagerModalProps> = ({ isOpen, onCl
                   </div>
                 </div>
 
-                {/* Grid */}
                 <div className="flex justify-center">
                   <GridManager size="md" isInteractive={true} />
                 </div>
 
-                {/* Legend */}
                 <div className="flex flex-wrap items-center justify-center gap-4 mt-4 text-xs text-slate-400">
                   <div className="flex items-center gap-1.5">
                     <div className="w-4 h-4 rounded bg-emerald-500/50 border border-emerald-400/50" />
@@ -126,11 +117,9 @@ export const GridManagerModal: React.FC<GridManagerModalProps> = ({ isOpen, onCl
               </div>
             </div>
 
-            {/* Sidebar */}
             <div className="space-y-4">
               <ExpansionOptimizer />
 
-              {/* Help Card */}
               <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
                 <h3 className="text-sm font-medium text-slate-200 mb-2">How it works</h3>
                 <ul className="text-xs text-slate-400 space-y-2">

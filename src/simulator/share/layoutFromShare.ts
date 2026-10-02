@@ -7,12 +7,9 @@ import { footprint, footprintFits } from "../grid/cells";
 type Placement = { cropId: string; position: [number, number] };
 
 /**
- * A decoded share code as a layout. The case semantics are the whole point:
- * - lowercase (inputs)  -> PLANTS physically standing in the cell
- * - UPPERCASE (targets) -> EMPTY cells labelled with the mutation expected
- *   to spawn there. Nothing is placed in them.
- * One entry per entity, anchored at its top-left; sizes come from game data.
- * Problems are reported, never silently fixed.
+ * Decoded share code as a layout: lowercase inputs are plants, UPPERCASE
+ * targets are empty labelled slots. Entries anchored top-left, sizes from game
+ * data. Problems are reported, not fixed.
  */
 export function layoutFromDecoded(
   decoded: { inputs: Placement[]; targets: Placement[]; groundTiles?: { ground: string; position: [number, number] }[] },

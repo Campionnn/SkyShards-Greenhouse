@@ -44,7 +44,7 @@ describe("game data", () => {
     expect([...values].sort()).toEqual([0, 3]);
   });
 
-  it("reads the minimum mutation value (0.27.2 patch-note table)", () => {
+  it("reads the minimum mutation value of each kind", () => {
     expect(data.crops.wheat.minimumMutations).toBe(12);
     expect(data.crops.red_mushroom.minimumMutations).toBe(12);
     expect(data.crops.dead_plant.minimumMutations).toBe(10);

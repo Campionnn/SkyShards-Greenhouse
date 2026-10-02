@@ -5,18 +5,14 @@ import { buildOccupancy, minimumMutationsOf, removePlant, spawnedDecaySeconds, s
 import { bump, perPlot } from "./summary";
 import type { PlantState, PlotState } from "./state";
 
-// Blastberry. Breaking a PRIMED Blastberry - harvesting it, clearing it,
-// decay, or anything destroying it - explodes the 8 surrounding
-// cells. Everything there is destroyed; a primed Blastberry caught in the
-// blast explodes too (chain reaction). A Turtlellini survives and counts the
-// hit; its second hit turns it into a Shellfruit.
-//
-// Priming: a natural spawn is primed once fully grown; a placed one starts
-// unprimed (it went in mid-stage) and primes at the next tick.
+// Blastberry: breaking a primed one by any means destroys the 8 surrounding
+// cells. Primed Blastberries hit chain-explode. Turtlellini survives a hit;
+// the second hit turns it into a Shellfruit.
+// Priming: a spawn primes once fully grown; a placed one primes at the next tick.
 
 export const isPrimedBlastberry = (p: PlantState): boolean => p.kindId === "blastberry" && p.gate.primed === true;
 
-/** Take a plant off the plot as destroyed (a loss). Does not trigger explosions - see destroyPlant. */
+/** Remove as destroyed (a loss) without triggering explosions; see destroyPlant. */
 export function removeAsDestroyed(plot: PlotState, p: PlantState, ctx: CycleCtx, by: string): void {
   removePlant(plot, p);
   bump(ctx.state.summary.destroyed, p.kindId);
@@ -32,7 +28,7 @@ export function destroyPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, by: 
   if (primed) explode(plot, p, ctx);
 }
 
-/** A Blastberry at `origin` just broke while primed: blow up its 8 neighbours, chaining through primed Blastberries. */
+/** Blow up the 8 neighbours of a primed Blastberry that just broke, chaining breadth-first. */
 export function explode(plot: PlotState, origin: { id: number; row: number; col: number }, ctx: CycleCtx): void {
   const queue = [{ id: origin.id, row: origin.row, col: origin.col }];
   while (queue.length) {
@@ -68,15 +64,12 @@ function turnIntoShellfruit(plot: PlotState, q: PlantState, ctx: CycleCtx): void
   q.growthStages = m.growthStages;
   q.readyStage = m.growthStages;
   q.fullyGrownAtCycle = null;
-  // It is a fresh natural spawn: its decay timer runs from now, with fresh
-  // minimum-mutation counters. Made by a blast, not by the spawn roll, it
-  // has no requirements and credits nobody.
+  // Fresh natural spawn (timer and counters reset); not from a spawn roll, so it credits nobody.
   q.decaySecondsRemaining = spawnedDecaySeconds(m, ctx.config, ctx.cycleSeconds);
   q.timesMutated = 0;
   q.mutatesRemaining = minimumMutationsOf("shellfruit", ctx.env.data, ctx.config);
-  // Like every natural spawn it starts with 0 water (sim/plants.ts newPlant); a Shellfruit never drinks anyway.
   q.water = 0;
-  // A 0-stage Shellfruit is fully grown as it appears: latch what it holds now.
+  // 0-stage: fully grown on appearing, so latch effects now.
   q.lockedEffects = q.stage >= q.readyStage ? effectiveList(q.held) : null;
   if (q.lockedEffects) q.fullyGrownAtCycle = ctx.cycle;
   q.isRival = false;

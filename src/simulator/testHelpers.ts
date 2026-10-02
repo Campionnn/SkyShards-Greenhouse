@@ -1,4 +1,4 @@
-// Builders shared by the simulator's test suites. Not part of the engine.
+// Test builders shared by simulator suites. Not part of the engine.
 
 import type { SimConfig } from "./config";
 import { createEngine } from "./engine";
@@ -9,21 +9,17 @@ import type { ActivitySchedule, Origin, PlantState, PlayerStats, Scenario, Simul
 
 export const engine = createEngine();
 
-/**
- * Config patch: every crop and mutation has no minimum mutations ("none" =
- * N/A), so decay is timer-only, as before 0.27.2. For tests whose subject is
- * the decay TIMER, not the minimum.
- */
+/** Config patch: no minimum mutations for any kind, so decay is timer-only. */
 export const TIMER_ONLY: Pick<SimConfig, "minimumMutationsOverrides"> = {
   minimumMutationsOverrides: Object.fromEntries([...engine.data.cropIds, ...engine.data.mutationIds].map((id) => [id, "none" as const])),
 };
 
-/** Config patch: the harvestable base crops never decay (decay timer 0), so long tests keep their rings. */
+/** Config patch: growing base crops never decay. */
 export const NO_BASE_CROP_DECAY: Pick<SimConfig, "decayDaysOverrides"> = {
   decayDaysOverrides: Object.fromEntries(engine.data.cropIds.filter((id) => engine.data.crops[id].growthStages !== null).map((id) => [id, 0])),
 };
 
-/** The two real share codes from SHARE_CODES_AND_LAYOUTS.md (Layout A: prerequisites, Layout B: chorus fruit). */
+/** Real share codes from SHARE_CODES_AND_LAYOUTS.md (A: prerequisites, B: chorus fruit). */
 export const LAYOUT_A_CODE =
   "RctJDsIwEETRC_0FY4AlhAzXsNs2CeDExICElMNjr_Jq0ypVBzo8RyyODWtGDggrDJE9BSe2fFHs5pFfujwhfUSm-TmG--PmnDE-u1ZVXfuyL33nnLV9prMYhxil0Y0MlxQRLTJkS7fsVKtb9XmfX5PK_g";
 export const LAYOUT_B_CODE = "q9QxNNQpqjE0rUlKSkwCYj09vSTHRBDUS9ZLTEwEikLEwKIgFkgwCSQLEksCiyVCgB4cJENwsh4qAAA";
@@ -54,10 +50,7 @@ export interface ScenarioOptions {
   inventory?: Record<string, number>;
 }
 
-/**
- * Mechanics tests run against a zeroed player (4 h steps, 1x yields) so their
- * expected numbers stay independent of the app's max-stat defaults.
- */
+/** Zeroed player stats (4 h cycles, 1x yields), independent of the app's max-stat defaults. */
 export const BASELINE_TEST_STATS: PlayerStats = {
   cropGrowth: 0,
   speedAttribute: 0,
@@ -70,7 +63,7 @@ export const BASELINE_TEST_STATS: PlayerStats = {
   overbloom: 0,
   armorSet: "none",
   startTimeOfDay: 0,
-  /** 0, so mechanics tests still see exactly the crops they planted. */
+  /** 0 so the unique crop count equals the crops planted. */
   floraShard: 0,
 };
 
@@ -100,7 +93,7 @@ export function start(sc: Scenario): SimulationState {
   return engine.initState(sc).state;
 }
 
-/** Put a plant straight onto a plot (white-box setup for single-rule tests). */
+/** Insert a plant directly onto a plot (white-box setup). */
 export function inject(
   state: SimulationState,
   plotId: number,
@@ -126,7 +119,7 @@ export const plantAt = (state: SimulationState, plotId: number, row: number, col
 /** Never online: no harvesting, watering or upkeep. */
 export const NEVER_ACTIVE: ActivitySchedule = { kind: "windows", windows: [] };
 
-/** Cycle-by-cycle stepping helper: the only loop tests use is over run(state, 1). */
+/** Run n single-cycle `run(state, 1)` calls, keeping each result. */
 export function runCycles(state: SimulationState, n: number) {
   let s = state;
   const results = [];

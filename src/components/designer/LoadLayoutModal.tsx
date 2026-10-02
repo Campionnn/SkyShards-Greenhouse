@@ -17,21 +17,18 @@ interface LoadLayoutModalProps {
 /** Mini grid preview of a layout: inputs and targets as coloured cells. */
 export const LayoutPreview: React.FC<{ layout: Pick<SavedLayout, "inputs" | "targets">; cellSize?: number }> = ({ layout, cellSize = 14 }) => {
   const { getCropDef, getMutationDef } = useGreenhouseData();
-  const gap = 1; // pixels
+  const gap = 1; // px
   const gridSize = 10;
 
-  // Create a map of position to crop info
   const cellMap = useMemo(() => {
     const map = new Map<string, { cropId: string; isTarget: boolean }>();
 
-    // Add inputs - fill all cells based on crop size
     layout.inputs.forEach(placement => {
       const [row, col] = placement.position;
       const cropDef = getCropDef(placement.cropId);
       const mutationDef = getMutationDef(placement.cropId);
       const size = cropDef?.size || mutationDef?.size || 1;
       
-      // Fill all cells this crop occupies
       for (let dr = 0; dr < size; dr++) {
         for (let dc = 0; dc < size; dc++) {
           map.set(`${row + dr},${col + dc}`, { cropId: placement.cropId, isTarget: false });
@@ -39,14 +36,12 @@ export const LayoutPreview: React.FC<{ layout: Pick<SavedLayout, "inputs" | "tar
       }
     });
 
-    // Add targets - fill all cells based on mutation size
     layout.targets.forEach(placement => {
       const [row, col] = placement.position;
       const mutationDef = getMutationDef(placement.cropId);
       const cropDef = getCropDef(placement.cropId);
       const size = mutationDef?.size || cropDef?.size || 1;
       
-      // Fill all cells this mutation occupies
       for (let dr = 0; dr < size; dr++) {
         for (let dc = 0; dc < size; dc++) {
           map.set(`${row + dr},${col + dc}`, { cropId: placement.cropId, isTarget: true });
@@ -61,7 +56,7 @@ export const LayoutPreview: React.FC<{ layout: Pick<SavedLayout, "inputs" | "tar
     <div 
       className="inline-block bg-slate-950 rounded border border-slate-700/50 p-1"
       style={{
-        width: gridSize * cellSize + (gridSize - 1) * gap + 8, // +8 for padding
+        width: gridSize * cellSize + (gridSize - 1) * gap + 8, // +8 for p-1 padding
         height: gridSize * cellSize + (gridSize - 1) * gap + 8,
       }}
     >
@@ -80,7 +75,7 @@ export const LayoutPreview: React.FC<{ layout: Pick<SavedLayout, "inputs" | "tar
 
           const bgColor = cellData
             ? getCropPreviewColor(cellData.cropId, cellData.isTarget)
-            : '#1e293b'; // slate-800 for empty cells
+            : '#1e293b'; // slate-800, empty
 
           return (
             <div
@@ -99,7 +94,6 @@ export const LayoutPreview: React.FC<{ layout: Pick<SavedLayout, "inputs" | "tar
   );
 };
 
-// Individual layout card
 const LayoutCard: React.FC<{
   layout: SavedLayout;
   onLoad: () => void;
@@ -113,7 +107,6 @@ const LayoutCard: React.FC<{
   const [renameError, setRenameError] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-focus rename input
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
       renameInputRef.current.focus();
@@ -121,7 +114,6 @@ const LayoutCard: React.FC<{
     }
   }, [isRenaming]);
 
-  // Get unique target mutations
   const targetMutations = useMemo(() => {
     const mutationMap = new Map<string, number>();
     layout.targets.forEach(target => {
@@ -158,13 +150,12 @@ const LayoutCard: React.FC<{
       return;
     }
     if (trimmed === layout.name) {
-      // No change, just cancel
       setIsRenaming(false);
       setRenameValue(layout.name);
       setRenameError("");
       return;
     }
-    // Call parent rename handler - it will handle duplicate checking
+    // The parent checks for duplicate names.
     onRename(trimmed);
     setIsRenaming(false);
     setRenameValue(trimmed);
@@ -187,11 +178,9 @@ const LayoutCard: React.FC<{
 
   return (
     <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 hover:border-slate-500/50 transition-colors">
-      {/* Main Layout: Left side (info) and Right side (grid) */}
+      {/* Info on the left, preview grid on the right. */}
       <div className="flex gap-4">
-        {/* Left side: Name and info */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          {/* Header */}
           <div className="mb-2 min-w-0">
             {isRenaming ? (
               <div className="min-w-0">
@@ -247,7 +236,6 @@ const LayoutCard: React.FC<{
             </div>
           </div>
 
-          {/* Stats */}
           <div className="flex items-center gap-4 text-sm mb-3">
             <span className="text-slate-400">
               <span className="font-medium text-purple-400">{layout.targets.length}</span> targets
@@ -257,7 +245,6 @@ const LayoutCard: React.FC<{
             </span>
           </div>
 
-          {/* Target Mutations List */}
           {targetMutations.length > 0 && (
             <div className="mb-3 flex-1">
               <div className="text-xs text-slate-500 mb-1.5">Target Mutations:</div>
@@ -278,7 +265,6 @@ const LayoutCard: React.FC<{
             </div>
           )}
 
-          {/* Action Buttons */}
           <div className="flex gap-2 mt-auto">
             <button
               onClick={onLoad}
@@ -302,7 +288,6 @@ const LayoutCard: React.FC<{
           </div>
         </div>
 
-        {/* Right side: Preview grid */}
         <div className="flex items-center justify-center">
           <LayoutPreview layout={layout} />
         </div>
@@ -323,14 +308,12 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
   const [sortBy, setSortBy] = useState<'saved' | 'name'>('saved');
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
       setSearchTerm("");
     }
   }, [isOpen]);
 
-  // Close modal on escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
@@ -342,7 +325,6 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
-  // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -354,18 +336,15 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
     };
   }, [isOpen]);
 
-  // Click outside to close
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
       onClose();
     }
   };
 
-  // Filter and sort layouts
   const filteredAndSortedLayouts = useMemo(() => {
     let filtered = layouts;
 
-    // Apply search filter
     if (searchTerm.trim()) {
       const search = searchTerm.toLowerCase();
       filtered = layouts.filter(layout =>
@@ -373,7 +352,6 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
       );
     }
 
-    // Apply sorting
     const sorted = [...filtered].sort((a, b) => {
       switch (sortBy) {
         case 'saved':
@@ -400,7 +378,6 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
         ref={modalRef}
         className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] my-auto overflow-hidden flex flex-col"
       >
-        {/* Modal Header */}
         <div className="bg-slate-900 border-b border-slate-700 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between flex-shrink-0">
           <h2 className="text-lg sm:text-xl font-semibold text-slate-100">Load Layout</h2>
           <button
@@ -412,10 +389,8 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
           </button>
         </div>
 
-        {/* Search and Sort Controls */}
         <div className="px-3 sm:px-6 py-3 sm:py-4 border-b border-slate-700/50 flex-shrink-0">
           <div className="flex flex-col sm:flex-row gap-3">
-            {/* Search */}
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <input
@@ -427,7 +402,6 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
               />
             </div>
 
-            {/* Sort */}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
@@ -438,14 +412,12 @@ export const LoadLayoutModal: React.FC<LoadLayoutModalProps> = ({
             </select>
           </div>
 
-          {/* Results count */}
           <div className="mt-2 text-xs text-slate-500">
             {filteredAndSortedLayouts.length} {filteredAndSortedLayouts.length === 1 ? 'layout' : 'layouts'}
             {searchTerm && ` matching "${searchTerm}"`}
           </div>
         </div>
 
-        {/* Modal Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {filteredAndSortedLayouts.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

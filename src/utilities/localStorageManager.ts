@@ -1,9 +1,4 @@
-/**
- * Local Storage Manager for SkyShards
- * 
- * Provides a centralized utility for saving and loading application state to/from localStorage.
- * Handles grid configuration, priorities, designer state, locked placements, and mutation targets.
- */
+/** Typed JSON persistence of app state in localStorage. Failures are logged, not thrown. */
 
 import type { SelectedMutation } from "../types/greenhouse";
 import type { LockedPlacement } from "../types/greenhouse";
@@ -12,7 +7,6 @@ import type { Scenario } from "../simulator";
 import type { GroundTile } from "./designEncoding";
 import type { StoredSolverLayout } from "./layoutHandoff";
 
-// Storage keys
 const STORAGE_KEYS = {
   GRID_CONFIG: "skyshards-grid-config",
   PRIORITIES: "skyshards-priorities",
@@ -26,10 +20,8 @@ const STORAGE_KEYS = {
   LAST_SOLVER_LAYOUT: "skyshards-last-solver-layout",
 } as const;
 
-// Type Definitions
-
 interface GridConfigData {
-  unlockedCells: string[]; // Array of "row,col" strings
+  unlockedCells: string[]; // "row,col" keys
 }
 
 interface PrioritiesData {
@@ -52,12 +44,7 @@ interface MutationTargetsData {
   targets: SelectedMutation[];
 }
 
-// LocalStorageManager Class
-
 export class LocalStorageManager {
-  /**
-   * Generic method to save data to localStorage
-   */
   private static save<T>(key: string, data: T): boolean {
     try {
       const serialized = JSON.stringify(data);
@@ -69,9 +56,6 @@ export class LocalStorageManager {
     }
   }
 
-  /**
-   * Generic method to load data from localStorage
-   */
   private static load<T>(key: string): T | null {
     try {
       const serialized = localStorage.getItem(key);
@@ -85,9 +69,6 @@ export class LocalStorageManager {
     }
   }
 
-  /**
-   * Generic method to remove data from localStorage
-   */
   private static remove(key: string): void {
     try {
       localStorage.removeItem(key);
@@ -96,11 +77,6 @@ export class LocalStorageManager {
     }
   }
 
-  // Grid Configuration
-
-  /**
-   * Save grid configuration (unlocked cells)
-   */
   static saveGridConfig(unlockedCells: Set<string>): boolean {
     const data: GridConfigData = {
       unlockedCells: Array.from(unlockedCells),
@@ -108,9 +84,6 @@ export class LocalStorageManager {
     return this.save(STORAGE_KEYS.GRID_CONFIG, data);
   }
 
-  /**
-   * Load grid configuration (unlocked cells)
-   */
   static loadGridConfig(): Set<string> | null {
     const data = this.load<GridConfigData>(STORAGE_KEYS.GRID_CONFIG);
     if (!data) return null;
@@ -118,18 +91,10 @@ export class LocalStorageManager {
     return new Set(data.unlockedCells);
   }
 
-  /**
-   * Clear grid configuration
-   */
   static clearGridConfig(): void {
     this.remove(STORAGE_KEYS.GRID_CONFIG);
   }
 
-  // Priorities
-
-  /**
-   * Save crop priorities
-   */
   static savePriorities(priorities: Record<string, number>): boolean {
     const data: PrioritiesData = {
       priorities,
@@ -137,9 +102,6 @@ export class LocalStorageManager {
     return this.save(STORAGE_KEYS.PRIORITIES, data);
   }
 
-  /**
-   * Load crop priorities
-   */
   static loadPriorities(): Record<string, number> | null {
     const data = this.load<PrioritiesData>(STORAGE_KEYS.PRIORITIES);
     if (!data) return null;
@@ -147,18 +109,10 @@ export class LocalStorageManager {
     return data.priorities;
   }
 
-  /**
-   * Clear priorities
-   */
   static clearPriorities(): void {
     this.remove(STORAGE_KEYS.PRIORITIES);
   }
 
-  // Designer - Input Placements
-
-  /**
-   * Save designer input placements
-   */
   static saveDesignerInputs(placements: DesignerPlacement[]): boolean {
     const data: DesignerInputsData = {
       placements,
@@ -166,9 +120,6 @@ export class LocalStorageManager {
     return this.save(STORAGE_KEYS.DESIGNER_INPUTS, data);
   }
 
-  /**
-   * Load designer input placements
-   */
   static loadDesignerInputs(): DesignerPlacement[] | null {
     const data = this.load<DesignerInputsData>(STORAGE_KEYS.DESIGNER_INPUTS);
     if (!data) return null;
@@ -176,18 +127,10 @@ export class LocalStorageManager {
     return data.placements;
   }
 
-  /**
-   * Clear designer input placements
-   */
   static clearDesignerInputs(): void {
     this.remove(STORAGE_KEYS.DESIGNER_INPUTS);
   }
 
-  // Designer - Target Placements
-
-  /**
-   * Save designer target placements
-   */
   static saveDesignerTargets(placements: DesignerPlacement[]): boolean {
     const data: DesignerTargetsData = {
       placements,
@@ -195,9 +138,6 @@ export class LocalStorageManager {
     return this.save(STORAGE_KEYS.DESIGNER_TARGETS, data);
   }
 
-  /**
-   * Load designer target placements
-   */
   static loadDesignerTargets(): DesignerPlacement[] | null {
     const data = this.load<DesignerTargetsData>(STORAGE_KEYS.DESIGNER_TARGETS);
     if (!data) return null;
@@ -205,23 +145,18 @@ export class LocalStorageManager {
     return data.placements;
   }
 
-  /**
-   * Clear designer target placements
-   */
   static clearDesignerTargets(): void {
     this.remove(STORAGE_KEYS.DESIGNER_TARGETS);
   }
 
-  /**
-   * Clear all designer placements (both inputs and targets)
-   */
+  /** Clears designer inputs, targets and ground tiles. */
   static clearAllDesignerPlacements(): void {
     this.clearDesignerInputs();
     this.clearDesignerTargets();
     this.clearDesignerGroundTiles();
   }
 
-  // Bare-cell ground tiles in the Designer
+  // Ground tiles painted on bare Designer cells.
   static saveDesignerGroundTiles(tiles: GroundTile[]): boolean {
     return this.save(STORAGE_KEYS.DESIGNER_GROUND, { tiles });
   }
@@ -235,11 +170,6 @@ export class LocalStorageManager {
     this.remove(STORAGE_KEYS.DESIGNER_GROUND);
   }
 
-  // Locked Placements (Calculator)
-
-  /**
-   * Save locked placements
-   */
   static saveLockedPlacements(placements: LockedPlacement[]): boolean {
     const data: LockedPlacementsData = {
       placements,
@@ -247,9 +177,6 @@ export class LocalStorageManager {
     return this.save(STORAGE_KEYS.LOCKED_PLACEMENTS, data);
   }
 
-  /**
-   * Load locked placements
-   */
   static loadLockedPlacements(): LockedPlacement[] | null {
     const data = this.load<LockedPlacementsData>(STORAGE_KEYS.LOCKED_PLACEMENTS);
     if (!data) return null;
@@ -257,18 +184,10 @@ export class LocalStorageManager {
     return data.placements;
   }
 
-  /**
-   * Clear locked placements
-   */
   static clearLockedPlacements(): void {
     this.remove(STORAGE_KEYS.LOCKED_PLACEMENTS);
   }
 
-  // Mutation Targets (Calculator)
-
-  /**
-   * Save mutation targets
-   */
   static saveMutationTargets(targets: SelectedMutation[]): boolean {
     const data: MutationTargetsData = {
       targets,
@@ -276,9 +195,6 @@ export class LocalStorageManager {
     return this.save(STORAGE_KEYS.MUTATION_TARGETS, data);
   }
 
-  /**
-   * Load mutation targets
-   */
   static loadMutationTargets(): SelectedMutation[] | null {
     const data = this.load<MutationTargetsData>(STORAGE_KEYS.MUTATION_TARGETS);
     if (!data) return null;
@@ -286,18 +202,11 @@ export class LocalStorageManager {
     return data.targets;
   }
 
-  /**
-   * Clear mutation targets
-   */
   static clearMutationTargets(): void {
     this.remove(STORAGE_KEYS.MUTATION_TARGETS);
   }
 
-  // Effect Weights (Calculator)
-
-  /**
-   * Save the effect weights (effect id -> weight); zero weights are dropped
-   */
+  /** Effect id -> weight; zero and non-finite weights are dropped on save and load. */
   static saveEffectWeights(weights: Record<string, number>): boolean {
     const cleaned: Record<string, number> = {};
     for (const [k, v] of Object.entries(weights)) {
@@ -306,9 +215,6 @@ export class LocalStorageManager {
     return this.save(STORAGE_KEYS.EFFECT_WEIGHTS, cleaned);
   }
 
-  /**
-   * Load the effect weights
-   */
   static loadEffectWeights(): Record<string, number> | null {
     const data = this.load<Record<string, number>>(STORAGE_KEYS.EFFECT_WEIGHTS);
     if (!data || typeof data !== "object") return null;
@@ -319,23 +225,15 @@ export class LocalStorageManager {
     return out;
   }
 
-  /**
-   * Clear the effect weights
-   */
   static clearEffectWeights(): void {
     this.remove(STORAGE_KEYS.EFFECT_WEIGHTS);
   }
 
-  /**
-   * Save the simulator scenario (plots, flows, starting inventory, settings)
-   */
   static saveSimulatorScenario(scenario: Scenario): boolean {
     return this.save(STORAGE_KEYS.SIMULATOR_SCENARIO, scenario);
   }
 
-  /**
-   * Load the simulator scenario; the caller validates it before use
-   */
+  /** Only shape-checked; the caller validates the scenario before use. */
   static loadSimulatorScenario(): Scenario | null {
     const data = this.load<Scenario>(STORAGE_KEYS.SIMULATOR_SCENARIO);
     if (!data || typeof data !== "object" || !Array.isArray(data.plots)) return null;
@@ -346,10 +244,7 @@ export class LocalStorageManager {
     this.remove(STORAGE_KEYS.SIMULATOR_SCENARIO);
   }
 
-  /**
-   * The last finished Calculator result as a layout code, so the Simulator's
-   * layout picker can offer it without a trip through the Designer.
-   */
+  /** Last finished Calculator result, offered by the Simulator's layout picker. */
   static saveLastSolverLayout(layout: StoredSolverLayout): boolean {
     return this.save(STORAGE_KEYS.LAST_SOLVER_LAYOUT, layout);
   }
@@ -364,11 +259,7 @@ export class LocalStorageManager {
     this.remove(STORAGE_KEYS.LAST_SOLVER_LAYOUT);
   }
 
-  // Utility Methods
-
-  /**
-   * Clear all saved data
-   */
+  /** Clears every key except the simulator scenario. */
   static clearAll(): void {
     this.clearGridConfig();
     this.clearPriorities();
@@ -381,9 +272,6 @@ export class LocalStorageManager {
     this.clearLastSolverLayout();
   }
 
-  /**
-   * Check if localStorage is available
-   */
   static isAvailable(): boolean {
     try {
       const test = "__localStorage_test__";
@@ -395,9 +283,7 @@ export class LocalStorageManager {
     }
   }
 
-  /**
-   * Get storage usage information (approximate)
-   */
+  /** Approximate usage in characters across this app's keys. */
   static getStorageInfo(): { used: number; keys: string[] } {
     let used = 0;
     const keys: string[] = [];

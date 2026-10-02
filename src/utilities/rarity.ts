@@ -1,9 +1,6 @@
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
-/**
- * Centralized rarity color mappings
- * Single source of truth for all rarity-based styling
- */
+/** Rarity -> colour mappings used by all rarity-based styling. */
 export const RARITY_COLORS = {
   common: {
     text: "text-white",

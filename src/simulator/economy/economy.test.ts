@@ -15,8 +15,8 @@ describe("yield", () => {
     expect(farmingFortuneMultiplier(0)).toBe(1);
   });
 
-  it("ECONOMICS §1.4 arithmetic (0.27.2 cap of 10): melon 320 x 2.60 x 1.75 = 1456, with Evergreen +60% = 2329", () => {
-    // The doc's multiplier is kept here only to pin the product/floor/Evergreen arithmetic.
+  it("yield arithmetic (unique-crop cap of 10): melon 320 x 2.60 x 1.75 = 1456, with Evergreen +60% = 2329", () => {
+    // A fixed FF multiplier (2.60) pins the product, floor and Evergreen arithmetic.
     const sum = greenhouseYieldSum(new Set(["improved_harvest_boost"]), 0.2, uniqueCropYieldBonus(12, DEFAULT_CONFIG));
     expect(sum).toBeCloseTo(1.75);
     expect(harvestYield({ melon: 320 }, 2.6, sum, 0).melon).toBe(1456);
@@ -83,7 +83,7 @@ describe("growth stage clock", () => {
     expect(upgradeTerm(9)).toBe(0.5);
   });
 
-  it("the wiki formula at every maximum, 0.27.2 cap of 10, gives ~6302 s (was 6167 s at the old cap of 12)", () => {
+  it("the wiki formula at every maximum, unique crops capped at 10, gives ~6302 s", () => {
     expect(cycleSeconds({ cropGrowth: 210, speedAttribute: 10, growthUpgradeTier: 9 }, 12, DEFAULT_CONFIG)).toBeCloseTo(
       14400 / (1 + 0.025 * 10 + 0.0025 * 210 + 0.001 * 10 + 0.5),
       0

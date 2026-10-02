@@ -61,15 +61,12 @@ export const InteractiveGrid: React.FC<InteractiveGridProps> = ({
       onContextMenu={handleContextMenu}
       onMouseUp={handleMouseUp}
     >
-      {/* Background grid cells */}
       <GridBackground cellSize={cellSize} gap={gap} unlockedCells={unlockedCells} />
       
-      {/* Locked placements */}
       {lockedPlacements.map((placement) => {
         const isBeingDragged = dragState?.placementId === placement.id && dragState?.isDragging;
         const isHovered = hoveredPlacementId === placement.id && !isBeingDragged && !isPlacementMode;
         
-        // If dragging, show at drag position
         const displayPlacement = isBeingDragged
           ? { ...placement, position: dragState.currentPosition }
           : placement;
@@ -92,7 +89,7 @@ export const InteractiveGrid: React.FC<InteractiveGridProps> = ({
         );
       })}
       
-      {/* Drag preview validation overlay */}
+      {/* Drag target validity */}
       {dragState?.isDragging && dragValidation && (
         <DragValidationOverlay
           position={dragState.currentPosition}
@@ -103,7 +100,7 @@ export const InteractiveGrid: React.FC<InteractiveGridProps> = ({
         />
       )}
       
-      {/* Placement preview (when not dragging) */}
+      {/* Placement preview, hidden while dragging */}
       {previewPosition && selectedCropForPlacement && !dragState?.isDragging && !paintState && (
         <PlacementPreview
           position={previewPosition}
@@ -114,7 +111,6 @@ export const InteractiveGrid: React.FC<InteractiveGridProps> = ({
         />
       )}
       
-      {/* Additional content */}
       {children}
     </div>
   );

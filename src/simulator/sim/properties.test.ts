@@ -105,7 +105,7 @@ describe("properties", () => {
       fc.property(fc.integer({ min: 0, max: 6 }), fc.integer({ min: 0, max: 6 }), (low, extra) => {
         const build = (stock: number) =>
           scenario([flow([step("a", layout([["chloronite", 1, 1], ["chloronite", 1, 3], ["chloronite", 3, 1]]))])], {
-            // Timer-only: the placed Chloronites never help a mutation, so their minimum would keep them forever (no re-placing at all).
+            // Timer-only: otherwise the Chloronites' minimum would keep them forever and nothing is re-placed.
             config: { spawnCells: "slotsOnly", ...TIMER_ONLY },
             inventory: { chloronite: stock },
           });

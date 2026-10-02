@@ -5,28 +5,20 @@ import { CROP_FILTER_OPTIONS } from "../../constants";
 import type { CropFilterCategory } from "../../types/greenhouse";
 
 export interface SearchFilterHeaderProps {
-  // Search
   searchTerm: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
   
-  // Filter
   filter: CropFilterCategory;
   onFilterChange: (value: CropFilterCategory) => void;
   filterOptions?: FilterOption[];
   
-  // Styling
   className?: string;
   searchClassName?: string;
   filterClassName?: string;
 }
 
-/**
- * Unified search and filter header component
- * Used in both Calculator (CropConfigurationsPanel) and Designer (CropSelectionPalette)
- * 
- * Manages its own dropdown open/close state internally
- */
+/** Search box plus filter dropdown (Calculator and Designer); owns the dropdown open state. */
 export const SearchFilterHeader: React.FC<SearchFilterHeaderProps> = ({
   searchTerm,
   onSearchChange,
@@ -42,7 +34,6 @@ export const SearchFilterHeader: React.FC<SearchFilterHeaderProps> = ({
   
   return (
     <div className={`flex gap-2 ${className}`}>
-      {/* Search Input */}
       <CropSearchInput
         value={searchTerm}
         onChange={onSearchChange}
@@ -50,7 +41,6 @@ export const SearchFilterHeader: React.FC<SearchFilterHeaderProps> = ({
         className={`flex-1 ${searchClassName}`}
       />
       
-      {/* Filter Dropdown */}
       <CropFilterDropdown
         value={filter}
         onChange={onFilterChange}

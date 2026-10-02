@@ -1,14 +1,9 @@
 import { chance, type RngState } from "../rng";
 
 /**
- * Rare Crops from the farming armor tiered bonuses, inside the Greenhouse
- * (Hypixel SkyBlock Wiki: Tater / Cropie / Squash / Fermento / Helianthus
- * Armor, and the Cropie / Squash / Fermento / Helianthus item pages).
- *
- * Inside the Greenhouse every harvest of a crop or mutation with a
- * "Harvestable" status rolls each drop the set grants, once. The simulator
- * assumes the full 4/4 set. Fermento Armor combines the Tater, Cropie and
- * Squash bonuses and adds Helianthus; Helianthus Armor combines all four.
+ * Rare Crops from farming armor tiered bonuses (wiki armor and item pages).
+ * In the Greenhouse every harvest of a "Harvestable" crop or mutation rolls
+ * each drop the set grants once. Assumes the full 4/4 set.
  */
 export type ArmorSet = "none" | "tater" | "cropie" | "squash" | "fermento" | "helianthus";
 
@@ -44,11 +39,7 @@ export const ARMOR_SET_DROPS: Record<ArmorSet, readonly string[]> = {
   helianthus: ["cropie", "squash", "fermento", "helianthus"],
 };
 
-/**
- * The drops the set actually rolls. `withBug` models the wiki-reported bug:
- * Cropie and Squash do not drop from Greenhouse crops while wearing Fermento
- * or Helianthus Armor.
- */
+/** Drops the set rolls. `withBug`: no Cropie/Squash in Fermento or Helianthus Armor (wiki-reported bug). */
 export function armorRareCrops(set: ArmorSet | undefined, withBug: boolean): readonly string[] {
   const drops = ARMOR_SET_DROPS[set ?? "none"] ?? [];
   if (withBug && (set === "fermento" || set === "helianthus")) return drops.filter((d) => d !== "cropie" && d !== "squash");
@@ -61,10 +52,9 @@ export function overbloomMultiplier(overbloom: number): number {
 }
 
 /**
- * Items from one rare-crop roll at `p` (which may exceed 1 with Overbloom).
- * Uncapped: the whole part is guaranteed and the fraction is one roll for one
- * more (175% = 1 + a 75% roll). Capped: at most one item, one roll. Consumes
- * at most one random number, and none when the outcome is certain.
+ * Items from one roll at `p` (may exceed 1). Uncapped: floor guaranteed plus
+ * one roll on the fraction. Capped: at most one item. Draws at most one RNG
+ * number, none when the outcome is certain.
  */
 export function rollRareCount(rng: RngState, p: number, capAt100: boolean): number {
   if (!(p > 0)) return 0;

@@ -14,7 +14,6 @@ interface CropSelectionPaletteProps {
   className?: string;
 }
 
-// Single crop/mutation tile in the palette grid
 const PaletteTile: React.FC<{
   crop: CropDefinition;
   mutation?: MutationDefinition;
@@ -38,7 +37,6 @@ const PaletteTile: React.FC<{
       `}
       title={`${crop.name} (${crop.size}x${crop.size})`}
     >
-      {/* Crop Image */}
       <CropImage
         cropId={crop.id}
         cropName={crop.name}
@@ -47,12 +45,11 @@ const PaletteTile: React.FC<{
         fallbackClassName="text-xs text-slate-400"
       />
 
-      {/* Crop Name (truncated) */}
+      {/* truncated */}
       <span className={`text-[10px] leading-tight truncate w-full text-center ${rarityText}`}>
         {crop.name}
       </span>
 
-      {/* Size indicator */}
       <span className="absolute top-0.5 right-0.5 text-[9px] text-slate-400 bg-slate-900/80 px-1 rounded">
         {crop.size}x{crop.size}
       </span>
@@ -60,11 +57,7 @@ const PaletteTile: React.FC<{
   );
 };
 
-/**
- * The designer's placement palette. The Inputs/Targets switch lives here,
- * right above the tiles it filters, so "what am I placing" and "what can I
- * pick" sit together.
- */
+/** Designer placement palette, with the Inputs/Targets switch above the tiles it filters. */
 export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ className = "" }) => {
   const { crops, mutations } = useGreenhouseData();
   const {
@@ -79,7 +72,7 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
     setSelectedGround,
   } = useDesigner();
 
-  // Use shared filtering hook with mode-based additional filter
+  // Targets mode lists mutations only.
   const additionalFilter = mode === "targets" ? (crop: CropDefinition) => crop.isMutation ?? false : undefined;
   const { searchTerm, setSearchTerm, filter, setFilter, filteredCrops, getMutationDef } = useCropFiltering({
     crops,
@@ -87,8 +80,7 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
     additionalFilter,
   });
 
-  // Switching to targets while a plain crop is selected would leave an
-  // unplaceable selection behind - drop it.
+  // Switching to targets clears a selected plain crop, which cannot be a target.
   const handleModeChange = useCallback((newMode: DesignerMode) => {
     setMode(newMode);
     if (newMode === "targets" && selectedCropForPlacement && !selectedCropForPlacement.isMutation) {
@@ -96,13 +88,10 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
     }
   }, [setMode, selectedCropForPlacement, setSelectedCropForPlacement]);
 
-  // Handle tile click
   const handleTileClick = useCallback((crop: CropDefinition) => {
     if (selectedCropForPlacement?.id === crop.id) {
-      // Deselect if already selected
       setSelectedCropForPlacement(null);
     } else {
-      // Select for placement
       setSelectedCropForPlacement({
         id: crop.id,
         name: crop.name,
@@ -114,7 +103,6 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
 
   return (
     <div className={`flex flex-col h-full min-h-0 ${className}`}>
-      {/* Header */}
       <div className="flex items-center justify-between gap-2 mb-3 flex-shrink-0 min-h-[24px]">
         <div className="flex items-center gap-2 min-w-0">
           <Palette className="w-4 h-4 text-emerald-400 flex-shrink-0" />
@@ -138,7 +126,6 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
         )}
       </div>
 
-      {/* What am I placing? */}
       <SegmentedControl
         className="mb-2 flex-shrink-0"
         value={mode}
@@ -166,7 +153,7 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
           : "Pick a mutation below, then click the grid to mark where it should spawn."}
       </p>
 
-      {/* Ground paints only bare cells. Placement over it clears the tile. */}
+      {/* Ground paints bare cells only; placing over a tile clears it. */}
       <div className="mb-3 flex-shrink-0">
         <div className="flex justify-between text-xs text-slate-400 mb-1.5">
           <span>Ground · {groundTiles.length} painted</span>
@@ -184,7 +171,6 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
         </div>
       </div>
 
-      {/* Search and Filter Row */}
       <SearchFilterHeader
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
@@ -193,17 +179,16 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
         className="mb-3 flex-shrink-0"
       />
 
-      {/* Palette Grid */}
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-visible scrollbar-dark">
         <div className="grid grid-cols-5 gap-1.5 p-1">
           {filteredCrops.map((crop, index) => {
-            // Check if we should show a rarity separator before this item
+            // Rarity separator before the first item of each rarity.
             const prevMutation = index > 0 ? getMutationDef(filteredCrops[index - 1].id) : null;
             const currMutation = getMutationDef(crop.id);
             const showRaritySeparator = prevMutation && currMutation &&
                                   prevMutation.rarity !== currMutation.rarity;
 
-            // Check if we should show a crop/mutation divider
+            // Divider between the last crop and the first mutation.
             const prevItem = index > 0 ? filteredCrops[index - 1] : null;
             const showCropMutationDivider = prevItem && !prevItem.isMutation && crop.isMutation;
 

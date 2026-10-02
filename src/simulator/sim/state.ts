@@ -4,19 +4,16 @@ import type { Flow, Policies, PolicyOverrides } from "../flow/types";
 import type { ArmorSet } from "../economy/rareCrops";
 import type { RngState } from "../rng";
 
-// Everything in SimulationState is plain data: no Map, Set, class or closure.
-// It survives structuredClone, postMessage and JSON unchanged, which is what
-// makes run(state, 50) + run(result, 50) === run(state, 100) hold.
+// SimulationState is plain data (no Map, Set, class or closure) so it survives
+// structuredClone, postMessage and JSON, and run() stays splittable.
 
 export type PlotId = number;
 
 /**
- * - planted: a base crop placed from a layout. Grows, harvestable when fully grown, free to plant.
- * - placed:  a mutation item (or fire / fermento / dead_plant) placed from inventory. Goes in fully
- *            grown, is an input and buff source only, cannot be harvested, drops nothing when broken,
- *            and lasts until its decay timer (from placement) runs out.
- * - spawned: a natural spawn. Grows, harvestable when fully grown; its decay timer runs from
- *            the tick it spawns, so the stages it spends growing come out of that timer.
+ * - planted: base crop from a layout. Free, grows, harvestable.
+ * - placed:  item from inventory (mutation, fire, fermento, dead_plant). Fully grown on placement,
+ *            not harvestable, drops nothing; decay timer starts at placement.
+ * - spawned: natural spawn. Grows, harvestable; decay timer starts at spawn, so growth time counts against it.
  */
 export type Origin = "planted" | "placed" | "spawned";
 
@@ -29,26 +26,19 @@ export interface PlantState {
   origin: Origin;
   stage: number;
   growthStages: number;
-  /** Stage at which it counts as fully grown / harvestable (Glasscorn 7, All-in Aloe configurable). */
+  /** Stage at which it counts as fully grown (Glasscorn 7, All-in Aloe configurable). */
   readyStage: number;
   fullyGrownAtCycle: number | null;
   /**
-   * Seconds until the decay timer runs out; null = the kind never decays (a
-   * spawned mutation gets one at spawn). When it runs out the plant only
-   * decays if its minimum mutations are met (sim/decay.ts); otherwise the
-   * timer is extended by `decayExtensionHours`.
+   * Seconds until the decay timer runs out; null = never decays. On expiry it decays only if its
+   * minimum mutations are met (sim/decay.ts), else the timer is extended by `decayExtensionHours`.
    */
   decaySecondsRemaining: number | null;
-  /**
-   * How many mutation spawns this plant has helped create (0.27.2): it was
-   * credited as one of a new spawn's listed requirements in the spawn's ring.
-   */
+  /** Mutation spawns this plant was credited as a requirement for. */
   timesMutated: number;
   /**
-   * Mutations it still has to help create before it may decay: its kind's
-   * minimum (overrides applied) minus `timesMutated`. May go negative.
-   * `"infinite"` never runs out (Magic Jellybean: never decays); null = N/A,
-   * no minimum (timer-only decay; also Devourer roots).
+   * Kind's minimum mutations (overrides applied) minus `timesMutated`; may go negative.
+   * "infinite": never decays (Magic Jellybean). null: no minimum, timer-only decay (also Devourer roots).
    */
   mutatesRemaining: number | "infinite" | null;
   water: number;
@@ -56,7 +46,7 @@ export interface PlantState {
   held: EffectId[];
   /** Effective effects latched when it became fully grown; yield uses these. */
   lockedEffects: EffectId[] | null;
-  /** A Dead Plant left behind by decay (kindId is then "dead_plant"). Drying out no longer kills: see sim/plants.ts `isDry`. */
+  /** Dead Plant left by decay (kindId "dead_plant"). Drying out halts instead (sim/plants.ts `isDry`). */
   isDeadPlant: boolean;
   /** Spawned into a labelled slot whose target is a different mutation. */
   isRival: boolean;
@@ -65,9 +55,9 @@ export interface PlantState {
     asleep?: boolean;
     ratAlive?: boolean;
     hunger?: number;
-    /** Thunderling: charge built up by growing (+2000 per stage); halts at the max until discharged. Spawned only. */
+    /** Thunderling (spawned only): +2000 per stage grown; halts at the max until discharged. */
     charge?: number;
-    /** Blastberry: explodes when broken. Natural: primed once fully grown; placed: primed at the next tick. */
+    /** Blastberry: explodes when broken once primed. Natural: primed when fully grown; placed: at the next tick. */
     primed?: boolean;
     /** Turtlellini: times caught in a Blastberry explosion (2 = Shellfruit). */
     exploded?: number;
@@ -97,14 +87,12 @@ export interface PlotState {
 }
 
 /**
- * One watched target cell, one cycle, as seen at its spawn roll:
- * - growing:      the target mutation stands there (growing or fully grown)
- * - halted:       the target mutation stands there but is dried out (halted
- *                 until watered). Downtime, but not a sustainability failure.
- * - ready:        empty, and the target could spawn there now
- * - requirements: empty, but the target cannot spawn (neighbours or ground missing)
- * - blocked:      something else is in the way (a rival, Dead Plant, root, a
- *                 neighbour overlapping a large footprint)
+ * A watched target cell for one cycle, as seen at its spawn roll:
+ * - growing:      target mutation stands there
+ * - halted:       target stands there dried out (downtime only)
+ * - ready:        empty and the target could spawn now
+ * - requirements: empty, target cannot spawn (neighbours or ground missing)
+ * - blocked:      something else is in the way (rival, Dead Plant, root, overlapping footprint)
  * Uptime = (growing + ready) / watched. Only `requirements` makes a run not sustainable.
  */
 export type WatchStatus = "growing" | "halted" | "ready" | "requirements" | "blocked";
@@ -116,7 +104,7 @@ export interface UptimeCounts {
   ready: number;
   requirements: number;
   blocked: number;
-  /** The target stood on its cell dried out (0.27.2). Downtime only. */
+  /** Target stood on its cell dried out. Downtime only. */
   halted: number;
 }
 
@@ -140,14 +128,11 @@ export interface FlowRunnerState {
   /** Counters since entering the current step. */
   spawnedInStep: Record<MutationId, number>;
   decayedInStep: Record<KindId, number>;
-  /** Natural spawns harvested since entering the step (optional: states saved before it existed). */
+  /** Natural spawns harvested since entering the step. Optional for older saved states. */
   harvestedInStep?: Record<MutationId, number>;
   /** Triggers fired on an inactive cycle; the layout is applied at the next player session. */
   pendingTransition: boolean;
-  /**
-   * Step index the pending change goes to (a route's target or the exit's
-   * `next`). Optional: states saved before routes existed go to the next step.
-   */
+  /** Target step index of the pending change (route target or exit `next`). Missing = next step. */
   pendingTarget?: number;
   /** A non-looping flow that reached its last step's exit: the plot holds that step. */
   finished: boolean;
@@ -162,30 +147,21 @@ export interface PlayerStats {
   farmingFortune: number;
   /** Plant Yield Greenhouse Upgrade, 0 .. 0.20. */
   plantYieldUpgrade: number;
-  /** Evergreen Chip, 0 .. 0.60 (multiplicative; applies to all crop-bundle drops, base crops and mutation bundles alike). */
+  /** Evergreen Chip, 0 .. 0.60; multiplies all crop-bundle drops (base crops and mutations). */
   evergreenChip: number;
-  /**
-   * Bioanalysis accessory line: 0.05 Talisman, 0.10 Ring, 0.15 Artifact
-   * ("increases the chance for crops to mutate by +5/10/15%"). Multiplicative
-   * on the mutation arm of the spawn pool; see `applyMutationChanceBonus`.
-   */
+  /** Bioanalysis: 0.05 Talisman, 0.10 Ring, 0.15 Artifact. Scales the spawn pool's mutation arm (`applyMutationChanceBonus`). */
   mutationChanceBonus: number;
   miningFortune: number;
-  /**
-   * Overbloom (uncapped): Rare Crop chances x (1 + overbloom / 100). Boosts the
-   * armor Rare Crops and a mutation's Ethereal Vine, not the Harvest Bounty.
-   */
+  /** Uncapped. Rare Crop chances x (1 + overbloom / 100): armor Rare Crops and Ethereal Vine, not Harvest Bounty. */
   overbloom: number;
-  /** Farming armor worn, assumed 4/4 pieces: its tiered bonus rolls Rare Crops on every harvest. */
+  /** Farming armor, assumed 4/4 pieces; its tiered bonus rolls Rare Crops on every harvest. */
   armorSet: ArmorSet;
   /** Hour of day (0..24) at cycle 0, for time-window schedules. */
   startTimeOfDay: number;
   /**
-   * Flora attribute shard (0.27.2): 0-10, adds that many to the unique crop
-   * groups standing for the Unique Crop Bonus (still capped at `uniqueCropCap`).
-   * Like the rest of PlayerStats, a scenario saved before it existed may be
-   * missing it in storage; `withDefaults` (SimulatorPage.tsx) fills it in, and
-   * the engine (`effectiveUniqueCrops`) treats a missing value as 0 regardless.
+   * Flora shard, 0-10: added to unique crop groups standing for the Unique Crop Bonus (capped at
+   * `uniqueCropCap`). May be missing in old saves: `withDefaults` (SimulatorPage.tsx) fills it and
+   * `effectiveUniqueCrops` treats missing as 0.
    */
   floraShard: number;
 }
@@ -199,12 +175,7 @@ export interface Settings {
   seed: number;
   playerStats: PlayerStats;
   activity: ActivitySchedule;
-  /**
-   * Master switch for the player. Off = the player never comes online: no
-   * harvesting, watering, upkeep, re-placing, ground fixing, gate interaction
-   * or step changes, whatever the activity schedule says. Optional so states
-   * saved before it existed still load (missing = on).
-   */
+  /** Off = the player never comes online, regardless of `activity`. Missing = on. */
   playerActions?: boolean;
   policies: Policies;
   config: SimConfig;
@@ -216,7 +187,7 @@ export interface ScenarioPlot {
   policies?: PolicyOverrides;
 }
 
-/** The whole input. There is deliberately no cycle count: that is an argument to run(). */
+/** The whole input. The cycle count is an argument to run(), not part of the scenario. */
 export interface Scenario {
   plots: ScenarioPlot[];
   startingInventory: Record<ItemId, number>;
@@ -257,10 +228,7 @@ export interface RunSummary {
   elapsedSeconds: number;
   /** Everything valued at NPC price when harvested. */
   coinsRealised: number;
-  /**
-   * rareDrops = Harvest Bounty (Bonus Drops); rareCrops = armor Rare Crops and
-   * a mutation's own Ethereal Vine (both Overbloom-boosted).
-   */
+  /** rareDrops: Harvest Bounty. rareCrops: armor Rare Crops and Ethereal Vine (Overbloom-boosted). */
   revenue: { crops: number; rareDrops: number; rareCrops: number; mutationItems: number };
   /** Coins; 0 in NPC-only mode (base crops are free, mutation items have no NPC price). */
   costs: { replacements: number; supplies: number };
@@ -273,14 +241,12 @@ export interface RunSummary {
   /** Plants lost to decay, by kind. */
   decayed: Record<KindId, number>;
   /**
-   * Decay timers that ran out while the plant's minimum mutations were not
-   * met, so the timer was extended (`decayExtensionHours`), by kind. Counted
-   * once per expiry. A state from before it existed may lack it: the engine
-   * creates it on first use and the UI reads it as empty.
+   * Decay timer expiries extended because the minimum mutations were not met, by kind; once per
+   * expiry. May be missing in old states: created on first use, read as empty by the UI.
    */
   extended: Record<KindId, number>;
   destroyed: Record<KindId, number>;
-  /** Plants that dried out (water reached haltWater) and halted until watered, by kind. Counted each time one dries out. */
+  /** Dry-outs (water reached haltWater), by kind; counted per dry-out. */
   driedOut: Record<KindId, number>;
   /** Items spent placing plants, by item. */
   placedItems: Record<ItemId, number>;
@@ -315,13 +281,9 @@ export interface SimulationState {
   uptime: Record<string, Record<string, Record<string, SpotUptime>>>;
   summary: RunSummary;
   nextPlantId: number;
-  /**
-   * Shared, recomputed every cycle across all plots: the effective unique
-   * crop count the Unique Crop Bonus uses (`effectiveUniqueCrops`), already
-   * capped at `config.uniqueCropCap`.
-   */
+  /** Effective unique crop count for the Unique Crop Bonus, all plots, recomputed each cycle; capped at `config.uniqueCropCap`. */
   uniqueCropCount: number;
-  /** The raw unique crop groups standing across all plots, before the Flora shard and the cap. */
+  /** Raw unique crop groups standing across all plots, before Flora and the cap. */
   uniqueCropsStanding: number;
   lastCycleSeconds: number;
   lastCycleActive: boolean;
@@ -339,15 +301,10 @@ export type TickEvent =
   | { kind: "rootSpread"; row: number; col: number; fromRow: number; fromCol: number }
   | { kind: "converted"; from: ItemId; to: ItemId; count: number }
   | { kind: "decayed"; plantId: number; kindId: KindId; row: number; col: number }
-  /**
-   * Its decay timer ran out but its minimum mutations are not met, so the
-   * timer was extended (by `decayExtensionHours`, as many times as needed).
-   * `mutatesRemaining` is its own count; `combined` is its kind's pool on the
-   * plot when it is pooled (null when not pooled).
-   */
+  /** Decay timer ran out with minimum mutations unmet and was extended. `combined`: its kind's pool, null when not pooled. */
   | { kind: "decayExtended"; plantId: number; kindId: KindId; row: number; col: number;
       mutatesRemaining: number | "infinite" | null; combined: number | "infinite" | null }
-  /** Water reached haltWater: the plant halts (no growth, no effects given, not counted) until watered. */
+  /** Water reached haltWater: no growth, no effects given, not counted, until watered. */
   | { kind: "driedOut"; plantId: number; kindId: KindId; row: number; col: number }
   | { kind: "harvested"; plantId: number; kindId: KindId; row: number; col: number; origin: Origin;
       drops: Record<ItemId, number>; coinValue: number; rival: boolean }
@@ -357,7 +314,7 @@ export type TickEvent =
   /** The player restored the ground under an empty target cell to what its mutation needs. */
   | { kind: "groundFixed"; row: number; col: number; from: string | null; to: string; mutationId: MutationId }
   | { kind: "destroyed"; plantId: number; kindId: KindId; row: number; col: number; by: string }
-  /** A player minigame (PlantBoy / Stoplight / Phantomleaf harvest) failed. "retry": the plant stays fully grown; "destroyed": it was lost. */
+  /** PlantBoy / Stoplight / Phantomleaf minigame failed. "retry": plant stays fully grown; "destroyed": it was lost. */
   | { kind: "minigameFailed"; plantId: number; kindId: KindId; row: number; col: number; outcome: "retry" | "destroyed" }
   | { kind: "teleported"; plantId: number; kindId: KindId; fromRow: number; fromCol: number; row: number; col: number }
   | { kind: "debt"; item: ItemId; row: number; col: number; needed: number; available: number }
@@ -387,6 +344,6 @@ export interface BatchResult {
   cyclesRun: number;
   /** True if the call stopped early (abort). */
   truncated: boolean;
-  /** The cumulative ledger as of the end of this call - not a delta. */
+  /** Cumulative as of the end of this call, not a delta. */
   summary: RunSummary;
 }

@@ -13,11 +13,7 @@ import type { LocalSolverHealth, LocalSolverRelease, LocalSolverSettings } from 
 
 const POLL_MS = 10000;
 
-/**
- * "Solve locally": route solves to a solver running on the user's own machine
- * instead of the public API. The panel owns the setting (localStorage), shows
- * whether the local server answers, and hands out the download.
- */
+/** "Solve locally": routes solves to a solver on the user's machine. Owns the setting (localStorage), shows server health and the download link. */
 export const LocalSolverPanel: React.FC = () => {
   const [settings, setSettings] = useState<LocalSolverSettings>(() => loadLocalSolverSettings());
   const [collapsed, setCollapsed] = useState(() => !loadLocalSolverSettings().enabled);
@@ -44,10 +40,10 @@ export const LocalSolverPanel: React.FC = () => {
     setProbing(false);
   }, []);
 
-  // Keep in sync if another tab/component changes the setting.
+  // Follow changes made by another tab or component.
   useEffect(() => onLocalSolverSettingsChange(() => setSettings(loadLocalSolverSettings())), []);
 
-  // Release info (for the download link and update notice), once.
+  // Release info for the download link and update notice, fetched once.
   useEffect(() => {
     let cancelled = false;
     fetchLatestLocalSolver().then((r) => {
@@ -58,7 +54,7 @@ export const LocalSolverPanel: React.FC = () => {
     };
   }, []);
 
-  // Probe when enabled (and keep probing so the status stays honest).
+  // Probe while enabled, repeatedly, so the status stays current.
   useEffect(() => {
     if (!settings.enabled) {
       setHealth(null);
@@ -87,7 +83,7 @@ export const LocalSolverPanel: React.FC = () => {
     }
     const value = Number(text);
     if (Number.isFinite(value) && value > 0) {
-      // No ceiling: the solve runs on this machine, so the limit is the user's call.
+      // No upper bound: the solve runs locally.
       const seconds = Math.round(value);
       setLimitDraft(String(seconds));
       if (seconds !== settings.timeLimit) update({ timeLimit: seconds });

@@ -1,9 +1,6 @@
 import type { CropDefinition, MutationDefinition, CropFilterCategory } from "../types/greenhouse";
 
-/**
- * Standard filter options for crop/mutation filtering
- * Used across Calculator and Designer
- */
+/** Crop list filter options shared by the Calculator and Designer. */
 export const CROP_FILTER_OPTIONS = [
   { value: "all" as CropFilterCategory, label: "All" },
   { value: "crops" as CropFilterCategory, label: "Crops" },
@@ -15,9 +12,7 @@ export const CROP_FILTER_OPTIONS = [
   { value: "legendary" as CropFilterCategory, label: "Legendary" },
 ] as const;
 
-/**
- * Filter crops by category (crops/mutations/rarity)
- */
+/** Filters by kind (crop or mutation) or by mutation rarity. */
 export function filterCropsByCategory(
   crops: CropDefinition[],
   filter: CropFilterCategory,
@@ -47,9 +42,7 @@ export function filterCropsByCategory(
   }
 }
 
-/**
- * Filter crops by search term (case-insensitive name matching)
- */
+/** Case-insensitive name substring match. */
 export function filterCropsBySearch(
   crops: CropDefinition[],
   searchTerm: string
@@ -62,9 +55,6 @@ export function filterCropsBySearch(
   return crops.filter(c => c.name.toLowerCase().includes(term));
 }
 
-/**
- * Apply both category and search filters to crops
- */
 export function filterCrops(
   crops: CropDefinition[],
   filter: CropFilterCategory,

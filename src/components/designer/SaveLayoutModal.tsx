@@ -26,14 +26,13 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
   const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-focus input when modal opens
   useEffect(() => {
     if (isOpen && inputRef.current) {
       inputRef.current.focus();
     }
   }, [isOpen]);
 
-  // Reset state when modal opens
+  // Reset the form each time the modal opens.
   useEffect(() => {
     if (isOpen) {
       setName("");
@@ -43,7 +42,6 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
     }
   }, [isOpen]);
 
-  // Close modal on escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
@@ -55,7 +53,6 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
-  // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -67,7 +64,6 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
     };
   }, [isOpen]);
 
-  // Click outside to close
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
       onClose();
@@ -88,7 +84,6 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
       return;
     }
     
-    // Check if name exists
     const existing = existingLayouts.find(l => l.name === trimmedName);
     if (existing && !showOverwriteWarning) {
       setExistingLayoutId(existing.id);
@@ -97,7 +92,6 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
       return;
     }
     
-    // Save or overwrite
     onSave(trimmedName, existingLayoutId || undefined);
   };
 
@@ -108,7 +102,7 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
     setExistingLayoutId(null);
   };
 
-  // Get unique target mutations for summary
+  // Target counts per mutation, for the summary.
   const getTargetMutationsSummary = () => {
     const mutationMap = new Map<string, DesignerPlacement>();
     
@@ -135,7 +129,6 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
         ref={modalRef}
         className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-md my-auto"
       >
-        {/* Modal Header */}
         <div className="bg-slate-900 border-b border-slate-700 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between rounded-t-xl">
           <h2 className="text-base sm:text-lg font-semibold text-slate-100">Save Layout</h2>
           <button
@@ -147,9 +140,7 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Content */}
         <form onSubmit={handleSubmit} className="p-3 sm:p-6">
-          {/* Layout Name Input */}
           <div className="mb-6">
             <label htmlFor="layout-name" className="block text-sm font-medium text-slate-300 mb-2">
               Layout Name
@@ -169,7 +160,6 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
             )}
           </div>
 
-          {/* Layout Summary */}
           <div className="mb-6 p-4 bg-slate-800/40 border border-slate-600/30 rounded-lg">
             <h3 className="text-sm font-medium text-slate-200 mb-3">Layout Summary</h3>
             <div className="space-y-2 text-sm text-slate-300">
@@ -212,7 +202,6 @@ export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex gap-3">
             <button
               type="button"

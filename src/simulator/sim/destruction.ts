@@ -5,33 +5,26 @@ import { destroyPlant } from "./explosion";
 import { buildOccupancy, DEVOURER_ROOT, insertPlant, isRoot, newRoot, sortPlants } from "./plants";
 import type { PlantState, PlotState } from "./state";
 
-/**
- * A plant that is still growing as the tick starts. Destruction runs first
- * in the tick, before growth, so "still growing" is judged on the stage the
- * plant starts the tick with.
- */
+/** Still growing at tick start (destruction runs before growth). */
 function willGrow(p: PlantState): boolean {
   return !p.isDeadPlant && p.origin !== "placed" && p.stage < p.growthStages;
 }
 
 /**
- * Game-tick phase "destruction" - gate side effects that reshape the plot,
- * applied FIRST in the tick (before effects and growth):
- * - Devourer: while growing, 40% per tick to grow a root into one of its 8
- *   neighbouring cells (destroying what is there). Every root then has its own
- *   40% per tick to spread another. Roots are separate entities the player
- *   breaks while online; a fully grown Devourer makes no new roots.
- * - Chorus Fruit: teleports every tick it starts still growing to any other
- *   cell (AIR included), turning the landing cell into End Stone, then advances in the growth phase. So a stage-11 Chorus Fruit (of
- *   12) teleports one last time on the tick it becomes fully grown, and a
- *   fully grown one never teleports.
- * Blastberry explosions happen the moment one breaks (sim/explosion.ts).
+ * Tick phase "destruction", first in the tick (before effects and growth):
+ * - Devourer: while growing, `devourerRootChance` per tick to grow a root into
+ *   one of its 8 neighbours, destroying what's there. Each root spreads with
+ *   `rootSpreadChance`.
+ * - Chorus Fruit: each tick it starts still growing, teleports to any other
+ *   cell (air included) and turns it into End Stone. It teleports on the tick
+ *   it becomes fully grown, never after.
+ * Blastberry explosions: sim/explosion.ts.
  */
 export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
   const { config } = ctx;
   const rng = ctx.state.rng;
 
-  // Roots that exist now may spread; roots grown this tick start next tick.
+  // Snapshot: roots grown this tick spread from next tick.
   const sources = plot.plants.filter(
     (p) => (p.kindId === "devourer" && !p.isDeadPlant && p.stage < p.growthStages) || isRoot(p)
   );
@@ -42,7 +35,6 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
     growRoot(plot, src, ctx);
   }
 
-  // Chorus Fruit teleports as it grows, converting its landing cell to End Stone.
   let occ = buildOccupancy(plot);
   let moved = false;
   for (const p of [...plot.plants]) {
@@ -51,7 +43,6 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
     const targets: number[] = [];
     for (let idx = 0; idx < TOTAL_CELLS; idx++) {
       if (idx === own) continue;
-      // Any cell is a target, AIR included: the landing cell becomes End Stone either way.
       if (config.chorusTeleportTargets === "emptyOnly" && occ[idx]) continue;
       targets.push(idx);
     }
@@ -59,7 +50,7 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
     const t = targets[intInclusive(rng, 0, targets.length - 1)];
     const occupant = occ[t];
     if (occupant) {
-      // Two Chorus Fruit on one spot: the higher growth stage survives.
+      // Chorus collision: higher stage survives.
       if (occupant.kindId === "chorus_fruit" && occupant.stage > p.stage) {
         destroyPlant(plot, p, ctx, "chorus collision");
         occ = buildOccupancy(plot);
@@ -79,7 +70,7 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
   if (moved) sortPlants(plot);
 }
 
-/** Grow a root into a random neighbouring cell of `src` that is not already a root or a Devourer. */
+/** Grow a root into a random neighbour of `src` that isn't a root or Devourer. */
 function growRoot(plot: PlotState, src: PlantState, ctx: CycleCtx): void {
   const occ = buildOccupancy(plot);
   const cells = ringCells(src.row, src.col, src.size).filter((idx) => {
@@ -92,7 +83,7 @@ function growRoot(plot: PlotState, src: PlantState, ctx: CycleCtx): void {
   if (victim && plot.plants.includes(victim)) destroyPlant(plot, victim, ctx, "devourer root");
   const row = Math.floor(idx / GRID_SIZE);
   const col = idx % GRID_SIZE;
-  if (buildOccupancy(plot)[idx]) return; // an explosion's aftermath can't refill it, but stay safe
+  if (buildOccupancy(plot)[idx]) return; // defensive
   insertPlant(plot, newRoot(ctx.state, row, col, ctx.cycle));
   ctx.emit(plot.id, { kind: "rootSpread", row, col, fromRow: src.row, fromCol: src.col });
 }

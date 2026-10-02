@@ -35,7 +35,7 @@ describe("choosing the next step", () => {
     expect(ids(engine.run(start(scenario([f], { config: slotsOnly })), 2).state)).toEqual(["s1", "s3"]);
   });
 
-  it("the user's example: swap between 1 and 2, and go to 3 every 3rd time through step 2", () => {
+  it("swaps between 1 and 2, and goes to 3 every 3rd time through step 2", () => {
     const f = flow(
       [
         at("s1", "wheat", [cycles(1)]),

@@ -2,7 +2,7 @@ import React from "react";
 import { nameOf } from "./format";
 import { inputClass } from "./styles";
 
-// Small form controls shared by the simulator panels, in the app's slate/emerald style.
+// Form controls shared by the simulator panels.
 
 type NumberInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type" | "min" | "max"> & {
   value: number;
@@ -21,9 +21,9 @@ const clampNum = (v: number, min?: number, max?: number, integer?: boolean) => {
 };
 
 /**
- * A number input that keeps what you type as a local draft, so the field can be emptied or hold
- * an out-of-range intermediate value (e.g. clearing "1" to type "500"). In-range values commit as
- * you type; on blur (or Enter) the draft is clamped to [min, max] or reverted if it's not a number.
+ * Number input with a local draft, so the field can be empty or out of range mid-edit
+ * (clearing "1" to type "500"). In-range values commit while typing; blur or Enter clamps
+ * to [min, max], or reverts a non-number.
  */
 export const NumberInput: React.FC<NumberInputProps> = ({ value, onChange, min, max, integer, onBlur, onKeyDown, ...rest }) => {
   const [draft, setDraft] = React.useState(() => String(value));

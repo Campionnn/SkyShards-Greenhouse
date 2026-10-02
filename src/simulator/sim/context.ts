@@ -10,7 +10,7 @@ export interface ResolvedLayout {
   /** Sorted by anchor (row, col). */
   plants: { kindId: KindId; row: number; col: number; size: Size; origin: "planted" | "placed" }[];
   slots: SlotLabel[];
-  /** Explicit painted bare ground plus automatically inferred target-footprint ground. */
+  /** Painted ground plus ground inferred from target footprints. */
   groundTiles: Record<string, string>;
 }
 
@@ -20,17 +20,9 @@ export interface Env {
   resolveLayout(layout: StepLayout): ResolvedLayout;
 }
 
-/**
- * Per-plot, per-cycle scratch space shared by that plot's phases (both
- * the game tick and the player session). Built fresh every cycle and never
- * stored in state, so it may hold Sets and objects.
- */
+/** Per-plot, per-cycle scratch shared by tick and player phases. Never stored in state, so Sets are fine. */
 export interface TickScratch {
-  /**
-   * Plants that were not yet fully grown (`stage < readyStage`) as this
-   * tick's growth phase reached them, before they advanced. The water phase
-   * drains these (if they drink water and aren't dried out).
-   */
+  /** Plant ids with `stage < readyStage` when growth reached them (before advancing); the water phase drains these. */
   notFullyGrown: Set<number>;
   /** The effect simulation from the `effects` phase (Godseed eligibility at spawn). */
   effects: EffectSimulation | null;
@@ -41,9 +33,8 @@ export interface TickScratch {
 export const newScratch = (): TickScratch => ({ notFullyGrown: new Set(), effects: null, stepChanged: false });
 
 /**
- * Everything one cycle needs besides the plot itself. `state` is the run's
- * working copy: a tick touches only its own plot plus the shared inventory,
- * ledger and summary (the only channels between plots).
+ * Per-cycle context. `state` is the run's working copy; a plot's phases touch
+ * only that plot plus the shared inventory, ledger and summary.
  */
 export interface CycleCtx {
   env: Env;
@@ -57,31 +48,21 @@ export interface CycleCtx {
   /** Simulated time (s) at which this cycle fires. */
   firesAt: number;
   uniqueCropCount: number;
-  /** Record an event. spawned / decayed / harvested also feed the plot's in-step trigger counters. */
+  /** Record an event; also feeds the plot's in-step trigger counters. */
   emit(plotId: PlotId, event: TickEvent): void;
-  /** Policies in force for a plot right now (scenario, then plot, then step overrides). */
+  /** Merged policies: scenario, then plot, then step overrides. */
   policiesFor(plotId: PlotId): Policies;
-  /** The current step's layout for a plot. */
   layoutFor(plotId: PlotId): ResolvedLayout;
-  /** The current step of a plot's flow. */
   stepFor(plotId: PlotId): FlowStep;
-  /** A plot's flow definition and its runner. */
   flowFor(plotId: PlotId): { def: ScenarioPlot; runner: FlowRunnerState };
   /** Cycles until the player is next active (>= 1, or Infinity). */
   cyclesUntilNextActive(): number;
 }
 
-/**
- * One named phase of a cycle. A cycle is two ordered lists of these:
- * the game tick (`TICK_PHASES`, sim/tick.ts), which happens instantly for
- * every plot, then - on active cycles only - the player session
- * (`PLAYER_PHASES`, sim/player.ts), which stands for everything the player
- * does at some point during the cycle. Reorder, add or remove behaviour by
- * editing those lists.
- */
+/** One named step of `TICK_PHASES` (sim/tick.ts) or, on active cycles, `PLAYER_PHASES` (sim/player.ts). */
 export interface Phase {
   id: string;
-  /** One line: what it does. Shown in docs and tests, not in the engine. */
+  /** One-line description for docs and tests; unused by the engine. */
   summary: string;
   run(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void;
 }

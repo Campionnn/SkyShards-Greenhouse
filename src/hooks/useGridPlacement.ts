@@ -11,19 +11,16 @@ export interface UseGridPlacementOptions {
 }
 
 export interface UseGridPlacementReturn {
-  // State
   hoveredPlacementId: string | null;
   setHoveredPlacementId: React.Dispatch<React.SetStateAction<string | null>>;
   dragState: DragState | null;
   paintState: PaintState | null;
   hoverInfo: HoverInfo | null;
   
-  // Computed values
   previewPosition: [number, number] | null;
   previewValidation: { valid: boolean; error?: string } | null;
   dragValidation: { valid: boolean; error?: string } | null;
   
-  // Event handlers
   handleMouseMove: (e: React.MouseEvent) => void;
   handleMouseLeave: () => void;
   handleMouseDown: (e: React.MouseEvent) => void;
@@ -32,7 +29,6 @@ export interface UseGridPlacementReturn {
   handlePlacementMouseDown: (placementId: string, e: React.MouseEvent) => void;
   cancelDrag: () => void;
   
-  // Utility functions
   getAdjustedPosition: (
     cursorCell: [number, number],
     offsetX: number,
@@ -59,7 +55,7 @@ export function useGridPlacement({
   } = useLockedPlacements();
   const { toast } = useToast();
   
-  // Adapter functions to match the core hook's expected interface
+  // Adapters to the core hook's callback interface.
   const handleAddPlacement = useCallback((
     cell: [number, number],
     offsetX: number,
@@ -67,7 +63,6 @@ export function useGridPlacement({
   ): [number, number] | null => {
     if (!selectedCropForPlacement) return null;
     
-    // Use the getAdjustedPosition from the core hook
     const basePos = getPlacementPosition(cell, offsetX, offsetY, selectedCropForPlacement.size);
     const adjustedPos = findNearestValidPosition(basePos, selectedCropForPlacement.size, isValidPlacementPosition);
     if (!adjustedPos) return null;
@@ -112,7 +107,6 @@ export function useGridPlacement({
     return selectedCropForPlacement?.size || 1;
   }, [selectedCropForPlacement]);
   
-  // Use the core hook
   return useGridInteractionCore({
     cellSize,
     gap,
@@ -130,5 +124,4 @@ export function useGridPlacement({
   });
 }
 
-// Re-export types
 export type { DragState, PaintState, HoverInfo };

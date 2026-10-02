@@ -52,8 +52,7 @@ const Badge: React.FC<{ className: string; children: React.ReactNode; title?: st
 );
 
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Result summary: status + score always, everything else behind "Details"
+// Result summary: status and score always shown, the rest behind "Details"
 // ---------------------------------------------------------------------------
 
 const StatTile: React.FC<{ label: string; value: string; hint: string; tone?: string; sub?: string }> = ({ label, value, hint, tone = "text-slate-200", sub }) => (
@@ -93,12 +92,11 @@ export const ResultSummary: React.FC<{ result: SolveResponse; meta: SolveRunMeta
     result.total_cells_used ??
     (result.placements || []).reduce((s, p) => s + p.size * p.size, 0) + (result.mutations || []).reduce((s, m) => s + m.size * m.size, 0);
   const effect = result.effect_value ?? null;
-  // The budget the solver was given. Absent when the cache answered instantly.
+  // Time budget the solver got; absent when the cache answered instantly.
   const budget = result.time_limit ?? null;
 
   return (
     <div className="mb-4 bg-slate-700/30 border border-slate-600/30 rounded-lg p-3">
-      {/* Always visible: status, and the score */}
       <div className="flex items-center gap-2">
         <Icon className={`w-4 h-4 flex-shrink-0 ${iconColor}`} />
         <div className="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
@@ -204,10 +202,7 @@ export const ResultSummary: React.FC<{ result: SolveResponse; meta: SolveRunMeta
 // Mutations in the layout
 // ---------------------------------------------------------------------------
 
-/**
- * Count per mutation, with its share of the score. Fixed-count targets are
- * hard constraints, so they are always met exactly: no requested-vs-got.
- */
+/** Count per mutation with its share of the score. Fixed-count targets are hard constraints, so no requested-vs-got is shown. */
 export const MutationList: React.FC<{ result: SolveResponse }> = ({ result }) => {
   const { getMutationDef } = useGreenhouseData();
 

@@ -14,12 +14,7 @@ import { bump, perPlot } from "./summary";
 import { ZOMBUD, zombudHarvest } from "./zombud";
 import type { PlantState, PlotState } from "./state";
 
-/**
- * Spawned kinds whose harvest is a player minigame, and what a failed one does:
- * - retry:   nothing changes (no stage change, no relatch); the plant stays fully
- *            grown and the player tries again at the next session.
- * - destroy: the plant is lost.
- */
+/** Spawned kinds harvested via a minigame. On failure: retry = unchanged, try next session; destroy = plant lost. */
 const MINIGAMES: Record<string, "retry" | "destroy"> = {
   plantboy_advance: "retry",
   stoplight_petal: "retry",
@@ -35,21 +30,19 @@ function scaleDrops(drops: Record<string, number>, factor: number): Record<strin
 }
 
 /**
- * Harvest one plant: drops go to the shared inventory and are valued at NPC
- * price (booked as revenue now). A spawned mutation also drops its own item.
- * Yield uses the effects LATCHED when the plant became fully grown. The plant
- * is removed from the plot; base-crop upkeep replants it straight after.
+ * Harvest and remove one plant. Drops go to the shared inventory and are
+ * booked as revenue at NPC price. Yield uses the effects latched when it
+ * became fully grown. A spawned mutation also drops its own item.
  */
 export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): HarvestOutcome {
   const { data } = ctx.env;
   const rng = ctx.state.rng;
   const isMutation = !!data.mutations[p.kindId];
 
-  // Player minigames: assumed won unless perfectPlay is off.
+  // Minigames are won unless perfectPlay is off.
   const game = p.origin === "spawned" ? MINIGAMES[p.kindId] : undefined;
   if (game && !ctx.config.perfectPlay && chance(rng, ctx.config.minigameFailChance)) {
     if (game === "retry") {
-      // No stage change, no relatch: still fully grown, the player tries again next session.
       ctx.emit(plot.id, { kind: "minigameFailed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, outcome: "retry" });
       return "minigameFailed";
     }
@@ -65,30 +58,23 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const effective = new Set(p.lockedEffects ?? effectiveList(p.held));
   const sum = greenhouseYieldSum(effective, ctx.stats.plantYieldUpgrade, uniqueCropYieldBonus(ctx.uniqueCropCount, ctx.config));
   const def = isMutation ? data.mutations[p.kindId] : data.crops[p.kindId];
-  // Magic Jellybean: data.json's crop bundle is the stage-12 (x1) amount; the
-  // stage multiplier scales the bundle as well as its own item count.
+  // Jellybean: data.json bundle is the stage-12 (x1) amount; the stage multiplier scales bundle and item count.
   const jellyMult = p.kindId === JELLYBEAN && p.origin === "spawned" ? jellybeanMultiplier(p.stage, ctx.config.magicJellybeanMultiplierCap) : 1;
   const baseDrops = jellyMult === 1 ? def.drops : scaleDrops(def.drops, jellyMult);
   const drops = harvestYield(baseDrops, farmingFortuneMultiplier(ctx.stats.farmingFortune), sum, ctx.stats.evergreenChip);
 
-  // The mutation's OWN item count is scaled by the greenhouse yield sum only
-  // (not Farming Fortune or Evergreen, which are crop-bundle-only): the whole
-  // part is guaranteed and the fractional remainder is a single roll for one
-  // more. This applies on top of each mutation's own base count (Chloronite's
-  // Mining Fortune ladder, Magic Jellybean's stage multiplier, All-in Aloe's
-  // fragment table); a "plain" mutation's base count is 1.
+  // Mutation item count = base count (1, or Chloronite/Jellybean/Aloe specifics)
+  // scaled by the greenhouse yield sum only (not Farming Fortune / Evergreen):
+  // whole part guaranteed, fraction rolled once for one more.
   let mutationItems = 0;
-  // Zombud / Timestalk: the crop bundle above drops ONCE, on breaking the fully
-  // grown mutation; the fight only gives the mutation items below. So a Zombud
-  // never gives its bundle more than once, however many mobs spawn.
+  // Zombud / Timestalk: the crop bundle drops once; the fight gives only the items below.
   if (p.kindId === ZOMBUD && p.origin === "spawned") {
-    // 1 Zombud per adjacent Dead Plant (each becomes a mob; fight assumed won),
-    // no yield scaling. The player fills empty ring cells first (sim/zombud.ts).
+    // 1 per adjacent Dead Plant, no yield scaling (sim/zombud.ts).
     const items = zombudHarvest(plot, p, ctx);
     if (items > 0) drops[p.kindId] = (drops[p.kindId] ?? 0) + items;
     mutationItems = items;
   } else if (p.kindId === "timestalk" && p.origin === "spawned") {
-    // Exactly 1 per harvest (clone fight assumed won), no yield scaling.
+    // Exactly 1, no yield scaling.
     drops[p.kindId] = (drops[p.kindId] ?? 0) + 1;
     mutationItems = 1;
   } else if (p.kindId === "all_in_aloe" && p.origin === "spawned") {
@@ -110,7 +96,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
     mutationItems = items;
   }
 
-  // Harvest Bounty (Bonus Drops): its own table, NOT boosted by Overbloom.
+  // Harvest Bounty (bonus_drops): own table, not boosted by Overbloom.
   const rareDrops: Record<string, number> = {};
   if (effective.has("bonus_drops")) {
     for (let i = 0; i < ctx.config.bountyRollsPerHarvest; i++) {
@@ -118,14 +104,9 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
       if (item) bump(rareDrops, item);
     }
   }
-  // Rare Crops: the mutation's own Ethereal Vine chance, then the armor set's
-  // tiered-bonus drops (one roll each, every harvest). Overbloom boosts the
-  // chance for both. The greenhouse yield sum (Plant Yield upgrade +
-  // unique-crop bonus + Harvest Boost/Loss) then additionally scales ONLY the
-  // Ethereal Vine count that dropped, exactly like a mutation's own item:
-  // whole part guaranteed, fraction rolled for one more. Armor drops
-  // (Cropie/Squash/Fermento/Helianthus) are not yield-scaled: the rolled
-  // count is used as-is.
+  // Rare crops: Ethereal Vine (spawned mutations), then armor-set drops, one roll
+  // each, chance boosted by Overbloom. Only Ethereal Vine is then yield-scaled
+  // like a mutation item; armor drops are used as rolled. Roll order matters for RNG.
   const rareCrops: Record<string, number> = {};
   const bloom = overbloomMultiplier(ctx.stats.overbloom);
   const cap = ctx.config.capRareCropChance;
@@ -178,7 +159,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   });
   const primed = isPrimedBlastberry(p);
   removePlant(plot, p);
-  if (primed) explode(plot, p, ctx); // harvesting breaks it: the item and crops still drop
+  if (primed) explode(plot, p, ctx); // drops are kept
   void scratch;
   return "harvested";
 }

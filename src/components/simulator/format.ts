@@ -110,7 +110,7 @@ function describeRemaining(own: number | "infinite" | null, combined: number | "
   return "its minimum is not met";
 }
 
-/** One human sentence per event, for the recent-events log. */
+/** One sentence per event, for the recent-events log. The switch is exhaustive: a new event kind fails the typecheck here. */
 export function describeEvent(e: TimedEvent): string {
   const at = "row" in e ? ` at (${e.row},${e.col})` : "";
   switch (e.kind) {
@@ -123,7 +123,7 @@ export function describeEvent(e: TimedEvent): string {
       return `Harvested ${nameOf(e.kindId)}${at}: ${items || "nothing"} (${formatCoins(e.coinValue)} coins)`;
     }
     case "decayed":
-      // A dead plant that decays leaves nothing behind (the player re-places the layout's from stock).
+      // A decaying dead plant leaves nothing; the player re-places the layout's own from stock.
       return e.kindId === "dead_plant" ? `${nameOf(e.kindId)} decayed${at}` : `${nameOf(e.kindId)} decayed${at} and left a Dead Plant`;
     case "decayExtended":
       return `${nameOf(e.kindId)}'s decay timer ran out${at} but ${describeRemaining(e.mutatesRemaining, e.combined)} - extended 24h`;
@@ -178,9 +178,8 @@ export function allItemIds(): string[] {
 export type ItemCategory = "mutation" | "crop" | "rareCrop" | "other";
 
 /**
- * Inventory grouping: mutation items; base crops (and seeds); Rare Crops
- * (armor bonus drops + Ethereal Vine, Overbloom-boosted); everything else
- * (Harvest Bounty drops, Dead Plants, fire, fragments).
+ * Inventory group: mutations; base crops and seeds; Rare Crops (armor bonus drops and Ethereal
+ * Vine, Overbloom-boosted); other (Harvest Bounty drops, Dead Plants, fire, fragments).
  */
 export function itemCategory(id: string): ItemCategory {
   if (data.mutations[id]) return "mutation";

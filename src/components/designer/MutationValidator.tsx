@@ -22,13 +22,13 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
   } = useDesigner();
   const { mutations, getCropDef, getMutationDef } = useGreenhouseData();
   
-  // Get possible mutations based on current input placements
+  // Mutations the current inputs can spawn, and where.
   const possibleMutations = useMemo(() => {
     if (inputPlacements.length === 0) return [];
     return getPossibleMutations(mutations);
   }, [inputPlacements, mutations, getPossibleMutations]);
   
-  // Check which target mutations are satisfied
+  // Validation for every placed target.
   const targetValidation = useMemo(() => {
     return targetPlacements.map(target => {
       const possible = possibleMutations.find(p => p.mutation.id === target.cropId);
@@ -46,7 +46,6 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
   const validCount = targetValidation.filter(t => t.isValid).length;
   const invalidCount = targetValidation.filter(t => !t.isValid).length;
   
-  // Get the hovered target's validation info
   const hoveredValidation: HoveredValidation | null = useMemo(() => {
     if (!hoveredTargetId) return null;
     const target = targetPlacements.find(t => t.id === hoveredTargetId);
@@ -60,7 +59,6 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
     };
   }, [hoveredTargetId, targetPlacements, getTargetValidation, mutations]);
   
-  // Show message if no targets placed
   if (targetPlacements.length === 0) {
     return (
       <div className={`text-center text-slate-500 py-4 ${className}`}>
@@ -72,7 +70,6 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
 
   return (
     <div className={`space-y-3 ${className}`}>
-      {/* Summary */}
       <div className={`p-3 rounded-lg border ${
         invalidCount > 0 
           ? "bg-red-500/10 border-red-500/30" 
@@ -98,7 +95,7 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
         )}
       </div>
       
-      {/* Hovered target's requirements */}
+      {/* Requirements of the hovered target */}
       {hoveredValidation && (
         <div className={`p-3 rounded-lg border ${
           hoveredValidation.isValid 
@@ -147,7 +144,6 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
             </div>
           )}
 
-          {/* Missing requirements */}
           {hoveredValidation.missingRequirements.length > 0 && (
             <>
               <p className="text-xs font-medium text-red-400 ml-7 mb-1">Missing</p>
@@ -174,7 +170,6 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
             </>
           )}
           
-          {/* Satisfied requirements */}
           {hoveredValidation.satisfiedRequirements.length > 0 && (
             <>
               <p className="text-xs font-medium text-green-400 ml-7 mt-2 mb-1">Satisfied</p>

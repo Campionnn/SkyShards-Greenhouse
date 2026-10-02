@@ -1,10 +1,8 @@
 import type { ActivitySchedule } from "../sim/state";
 import { hourOfDay } from "./clock";
 
-// When is the player online? Every player action - harvesting, watering,
-// upkeep, re-placing, waking Snoozling, vacuuming rats, step changes - only
-// happens on active cycles. A cycle "fires" at `firesAt` seconds of simulated
-// time (the end of its growth stage).
+// Player online schedule. All player actions happen only on active cycles.
+// A cycle fires at `firesAt` simulated seconds (end of its growth stage).
 
 const LOOKAHEAD_LIMIT = 10_000;
 
@@ -23,11 +21,7 @@ export function isActive(schedule: ActivitySchedule, cycle: number, firesAt: num
   return schedule.windows.some((w) => inWindow(hour, w.from, w.to));
 }
 
-/**
- * Cycles from `cycle` until the next active cycle (>= 1), estimating future
- * fire times with the current cycle length. Infinity if none within the
- * lookahead - the player never returns.
- */
+/** Cycles (>= 1) to the next active cycle, assuming the current cycle length. Infinity if none within the lookahead. */
 export function cyclesUntilNextActive(
   schedule: ActivitySchedule,
   cycle: number,

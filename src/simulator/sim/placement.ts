@@ -7,15 +7,11 @@ import { closePlotDebts, credit, spend } from "./inventory";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isFootprintFree, isHarvestable, newPlant, removePlant } from "./plants";
 import type { PlantState, PlotState } from "./state";
 
-/**
- * Take a plant off the plot as the player would: harvest it if it is fully
- * grown and harvestable, clear a Dead Plant (the dead_plant item goes to
- * inventory), otherwise break it - a loss. Placed items drop nothing.
- */
+/** Player removal: harvest if harvestable, clear a Dead Plant (item back to inventory), else break it as a loss. */
 export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch, why: string): void {
   if (isHarvestable(p)) {
     harvestPlant(plot, p, ctx, scratch);
-    if (plot.plants.includes(p)) destroyPlant(plot, p, ctx, why); // a failed minigame (retry) left it standing: breaking it here is a loss
+    if (plot.plants.includes(p)) destroyPlant(plot, p, ctx, why); // failed "retry" minigame left it standing
     return;
   }
   if (p.isDeadPlant) {
@@ -29,19 +25,16 @@ export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, sc
 
 
 /**
- * Why plants are being placed:
- * - setup:   the scenario's starting layouts. Always placed, free - the run
- *            starts from the layout as entered, not from the starting inventory.
- * - step:   a later step of a flow laying its layout out.
- * - replace: re-placing what decayed or was destroyed (a recurring cost).
+ * - setup: starting layouts; free, never drawn from inventory.
+ * - step: a later flow step laying out.
+ * - replace: re-placing what decayed or was destroyed (counted as replacements).
  */
 export type PlacementMode = "setup" | "step" | "replace";
 
 /**
- * Place every layout plant that is missing and whose cells are free. Base
- * crops are free; outside setup, anything placed from inventory is a REQUIRED
- * spend, and a shortfall is recorded as debt (the cell stays empty; retried
- * next session).
+ * Place missing layout plants on free cells. Base crops are free; outside
+ * setup, placed items are a required spend and a shortfall records debt
+ * (cell stays empty, retried next session).
  */
 export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, mode: PlacementMode): void {
   const replacement = mode === "replace";
@@ -67,10 +60,8 @@ const matches = (p: PlantState, d: ResolvedLayout["plants"][number]) =>
   p.kindId === d.kindId && p.row === d.row && p.col === d.col && p.size === d.size && p.origin === d.origin;
 
 /**
- * Hybrid flows: is this natural spawn standing exactly where the layout
- * places the same mutation? Then it IS that layout input - growing or fully
- * grown, it counts toward its neighbours' requirements - and nothing needs
- * to be spent to put one there (`spawnsFillLayoutInputs`).
+ * Hybrid flows (`spawnsFillLayoutInputs`): a spawn standing exactly where the
+ * layout places the same mutation serves as that input, at any stage.
  */
 export function layoutInputAt(p: PlantState, layout: ResolvedLayout, config: SimConfig): boolean {
   if (!config.spawnsFillLayoutInputs || p.origin !== "spawned" || p.isDeadPlant) return false;
@@ -78,13 +69,9 @@ export function layoutInputAt(p: PlantState, layout: ResolvedLayout, config: Sim
 }
 
 /**
- * Enter a step: diff the plot against the new layout. Unless it is a full
- * clear:
- * - a plant identical to the layout's (kind, anchor, origin) is kept with its timers;
- * - a natural spawn standing where the layout places the same mutation is
- *   kept as that input (hybrid flows, `spawnsFillLayoutInputs`);
- * - a natural spawn entirely outside the new layout's plant cells is left alone.
- * Everything else is removed by the player; then the new plants are placed.
+ * Enter a step. Unless `fullClear`, keep: plants identical to the layout's
+ * (kind, anchor, origin) with their timers, spawns serving as layout inputs,
+ * and spawns entirely outside the layout's plant cells. Remove the rest, then place.
  */
 export function applyStepLayout(
   plot: PlotState,
@@ -110,25 +97,20 @@ export function applyStepLayout(
 
   plot.slots = layout.slots.map((s) => ({ ...s }));
   plot.groundTiles = { ...layout.groundTiles };
-  plot.groundOverrides = {}; // Chorus changes persist only within the step being exited.
+  plot.groundOverrides = {}; // Chorus ground changes last only within a step
   plot.slotIneligibleCycles = {};
   plot.watchStatus = {};
   closePlotDebts(ctx.state, plot.id);
   placeLayoutPlants(plot, layout, ctx, mode);
 }
 
-/**
- * Player upkeep during a session: clear Dead Plants the layout does not call
- * for, take natural spawns off layout cells they are blocking (a spawn that
- * stands in as the layout input is not blocking), and re-place whatever the
- * layout is missing.
- */
+/** Clear unwanted Dead Plants, remove spawns blocking layout cells (not layout inputs), re-place what's missing. */
 export function maintainLayout(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch): void {
   const desiredAt = new Map(layout.plants.map((d) => [cellIndex(d.row, d.col), d]));
   for (const p of [...plot.plants]) {
     if (!p.isDeadPlant) continue;
     const d = desiredAt.get(cellIndex(p.row, p.col));
-    if (d && matches(p, d)) continue; // the layout itself places a dead plant here
+    if (d && matches(p, d)) continue; // layout places a dead plant here
     removeByPlayer(plot, p, ctx, scratch, "cleared");
   }
 
@@ -137,7 +119,7 @@ export function maintainLayout(plot: PlotState, layout: ResolvedLayout, ctx: Cyc
     for (const idx of footprint(d.row, d.col, d.size)) {
       const q = occ[idx];
       if (!q || matches(q, d) || q.origin !== "spawned" || !plot.plants.includes(q)) continue;
-      if (layoutInputAt(q, layout, ctx.config)) continue; // a spawn standing in as this input
+      if (layoutInputAt(q, layout, ctx.config)) continue;
       removeByPlayer(plot, q, ctx, scratch, "blocking layout");
     }
   }

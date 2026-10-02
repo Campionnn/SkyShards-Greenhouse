@@ -2,22 +2,16 @@ import type { SavedLayout } from "../types/layout";
 
 const STORAGE_KEY = "skyshards-designer-designs";
 
-/**
- * Generate a unique ID for a layout
- */
 function generateLayoutId(): string {
   return `layout_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-/**
- * Check if data is in the correct format
- */
+/** Shape check on the first entry only. */
 function isValidFormat(data: any): data is SavedLayout[] {
   if (!Array.isArray(data)) return false;
-  if (data.length === 0) return true; // Empty array is valid
+  if (data.length === 0) return true;
   
   const firstItem = data[0];
-  // Check for required fields
   return (
     'id' in firstItem &&
     'name' in firstItem &&
@@ -28,16 +22,11 @@ function isValidFormat(data: any): data is SavedLayout[] {
   );
 }
 
-/**
- * Save layouts to localStorage
- */
 export function saveLayouts(layouts: SavedLayout[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(layouts));
 }
 
-/**
- * Load layouts from localStorage
- */
+/** Saved layouts; empty if missing, unparseable or malformed. */
 export function loadLayouts(): SavedLayout[] {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
@@ -56,24 +45,19 @@ export function loadLayouts(): SavedLayout[] {
   }
 }
 
-/**
- * Get a single layout by ID
- */
 export function getLayoutById(id: string): SavedLayout | null {
   const layouts = loadLayouts();
   return layouts.find(l => l.id === id) || null;
 }
 
-/**
- * Delete a layout by ID
- */
+/** Returns false if no layout had that id. */
 export function deleteLayout(id: string): boolean {
   try {
     const layouts = loadLayouts();
     const filtered = layouts.filter(l => l.id !== id);
     
     if (filtered.length === layouts.length) {
-      return false; // Nothing was deleted
+      return false;
     }
     
     saveLayouts(filtered);
@@ -84,33 +68,26 @@ export function deleteLayout(id: string): boolean {
   }
 }
 
-/**
- * Check if a layout name already exists
- */
 export function layoutNameExists(name: string, excludeId?: string): boolean {
   const layouts = loadLayouts();
   return layouts.some(l => l.name === name && l.id !== excludeId);
 }
 
-/**
- * Rename a layout
- */
+/** Fails if the id is unknown or another layout already has the name. */
 export function renameLayout(id: string, newName: string): boolean {
   try {
     const layouts = loadLayouts();
     const layoutIndex = layouts.findIndex(l => l.id === id);
     
     if (layoutIndex === -1) {
-      return false; // Layout not found
+      return false;
     }
     
-    // Check if new name already exists (excluding current layout)
     if (layoutNameExists(newName, id)) {
       console.warn('[Layout Storage] Cannot rename: name already exists');
       return false;
     }
     
-    // Update name and modifiedAt
     layouts[layoutIndex] = {
       ...layouts[layoutIndex],
       name: newName,
@@ -125,19 +102,16 @@ export function renameLayout(id: string, newName: string): boolean {
   }
 }
 
-/**
- * Update an existing layout (overwrite)
- */
+/** Overwrites a layout, keeping its id and savedAt. */
 export function updateLayout(id: string, layout: Omit<SavedLayout, 'id' | 'savedAt'>): boolean {
   try {
     const layouts = loadLayouts();
     const layoutIndex = layouts.findIndex(l => l.id === id);
     
     if (layoutIndex === -1) {
-      return false; // Layout not found
+      return false;
     }
     
-    // Keep the original id and savedAt
     layouts[layoutIndex] = {
       ...layout,
       id,
@@ -153,7 +127,4 @@ export function updateLayout(id: string, layout: Omit<SavedLayout, 'id' | 'saved
   }
 }
 
-/**
- * Generate unique layout ID (exported for external use)
- */
 export { generateLayoutId };

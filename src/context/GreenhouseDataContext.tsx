@@ -13,7 +13,6 @@ interface GreenhouseDataContextType {
   isLoading: boolean;
   error: string | null;
   
-  // mutations for solving
   selectedMutations: SelectedMutation[];
   addMutation: (id: string, name: string) => void;
   removeMutation: (id: string) => void;
@@ -21,31 +20,29 @@ interface GreenhouseDataContextType {
   updateMutationTargetCount: (id: string, count: number) => void;
   clearSelectedMutations: () => void;
   
-  // Effect weights for the solver (effect id -> weight in "spots"; 0 = ignored)
+  // Effect id -> weight in plain-mutation "spots"; 0 = ignored.
   effectWeights: Record<string, number>;
   setEffectWeight: (effectId: string, value: number) => void;
   resetEffectWeights: () => void;
-  // Maximizing gloomgourd alone is about raw spawn rate, so the weights are
+  // Maximizing gloomgourd alone optimises raw spawn rate, so weights are
   // dropped for that solve unless the user keeps them.
   weightsOverridden: boolean;
   canOverrideWeights: boolean;
   setKeepWeights: (keep: boolean) => void;
-  // What a solve should actually send.
+  // Weights a solve sends.
   effectiveEffectWeights: Record<string, number>;
   
-  // mutation definition
   getMutationDef: (id: string) => MutationDefinition | undefined;
   getCropDef: (id: string) => CropDefinition | undefined;
 }
 
 const GreenhouseDataContext = createContext<GreenhouseDataContextType | null>(null);
 
-// Load data from JSON
+// Builds crop and mutation lists from data.json; mutations are also listed as crops.
 function loadGreenhouseData() {
   const crops: CropDefinition[] = [];
   const mutations: MutationDefinition[] = [];
 
-  // Convert crops object to array with IDs
   for (const [id, crop] of Object.entries(greenhouseData.crops)) {
     crops.push({
       id,
@@ -61,7 +58,6 @@ function loadGreenhouseData() {
     });
   }
 
-  // Convert mutations object to array with IDs
   for (const [id, mutation] of Object.entries(greenhouseData.mutations)) {
     mutations.push({
       id,
@@ -78,7 +74,6 @@ function loadGreenhouseData() {
       requires_watering: mutation.requires_watering,
     });
 
-    // Also add mutation as a crop option
     crops.push({
       id,
       name: mutation.name,
@@ -103,19 +98,16 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
   const [error, setError] = useState<string | null>(null);
   
   const [selectedMutations, setSelectedMutations] = useState<SelectedMutation[]>(() => {
-    // Try to load from localStorage
     const saved = LocalStorageManager.loadMutationTargets();
     return saved || [];
   });
   const isInitialMutationsMount = useRef(true);
   
-  // Saved weights win; otherwise the defaults, which are also the only
-  // weights whose solutions the server caches (see DEFAULT_EFFECT_WEIGHTS).
+  // Saved weights, else the defaults (the only weights the server caches).
   const [effectWeights, setEffectWeightsState] = useState<Record<string, number>>(() => {
     return LocalStorageManager.loadEffectWeights() ?? { ...DEFAULT_EFFECT_WEIGHTS };
   });
 
-  // Load data from JSON on mount
   useEffect(() => {
     try {
       const { crops: cropsData, mutations: mutationsData } = loadGreenhouseData();
@@ -128,13 +120,12 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     }
   }, []);
   
-  // Save mutation targets to localStorage when they change (but not empty defaults)
   useEffect(() => {
     if (isInitialMutationsMount.current) {
       const saved = LocalStorageManager.loadMutationTargets();
       isInitialMutationsMount.current = false;
       if (!saved || saved.length === 0) {
-        return; // Don't save empty array on initial mount
+        return; // don't write an empty list on mount
       }
     }
     LocalStorageManager.saveMutationTargets(selectedMutations);
@@ -186,7 +177,7 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     LocalStorageManager.saveEffectWeights(DEFAULT_EFFECT_WEIGHTS);
   }, []);
 
-  // Gloomgourd on its own: solve for spawn rate, unless the user says otherwise.
+  // A lone maximize-gloomgourd target solves for spawn rate unless keepWeights is set.
   const [keepWeights, setKeepWeights] = useState(false);
   const canOverrideWeights = useMemo(
     () =>

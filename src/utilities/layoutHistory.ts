@@ -1,6 +1,6 @@
-// Undo / redo for the designer grid. Pure helpers over whole-layout snapshots
-// (inputs, targets, ground); DesignerProvider decides when an edit starts and
-// ends (a whole paint or drag stroke is one step).
+// Designer undo/redo: pure helpers over whole-layout snapshots (inputs,
+// targets, ground). DesignerProvider decides step boundaries; one paint or
+// drag stroke is one step.
 
 import type { GroundTile } from "./designEncoding";
 import type { LayoutTransform } from "./layoutTransform";
@@ -69,14 +69,12 @@ export function redoStep<P extends HistoryPiece>(
 }
 
 /**
- * Turns a stream of edits into undo steps. Every edit calls `touch` BEFORE it
- * changes anything, with a key that groups it: all edits of one paint / erase
- * stroke share the stroke's key, a one-off edit gets a fresh key. The first
- * touch of a key snapshots the layout right then, so the step always starts
- * from the true "before", however React batches or delays the renders that
- * follow. `commit` reports each rendered layout; the open step is recorded
- * once, the first time the layout really differs from its "before" (a stroke
- * that changed nothing records nothing).
+ * Groups edits into undo steps. Each edit calls `touch` before changing
+ * anything, with a key shared by all edits of one stroke (a one-off edit uses
+ * a fresh key). The first touch of a key snapshots the layout, so the step
+ * starts from the true "before" regardless of React batching. `commit`
+ * reports each rendered layout; the open step is recorded once, when the
+ * layout first differs from its "before", so a no-op stroke records nothing.
  */
 export interface EditRecorder<P extends HistoryPiece = HistoryPiece> {
   touch: (key: number, current: LayoutSnapshot<P>, transform?: LayoutTransform) => void;

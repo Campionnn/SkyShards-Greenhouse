@@ -12,12 +12,9 @@ export function formatChance(p: number): string {
 }
 
 /**
- * Which cell of a `size`x`size` element is under the cursor? A multi-cell plant
- * or target slot is ONE element, so the Sanity Check finds its cell from the
- * mouse position inside it: offset / (cellSize + gap), clamped to the element.
- * `rect` is the element's bounding box; its on-screen width is compared with
- * the layout width so a scaled page still maps correctly. Returns offsets from
- * the element's top-left cell.
+ * Cell of a `size`x`size` element under the cursor, as offsets from its top-left cell.
+ * A multi-cell plant or slot is one element, so the cell comes from offset / (cellSize + gap).
+ * `rect` is the on-screen bounding box; comparing it with the layout size handles a scaled page.
  */
 export function hoveredCellOffset(
   clientX: number,
@@ -59,11 +56,7 @@ export function describeBlocker(b: SanityBlocker, mutationId: string): string {
   }
 }
 
-/**
- * The entries that can't spawn, nearest to eligible first (fewest missing
- * requirements, data.json order breaking ties), capped. A DISPLAY aid to keep
- * the card short - not a ranking of layouts or mutations.
- */
+/** Entries that can't spawn, fewest missing requirements first (ties in data.json order), capped. Display only, not a ranking. */
 export function closestBlocked(result: SanityCheckResult, limit: number): { shown: SanityEntry[]; more: number } {
   const sorted = result.cannot
     .map((e, i) => ({ e, i }))

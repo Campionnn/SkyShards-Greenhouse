@@ -12,11 +12,6 @@ import { useInfoModal, getEffectDescription } from "../../context";
 import { MutationRequirementGrid } from "../ui";
 import type { CropDataJSON, MutationDataJSON } from "../../services/greenhouseDataService";
 
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-// Format buff/crop name for display
 function formatName(name: string): string {
   return name
     .split("_")
@@ -24,7 +19,6 @@ function formatName(name: string): string {
     .join(" ");
 }
 
-// Format ground type name
 function formatGroundType(ground: string): string {
   return ground
     .split("_")
@@ -42,7 +36,6 @@ function formatMinimumMutations(value: number | "infinite" | null): string {
 const DECAY_RULE_NOTE =
   "It can only decay once its timer has run out and it has helped create this many mutations; until then the timer extends by 24h. Plants of the same kind on a plot share the count.";
 
-// Get rarity color
 function getRarityColor(rarity: string): string {
   switch (rarity.toLowerCase()) {
     case "common":
@@ -77,10 +70,6 @@ function getRarityBgColor(rarity: string): string {
   }
 }
 
-// =============================================================================
-// Main Component
-// =============================================================================
-
 export const CropMutationInfoModal: React.FC = () => {
   const modalRef = useRef<HTMLDivElement>(null);
   const {
@@ -94,21 +83,18 @@ export const CropMutationInfoModal: React.FC = () => {
     closeInfo,
   } = useInfoModal();
 
-  // Determine what we're displaying
   const isMutation = !!mutationData;
   const data = mutationData || cropData;
 
-  // Build crop data map for requirement grid
   const cropDataMap = useMemo(() => {
     if (!allData) return {};
     const map: Record<string, CropDataJSON | MutationDataJSON> = {};
     
-    // Add all crops
     for (const [id, crop] of Object.entries(allData.crops)) {
       map[id] = crop;
     }
     
-    // Add all mutations (some requirements use mutations)
+    // Some requirements are mutations.
     for (const [id, mutation] of Object.entries(allData.mutations)) {
       map[id] = mutation;
     }
@@ -116,7 +102,6 @@ export const CropMutationInfoModal: React.FC = () => {
     return map;
   }, [allData]);
 
-  // Close modal on escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
@@ -128,7 +113,6 @@ export const CropMutationInfoModal: React.FC = () => {
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, closeInfo]);
 
-  // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -140,7 +124,6 @@ export const CropMutationInfoModal: React.FC = () => {
     };
   }, [isOpen]);
 
-  // Click outside to close
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
       closeInfo();
@@ -149,7 +132,6 @@ export const CropMutationInfoModal: React.FC = () => {
 
   if (!isOpen) return null;
 
-  // Loading state
   if (isLoading) {
     return (
       <div
@@ -169,7 +151,6 @@ export const CropMutationInfoModal: React.FC = () => {
     );
   }
 
-  // Error state
   if (error || !data) {
     return (
       <div
@@ -196,7 +177,6 @@ export const CropMutationInfoModal: React.FC = () => {
     );
   }
 
-  // Extract common fields
   const id = isMutation ? mutationData!.id : cropData!.id;
   const name = data.name;
   const size = data.size;
@@ -205,14 +185,13 @@ export const CropMutationInfoModal: React.FC = () => {
   const positiveBuffs = data.positive_buffs;
   const negativeBuffs = data.negative_buffs;
 
-  // Mutation-specific fields
   const rarity = isMutation ? mutationData!.rarity : null;
   const requirements = isMutation ? mutationData!.requirements : [];
   const special = isMutation ? mutationData!.special : null;
   // Days; 0 = never. Crops carry it too (optional in the data type).
   const decay: number | null = isMutation ? mutationData!.decay : cropData!.decay ?? null;
   const minimumMutations = isMutation ? mutationData!.minimum_mutations : cropData!.minimum_mutations;
-  // The rule only applies when something can actually decay and a count gates it.
+  // The rule applies only with a decay timer and a numeric minimum.
   const showDecayRule = decay !== null && decay > 0 && typeof minimumMutations === "number";
   const drops = isMutation ? mutationData!.drops : cropData!.drops ?? null;
   const requiresWatering = isMutation ? mutationData!.requires_watering ?? null : null;
@@ -250,7 +229,6 @@ export const CropMutationInfoModal: React.FC = () => {
           isMutation && (requirements.length > 0 || special === "all_positive_crop_effects" || (drops && Object.keys(drops).length > 0)) ? "max-w-3xl" : "max-w-lg"
         }`}
       >
-        {/* Modal Header */}
         <div className="flex-shrink-0 bg-slate-900 border-b border-slate-700 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between rounded-t-xl">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
@@ -297,11 +275,8 @@ export const CropMutationInfoModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Modal Content */}
         <div className={`p-4 sm:p-6 overflow-y-auto ${isMutation && (requirements.length > 0 || special === "all_positive_crop_effects" || (drops && Object.keys(drops).length > 0)) ? "flex flex-col lg:flex-row gap-4 lg:gap-6" : ""}`}>
-          {/* Left Column - General Info */}
           <div className={`space-y-4 ${isMutation && (requirements.length > 0 || special === "all_positive_crop_effects" || (drops && Object.keys(drops).length > 0)) ? "flex-1 min-w-0" : ""}`}>
-            {/* Ground Type */}
             <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Box className="w-4 h-4 text-emerald-400" />
@@ -319,7 +294,7 @@ export const CropMutationInfoModal: React.FC = () => {
               </div>
             </div>
 
-            {/* Growth Stages, Decay & Minimum mutations (tiles share a wrapping row) */}
+            {/* Growth stages, decay and minimum mutations share a wrapping row. */}
             {(growthStages !== null || decay !== null || minimumMutations !== undefined) && (
               <div className="flex flex-wrap gap-4">
                 {growthStages !== null && (
@@ -354,12 +329,10 @@ export const CropMutationInfoModal: React.FC = () => {
               </div>
             )}
 
-            {/* Decay rule note: only meaningful with a decay timer AND a numeric minimum */}
             {showDecayRule && (
               <p className="text-xs text-slate-500 leading-relaxed">{DECAY_RULE_NOTE}</p>
             )}
 
-            {/* Watering Requirement (Mutations Only) */}
             {isMutation && requiresWatering !== null && (
               <div
                 className={`rounded-lg p-4 border ${
@@ -386,7 +359,6 @@ export const CropMutationInfoModal: React.FC = () => {
               </div>
             )}
 
-            {/* Special Conditions (Mutations Only) */}
             {isMutation && special && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -401,7 +373,6 @@ export const CropMutationInfoModal: React.FC = () => {
               </div>
             )}
 
-            {/* Growing Info (Mutations Only) */}
             {isMutation && growingInfo && (
               <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -412,7 +383,6 @@ export const CropMutationInfoModal: React.FC = () => {
               </div>
             )}
 
-            {/* Harvest Info (Mutations Only) */}
             {isMutation && harvestInfo && (
               <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -423,7 +393,6 @@ export const CropMutationInfoModal: React.FC = () => {
               </div>
             )}
 
-            {/* Positive Buffs with Descriptions */}
             {positiveBuffs.length > 0 && (
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -448,7 +417,6 @@ export const CropMutationInfoModal: React.FC = () => {
               </div>
             )}
 
-            {/* Negative Buffs with Descriptions */}
             {negativeBuffs.length > 0 && (
               <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -472,7 +440,6 @@ export const CropMutationInfoModal: React.FC = () => {
                 </div>
               </div>
             )}
-            {/* Base Yield (Crops Only) */}
             {!isMutation && drops && Object.keys(drops).length > 0 && (
               <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -487,10 +454,9 @@ export const CropMutationInfoModal: React.FC = () => {
             )}
           </div>
 
-          {/* Right Column - Requirements & Drops (Mutations Only) */}
+          {/* Right column: requirements and drops (mutations only). */}
           {isMutation && (requirements.length > 0 || special === "all_positive_crop_effects" || (drops && Object.keys(drops).length > 0)) && (
             <div className="w-full lg:w-72 flex-shrink-0 space-y-4">
-              {/* Requirements Section */}
               {(requirements.length > 0 || special === "all_positive_crop_effects") && (
                 <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -498,7 +464,6 @@ export const CropMutationInfoModal: React.FC = () => {
                     <h3 className="text-sm font-medium text-slate-200">Requirements</h3>
                   </div>
                   
-                  {/* Mini Grid Layout - Full Width */}
                   <div className="w-full mb-4">
                     <MutationRequirementGrid
                       mutationId={id}
@@ -506,7 +471,6 @@ export const CropMutationInfoModal: React.FC = () => {
                     />
                   </div>
                   
-                  {/* Text List */}
                   <div className="space-y-1.5 border-t border-slate-600/30 pt-3">
                     {requirements.map((req, index) => {
                       const reqData = cropDataMap[req.crop];
@@ -531,7 +495,6 @@ export const CropMutationInfoModal: React.FC = () => {
                 </div>
               )}
               
-              {/* Drops Section */}
               {drops && Object.keys(drops).length > 0 && (
                 <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">

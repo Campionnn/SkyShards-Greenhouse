@@ -40,22 +40,15 @@ export function buildPool(
 }
 
 /**
- * The Bioanalysis accessory line (Talisman/Ring/Artifact) multiplies the chance
- * for a crop to mutate by 1 + bonus. In this pool model that is a uniform scale
- * on every mutation weight: while the pool sits under the floor the denominator
- * stays at `blankFillTo`, so the mutation arm - and every mutation's share of it -
- * grows by exactly that factor. Once the weights fill the floor the pool already
- * takes every roll, so the scale cannot push the total past 1.
+ * Bioanalysis: scales every weight by 1 + bonus. Below the floor this raises
+ * each mutation's chance by that factor; above it the total stays at 1.
  */
 export function applyMutationChanceBonus(pool: SpawnPool, bonus: number): SpawnPool {
   if (!bonus) return pool;
   return { ids: pool.ids, weights: pool.weights.map((w) => w * (1 + bonus)) };
 }
 
-/**
- * ONE roll over the whole pool: any candidate can win, and the blank absorbs
- * the slack below the floor. Rolling per candidate would break dilution.
- */
+/** One roll over the whole pool (not per candidate); the blank fills up to the floor. */
 export function rollPool(pool: SpawnPool, rng: RngState, blankFillTo: number): string | null {
   if (pool.ids.length === 0) return null;
   const i = weightedPick(rng, pool.weights, poolDenominator(pool.weights, blankFillTo));

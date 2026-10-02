@@ -14,9 +14,9 @@ import { cycleSeconds } from "../growth/clock";
 import { CONFIG_META, DEFAULT_CONFIG } from "../config";
 import type { SimulationState, TimedEvent } from "./state";
 
-// ENGINE.md §5 test vectors, adapted to the user-confirmed rules (placed
+// #N labels number the engine test vectors. Rules checked here: placed
 // mutation items go in fully grown, are never harvested and drop nothing;
-// player actions happen only on active cycles; every empty cell rolls).
+// player actions happen only on active cycles; every empty cell rolls.
 
 const json = (s: SimulationState) => JSON.stringify(s);
 const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
@@ -108,9 +108,7 @@ describe("vertical slice: one plot, one mutation, spawned and harvested", () => 
       const h = ofKind(r.events, "harvested");
       const sp = ofKind(r.events, "spawned");
       if (h.length) harvests += 1;
-      // The spawn roll is part of the game tick, the harvest part of the
-      // player's session afterwards; so the harvested cell stays empty
-      // until the next cycle's roll.
+      // Spawn rolls in the game tick, harvest in the later player session.
       if (h.length && sp.length) expect(r.events.indexOf(sp[0])).toBeLessThan(r.events.indexOf(h[0]));
       if (h.length) expect(plantAt(s, 1, 4, 5)).toBeUndefined();
     }
@@ -238,9 +236,7 @@ describe("run: batched and stepped are one path", () => {
 });
 
 describe("growth", () => {
-  // These are about growth stages and gates, not water: with the player away,
-  // a plant drinking 18-22 a cycle would dry out (and halt) within ~10 cycles
-  // (fresh spawns start at 0), so water loss is pinned to 0 here.
+  // Water loss pinned to 0: with the player away, unwatered plants would dry out and halt mid-test.
   const noWaterLoss = { waterLossMin: 0, waterLossMax: 0 };
   const empty = () => start(singlePlot(layout(), { config: { ...slotsOnly, ...noWaterLoss }, activity: NEVER_ACTIVE }));
 
@@ -257,9 +253,7 @@ describe("growth", () => {
   });
 
   it("a 0-stage spawn is fully grown as it appears and latches the effects its neighbours give it", () => {
-    // Pumpkin + melon around the Gloomgourd target, with a placed Cindershade (gives
-    // improved_harvest_boost to its cardinal neighbours) right below the target.
-    // Nobody waters the pumpkin and melon, so they'd dry out before fully grown and stop counting as the ring.
+    // The Cindershade below the target gives improved_harvest_boost to its cardinal neighbours.
     const sc = singlePlot(layout([["pumpkin", 4, 4], ["melon", 4, 6], ["cindershade", 5, 5]], [["gloomgourd", 4, 5]]), {
       config: { ...slotsOnly, ...noWaterLoss },
       inventory: { cindershade: 1 },
@@ -381,7 +375,7 @@ describe("water", () => {
     const s = dry();
     inject(s, 1, "thunderling", 5, 5, "spawned");
     const r = engine.run(s, 5);
-    // Spawned at stage 1 with 0 water (every spawn does); it never drinks, so it stays at 0 and never halts.
+    // Spawns start at 0 water; this one never drinks, so it stays at 0.
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ stage: 6, water: 0 });
   });
 
@@ -410,10 +404,9 @@ describe("decay and placed items", () => {
   });
 
   it("#9 a spawned mutation's timer starts when it spawns, not when it becomes fully grown", () => {
-    // Water loss pinned to 0: unwatered, the Startlevine would dry out and halt mid-growth; this is about the timer.
+    // Water loss pinned to 0 so the unwatered Startlevine doesn't halt mid-growth.
     const s = start(singlePlot(layout(), { config: { ...slotsOnly, waterLossMin: 0, waterLossMax: 0 }, activity: NEVER_ACTIVE }));
     inject(s, 1, "startlevine", 5, 5, "spawned");
-    // 12 stages to grow, so 5 days is already counting down while it is still growing.
     expect(plantAt(s, 1, 5, 5)?.decaySecondsRemaining).toBe(5 * 86400);
     const mid = engine.run(s, 10).state;
     const p = plantAt(mid, 1, 5, 5)!;
@@ -503,7 +496,7 @@ describe("spawning", () => {
     expect(Math.max(...perCycle.values())).toBe(1);
     expect(r.summary.spawned.gloomgourd).toBeGreaterThan(0);
     expect(r.summary.spawned.dustgrain).toBeGreaterThan(0);
-    // #26 a rival won the Gloomgourd slot
+    // #26: every Dustgrain is a rival that won the Gloomgourd slot.
     expect(r.summary.rivals.spawned).toBe(r.summary.spawned.dustgrain);
   });
 
@@ -593,11 +586,8 @@ describe("player activity", () => {
     expect(r.summary.harvested.gloomgourd).toBeGreaterThan(0);
     for (const e of ofKind(r.events, "harvested")) {
       const grown = ofKind(r.events, "fullyGrown").filter((g) => g.kindId === "gloomgourd" && g.cycle <= e.cycle).pop()!;
-      // A spawn lives 7 cycles counting the tick it appears (spawn runs before decay, so its
-      // timer already ticks that cycle). Gloomgourd has no growth stages, so it is fully grown
-      // on that same spawn tick and decays on the 6th cycle after it; sessions every 3 mean the
-      // last session that still sees it alive falls 3-5 cycles after it is fully grown. Any
-      // earlier one is skipped.
+      // A 0-stage Gloomgourd is fully grown on its spawn tick and decays 6 cycles later. With
+      // sessions every 3 cycles, the last session before that falls 3-5 cycles after it grew.
       expect(e.cycle - grown.cycle).toBeGreaterThanOrEqual(3);
       expect(e.cycle - grown.cycle).toBeLessThanOrEqual(5);
     }

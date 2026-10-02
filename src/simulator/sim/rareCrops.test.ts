@@ -66,7 +66,7 @@ describe("armor Rare Crops", () => {
   });
 
   it("harvest yield scales ONLY the Ethereal Vine count: a guaranteed vine at yield 1.5 gives 1, or 2 about half the time", () => {
-    // Ashwreath is common: base Ethereal Vine chance 0.15, x Overbloom 600 (x7) = 105%: guaranteed + a small extra roll, capped off by capRareCropChance below.
+    // Common Ashwreath: Ethereal Vine 0.15 x Overbloom 600 (x7) = 105%, capped to a guaranteed vine by capRareCropChance.
     const counts = Array.from({ length: 400 }, (_, i) =>
       harvestOne(i + 1, { overbloom: 600, plantYieldUpgrade: 0.5 }, { capRareCropChance: true }).h.drops.ethereal_vine,
     );

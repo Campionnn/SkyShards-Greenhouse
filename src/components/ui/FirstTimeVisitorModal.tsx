@@ -16,7 +16,6 @@ export const FirstTimeVisitorModal: React.FC<FirstTimeVisitorModalProps> = ({
   const modalRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  // Close modal on escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
@@ -28,7 +27,6 @@ export const FirstTimeVisitorModal: React.FC<FirstTimeVisitorModalProps> = ({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
-  // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -40,7 +38,6 @@ export const FirstTimeVisitorModal: React.FC<FirstTimeVisitorModalProps> = ({
     };
   }, [isOpen]);
 
-  // Click outside to close
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
       onClose();
@@ -72,7 +69,6 @@ export const FirstTimeVisitorModal: React.FC<FirstTimeVisitorModalProps> = ({
         ref={modalRef}
         className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl"
       >
-        {/* Modal Header */}
         <div className="border-b border-slate-700 px-6 py-5">
           <h2 className="text-2xl font-semibold text-slate-100 text-center">
             SkyShards Greenhouse Calculator!
@@ -82,10 +78,8 @@ export const FirstTimeVisitorModal: React.FC<FirstTimeVisitorModalProps> = ({
           </p>
         </div>
 
-        {/* Modal Content */}
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Configure Grid Option */}
             <button
               onClick={handleConfigureGrid}
               className="group relative bg-slate-800/50 hover:bg-slate-800 border border-slate-600/50 hover:border-emerald-500/50 rounded-lg p-6 transition-all duration-200 cursor-pointer text-left"
@@ -105,7 +99,6 @@ export const FirstTimeVisitorModal: React.FC<FirstTimeVisitorModalProps> = ({
               </div>
             </button>
 
-            {/* Calculator Option */}
             <button
               onClick={handleGoToCalculator}
               className="group relative bg-slate-800/50 hover:bg-slate-800 border border-slate-600/50 hover:border-blue-500/50 rounded-lg p-6 transition-all duration-200 cursor-pointer text-left"
@@ -125,7 +118,6 @@ export const FirstTimeVisitorModal: React.FC<FirstTimeVisitorModalProps> = ({
               </div>
             </button>
 
-            {/* Designer Option */}
             <button
               onClick={handleGoToDesigner}
               className="group relative bg-slate-800/50 hover:bg-slate-800 border border-slate-600/50 hover:border-purple-500/50 rounded-lg p-6 transition-all duration-200 cursor-pointer text-left"

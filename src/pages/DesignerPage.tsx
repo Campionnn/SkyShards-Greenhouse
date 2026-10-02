@@ -26,11 +26,10 @@ export const DesignerPage: React.FC = () => {
   const { getCropDef, getMutationDef, isLoading: isDataLoading } = useGreenhouseData();
   const [hasLoadedFromUrl, setHasLoadedFromUrl] = useState(false);
   
-  // Grid sizing: fit the available width, never scroll
+  // Cells fit the available width; the grid never scrolls.
   const fitRef = useRef<HTMLDivElement>(null);
   const gridSize = useFitCellSize(fitRef);
 
-  // Get crop counts for display
   const inputCropCounts = React.useMemo(() => {
     const counts = new Map<string, { name: string; rarity: string; count: number }>();
     for (const p of inputPlacements) {
@@ -75,7 +74,7 @@ export const DesignerPage: React.FC = () => {
     return targetPlacements.reduce((sum, p) => sum + (p.size * p.size), 0);
   }, [targetPlacements]);
   
-// Export grid function for Playwright-based share image generation
+  // Share-image export, called by the Playwright renderer via window.exportGrid.
   const exportGridForShare = useCallback(async (): Promise<string> => {
     if (!gridRef.current) {
       throw new Error('Grid not available');
@@ -86,7 +85,7 @@ export const DesignerPage: React.FC = () => {
       throw new Error('Grid element not found');
     }
     
-    // Build crop info for the watermark
+    // Crop info for the watermark.
     const inputCrops = aggregateCropInfo(
       inputPlacements.map(p => {
         const def = getCropDef(p.cropId) || getMutationDef(p.cropId);
@@ -94,7 +93,7 @@ export const DesignerPage: React.FC = () => {
       })
     );
     
-    // Always include target crops in the count, even if hidden visually
+    // Target crops always count, even when hidden.
     const targetCrops = aggregateCropInfo(
       targetPlacements.map(p => {
         const def = getMutationDef(p.cropId) || getCropDef(p.cropId);
@@ -103,7 +102,7 @@ export const DesignerPage: React.FC = () => {
     );
     
     const options = {
-      scale: 2,  // 2x scale - Discord targets ~800px, too large causes aggressive compression
+      scale: 2, // Discord targets ~800px; larger images get heavily compressed.
       includeWatermark: true,
       watermarkUrl: "greenhouse.skyshards.com",
       watermarkTitle: "Greenhouse Designer",
@@ -116,7 +115,6 @@ export const DesignerPage: React.FC = () => {
     return result.dataUrl;
   }, [gridRef, inputPlacements, targetPlacements, showTargets, getCropDef, getMutationDef]);
   
-  // Expose exportGrid to window for Playwright access
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).exportGrid = exportGridForShare;
@@ -127,10 +125,9 @@ export const DesignerPage: React.FC = () => {
     };
   }, [exportGridForShare]);
   
-  // Track layout loading state for Playwright
+  // Layout load state, read by Playwright via window.layoutLoadState.
   const [layoutLoadState, setLayoutLoadState] = useState<'pending' | 'loaded' | 'error' | 'no-layout'>('pending');
   
-  // Function to load a layout from an encoded string
   const loadLayoutFromCode = useCallback(async (layoutCode: string) => {
     if (!layoutCode) {
       setLayoutLoadState('no-layout');
@@ -142,7 +139,6 @@ export const DesignerPage: React.FC = () => {
     try {
       const { inputs, targets, groundTiles } = decodeDesign(layoutCode);
       
-      // Convert to the format expected by loadFromSolverResult
       const crops = inputs.map(p => {
         const cropDef = getCropDef(p.cropId);
         const mutationDef = getMutationDef(p.cropId);
@@ -177,7 +173,7 @@ export const DesignerPage: React.FC = () => {
     }
   }, [getCropDef, getMutationDef, loadFromSolverResult]);
   
-  // Expose loadLayoutFromCode to window for Playwright access
+  // Exposed for Playwright.
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).loadLayoutFromCode = loadLayoutFromCode;
@@ -188,9 +184,8 @@ export const DesignerPage: React.FC = () => {
     };
   }, [loadLayoutFromCode]);
   
-  // Auto-load layout from URL parameter
+  // Load the ?layout= share code once, after greenhouse data has loaded.
   useEffect(() => {
-    // Wait for greenhouse data to load and only run once
     if (isDataLoading || hasLoadedFromUrl) return;
     
     const layoutCode = searchParams.get("layout");
@@ -221,7 +216,6 @@ export const DesignerPage: React.FC = () => {
       });
   }, [searchParams, isDataLoading, hasLoadedFromUrl, loadLayoutFromCode, toast]);
   
-  // Expose layout load state to window for Playwright to check
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).layoutLoadState = layoutLoadState;
@@ -235,7 +229,7 @@ export const DesignerPage: React.FC = () => {
   return (
     <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl">
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[300px_minmax(0,1fr)_380px] gap-4 lg:gap-6 lg:items-start">
-        {/* Left column: layout actions + validation. Sticky on desktop, scrolls internally. */}
+        {/* Actions and validation column: sticky on desktop, scrolls internally. */}
         <div className="order-2 space-y-4 lg:col-start-1 lg:row-start-2 xl:row-start-1 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto scrollbar-dark xl:pr-1">
           <Panel title="Layout" icon={<LayoutTemplate />}>
             <DesignerActions gridRef={gridRef} showTargets={showTargets} />
@@ -274,7 +268,6 @@ export const DesignerPage: React.FC = () => {
               </div>
             </div>
             
-            {/* Grid Layout */}
             <div className="mb-4">
               <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
                 Grid Layout
@@ -289,10 +282,8 @@ export const DesignerPage: React.FC = () => {
               </div>
             </div>
             
-            {/* Crop Counts Display */}
             {(targetCropCounts.length > 0 || inputCropCounts.length > 0) && (
               <>
-                {/* Target Mutations */}
                 {targetCropCounts.length > 0 && (
                   <div className="mb-4">
                     <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
@@ -320,7 +311,6 @@ export const DesignerPage: React.FC = () => {
                   </div>
                 )}
                 
-                {/* Input Crops */}
                 {inputCropCounts.length > 0 && (
                   <div className="mb-4">
                     <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
@@ -346,7 +336,6 @@ export const DesignerPage: React.FC = () => {
                   </div>
                 )}
                 
-                {/* Total Cells Used */}
                 <div className="bg-slate-700/30 rounded-md px-3 py-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-400">Total Cells Used:</span>
@@ -360,7 +349,7 @@ export const DesignerPage: React.FC = () => {
           </div>
         </div>
         
-        {/* Right column: the palette, with the Inputs/Targets switch. Same sticky treatment as the left. */}
+        {/* Palette column with the Inputs/Targets switch, sticky like the left column. */}
         <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 h-[500px] lg:h-[calc(100vh-2rem)] order-3 lg:col-start-2 lg:row-start-1 lg:row-span-2 xl:col-start-3 xl:row-span-1 lg:sticky lg:top-4 min-h-0">
           <CropSelectionPalette className="h-full" />
         </div>

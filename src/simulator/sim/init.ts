@@ -10,7 +10,7 @@ import { isDry } from "./plants";
 import { zeroSummary } from "./summary";
 import type { PlotState, Scenario, SimulationState, TimedEvent } from "./state";
 
-/** Base crops standing on any plot - the shared unique-crop count. A dried-out crop doesn't count. */
+/** Unique base-crop groups standing across all plots, excluding dried-out crops. */
 export function uniqueCropsAcross(state: SimulationState, env: Env): number {
   const { config } = state.scenario.settings;
   const kinds = new Set<string>();
@@ -21,10 +21,8 @@ export function uniqueCropsAcross(state: SimulationState, env: Env): number {
 }
 
 /**
- * Build the starting state from a scenario. The player's setup session
- * happens here: every plot's starting step is laid out exactly as entered.
- * Setup is free and always succeeds - the starting inventory is only drawn on
- * once the run has to re-place something or a later step lays out.
+ * Build the starting state. Each plot's starting step is laid out for free
+ * (setup never draws on the starting inventory).
  */
 export function initState(env: Env, scenario: Scenario): { state: SimulationState; events: TimedEvent[] } {
   const issues = validateScenario(scenario, env.data);

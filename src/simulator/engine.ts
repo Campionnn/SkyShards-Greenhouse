@@ -9,21 +9,18 @@ import { injectItems } from "./sim/inventory";
 import { run } from "./sim/run";
 import type { BatchResult, RunOptions, Scenario, SimulationState } from "./sim/state";
 
-/**
- * The simulator over one immutable data set. It evaluates the scenario it is
- * given - it never generates, ranks, compares or repairs layouts.
- */
+/** Simulator over one immutable data set. Evaluates scenarios only; never generates or ranks layouts. */
 export function createEngine(data: GameData = defaultGameData()) {
   const env: Env = { data, resolveLayout: createLayoutResolver(data) };
   return {
     data,
     validate: (scenario: Scenario) => validateScenario(scenario, data),
-    /** Starting state (the setup session has already laid every plot out). */
+    /** Starting state, after the setup session has laid out every plot. */
     initState: (scenario: Scenario) => initState(env, scenario),
     /** Advance `ticks` cycles. `run(state, 1)` is a step. */
     run: (state: SimulationState, ticks: number, opts?: RunOptions): BatchResult => run(env, state, ticks, opts),
     analyse: (state: SimulationState) => analyseSustainability(state, data),
-    /** Add (or remove, negative) items in a live run's inventory. Returns a new state; time does not move. */
+    /** Add (negative: remove) inventory items. Returns a new state; time does not move. */
     addItems: (state: SimulationState, items: Record<string, number>) => injectItems(state, items),
   };
 }

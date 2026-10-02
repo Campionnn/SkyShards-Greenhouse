@@ -39,7 +39,7 @@ export const ScenarioPanel: React.FC<{
   const { toast } = useToast();
   const [json, setJson] = useState<string | null>(null);
 
-  // Flows only: player stats, schedule, seed, Actions defaults, config and inventory stay out.
+  // Exports flows only: no player stats, schedule, seed, Actions defaults, config or inventory.
   const exportJson = () => {
     const text = JSON.stringify(exportFlows(scenario), null, 2);
     navigator.clipboard.writeText(text).catch(() => undefined);
@@ -204,7 +204,7 @@ export const SettingsPanel: React.FC<{ scenario: Scenario; onChange: (sc: Scenar
   const { settings } = scenario;
   const setSettings = (patch: Partial<Scenario["settings"]>) => onChange({ ...scenario, settings: { ...settings, ...patch } });
   const setConfig = (patch: Partial<SimConfig>) => setSettings({ config: { ...settings.config, ...patch } });
-  // Per-kind decay overrides count too (one per kind), so "Restore defaults" can clear them.
+  // Per-kind decay overrides count once per kind, so "Restore defaults" clears them too.
   const kindOverrides = new Set([...Object.keys(settings.config.decayDaysOverrides ?? {}), ...Object.keys(settings.config.minimumMutationsOverrides ?? {})]).size;
   const nonDefault = CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length + kindOverrides;
 
@@ -380,9 +380,8 @@ type MinimumChoice = "data" | "count" | "infinite" | "none";
 const describeMinimum = (m: MinimumMutations): string => (m === null ? "none" : m === "infinite" ? "∞" : String(m));
 
 /**
- * Per-kind overrides of the decay timer (`decayDaysOverrides`, days, 0 = never)
- * and the minimum mutations (`minimumMutationsOverrides`). Compact: only kinds
- * with an override are listed; the picker adds one.
+ * Per-kind overrides of the decay timer (`decayDaysOverrides`, days, 0 = never) and minimum
+ * mutations (`minimumMutationsOverrides`). Lists only overridden kinds; the picker adds one.
  */
 export const KindDecayOverrides: React.FC<{ config: SimConfig; onChange: (patch: Partial<SimConfig>) => void }> = ({ config, onChange }) => {
   const days = config.decayDaysOverrides ?? {};

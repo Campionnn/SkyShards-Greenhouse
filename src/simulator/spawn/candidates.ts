@@ -2,14 +2,9 @@ import type { GameData, MutationDef } from "../data/types";
 import { requiresZeroAdjacent } from "./multiplicity";
 
 /**
- * Mutations that can appear in any pool on a plot, given which kinds stand on
- * it. Coarse on purpose: the exact ring is checked per location.
- *
- * Differences from solver/spawn.py candidate_mutations, both deliberate:
- * - Godseed IS a candidate here. The solver drops it (it only competes for
- *   its own slot there); the simulator rolls every empty cell, and Godseed
- *   eligibility is a per-location effect test anyway.
- * - Returned in data.json order, which is the fixed pool order.
+ * Coarse per-plot candidates from the kinds standing on it; rings are checked
+ * per location. Unlike solver/spawn.py, Godseed is included (eligibility is a
+ * per-location effect test). Returned in data.json order (the pool order).
  */
 export function candidateMutations(placedKinds: ReadonlySet<string>, data: GameData): MutationDef[] {
   const out: MutationDef[] = [];

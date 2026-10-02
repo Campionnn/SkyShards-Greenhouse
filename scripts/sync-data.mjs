@@ -1,6 +1,6 @@
-// Copy the canonical game data from the sibling SkyShards-API checkout into
+// Copies the canonical game data from the sibling SkyShards-API checkout to
 // public/greenhouse/data.json, byte for byte. src/simulator/data/data.test.ts
-// fails if the two copies drift apart.
+// fails if the copies differ.
 //
 // Usage: pnpm sync:data
 

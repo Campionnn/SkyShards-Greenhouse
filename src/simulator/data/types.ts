@@ -9,11 +9,9 @@ export type Size = 1 | 2 | 3;
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 /**
- * Minimum mutation value (0.27.2): how many mutation spawns a plant of this kind
- * must help before its decay timer may remove it.
- * - a positive integer: the minimum;
- * - `"infinite"`: never reached, so the plant never decays (Magic Jellybean);
- * - `null`: N/A, no minimum, so decay is timer-only.
+ * Mutation spawns a plant must help before its decay timer may remove it:
+ * a positive integer, `"infinite"` (never decays, e.g. Magic Jellybean), or
+ * `null` (timer only).
  */
 export type MinimumMutations = number | "infinite" | null;
 
@@ -23,11 +21,11 @@ export interface CropDef {
   name: string;
   size: Size;
   ground: string;
-  /** null for fire / dead_plant / fermento: they never grow and cannot be harvested. */
+  /** null for fire / dead_plant / fermento (never grow, not harvestable). */
   growthStages: number | null;
-  /** DAYS, like `MutationDef.decayDays`. 0 = never decays (fire, fermento); 3 for base crops and dead_plant. */
+  /** Days. 0 = never decays (fire, fermento); 3 for base crops and dead_plant. */
   decayDays: number;
-  /** See `MinimumMutations`. 12 for base crops, 10 for dead_plant, null (N/A) for fire / fermento. */
+  /** 12 for base crops, 10 for dead_plant, null for fire / fermento. */
   minimumMutations: MinimumMutations;
   positiveBuffs: EffectId[];
   negativeBuffs: EffectId[];
@@ -45,9 +43,9 @@ export interface MutationDef {
   rarity: Rarity;
   /** 0 = fully grown the cycle after it spawns. */
   growthStages: number;
-  /** DAYS (not hours - the backend docstring is wrong). 0 = never decays. */
+  /** Days (the backend docstring says hours; it is wrong). 0 = never decays. */
   decayDays: number;
-  /** See `MinimumMutations`. A kind with `decayDays` 0 never decays, whatever its minimum (Fleshtrap: 0 days, minimum 6). */
+  /** `decayDays` 0 means never decays regardless of minimum (Fleshtrap: 0 days, minimum 6). */
   minimumMutations: MinimumMutations;
   positiveBuffs: EffectId[];
   negativeBuffs: EffectId[];
@@ -74,7 +72,7 @@ export interface GameData {
   crops: Record<KindId, CropDef>;
   mutations: Record<MutationId, MutationDef>;
   effects: Record<EffectId, EffectDef>;
-  /** data.json order - the fixed iteration order used wherever order is observable. */
+  /** data.json order: the fixed iteration order wherever order is observable. */
   cropIds: KindId[];
   mutationIds: MutationId[];
   negativeEffects: EffectId[];

@@ -1,10 +1,8 @@
 /**
- * Which server solves: the public API or a local solver on the user's machine.
- *
- * The local solver (https://github.com/Campionnn/SkyShards-Solver) is the same
- * solver as api.skyshards.com, started by the user on 127.0.0.1. Settings live
- * in localStorage; the services read them at call time, so flipping the toggle
- * takes effect on the next solve.
+ * Chooses the solving server: the public API or the local solver
+ * (https://github.com/Campionnn/SkyShards-Solver, same solver, on 127.0.0.1).
+ * Settings are read from localStorage at call time, so a toggle applies to the
+ * next solve.
  */
 
 export const REMOTE_API_BASE = import.meta.env.DEV ? "/api" : "https://api.skyshards.com";
@@ -54,8 +52,7 @@ export function loadLocalSolverSettings(): LocalSolverSettings {
     const parsed = JSON.parse(raw) as Partial<LocalSolverSettings>;
     const port = Number(parsed.port);
     const timeLimit = parsed.timeLimit === null || parsed.timeLimit === undefined ? null : Number(parsed.timeLimit);
-    // The local solver runs on this machine and applies whatever we send, so
-    // the only rule is that the number is positive.
+    // The local solver accepts any time limit; only require a positive number.
     return {
       enabled: Boolean(parsed.enabled),
       port: Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_LOCAL_PORT,
@@ -70,7 +67,7 @@ export function saveLocalSolverSettings(settings: LocalSolverSettings): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch {
-    // localStorage unavailable: the setting just does not persist
+    // localStorage unavailable: the setting does not persist.
   }
   probeCache = null;
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
@@ -83,17 +80,15 @@ export function onLocalSolverSettingsChange(listener: () => void): () => void {
 }
 
 export function localSolverBase(port: number = loadLocalSolverSettings().port): string {
-  // 127.0.0.1 rather than localhost: avoids an IPv6 (::1) first attempt that the
-  // local server, bound to 127.0.0.1, would refuse.
+  // Not "localhost": an IPv6 (::1) attempt would be refused by the server bound to 127.0.0.1.
   return `http://127.0.0.1:${port}`;
 }
 
 let probeCache: { at: number; port: number; health: LocalSolverHealth | null } | null = null;
 
 /**
- * Ask the local solver for its health. Null when it is not running (or the
- * browser blocked the request). Results are cached briefly so the mutation
- * preview grid, which solves often, does not probe on every call.
+ * Local solver health, or null if it is not running or the request was blocked.
+ * Cached for PROBE_CACHE_MS so frequent preview solves do not probe every call.
  */
 export async function probeLocalSolver(
   port: number = loadLocalSolverSettings().port,

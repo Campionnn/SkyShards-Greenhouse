@@ -38,12 +38,11 @@ export const GridCell: React.FC<GridCellProps> = ({
   const expansionStep = getExpansionStep(row, col);
   const hasExpansionOverlay = expansionSteps.length > 0;
   
-  // Reset painted flag when dragging stops
+  // A new drag may paint this cell again.
   if (!isDragging && paintedRef.current) {
     paintedRef.current = false;
   }
   
-  // size classes
   const sizeClasses = {
     sm: "w-6 h-6 text-[8px]",
     md: "w-10 h-10 text-xs",
@@ -53,16 +52,15 @@ export const GridCell: React.FC<GridCellProps> = ({
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isInteractive || hasExpansionOverlay) return;
     
-    // Prevent text selection
     e.preventDefault();
     
-    // Handle expansion overlay clicks
+    // Only the next expansion step is clickable while the overlay shows.
     if (expansionStep && expansionStep.order === 1) {
       unlockCell(row, col);
       return;
     }
     
-    // Set the paint mode based on the current cell state
+    // The first cell of a drag decides whether the stroke locks or unlocks.
     if (paintModeRef?.current === null) {
       if (isUnlocked) {
         paintModeRef.current = 'lock';
@@ -76,7 +74,6 @@ export const GridCell: React.FC<GridCellProps> = ({
   };
   
   const handleClick = (e: React.MouseEvent) => {
-    // Only handle click if we didn't drag
     if (hasDraggedRef?.current) {
       e.preventDefault();
       e.stopPropagation();
@@ -89,7 +86,7 @@ export const GridCell: React.FC<GridCellProps> = ({
     const paintMode = paintModeRef?.current;
     if (!paintMode) return;
     
-    // Apply the paint mode to this cell without adjacency restriction
+    // No adjacency requirement.
     if (paintMode === 'unlock' && !isUnlocked) {
       unlockCell(row, col);
       paintedRef.current = true;
@@ -128,7 +125,7 @@ export const GridCell: React.FC<GridCellProps> = ({
       cellClasses += " hover:bg-slate-600/50 hover:border-emerald-500/50 cursor-pointer";
     }
   } else {
-    // Locked cells - now clickable
+    // Locked, not adjacent to an unlocked cell.
     cellClasses += " bg-slate-800/30 border-slate-700/50 text-slate-600";
     if (isInteractive) {
       cellClasses += " hover:bg-slate-700/40 hover:border-slate-600/70 cursor-pointer";

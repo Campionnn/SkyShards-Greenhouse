@@ -1,10 +1,9 @@
 import type { Engine } from "../engine";
 import type { BatchResult, RetainEvents, RunSummary, SimulationState, TickEventKind, TimedEvent } from "../sim/state";
 
-// Time-sliced execution of one long run. The driver calls run(state, k)
-// repeatedly - legitimate because run(s, a) then run(result, b) equals
-// run(s, a + b) - and yields to the event loop between slices so a Stop
-// message can be processed. It is the only place allowed to read the clock.
+// Time-sliced long run: repeated run(state, k) slices (valid because run is
+// splittable), yielding between slices so Stop can be handled. The only
+// simulator code allowed to read the clock.
 
 const SLICE_BUDGET_MS = 16;
 const PROGRESS_INTERVAL_MS = 100;
@@ -13,17 +12,13 @@ export interface DriveOptions {
   retainEvents: RetainEvents;
   shouldStop: () => boolean;
   onProgress?: (p: { cycle: number; done: number; total: number; summary: RunSummary }) => void;
-  /** With retainEvents 'all': keep only events from the last N cycles (the UI's recent-events log). */
+  /** With retainEvents 'all': keep only events from the last N cycles. */
   keepLastCycles?: number;
-  /** Event kinds too noisy to ship to the UI (e.g. every "advanced" growth step). */
+  /** Event kinds not shipped to the UI (e.g. "advanced"). */
   dropKinds?: readonly TickEventKind[];
-  /** Yield between slices (a macrotask in the worker; tests may pass a no-op). */
+  /** Yield between slices (macrotask; tests may pass a no-op). */
   yieldToEventLoop?: () => Promise<void>;
-  /**
-   * Hand the state at every multiple of `every()` cycles to `save` (the
-   * session's timeline, so the UI can go back). Slices are cut at those
-   * cycles; that does not change the result because run() is splittable.
-   */
+  /** Passes the state at every multiple of `every()` cycles to `save` (the timeline); slices are cut there. */
   checkpoints?: { every: () => number; save: (state: SimulationState) => void };
 }
 

@@ -1,26 +1,25 @@
 /**
- * Every tunable or unpublished value the simulator uses, in one place.
- *
- * The config is part of the scenario (scenario.settings.config), so a run is
- * reproducible from its input alone. CONFIG_META drives the Advanced panel:
- * everything is user-editable, grouped by how well it is sourced. References
- * point at SkyShards-API/docs/greenhouse/OPEN_QUESTIONS.md.
+ * All tunable and unpublished simulator values. Stored in the scenario
+ * (scenario.settings.config) so a run is reproducible from its input.
+ * CONFIG_META drives the Advanced panel, grouped by source quality:
+ * verified, unpublished (reasoned defaults), model switches. `ref` values
+ * are entries in SkyShards-API/docs/greenhouse/OPEN_QUESTIONS.md.
  */
 
 export type WeightModel = "ceiling" | "support";
 export type SpawnCells = "allEmpty" | "slotsOnly";
 export type ChorusTeleport = "emptyOnly" | "anyCell";
 /**
- * Which ring neighbours a new spawn credits when more of a required kind
- * stand there than its requirement count (unpublished; sim/decay.ts):
- * - ringOrder: ring cell index ascending (row by row from the top-left), no RNG;
- * - mostRemainingFirst: the ones with the most mutations left to help (spreads the use);
- * - fewestRemainingFirst: the ones with the fewest left (uses the same ones up);
- * - random: a seeded shuffle (draws RNG only when selected).
+ * Which ring neighbours a spawn credits when more of a required kind stand
+ * there than the requirement count (sim/decay.ts):
+ * - ringOrder: ring index ascending (row-major from top-left), no RNG
+ * - mostRemainingFirst: most mutations left to help first
+ * - fewestRemainingFirst: fewest left first
+ * - random: seeded shuffle; draws RNG only when selected
  */
 export type MutationCreditOrder = "ringOrder" | "mostRemainingFirst" | "fewestRemainingFirst" | "random";
 export const MUTATION_CREDIT_ORDERS: readonly MutationCreditOrder[] = ["ringOrder", "mostRemainingFirst", "fewestRemainingFirst", "random"];
-/** A per-kind minimum mutations override: a count, "infinite" (never decays) or "none" (N/A: timer-only). */
+/** Per-kind minimum mutations: a count, "infinite" (never decays) or "none" (timer only). */
 export type MinimumMutationsOverride = number | "infinite" | "none";
 
 export interface SimConfig {
@@ -28,38 +27,31 @@ export interface SimConfig {
   /** Spawn pool denominator floor: max(blankFillTo, Σweights). */
   blankFillTo: number;
   /**
-   * Water level at or below which a plant dries out and HALTS (0.27.2; it no
-   * longer dies): it stops growing, gives and relays no effects, doesn't count
-   * toward requirements or the unique crop bonus, but still blocks Lonelily
-   * and keeps decaying. Watering un-halts it. Formerly `deathWater`.
+   * At or below this water a plant halts: no growth, no effects given or
+   * relayed, not counted for requirements or unique crops. It still blocks
+   * Lonelily and keeps decaying. Watering un-halts it.
    */
   haltWater: number;
   /**
-   * Water a crop that needs watering loses every cycle while it is not fully
-   * grown, whether or not it advanced (0.27.2 follow-up: 18-22). Fully grown
-   * and dried-out plants lose none. x retain/drain factor.
+   * Water lost per cycle (rolled in [min, max], x retain/drain factor) by a
+   * crop that needs watering while not fully grown, grown that cycle or not.
+   * Fully grown and halted plants lose none.
    */
   waterLossMin: number;
   waterLossMax: number;
-  /** Cycle length (one growth stage) before speed bonuses, 4 h. */
+  /** Cycle length (one growth stage) before speed bonuses, seconds (4 h). */
   cycleBaselineSeconds: number;
-  /**
-   * Unique Crop Bonus cap (0.27.2 patch notes: 10). The unique crop groups
-   * standing across all plots plus the Flora shard count up to this many.
-   */
+  /** Max unique crops counted by the Unique Crop Bonus (groups standing on all plots + Flora shard). */
   uniqueCropCap: number;
-  /** Growth speed per unique crop counted (0.27.2 patch notes: +2.5%, so +25% at the cap). */
+  /** Growth speed per unique crop counted (+2.5%, +25% at cap). */
   uniqueCropGrowthPerCrop: number;
-  /** Harvest yield per unique crop counted (0.27.2 patch notes: +2.5%, so +25% at the cap). */
+  /** Harvest yield per unique crop counted (+2.5%, +25% at cap). */
   uniqueCropYieldPerCrop: number;
   /** Thunderling charge gained per growth stage (wiki). */
   thunderlingChargePerStage: number;
   /** Thunderling charge at which it stops growing until discharged (wiki). */
   thunderlingMaxCharge: number;
-  /**
-   * 0.27.2: a decay timer that runs out while the plant's minimum mutations
-   * are not met is extended by this many hours (as often as needed).
-   */
+  /** Hours a decay timer is extended, repeatedly, while minimum mutations are unmet. */
   decayExtensionHours: number;
 
   // ---- Unpublished: reasoned defaults ----
@@ -67,66 +59,59 @@ export interface SimConfig {
   /** Chance a stage is skipped while water < 0 (Q9). */
   negativeWaterSkipChance: number;
   /**
-   * A natural spawn's decay TIMER, in cycles from the tick it spawns. 0 = use
-   * its own decay timer (Q16b). Timer only: its minimum mutations still apply.
+   * Natural spawn decay timer in cycles from the spawn tick; 0 = the kind's
+   * own timer (Q16b). Minimum mutations still apply.
    */
   harvestWindowCycles: number;
-  /**
-   * Per-kind decay timer overrides in DAYS (Q7), for any crop or mutation
-   * (base crops, dead_plant, fire ... included). 0 = never decays. Empty =
-   * data.json values. Edited in the Advanced panel's per-kind table.
-   */
+  /** Per-kind decay timer overrides in days (Q7); 0 = never decays. Missing = data.json. */
   decayDaysOverrides: Record<string, number>;
-  /**
-   * Per-kind minimum mutations overrides (0.27.2). Missing = data.json.
-   * Edited in the Advanced panel's per-kind table, not via CONFIG_META.
-   */
+  /** Per-kind minimum mutations overrides; missing = data.json. Edited in the per-kind table, not CONFIG_META. */
   minimumMutationsOverrides: Record<string, MinimumMutationsOverride>;
-  /** Chance per tick that a Devourer grows a root into a neighbouring cell (40%, staff-confirmed). */
+  /** Chance per tick a Devourer grows a root into a neighbouring cell (40%). */
   devourerRootChance: number;
-  /** Chance per tick that each root spreads another root. */
+  /** Chance per tick each root spreads another root. */
   rootSpreadChance: number;
   chorusTeleportTargets: ChorusTeleport;
-  /** Water a Soggybud draws from each neighbouring crop that has water, per tick. */
+  /** Water a Soggybud draws per tick from each neighbouring crop that has water. */
   soggybudWaterPerNeighbour: number;
   /** Soggybud stage = floor(water / this). */
   soggybudWaterPerStage: number;
   bountyRollsPerHarvest: number;
-  /** NPC price overrides by item id. Missing = the wiki NPC sell price (economy/prices.ts). */
+  /** NPC price overrides by item id; missing = wiki NPC sell price (economy/prices.ts). */
   rareDropValues: Record<string, number>;
-  /** Model the wiki-reported bug: no Cropie/Squash from Greenhouse crops in Fermento or Helianthus Armor. */
+  /** Wiki-reported bug: no Cropie/Squash from Greenhouse crops in Fermento or Helianthus Armor. */
   armorRareCropBug: boolean;
-  /** Cap Overbloom-boosted Rare Crop chances at 100% (one item per roll) instead of guaranteed + fractional extra. */
+  /** Cap Overbloom-boosted Rare Crop chance at 100% instead of guaranteed + fractional extra. */
   capRareCropChance: boolean;
   fleshtrapInitialHunger: number;
   fleshtrapHungerPerStage: number;
   fleshtrapFeedHunger: number;
-  /** Stage the player harvests All-in Aloe at (it can be harvested at any stage; 14 is optimal). */
+  /** Stage All-in Aloe is harvested at (any stage allowed; 14 is optimal). */
   aloeHarvestStage: number;
   magicJellybeanMultiplierCap: number;
-  /** Assume the PlantBoy / Stoplight / Phantomleaf minigames succeed. */
+  /** PlantBoy / Stoplight / Phantomleaf minigames always succeed. */
   perfectPlay: boolean;
-  /** Failure chance per minigame harvest when perfectPlay is off (PlantBoy / Stoplight retry next session; Phantomleaf is destroyed). */
+  /** Per-harvest minigame failure chance when perfectPlay is off. PlantBoy/Stoplight retry next session; Phantomleaf is destroyed. */
   minigameFailChance: number;
 
   // ---- Model switches ----
-  /** 'ceiling' = repo model (weight reached once requirements hold); 'support' = wiki multiplier (Q4). */
+  /** 'ceiling' = full weight once requirements hold; 'support' = wiki per-cell multiplier (Q4). */
   weightModel: WeightModel;
   supportPerCell: number;
   supportCap: number;
   /** Which empty cells roll for a spawn each cycle. */
   spawnCells: SpawnCells;
-  /** Which neighbours a spawn credits when more than its requirement count stand in the ring (unpublished). */
+  /** See MutationCreditOrder. */
   mutationCreditOrder: MutationCreditOrder;
   /** A step change keeps a plant when the new layout has the same kind at the same anchor. */
   keepIdenticalOnStepChange: boolean;
   /**
-   * Hybrid flows: a natural spawn standing where a layout places the same
-   * mutation (same anchor) is kept and used as that input - growing or fully
-   * grown - instead of being broken and re-placed from inventory.
+   * A natural spawn (growing or fully grown) at an anchor where the layout
+   * places the same mutation is kept as that input instead of being broken
+   * and re-placed from inventory. Enables hybrid flows.
    */
   spawnsFillLayoutInputs: boolean;
-  /** Fixed plot iteration order; plots contend for the shared inventory in this order. */
+  /** Plot iteration order; plots contend for shared inventory in this order. */
   plotOrder: number[];
 }
 

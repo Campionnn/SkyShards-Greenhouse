@@ -3,14 +3,11 @@ import { DEFAULT_POLICIES } from "./flow/policies";
 import type { Flow } from "./flow/types";
 import type { PlayerStats, Scenario, Settings } from "./sim/state";
 
-/**
- * Defaults are the maximum values per the Hypixel SkyBlock Wiki
- * (hypixelskyblock.minecraft.wiki, Greenhouse / Farming Fortune / Chloronite pages).
- */
+/** Wiki maximums (Greenhouse / Farming Fortune / Chloronite pages). */
 export const DEFAULT_PLAYER_STATS: PlayerStats = {
   /** Crop Growth stat range 0-210. */
   cropGrowth: 210,
-  /** Greenhouse Speed attribute: +0.1-1% => a = 10 in the 0.001a term. */
+  /** Greenhouse Speed attribute +0.1-1%: a = 10 in the 0.001a term. */
   speedAttribute: 10,
   /** Growth Speed Upgrade tier 9 = +50%. */
   growthUpgradeTier: 9,
@@ -18,18 +15,18 @@ export const DEFAULT_PLAYER_STATS: PlayerStats = {
   farmingFortune: 3059.2,
   /** Plant Yield Greenhouse Upgrade: +2-20%. */
   plantYieldUpgrade: 0.2,
-  /** Evergreen Chip: +2-60%, all crop-bundle drops (base crops and mutation bundles alike). */
+  /** Evergreen Chip: +2-60% to all crop-bundle drops. */
   evergreenChip: 0.6,
-  /** Bioanalysis Artifact: +15%, the top of the Talisman/Ring/Artifact line. */
+  /** Bioanalysis Artifact: +15%. */
   mutationChanceBonus: 0.15,
-  /** No stated max; 2000 is where the Chloronite drop count caps at 4. */
+  /** No stated max; Chloronite drop count caps at 4 at 2000. */
   miningFortune: 2000,
-  /** Overbloom page: 186 = permanent sources + Overpriced Drink + Feast V on a farming tool (no Crop Fever). Uncapped. */
+  /** Permanent sources + Overpriced Drink + Feast V tool (no Crop Fever). Uncapped. */
   overbloom: 186,
-  /** Helianthus Armor 4/4: combines the Tater, Cropie, Squash and Fermento tiered bonuses. */
+  /** Helianthus 4/4: combines the Tater, Cropie, Squash and Fermento bonuses. */
   armorSet: "helianthus",
   startTimeOfDay: 0,
-  /** Flora attribute shard (0.27.2): default 10, the max - a new save gets the full Unique Crop Bonus. */
+  /** Flora attribute shard, max 10. */
   floraShard: 10,
 };
 
