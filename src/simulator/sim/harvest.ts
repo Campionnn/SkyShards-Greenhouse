@@ -24,8 +24,10 @@ function scaleDrops(drops: Record<string, number>, factor: number): Record<strin
 /**
  * Harvest and remove one plant. Drops go to the shared inventory and are
  * booked as revenue at NPC price. Yield uses the effects latched when it
- * became fully grown. A spawned mutation also drops its own item. Minigames
- * (PlantBoy Advance, Stoplight Petal, Phantomleaf) are always won.
+ * became fully grown. A spawned mutation also drops its own item. Harvest
+ * minigames (PlantBoy Advance, Stoplight Petal, Phantomleaf) are not modelled:
+ * the player is perfect and a failed attempt can be retried on the spot, so
+ * they harvest like any other spawn.
  */
 export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): void {
   const { data } = ctx.env;

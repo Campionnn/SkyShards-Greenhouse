@@ -279,7 +279,7 @@ describe("Noctilume", () => {
   });
 });
 
-describe("Minigames (PlantBoy Advance, Stoplight Petal, Phantomleaf) always succeed", () => {
+describe("Minigame mutations (PlantBoy Advance, Stoplight Petal, Phantomleaf) harvest like any spawn", () => {
   const everyCycle: ActivitySchedule = { kind: "everyN", n: 1, offset: 0 };
   const grown = (stage: number) => ({ stage, lockedEffects: [], fullyGrownAtCycle: 0 });
 
