@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ALOE_FRAGMENT, aloeHarvestItems, aloeRow } from "../growth/aloe";
+import { ALOE_FRAGMENT, ALOE_OPTIMAL_STAGE, aloeFragmentsPerCycle, aloeHarvestItems, aloeHarvestSchedule, aloeHarvestStageFor, aloeRow } from "../growth/aloe";
+import { DEFAULT_PLAYER_STATS } from "../scenario";
 import { DEFAULT_POLICIES, mergePolicies } from "../flow/policies";
 import { THUNDERLING_CHARGE_PER_STAGE, THUNDERLING_MAX_CHARGE, type SimConfig } from "../config";
 import type { Engine } from "../engine";
@@ -107,10 +108,18 @@ describe("All-in Aloe", () => {
     expect(r.state.plots[0].plants.every((p) => p.stage <= 27)).toBe(true);
   });
 
+  it("resets on growing out of a stage: never from stages 1-3, first at 4 -> 5", () => {
+    const s = blank();
+    for (let i = 0; i < 10; i++) inject(s, 1, "all_in_aloe", i, 0, "spawned");
+    const r = engine.run(s, 3, { retainEvents: "all" }); // 1 -> 4 is risk-free
+    expect(ofKind(r.events, "reset")).toHaveLength(0);
+    expect(r.state.plots[0].plants.every((p) => p.stage === 4)).toBe(true);
+  });
+
   it("the online player harvests it at the target stage for fragments + crops", () => {
-    // Find a seed where the aloe survives 8 -> 9 without resetting (18% reset chance at 9).
+    // Find a seed where the aloe survives 8 -> 9 without resetting (15% reset chance leaving 8).
     for (let seed = 1; seed < 40; seed++) {
-      const s = start(scenario([flow([step("a", layout())])], { seed, config: { aloeHarvestStage: 9 } }));
+      const s = start(scenario([flow([step("a", layout())])], { seed, config: { aloeAutoHarvest: false, aloeHarvestStage: 9 } }));
       inject(s, 1, "all_in_aloe", 5, 5, "spawned", { stage: 8 });
       const r = engine.run(s, 1);
       const h = ofKind(r.events, "harvested")[0];
@@ -121,6 +130,65 @@ describe("All-in Aloe", () => {
       return;
     }
     throw new Error("no seed without a reset");
+  });
+
+  it("auto harvest stage: 14 checking every cycle, earlier when offline longer, later when respawn is slow", () => {
+    expect(aloeHarvestStageFor(1, 1)).toBe(ALOE_OPTIMAL_STAGE);
+    expect(aloeHarvestStageFor(2, 1)).toBe(13);
+    expect(aloeHarvestStageFor(4, 1)).toBe(12);
+    expect(aloeHarvestStageFor(8, 1)).toBe(10);
+    expect(aloeHarvestStageFor(12, 1)).toBe(6);
+    expect(aloeHarvestStageFor(Infinity, 1)).toBe(4); // never online again: take anything that pays
+    // A slow respawn makes an emptied cell worth less, so it waits longer.
+    expect(aloeHarvestStageFor(1, 0.01)).toBeGreaterThan(ALOE_OPTIMAL_STAGE);
+    expect(aloeHarvestStageFor(8, 0.1)).toBeGreaterThan(aloeHarvestStageFor(8, 1));
+    // 0 (can't respawn there right now) plans as an instant respawn.
+    expect(aloeHarvestStageFor(4, 0)).toBe(aloeHarvestStageFor(4, 1));
+    // Monotone in the gap.
+    for (let g = 1; g < 30; g++) expect(aloeHarvestStageFor(g + 1, 0.25)).toBeLessThanOrEqual(aloeHarvestStageFor(g, 0.25));
+  });
+
+  it("the auto stage beats a fixed 14 for its gap (fragments per cycle)", () => {
+    for (const gap of [2, 4, 8]) {
+      const k = aloeHarvestStageFor(gap, 0.25);
+      expect(aloeFragmentsPerCycle(k, gap, 0.25)).toBeGreaterThan(aloeFragmentsPerCycle(14, gap, 0.25));
+    }
+    // Checking every cycle with an instant respawn: 60 fragments every 61.85 cycles (the wiki's
+    // 60.85 expected stages to reach 14, plus the respawn cycle).
+    expect(aloeFragmentsPerCycle(14, 1, 1)).toBeCloseTo(60 / 61.85, 3);
+  });
+
+  it("schedule preview: each session's stage follows the time until the next one", () => {
+    const stats = { ...DEFAULT_PLAYER_STATS, startTimeOfDay: 0 };
+    // 2h cycles; online 08:00-14:00 -> sessions at 08, 10, 12 (14:00 excluded), then 08:00 next day = 10 cycles.
+    const sessions = aloeHarvestSchedule({ activity: { kind: "windows", windows: [{ from: 8, to: 14 }] }, playerActions: true, playerStats: stats }, 7200, 1);
+    expect(sessions.map((s) => [s.hour, s.gapCycles, s.stage])).toEqual([
+      [8, 1, aloeHarvestStageFor(1, 1)],
+      [10, 1, aloeHarvestStageFor(1, 1)],
+      [12, 10, aloeHarvestStageFor(10, 1)],
+    ]);
+    expect(sessions[2].stage).toBeLessThan(sessions[0].stage);
+    expect(aloeHarvestSchedule({ activity: { kind: "everyN", n: 1, offset: 0 }, playerActions: false, playerStats: stats }, 7200, 1)).toEqual([]);
+  });
+
+  it("auto: the player harvests earlier before a longer time offline", () => {
+    // Online every 4 cycles, Stage 12 grows to 13 on cycle 0 (27% reset leaving 12): harvested
+    // at 13 since 4 cycles away -> 12. Online every cycle it waits for 14.
+    const run = (n: number) => {
+      for (let seed = 1; seed < 40; seed++) {
+        const s = start(scenario([flow([step("a", layout())])], { seed, activity: { kind: "everyN", n, offset: 0 } }));
+        inject(s, 1, "all_in_aloe", 5, 5, "spawned", { stage: 12 });
+        const r = engine.run(s, 1);
+        if (ofKind(r.events, "reset").length) continue;
+        return r;
+      }
+      throw new Error("no seed without a reset");
+    };
+    const every4 = run(4);
+    expect(ofKind(every4.events, "harvested")[0]?.kindId).toBe("all_in_aloe");
+    const every1 = run(1);
+    expect(ofKind(every1.events, "harvested")).toHaveLength(0);
+    expect(plantAt(every1.state, 1, 5, 5)?.gate.aloeHarvest).toEqual({ stage: 14, gapCycles: 1, respawnChance: 0 });
   });
 
   it("can be harvested at any stage: a step change takes it at its current stage", () => {

@@ -88,6 +88,8 @@ export function migrateScenario<T>(raw: T): T {
       }
     }
     for (const key of REMOVED_CONFIG) delete config[key];
+    // Saved before auto aloe harvest: a save on the old default (14) goes to auto, a deliberate other stage stays fixed.
+    if (!("aloeAutoHarvest" in config) && typeof config.aloeHarvestStage === "number") config.aloeAutoHarvest = config.aloeHarvestStage === 14;
     out.settings = { ...settings, config };
   }
   return out as T;

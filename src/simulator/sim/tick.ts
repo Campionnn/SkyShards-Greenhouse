@@ -113,22 +113,24 @@ function phaseGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void
         if (gate) {
           ctx.emit(plot.id, { kind: "growthBlocked", plantId: p.id, kindId: p.kindId, gate });
         } else {
-          if (resets) {
-            p.stage = 1;
-            p.lockedEffects = null;
-            p.fullyGrownAtCycle = null;
-            // Decay timer is not reset.
-          } else {
-            p.stage += 1;
-          }
-          ctx.emit(plot.id, { kind: "advanced", plantId: p.id, kindId: p.kindId, stage: p.stage });
-          afterAdvance(p, env);
-          // All-in Aloe: each new stage rolls that stage's reset chance (wiki table).
+          // All-in Aloe: growing out of a stage rolls that stage's reset chance (wiki table:
+          // 4 -> 5 is the first risky step at 3%); on a hit it goes back to stage 1 instead.
           if (p.kindId === "all_in_aloe" && chance(ctx.state.rng, aloeRow(p.stage).resetChance)) {
             ctx.emit(plot.id, { kind: "reset", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, fromStage: p.stage });
             p.stage = 1;
             p.lockedEffects = null;
             p.fullyGrownAtCycle = null;
+          } else {
+            if (resets) {
+              p.stage = 1;
+              p.lockedEffects = null;
+              p.fullyGrownAtCycle = null;
+              // Decay timer is not reset.
+            } else {
+              p.stage += 1;
+            }
+            ctx.emit(plot.id, { kind: "advanced", plantId: p.id, kindId: p.kindId, stage: p.stage });
+            afterAdvance(p, env);
           }
         }
       }

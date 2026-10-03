@@ -10,6 +10,7 @@ export {
   MAX_WATER,
   MUTATION_CREDIT_ORDERS,
   ROOT_SPREAD_CHANCE,
+  SPAWN_POOL_FLOOR,
   THUNDERLING_MAX_CHARGE,
   UNIQUE_CROP_CAP,
   withConfigDefaults,
@@ -56,5 +57,15 @@ export { UNMODELLED_RULES } from "./growth/gates";
 export { decayDaysOf, isDry, minimumMutationsOf } from "./sim/plants";
 export { combinedRemaining, decayStatus, isPooled, minimumMet, wouldDecayWithin } from "./sim/decay";
 export type { DecayStatus, MutatesRemaining } from "./sim/decay";
-export { ALOE_FRAGMENT, ALOE_OPTIMAL_STAGE, aloeHarvestItems, aloeRow } from "./growth/aloe";
+export {
+  ALOE_FRAGMENT,
+  ALOE_OPTIMAL_STAGE,
+  aloeFragmentsPerCycle,
+  aloeHarvestItems,
+  aloeHarvestSchedule,
+  aloeHarvestStageFor,
+  aloeRow,
+  type AloeSession,
+} from "./growth/aloe";
+export { cycleSeconds, effectiveUniqueCrops } from "./growth/clock";
 export type * from "./sim/state";

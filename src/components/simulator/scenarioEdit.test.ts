@@ -249,6 +249,21 @@ describe("flow export / import", () => {
     expect(withPlots(LAYOUT_A_CODE).settings.config).toMatchObject({ waterLossMin: 18, waterLossMax: 22 });
   });
 
+  it("a save from before auto aloe harvest: the old default 14 becomes auto, another stage stays fixed", () => {
+    const old = (stage: number) => {
+      const saved = withPlots(LAYOUT_A_CODE);
+      const config = { ...saved.settings.config, aloeHarvestStage: stage } as Record<string, unknown>;
+      delete config.aloeAutoHarvest;
+      (saved.settings.config as unknown as Record<string, unknown>) = config;
+      return saved;
+    };
+    expect(migrateScenario(old(14)).settings.config).toMatchObject({ aloeAutoHarvest: true, aloeHarvestStage: 14 });
+    expect(migrateScenario(old(11)).settings.config).toMatchObject({ aloeAutoHarvest: false, aloeHarvestStage: 11 });
+    const chosen = withPlots(LAYOUT_A_CODE);
+    chosen.settings.config = { ...chosen.settings.config, aloeAutoHarvest: false };
+    expect(migrateScenario(chosen).settings.config.aloeAutoHarvest).toBe(false); // already set: kept
+  });
+
   it("rejects files it cannot use, with a readable reason", () => {
     const sc = withPlots(LAYOUT_A_CODE);
     expect(() => importFlows(sc, "nope")).toThrow("not valid JSON");

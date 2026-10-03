@@ -61,6 +61,11 @@ export interface PlantState {
     primed?: boolean;
     /** Turtlellini: times caught in a Blastberry explosion (2 = Shellfruit). */
     exploded?: number;
+    /**
+     * All-in Aloe under `aloeAutoHarvest` (spawned only): the harvest stage the player picked at
+     * their last session, for `gapCycles` until the next one and a `respawnChance` per cycle.
+     */
+    aloeHarvest?: { stage: number; gapCycles: number; respawnChance: number };
   };
 }
 

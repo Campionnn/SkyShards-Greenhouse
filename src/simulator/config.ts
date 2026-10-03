@@ -77,7 +77,13 @@ export interface SimConfig {
   capRareCropChance: boolean;
   fleshtrapHungerPerStage: number;
   fleshtrapFeedHunger: number;
-  /** Stage All-in Aloe is harvested at (any stage allowed; 14 is optimal). */
+  /**
+   * Auto: each session the player harvests All-in Aloe at the stage that makes
+   * the most aloe per cycle for the time until they are next online and the
+   * cell's respawn chance (growth/aloe.ts `aloeHarvestStageFor`). Off: `aloeHarvestStage`.
+   */
+  aloeAutoHarvest: boolean;
+  /** Fixed stage All-in Aloe is harvested at when `aloeAutoHarvest` is off (any stage allowed). */
   aloeHarvestStage: number;
 
   // ---- Model switches ----
@@ -108,6 +114,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   capRareCropChance: false,
   fleshtrapHungerPerStage: 1,
   fleshtrapFeedHunger: 6,
+  aloeAutoHarvest: true,
   aloeHarvestStage: 14,
 
   armorRareCropBug: true,
@@ -143,7 +150,8 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "chorusTeleportTargets", label: "Chorus teleport targets", group: "unpublished", ref: "Q11", input: { type: "select", options: ["emptyOnly", "anyCell"] }, description: "Either way it can land on AIR, which becomes End Stone. anyCell also lets it land on (and destroy) a plant." },
   { key: "fleshtrapHungerPerStage", label: "Fleshtrap hunger per stage", group: "unpublished", input: { type: "number", min: 0 }, description: "Hunger used per stage grown." },
   { key: "fleshtrapFeedHunger", label: "Fleshtrap feed amount", group: "unpublished", input: { type: "number", min: 0 }, description: "Hunger added per feeding (enchanted cooked meat = 6)." },
-  { key: "aloeHarvestStage", label: "All-in Aloe harvest stage", group: "unpublished", input: { type: "number", min: 1, max: 27 }, description: "Stage the player harvests All-in Aloe at. It resets to stage 1 with a rising chance on each new stage; 14 maximises expected drops." },
+  { key: "aloeAutoHarvest", label: "All-in Aloe: auto harvest stage", group: "unpublished", input: { type: "boolean" }, description: "Each session the player harvests All-in Aloe at the stage that makes the most aloe per cycle, given how many cycles until they are next online and the chance a new aloe spawns in the emptied cell. Checking every cycle gives 14 (the wiki optimum). A longer time offline lowers it (about 12 for 4 cycles, 10 for 8), because an aloe left growing may reset before the player is back. A slow respawn raises it. Off: always harvest at the fixed stage below." },
+  { key: "aloeHarvestStage", label: "All-in Aloe fixed harvest stage", group: "unpublished", input: { type: "number", min: 1, max: 27 }, description: "Stage the player harvests All-in Aloe at when auto is off. Growing out of a stage rolls that stage's chance to reset to stage 1 (3% at stage 4, +3% per stage); 14 maximises expected drops when checking every cycle." },
 
   { key: "armorRareCropBug", label: "Armor Rare Crop bug", group: "model", input: { type: "boolean" }, description: "Wiki-reported bug: in the Greenhouse, Cropie and Squash do not drop while wearing Fermento or Helianthus Armor (only Fermento and Helianthus roll). Off = the set bonus as written." },
   { key: "capRareCropChance", label: "Cap Rare Crop chance at 100%", group: "model", input: { type: "boolean" }, description: "Overbloom can push a Rare Crop chance past 100%. Off: 175% = 1 guaranteed + a 75% roll for a 2nd. On: at most one item per roll." },

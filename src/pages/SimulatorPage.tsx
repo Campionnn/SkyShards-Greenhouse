@@ -249,7 +249,7 @@ export const SimulatorPage: React.FC = () => {
               warnings={view.warnings}
               error={view.status === "error" ? view.error : null}
             />
-            <SettingsPanel scenario={scenario} onChange={setScenario} />
+            <SettingsPanel scenario={scenario} onChange={setScenario} cycleSecondsNow={state?.lastCycleSeconds} />
           </div>
       </div>
 

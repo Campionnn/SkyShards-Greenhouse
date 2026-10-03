@@ -12,7 +12,7 @@ import { LayoutPickerPanel } from "./LayoutPicker";
 import { InventoryPanel, MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
 import { FlowEditor, WatchPicker } from "./FlowEditor";
 import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
-import { ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
+import { AloeHarvestPreview, ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 import { SimTooltip } from "./SimTooltip";
 import { closestBlocked, hoveredCellOffset } from "./sanityFormat";
 import { describeEvent } from "./format";
@@ -229,6 +229,21 @@ describe("simulator panels render", () => {
     const plain = wrap(<SettingsPanel scenario={sc} onChange={() => {}} />).replace(/<!-- -->/g, "");
     expect(plain).toContain("Advanced");
     expect(plain).not.toMatch(/Advanced \(\d+\)/);
+  });
+  it("the Online tab's aloe preview lists when the player harvests, per session", () => {
+    const at = (activity: typeof sc.settings.activity, config = {}) => {
+      const s = structuredClone(sc);
+      s.settings.activity = activity;
+      s.settings.playerStats.startTimeOfDay = 0;
+      s.settings.config = { ...s.settings.config, ...config };
+      return wrap(<AloeHarvestPreview settings={s.settings} liveCycleSeconds={7200} />).replace(/<!-- -->/g, "");
+    };
+    expect(at({ kind: "everyN", n: 4, offset: 0 })).toContain("harvested at <span class=\"text-emerald-300\">stage 12</span>");
+    const windows = at({ kind: "windows", windows: [{ from: 8, to: 14 }] });
+    expect(windows).toContain("08:00-10:00 (2 sessions)");
+    expect(windows).toContain("12:00");
+    expect(windows).toContain("10 cycles");
+    expect(at({ kind: "everyN", n: 1, offset: 0 }, { aloeAutoHarvest: false, aloeHarvestStage: 11 })).toContain("always harvested at stage 11");
   });
   it("the legend omits freezing and does not promise eligibility before evaluation", () => {
     const html = renderToString(<PlotMarkLegend />);

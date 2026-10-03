@@ -1,5 +1,7 @@
 import { MAX_WATER } from "../config";
 import { endStepOrHold } from "../flow/runner";
+import { aloeHarvestStageFor } from "../growth/aloe";
+import { respawnChance } from "../spawn/respawn";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import type { CycleCtx, Phase, TickScratch } from "./context";
 import { wouldDecayWithin } from "./decay";
@@ -43,8 +45,23 @@ function clearRoots(plot: PlotState, ctx: CycleCtx): void {
 }
 
 /**
+ * Whether the player harvests this All-in Aloe now. Fixed: once fully grown
+ * (`aloeHarvestStage`). Auto: at the stage that makes the most aloe per cycle
+ * for the cycles until the next session and the chance an aloe respawns in the
+ * emptied cell (growth/aloe.ts). The choice is kept on the plant for the tooltip.
+ */
+function aloeDue(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): boolean {
+  if (!ctx.config.aloeAutoHarvest) return isFullyGrown(p);
+  const gapCycles = ctx.cyclesUntilNextActive();
+  const q = respawnChance(plot, p, p.kindId, ctx.env.data, scratch.effects, ctx.stats.mutationChanceBonus);
+  const stage = aloeHarvestStageFor(gapCycles, q);
+  p.gate.aloeHarvest = { stage, gapCycles: Number.isFinite(gapCycles) ? gapCycles : -1, respawnChance: q };
+  return p.stage >= stage;
+}
+
+/**
  * Harvest natural spawns. Aloe and Jellybean wait for their target stage
- * (aloeHarvestStage, 120). Under `layoutInputSpawns: "keep"` a spawn used as a
+ * (aloeDue, 120). Under `layoutInputSpawns: "keep"` a spawn used as a
  * layout input stays unless it would decay before the next session.
  */
 function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
@@ -58,7 +75,7 @@ function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
       continue;
     }
     if (p.kindId === "all_in_aloe") {
-      if (!isFullyGrown(p)) continue;
+      if (!aloeDue(plot, p, ctx, scratch)) continue;
     } else {
       if (!isHarvestable(p)) continue;
       if (p.kindId === JELLYBEAN && !isFullyGrown(p)) continue; // only ever harvested at stage 120

@@ -258,6 +258,9 @@ function decayText(p: PlantState, met: boolean, cycles: number): string {
   return p.mutatesRemaining === "infinite" ? `${timer}, then ${ext} - never decays (minimum ∞)` : `${timer}, then ${ext} (minimum not met)`;
 }
 
+/** All-in Aloe harvest stage: the fixed setting, or the stage auto picked at the last session (14 before any). */
+const aloeTarget = (p: PlantState, config: SimConfig): number => (config.aloeAutoHarvest ? (p.gate.aloeHarvest?.stage ?? p.readyStage) : p.readyStage);
+
 const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleSeconds: number; config: SimConfig; plot: PlotState }> = ({
   p,
   m,
@@ -290,9 +293,9 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
         </Row>
         {growing && p.growthStages > 0 && (
           <Row label="Stage">
-            {p.stage} / {p.kindId === "all_in_aloe" ? `${p.growthStages} (harvest at ${p.readyStage})` : p.readyStage}
+            {p.stage} / {p.kindId === "all_in_aloe" ? `${p.growthStages} (harvest at ${aloeTarget(p, config)})` : p.readyStage}
             <span className="block h-1 mt-0.5 bg-slate-700 rounded overflow-hidden">
-              <span className="block h-full bg-emerald-400" style={{ width: `${Math.min(100, (p.stage / Math.max(1, p.readyStage)) * 100)}%` }} />
+              <span className="block h-full bg-emerald-400" style={{ width: `${Math.min(100, (p.stage / Math.max(1, p.kindId === "all_in_aloe" ? aloeTarget(p, config) : p.readyStage)) * 100)}%` }} />
             </span>
           </Row>
         )}
@@ -331,7 +334,16 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
               {aloeRow(p.stage).multiplier} fragments before yield (every 9 become 1 All-in Aloe)
             </Row>
             {p.stage < p.growthStages && (
-              <Row label="Next stage">{Math.round(aloeRow(p.stage + 1).resetChance * 100)}% chance to reset to 1</Row>
+              <Row label="Next stage">{Math.round(aloeRow(p.stage).resetChance * 100)}% chance to reset to 1</Row>
+            )}
+            {config.aloeAutoHarvest && (
+              <Row label="Auto harvest">
+                {p.gate.aloeHarvest
+                  ? `stage ${p.gate.aloeHarvest.stage}: ${
+                      p.gate.aloeHarvest.gapCycles < 0 ? "never online again" : `next online in ${p.gate.aloeHarvest.gapCycles} cycle${p.gate.aloeHarvest.gapCycles === 1 ? "" : "s"}`
+                    }, ${formatChance(p.gate.aloeHarvest.respawnChance)} respawn chance per cycle`
+                  : "picked at the next session from the time offline and the respawn chance"}
+              </Row>
             )}
           </>
         )}

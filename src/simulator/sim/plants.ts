@@ -1,5 +1,6 @@
 import { FLESHTRAP_INITIAL_HUNGER, HALT_WATER, type SimConfig } from "../config";
 import { kindDef } from "../data/load";
+import { ALOE_OPTIMAL_STAGE } from "../growth/aloe";
 import type { GameData, KindDef, KindId, MinimumMutations, MutationDef, Size } from "../data/types";
 import { footprint, TOTAL_CELLS } from "../grid/cells";
 import type { Origin, PlantState, PlotState, SimulationState } from "./state";
@@ -32,8 +33,12 @@ export const JELLYBEAN_MIN_HARVEST_STAGE = 12;
 /** Stage at which a kind counts as fully grown and harvestable. */
 export function readyStageOf(m: MutationDef, config: SimConfig): number {
   if (m.id === "glasscorn") return Math.min(7, m.growthStages); // harvestable at stages 7-8
-  // Harvestable at any stage; "fully grown" is the stage the player harvests at (14 is optimal).
-  if (m.id === "all_in_aloe") return Math.max(1, Math.min(m.growthStages, Math.floor(config.aloeHarvestStage)));
+  // Harvestable at any stage. "Fully grown" is the fixed harvest stage, or 14 (the every-cycle
+  // optimum) under auto, where the player picks the actual stage each session (sim/player.ts).
+  if (m.id === "all_in_aloe") {
+    const stage = config.aloeAutoHarvest ? ALOE_OPTIMAL_STAGE : Math.floor(config.aloeHarvestStage);
+    return Math.max(1, Math.min(m.growthStages, stage));
+  }
   return m.growthStages;
 }
 

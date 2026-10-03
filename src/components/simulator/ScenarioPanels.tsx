@@ -1,13 +1,20 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import {
+  aloeHarvestSchedule,
+  aloeHarvestStageFor,
   ARMOR_SET_LABEL,
   ARMOR_SETS,
   CONFIG_META,
+  cycleSeconds,
   DEFAULT_CONFIG,
+  defaultGameData,
+  effectiveUniqueCrops,
   MAX_PLOTS,
+  SPAWN_POOL_FLOOR,
   UNMODELLED_RULES,
   type ActivitySchedule,
+  type AloeSession,
   type ArmorSet,
   type ConfigGroup,
   type PlayerStats,
@@ -17,7 +24,7 @@ import {
 } from "../../simulator";
 import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui";
 import { CheckboxField, NumberField, NumberInput, SelectField } from "./controls";
-import { nameOf } from "./format";
+import { formatDuration, nameOf } from "./format";
 import { PolicyDefaultsEditor } from "./FlowEditor";
 import { addPlot, duplicatePlot, exportFlows, importFlows, layoutSummary, nextPlotId, removePlot } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
@@ -203,7 +210,12 @@ const GROUP_LABEL: Record<ConfigGroup, string> = {
   model: "Model switches",
 };
 
-export const SettingsPanel: React.FC<{ scenario: Scenario; onChange: (sc: Scenario) => void }> = ({ scenario, onChange }) => {
+export const SettingsPanel: React.FC<{
+  scenario: Scenario;
+  onChange: (sc: Scenario) => void;
+  /** Cycle length of the current run, for the All-in Aloe preview; from the stats when absent. */
+  cycleSecondsNow?: number;
+}> = ({ scenario, onChange, cycleSecondsNow }) => {
   const [tab, setTab] = useState<SettingsTab>("player");
   const { settings } = scenario;
   const setSettings = (patch: Partial<Scenario["settings"]>) => onChange({ ...scenario, settings: { ...settings, ...patch } });
@@ -271,7 +283,12 @@ export const SettingsPanel: React.FC<{ scenario: Scenario; onChange: (sc: Scenar
         </div>
       )}
 
-      {tab === "schedule" && <ScheduleEditor value={settings.activity} startTime={settings.playerStats.startTimeOfDay} onChange={(activity, startTimeOfDay) => setSettings({ activity, playerStats: { ...settings.playerStats, startTimeOfDay } })} />}
+      {tab === "schedule" && (
+        <>
+          <ScheduleEditor value={settings.activity} startTime={settings.playerStats.startTimeOfDay} onChange={(activity, startTimeOfDay) => setSettings({ activity, playerStats: { ...settings.playerStats, startTimeOfDay } })} />
+          <AloeHarvestPreview settings={settings} liveCycleSeconds={cycleSecondsNow} />
+        </>
+      )}
 
       {tab === "policies" && <PolicyDefaultsEditor value={settings.policies} onChange={(policies) => setSettings({ policies })} />}
 
@@ -337,6 +354,114 @@ export const SettingsPanel: React.FC<{ scenario: Scenario; onChange: (sc: Scenar
         </div>
       )}
     </Panel>
+  );
+};
+
+const clockText = (hour: number) => {
+  const m = Math.round(hour * 60) % (24 * 60);
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
+const gapText = (gap: number) => (Number.isFinite(gap) ? `${gap} cycle${gap === 1 ? "" : "s"}` : "never");
+
+/** Consecutive sessions with the same gap and stage, shown as one row. */
+interface SessionRun {
+  first: AloeSession;
+  last: AloeSession;
+  count: number;
+}
+
+function groupSessions(sessions: AloeSession[]): SessionRun[] {
+  const runs: SessionRun[] = [];
+  for (const s of sessions) {
+    const prev = runs[runs.length - 1];
+    if (prev && prev.last.gapCycles === s.gapCycles && prev.last.stage === s.stage && s.cycle === prev.last.cycle + prev.last.gapCycles) {
+      prev.last = s;
+      prev.count += 1;
+    } else runs.push({ first: s, last: s, count: 1 });
+  }
+  return runs;
+}
+
+/**
+ * When the player harvests All-in Aloe under the current online schedule. Display only:
+ * cycle length from the player stats (Flora only, no standing crops) or the live run, and the
+ * default respawn chance (spawn weight + Bioanalysis); the engine uses each aloe cell's live chance.
+ */
+export const AloeHarvestPreview: React.FC<{ settings: Scenario["settings"]; liveCycleSeconds?: number }> = ({ settings, liveCycleSeconds }) => {
+  const { config, playerStats } = settings;
+  // Default respawn: the aloe's spawn weight with the player's Bioanalysis, against the pool floor.
+  const weight = (defaultGameData().mutations.all_in_aloe?.spawnWeight ?? SPAWN_POOL_FLOOR) * (1 + playerStats.mutationChanceBonus);
+  const respawn = weight / Math.max(SPAWN_POOL_FLOOR, weight);
+  const seconds = liveCycleSeconds ?? cycleSeconds(playerStats, effectiveUniqueCrops(0, playerStats.floraShard));
+  const { activity } = settings;
+  const sessions = useMemo(() => (activity.kind === "windows" ? aloeHarvestSchedule(settings, seconds, respawn) : []), [settings, activity.kind, seconds, respawn]);
+  const online = settings.playerActions !== false && (activity.kind === "everyN" || activity.windows.length > 0);
+
+  let body: React.ReactNode;
+  if (!config.aloeAutoHarvest) {
+    body = <p>Auto harvest is off (Advanced): always harvested at stage {config.aloeHarvestStage}.</p>;
+  } else if (!online) {
+    body = <p>Never online, so All-in Aloe is never harvested.</p>;
+  } else if (activity.kind === "windows" && sessions.length === 0) {
+    body = <p>No cycle ends inside your online times on the first day (cycles are {formatDuration(seconds)} long), so nothing is harvested then.</p>;
+  } else if (activity.kind === "everyN") {
+    const n = Math.max(1, Math.floor(activity.n));
+    body = (
+      <p>
+        Online every {gapText(n)} ({formatDuration(n * seconds)}): harvested at <span className="text-emerald-300">stage {aloeHarvestStageFor(n, respawn)}</span> or higher.
+      </p>
+    );
+  } else {
+    body = (
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-slate-500 text-left">
+            <th className="font-normal">Online at</th>
+            <th className="font-normal">Next online in</th>
+            <th className="font-normal text-right">Harvest at</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groupSessions(sessions).map((r) => (
+            <tr key={r.first.cycle}>
+              <td>
+                {clockText(r.first.hour)}
+                {r.count > 1 && `-${clockText(r.last.hour)} (${r.count} sessions)`}
+              </td>
+              <td>
+                {gapText(r.first.gapCycles)}
+                {Number.isFinite(r.first.gapCycles) && r.first.gapCycles > 1 && <span className="text-slate-500"> ({formatDuration(r.first.gapCycles * seconds)})</span>}
+              </td>
+              <td className="text-right text-emerald-300">stage {r.first.stage}+</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-700/50 space-y-1.5 text-[11px] text-slate-400" data-testid="aloe-harvest-preview">
+      <SectionLabel>
+        <span className="flex items-center gap-1">
+          All-in Aloe harvests
+          <InfoHint title="All-in Aloe auto harvest" width={300}>
+            Each session the player harvests All-in Aloe at the stage that makes the most aloe per cycle for the time until they are next online: 14 when
+            checking every cycle, lower before a long time offline (an aloe left growing may reset to stage 1 first).
+          </InfoHint>
+        </span>
+      </SectionLabel>
+      {body}
+      {config.aloeAutoHarvest && online && (
+        <>
+          <p className="text-slate-500">
+            Cycle length {formatDuration(seconds)}
+            {liveCycleSeconds === undefined ? " (from your stats)" : " (current run)"}
+            {activity.kind === "windows" && ", first day of the run"}.
+          </p>
+        </>
+      )}
+    </div>
   );
 };
 
