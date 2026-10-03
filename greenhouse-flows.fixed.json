@@ -1,0 +1,444 @@
+{
+  "kind": "skyshards-greenhouse-flows",
+  "version": 1,
+  "plots": [
+    {
+      "id": 1,
+      "flow": {
+        "steps": [
+          {
+            "id": "stage-2",
+            "label": "Jelly x9",
+            "layout": {
+              "code": "M9Mp1THQMdQx0imqMTSsSUxMSgTiZFPTRMckRyBOMU2DiqXCxfSALIiYHlAWUwwFpMEQHAAA"
+            },
+            "exit": [
+              {
+                "kind": "targetsFilled",
+                "count": 0
+              }
+            ],
+            "policies": {
+              "replaceDecayed": true,
+              "fixGround": true,
+              "watering": "toMax"
+            }
+          },
+          {
+            "id": "stage-1",
+            "label": "Chorus Fruit x9",
+            "layout": {
+              "code": "MzTUqdQp0jHQMdIx1DGrMTStMU1KTEpKTEwyNU1PdATBJNNk0yQIMDVNgYmZpsHUJafCxRDqkEEyDMEBAA"
+            },
+            "exit": [
+              {
+                "kind": "fullyGrown",
+                "mutationId": "magic_jellybean",
+                "count": 9
+              },
+              {
+                "kind": "group",
+                "match": "any",
+                "of": [
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "chloronite",
+                    "qty": 225
+                  },
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "duskbloom",
+                    "qty": 42
+                  },
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "cindershade",
+                    "qty": 30
+                  }
+                ]
+              }
+            ],
+            "policies": {
+              "fixGround": true,
+              "replaceDecayed": true,
+              "watering": "toMax"
+            },
+            "next": "step-3",
+            "routes": [
+              {
+                "to": "step-3",
+                "when": [
+                  {
+                    "kind": "fullyGrown",
+                    "mutationId": "magic_jellybean",
+                    "count": 9
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "chloronite",
+                        "qty": 225
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "duskbloom",
+                        "qty": 42
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cindershade",
+                        "qty": 30
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "to": "stage-2",
+                "when": [
+                  {
+                    "kind": "fullyGrown",
+                    "mutationId": "magic_jellybean",
+                    "count": 9
+                  },
+                  {
+                    "kind": "plantDecayed",
+                    "kindId": "chloronite"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "step-3",
+            "label": "Step 3",
+            "layout": {
+              "code": "TYpLDkBAEAUv9DasbDEO0vN79CBCSCQO77NArSqVWrBBMcLCoUWGHBMGFPDHjvWyGcvRMaVEVWXNJjU0atjyQcn-bcP7hehjkJtQuSpIaUvx0UUvYv_t-04"
+            },
+            "exit": [
+              {
+                "kind": "inventoryAtLeast",
+                "item": "chloronite",
+                "qty": 1000
+              },
+              {
+                "kind": "inventoryAtLeast",
+                "item": "duskbloom",
+                "qty": 300
+              },
+              {
+                "kind": "inventoryAtLeast",
+                "item": "cindershade",
+                "qty": 150
+              }
+            ]
+          }
+        ],
+        "loop": true,
+        "startIndex": 0
+      },
+      "policies": {
+        "fixGround": true,
+        "replaceDecayed": true,
+        "layoutInputSpawns": "keep",
+        "baseCropUpkeep": "harvestBeforeDecay"
+      }
+    },
+    {
+      "id": 2,
+      "flow": {
+        "steps": [
+          {
+            "id": "stage-2",
+            "label": "Jelly 9x",
+            "layout": {
+              "code": "M9Mp1UnSSdEx1zHVKaoxNKxJTExKBOJkU9NExyRHIE41TYeKpcDF0oAsiJgeUBYipockhgLSYQgOAA"
+            },
+            "exit": [
+              {
+                "kind": "targetsFilled",
+                "count": 0
+              }
+            ],
+            "watch": [],
+            "policies": {
+              "fixGround": true,
+              "replaceDecayed": true,
+              "watering": "toMax",
+              "baseCropUpkeep": "harvestBeforeDecay",
+              "layoutInputSpawns": "keep"
+            }
+          },
+          {
+            "id": "stage-1",
+            "label": "Chorus 9x",
+            "layout": {
+              "code": "TYoxDoAwEMM-lKWDxcxTLldgZ0Pq4xFCV3AyWW5Nl04t6rIYjYHDjjAcsT4ziV9gL0evLrfpvu5P1ic3"
+            },
+            "exit": [
+              {
+                "kind": "fullyGrown",
+                "mutationId": "magic_jellybean",
+                "count": 9
+              },
+              {
+                "kind": "group",
+                "match": "any",
+                "of": [
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "chloronite",
+                    "qty": 225
+                  },
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "duskbloom",
+                    "qty": 42
+                  },
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "cindershade",
+                    "qty": 30
+                  }
+                ]
+              }
+            ],
+            "routes": [
+              {
+                "to": "step-3",
+                "when": [
+                  {
+                    "kind": "fullyGrown",
+                    "mutationId": "magic_jellybean",
+                    "count": 9
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "chloronite",
+                        "qty": 225
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "duskbloom",
+                        "qty": 42
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cindershade",
+                        "qty": 30
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "to": "stage-2",
+                "when": [
+                  {
+                    "kind": "fullyGrown",
+                    "mutationId": "magic_jellybean",
+                    "count": 9
+                  },
+                  {
+                    "kind": "plantDecayed",
+                    "kindId": "chloronite"
+                  }
+                ]
+              }
+            ],
+            "next": "step-3"
+          },
+          {
+            "id": "step-3",
+            "label": "Step 3",
+            "layout": {
+              "code": "TYpLDkBAEAUv9DasbDEO0vN79CBCSCQO77NArSqVWrBBMcLCoUWGHBMGFPDHjvWyGcvRMaVEVWXNJjU0atjyQcn-bcP7hehjkJtQuSpIaUvx0UUvYv_t-04"
+            },
+            "exit": [
+              {
+                "kind": "inventoryAtLeast",
+                "item": "chloronite",
+                "qty": 1000
+              },
+              {
+                "kind": "inventoryAtLeast",
+                "item": "duskbloom",
+                "qty": 300
+              },
+              {
+                "kind": "inventoryAtLeast",
+                "item": "cindershade",
+                "qty": 150
+              }
+            ]
+          }
+        ],
+        "loop": true,
+        "startIndex": 0
+      },
+      "policies": {
+        "fixGround": true,
+        "replaceDecayed": true,
+        "watering": "toMax",
+        "baseCropUpkeep": "harvestBeforeDecay",
+        "layoutInputSpawns": "keep"
+      }
+    },
+    {
+      "id": 3,
+      "flow": {
+        "steps": [
+          {
+            "id": "stage-2",
+            "label": "Jelly 9x",
+            "layout": {
+              "code": "M9Mp1bHQMdYx0UnUKaoxNKxJTExKBOJkU9NExyRHIE4xTYeKpcLF0oAsiJgeUBYipockhgLSYQgOAA"
+            },
+            "exit": [
+              {
+                "kind": "targetsFilled",
+                "count": 0
+              }
+            ],
+            "policies": {
+              "fixGround": true,
+              "replaceDecayed": true,
+              "watering": "toMax",
+              "baseCropUpkeep": "harvestBeforeDecay",
+              "layoutInputSpawns": "keep"
+            },
+            "watch": []
+          },
+          {
+            "id": "stage-1",
+            "label": "Chorus 9x",
+            "layout": {
+              "code": "MzTUqdQp0jHWMdFJ1LGoMTStMU1KTEpKTEwyNU1LdATBJNNk0yQIMDVNgYmZpsPUJafCxRDqkEEyDMEBAA"
+            },
+            "exit": [
+              {
+                "kind": "fullyGrown",
+                "mutationId": "magic_jellybean",
+                "count": 9
+              },
+              {
+                "kind": "group",
+                "match": "any",
+                "of": [
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "chloronite",
+                    "qty": 225
+                  },
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "duskbloom",
+                    "qty": 42
+                  },
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "cindershade",
+                    "qty": 30
+                  }
+                ]
+              }
+            ],
+            "routes": [
+              {
+                "to": "stage-3",
+                "when": [
+                  {
+                    "kind": "fullyGrown",
+                    "mutationId": "magic_jellybean",
+                    "count": 9
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "chloronite",
+                        "qty": 225
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "duskbloom",
+                        "qty": 42
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cindershade",
+                        "qty": 30
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "to": "stage-2",
+                "when": [
+                  {
+                    "kind": "fullyGrown",
+                    "mutationId": "magic_jellybean",
+                    "count": 9
+                  },
+                  {
+                    "kind": "plantDecayed",
+                    "kindId": "chloronite"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "stage-3",
+            "label": "Chorus 9x (copy)",
+            "layout": {
+              "code": "TYpLDkBAEAUv9DasbDEO0vN79CBCSCQO77NArSqVWrBBMcLCoUWGHBMGFPDHjvWyGcvRMaVEVWXNJjU0atjyQcn-bcP7hehjkJtQuSpIaUvx0UUvYv_t-04"
+            },
+            "exit": [
+              {
+                "kind": "group",
+                "match": "all",
+                "of": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "chloronite",
+                    "qty": 1000
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "duskbloom",
+                    "qty": 300
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "cindershade",
+                    "qty": 150
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "loop": true,
+        "startIndex": 0
+      },
+      "policies": {
+        "layoutInputSpawns": "keep",
+        "baseCropUpkeep": "harvestBeforeDecay",
+        "watering": "toMax",
+        "replaceDecayed": true,
+        "fixGround": true
+      }
+    }
+  ]
+}

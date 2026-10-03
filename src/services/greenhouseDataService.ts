@@ -68,7 +68,7 @@ export async function loadGreenhouseData(): Promise<GreenhouseDataJSON> {
       if (!response.ok) {
         throw new Error(`Failed to load greenhouse data: ${response.statusText}`);
       }
-      return response.json();
+      return response.json() as Promise<GreenhouseDataJSON>;
     })
     .then((data: GreenhouseDataJSON) => {
       cachedData = data;

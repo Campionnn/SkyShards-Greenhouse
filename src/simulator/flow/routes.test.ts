@@ -148,7 +148,7 @@ describe("validation of routes", () => {
   it("checks conditions inside groups and warns about empty ones", () => {
     const f = flow([at("s1", "wheat", [{ kind: "group", match: "any", of: [{ kind: "cycles", n: 0 }, { kind: "group", match: "all", of: [] }] }]), at("s2", "potato")]);
     const issues = engine.validate(scenario([f]));
-    expect(issues.some((i) => i.level === "error" && /n >= 1/.test(i.message))).toBe(true);
+    expect(issues.some((i) => i.level === "error" && /cycles must be at least 1/.test(i.message))).toBe(true);
     expect(issues.some((i) => i.level === "warning" && /empty AND\/OR group/.test(i.message))).toBe(true);
   });
 

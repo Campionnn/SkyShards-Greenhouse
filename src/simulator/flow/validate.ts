@@ -5,6 +5,7 @@ import { RARE_CROP_ITEMS } from "../economy/rareCrops";
 import { ALOE_FRAGMENT } from "../growth/aloe";
 import type { Scenario } from "../sim/state";
 import { resolveLayout } from "./layout";
+import { describeTrigger } from "./triggers";
 import type { Condition, Trigger } from "./types";
 
 export interface ScenarioIssue {
@@ -34,81 +35,123 @@ function isKnownItem(data: GameData, item: string): boolean {
   );
 }
 
-/** Errors for scenarios that cannot run; warnings for steps that can never exit. Does not modify the scenario. */
+/** "a", "a and b", "a, b and c". */
+function listText(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** Where an issue is, as the user sees it: "Plot 1 › Step 3 "Full Harvest" › Leave when". */
+const SEP = " › ";
+
+/**
+ * Errors for scenarios that cannot run; warnings for steps that can never exit.
+ * Paths and messages are written for players, not developers. Does not modify the scenario.
+ */
 export function validateScenario(scenario: Scenario, data: GameData): ScenarioIssue[] {
   const issues: ScenarioIssue[] = [];
   const err = (path: string, message: string) => issues.push({ level: "error", path, message });
   const warn = (path: string, message: string) => issues.push({ level: "warning", path, message });
+  const nameOf = (id: string) => kindDef(data, id)?.name ?? id.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
 
-  if (scenario.plots.length === 0) err("plots", "at least one plot is required");
-  if (scenario.plots.length > MAX_PLOTS) err("plots", `at most ${MAX_PLOTS} plots`);
+  if (scenario.plots.length === 0) err("Plots", "Add at least one plot.");
+  if (scenario.plots.length > MAX_PLOTS) err("Plots", `You can use at most ${MAX_PLOTS} plots.`);
   const ids = scenario.plots.map((p) => p.id);
-  if (new Set(ids).size !== ids.length) err("plots", "plot ids must be unique");
+  if (new Set(ids).size !== ids.length) err("Plots", "Two plots have the same number. Each plot needs its own number.");
   const order = scenario.settings.config.plotOrder;
   for (const id of ids) {
-    if (!order.includes(id)) err("settings.config.plotOrder", `plot ${id} is missing from plotOrder`);
+    if (!order.includes(id)) err(`Advanced settings${SEP}Plot order`, `Plot ${id} is missing from the plot order.`);
   }
 
   for (const [item, qty] of Object.entries(scenario.startingInventory)) {
-    if (!isKnownItem(data, item)) err(`startingInventory.${item}`, "unknown item");
-    if (!Number.isFinite(qty) || qty < 0) err(`startingInventory.${item}`, "quantity must be >= 0");
+    const where = `Starting inventory${SEP}${nameOf(item)}`;
+    if (!isKnownItem(data, item)) err(where, `"${item}" isn't an item the simulator knows about. Remove it from the inventory.`);
+    if (!Number.isFinite(qty) || qty < 0) err(where, "The amount can't be negative.");
   }
 
   if (scenario.settings.activity.kind === "everyN" && !(scenario.settings.activity.n >= 1)) {
-    err("settings.activity.n", "must be at least 1");
+    err("Schedule", `"Every N cycles" must be at least 1.`);
   }
 
-  scenario.plots.forEach((plot, pi) => {
-    const base = `plots[${pi}] (plot ${plot.id})`;
+  scenario.plots.forEach((plot) => {
+    const base = `Plot ${plot.id}`;
     const { steps } = plot.flow;
     if (steps.length === 0) {
-      err(base, "a flow needs at least one step");
+      err(base, "This plot's flow has no steps. Add at least one step.");
       return;
     }
-    if (plot.flow.startIndex < 0 || plot.flow.startIndex >= steps.length) err(`${base}.flow.startIndex`, "out of range");
+    if (plot.flow.startIndex < 0 || plot.flow.startIndex >= steps.length) {
+      err(`${base}${SEP}Starting step`, "The starting step doesn't exist. Pick a starting step in the flow editor.");
+    }
     const stepIds = steps.map((s) => s.id);
-    if (new Set(stepIds).size !== stepIds.length) err(`${base}.flow`, "step ids must be unique");
+    if (new Set(stepIds).size !== stepIds.length) err(`${base}${SEP}Steps`, "Two steps have the same id. Each step needs its own id.");
+    const known = (id: string) => stepIds.includes(id);
+    const stepTitle = (si: number) => {
+      const label = steps[si].label?.trim();
+      return !label || label.toLowerCase() === `step ${si + 1}` ? `Step ${si + 1}` : `Step ${si + 1} "${label}"`;
+    };
+    const stepName = (id: string) => {
+      const i = stepIds.indexOf(id);
+      return i < 0 ? `"${id}"` : stepTitle(i);
+    };
 
     steps.forEach((step, si) => {
-      const path = `${base}.steps[${si}] "${step.label || step.id}"`;
+      const path = `${base}${SEP}${stepTitle(si)}`;
       const { resolved, issues: layoutIssues } = resolveLayout(step.layout, data);
-      for (const m of layoutIssues) err(`${path}.layout`, m);
+      for (const m of layoutIssues) err(`${path}${SEP}Layout`, m);
       const kinds = new Set(resolved.plants.map((p) => p.kindId));
 
       const isLast = si === steps.length - 1;
       const routes = step.routes ?? [];
       if (step.exit.length === 0 && routes.length === 0 && (!isLast || plot.flow.loop) && steps.length > 1) {
-        warn(`${path}.exit`, "no exit triggers: the plot will stay on this step forever");
+        warn(path, "This step has no conditions for leaving it, so the plot will stay on it forever. Add a \"Leave this step when\" condition.");
       }
-      const known = (id: string) => stepIds.includes(id);
-      if (step.next !== undefined && !known(step.next)) err(`${path}.next`, `goes to step "${step.next}", which does not exist`);
+      if (step.next !== undefined && !known(step.next)) {
+        err(`${path}${SEP}Next step`, `It goes to step "${step.next}", which no longer exists. Pick another next step.`);
+      }
       const checkList = (list: Condition[], where: string) => {
-        for (const c of list) checkCondition(c, where, kinds, resolved.slots.length, known);
+        for (const c of list) checkCondition(c, where, kinds, resolved.slots.length, known, stepName);
       };
-      checkList(step.exit, `${path}.exit`);
+      checkList(step.exit, `${path}${SEP}Leave when`);
       routes.forEach((route, ri) => {
-        const where = `${path}.routes[${ri}]`;
-        if (!known(route.to)) err(where, `goes to step "${route.to}", which does not exist`);
-        if (route.when.length === 0) warn(where, "has no conditions, so it never fires");
+        const where = `${path}${SEP}Route ${ri + 1}${known(route.to) ? ` (to ${stepName(route.to)})` : ""}`;
+        if (!known(route.to)) err(where, `It goes to step "${route.to}", which no longer exists. Pick another step or remove the route.`);
+        if (route.when.length === 0) warn(where, "This route has no conditions, so it will never be taken.");
         checkList(route.when, where);
       });
       if (step.watch && layoutIssues.length === 0) {
         const slotKeys = new Set(resolved.slots.map((s) => `${s.row},${s.col}`));
         const stale = step.watch.filter((k) => !slotKeys.has(k));
-        if (stale.length) warn(`${path}.watch`, `watched cell${stale.length === 1 ? "" : "s"} ${stale.join(" ")} ${stale.length === 1 ? "is" : "are"} not a target in this layout and will be ignored`);
+        if (stale.length) {
+          const one = stale.length === 1;
+          warn(
+            `${path}${SEP}Checked targets`,
+            `${one ? "Cell" : "Cells"} ${stale.map((k) => `(${k})`).join(", ")} ${one ? "is" : "are"} checked but ${one ? "isn't a target" : "aren't targets"} in this step's layout any more, so ${one ? "it is" : "they are"} ignored.`
+          );
+        }
       }
     });
   });
 
-  function checkCondition(c: Condition, path: string, kinds: Set<string>, slotCount: number, known: (id: string) => boolean) {
+  function checkCondition(
+    c: Condition,
+    where: string,
+    kinds: Set<string>,
+    slotCount: number,
+    known: (id: string) => boolean,
+    stepName: (id: string) => string
+  ) {
     if (c.kind === "group") {
-      if (c.of.length === 0) warn(path, "an empty AND/OR group never holds");
-      for (const inner of c.of) checkCondition(inner, path, kinds, slotCount, known);
+      if (c.of.length === 0) warn(where, "An empty AND/OR group is never true. Add a condition to it or remove it.");
+      for (const inner of c.of) checkCondition(inner, where, kinds, slotCount, known, stepName);
       return;
     }
+    const path = `${where} "${describeTrigger(c, stepName, nameOf)}"`;
     if (c.kind === "stepVisits") {
-      if (!(c.count >= 1)) err(path, "step visits count must be >= 1");
-      if (c.sinceStep !== undefined && !known(c.sinceStep)) err(path, `counts since step "${c.sinceStep}", which does not exist`);
+      if (!(c.count >= 1)) err(path, "The number of times must be at least 1.");
+      if (c.sinceStep !== undefined && !known(c.sinceStep)) {
+        err(path, `It counts visits since step "${c.sinceStep}", which no longer exists. Pick another step.`);
+      }
       return;
     }
     checkTrigger(c, path, kinds, slotCount);
@@ -117,41 +160,48 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
   function checkTrigger(t: Exclude<Trigger, { kind: "stepVisits" }>, path: string, kinds: Set<string>, slotCount: number) {
     switch (t.kind) {
       case "cycles":
-        if (!(t.n >= 1)) err(path, "cycles trigger needs n >= 1");
+        if (!(t.n >= 1)) err(path, "The number of cycles must be at least 1.");
         break;
       case "inventoryAtLeast":
       case "inventoryBelow":
-        if (!isKnownItem(data, t.item)) err(path, `unknown item "${t.item}"`);
-        if (!(t.qty >= 0)) err(path, "quantity must be >= 0");
+        if (!isKnownItem(data, t.item)) err(path, `"${t.item}" isn't an item the simulator knows about. Pick another item.`);
+        if (!(t.qty >= 0)) err(path, "The amount can't be negative.");
         break;
       case "decayImminent":
-        if (!(t.withinCycles >= 0)) err(path, "withinCycles must be >= 0");
+        if (!(t.withinCycles >= 0)) err(path, "The number of cycles can't be negative.");
         break;
       case "plantDecayed":
-        if (!kindDef(data, t.kindId)) err(path, `unknown plant "${t.kindId}"`);
+        if (!kindDef(data, t.kindId)) err(path, `"${t.kindId}" isn't a plant the simulator knows about. Pick another plant.`);
         break;
       case "targetsFilled":
-        if (!(t.count >= 0)) err(path, "count must be >= 0 (0 = every target)");
-        else if (slotCount === 0) warn(path, "this step's layout has no targets, so this trigger can never fire");
-        else if (t.count > slotCount) warn(path, `the layout has only ${slotCount} targets, so ${t.count} can never be filled`);
+        if (!(t.count >= 0)) err(path, "The count can't be negative (0 means every target).");
+        else if (slotCount === 0) warn(path, "This step's layout has no target cells, so this condition can never be met.");
+        else if (t.count > slotCount) {
+          warn(path, `This step's layout only has ${slotCount} target${slotCount === 1 ? "" : "s"}, so ${t.count} can never be filled.`);
+        }
         break;
       case "fullyGrown":
       case "mutationSpawned":
       case "mutationHarvested": {
         const m = data.mutations[t.mutationId];
         if (!m) {
-          err(path, `unknown mutation "${t.mutationId}"`);
+          err(path, `"${t.mutationId}" isn't a mutation the simulator knows about. Pick another mutation.`);
           break;
         }
-        if (t.kind !== "fullyGrown" && !(t.count >= 1)) err(path, "count must be >= 1");
-        if (t.kind === "fullyGrown" && t.count !== undefined && !(t.count >= 1)) err(path, "count must be >= 1");
+        if (t.kind !== "fullyGrown" && !(t.count >= 1)) err(path, "The count must be at least 1.");
+        if (t.kind === "fullyGrown" && t.count !== undefined && !(t.count >= 1)) err(path, "The count must be at least 1.");
         if (m.spawnWeight <= 0 && m.id !== "shellfruit") {
-          err(path, `${m.name} never spawns from the weighted roll, so this trigger can never fire`);
+          err(path, `${m.name} never spawns naturally, so this condition can never be met.`);
           break;
         }
-        const missing = m.requirements.filter((r) => !kinds.has(r.crop)).map((r) => r.crop);
+        const missing = m.requirements.filter((r) => !kinds.has(r.crop)).map((r) => nameOf(r.crop));
         if (missing.length && m.special !== "requires_zero_adjacent") {
-          warn(path, `this step's layout has no ${missing.join(", ")}, so ${m.name} can only appear if they spawn first`);
+          const what = listText(missing);
+          warn(
+            path,
+            `${m.name} needs ${what} next to it to spawn, but this step's layout doesn't have ${missing.length === 1 ? "any" : "them"}. ` +
+              `Unless ${missing.length === 1 ? "it gets" : "they get"} onto the plot some other way (for example by spawning there first), this condition may never be met.`
+          );
         }
         break;
       }

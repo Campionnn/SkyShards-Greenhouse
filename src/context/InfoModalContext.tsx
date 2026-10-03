@@ -1,20 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { loadGreenhouseData, getCropData, getMutationData, getEffectData } from "../services/greenhouseDataService";
-import type { CropDataJSON, MutationDataJSON, EffectDefinition, GreenhouseDataJSON } from "../services/greenhouseDataService";
-
-interface InfoModalState {
-  isOpen: boolean;
-  itemId: string | null;
-  itemType: "crop" | "mutation" | null;
-}
-
-interface CropInfoData extends CropDataJSON {
-  id: string;
-}
-
-interface MutationInfoData extends MutationDataJSON {
-  id: string;
-}
+import { loadGreenhouseData, getEffectData, getRawData } from "../services/greenhouseDataService";
+import type { EffectDefinition, GreenhouseDataJSON } from "../services/greenhouseDataService";
 
 interface InfoModalContextType {
   isOpen: boolean;
@@ -22,15 +8,11 @@ interface InfoModalContextType {
   itemType: "crop" | "mutation" | null;
   isLoading: boolean;
   error: string | null;
-  
-  // Set while the modal is open.
-  cropData: CropInfoData | null;
-  mutationData: MutationInfoData | null;
-  effectsMap: Record<string, EffectDefinition>;
-  
-  // Full data, for requirement lookups.
+
+  // Full data; the modal renders itemId from it.
   allData: GreenhouseDataJSON | null;
-  
+
+  /** Opens the modal on an item, or swaps an open modal to it. */
   openInfo: (itemId: string) => void;
   closeInfo: () => void;
 }
@@ -38,74 +20,52 @@ interface InfoModalContextType {
 const InfoModalContext = createContext<InfoModalContextType | null>(null);
 
 export const InfoModalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<InfoModalState>({
-    isOpen: false,
-    itemId: null,
-    itemType: null,
-  });
-  
+  const [isOpen, setIsOpen] = useState(false);
+  const [itemId, setItemId] = useState<string | null>(null);
+  const [itemType, setItemType] = useState<"crop" | "mutation" | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cropData, setCropData] = useState<CropInfoData | null>(null);
-  const [mutationData, setMutationData] = useState<MutationInfoData | null>(null);
-  const [effectsMap, setEffectsMap] = useState<Record<string, EffectDefinition>>({});
   const [allData, setAllData] = useState<GreenhouseDataJSON | null>(null);
 
   useEffect(() => {
     loadGreenhouseData()
-      .then((data) => {
-        setAllData(data);
-        setEffectsMap(data.effects);
-      })
+      .then(setAllData)
       .catch((err) => {
         console.error("Failed to load greenhouse data:", err);
       });
   }, []);
 
-  const openInfo = useCallback((itemId: string) => {
-    setIsLoading(true);
+  const openInfo = useCallback((id: string) => {
+    const show = (data: GreenhouseDataJSON) => {
+      setAllData(data);
+      if (data.mutations[id]) {
+        setItemType("mutation");
+      } else if (data.crops[id]) {
+        setItemType("crop");
+      } else {
+        setItemType(null);
+        setError(`Item "${id}" not found`);
+      }
+    };
+
+    setIsOpen(true);
+    setItemId(id);
     setError(null);
-    setCropData(null);
-    setMutationData(null);
-    
+
+    // Already loaded: swap synchronously so the modal doesn't flash a spinner.
+    const cached = getRawData();
+    if (cached) {
+      setIsLoading(false);
+      show(cached);
+      return;
+    }
+
+    setIsLoading(true);
     loadGreenhouseData()
-      .then((data) => {
-        setAllData(data);
-        setEffectsMap(data.effects);
-        
-        const crop = getCropData(itemId);
-        const mutation = getMutationData(itemId);
-        
-        if (mutation) {
-          setMutationData(mutation);
-          setState({
-            isOpen: true,
-            itemId,
-            itemType: "mutation",
-          });
-        } else if (crop) {
-          setCropData(crop);
-          setState({
-            isOpen: true,
-            itemId,
-            itemType: "crop",
-          });
-        } else {
-          setError(`Item "${itemId}" not found`);
-          setState({
-            isOpen: true,
-            itemId,
-            itemType: null,
-          });
-        }
-      })
+      .then(show)
       .catch((err) => {
+        setItemType(null);
         setError(err instanceof Error ? err.message : "Failed to load data");
-        setState({
-          isOpen: true,
-          itemId,
-          itemType: null,
-        });
       })
       .finally(() => {
         setIsLoading(false);
@@ -113,35 +73,24 @@ export const InfoModalProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const closeInfo = useCallback(() => {
-    setState({
-      isOpen: false,
-      itemId: null,
-      itemType: null,
-    });
-    setCropData(null);
-    setMutationData(null);
+    setIsOpen(false);
+    setItemId(null);
+    setItemType(null);
     setError(null);
   }, []);
 
   const value: InfoModalContextType = {
-    isOpen: state.isOpen,
-    itemId: state.itemId,
-    itemType: state.itemType,
+    isOpen,
+    itemId,
+    itemType,
     isLoading,
     error,
-    cropData,
-    mutationData,
-    effectsMap,
     allData,
     openInfo,
     closeInfo,
   };
 
-  return (
-    <InfoModalContext.Provider value={value}>
-      {children}
-    </InfoModalContext.Provider>
-  );
+  return <InfoModalContext.Provider value={value}>{children}</InfoModalContext.Provider>;
 };
 
 export const useInfoModal = (): InfoModalContextType => {

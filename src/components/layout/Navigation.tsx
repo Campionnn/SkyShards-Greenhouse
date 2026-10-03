@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Calculator, Palette, FlaskConical, Menu, X, ExternalLink } from "lucide-react";
+import { Calculator, Palette, FlaskConical, BookOpen, Menu, X, ExternalLink } from "lucide-react";
 
 export const Navigation: React.FC = () => {
   const location = useLocation();
@@ -10,10 +10,15 @@ export const Navigation: React.FC = () => {
     { path: "/", label: "Calculator", icon: Calculator },
     { path: "/designer", label: "Designer", icon: Palette },
     { path: "/simulator", label: "Simulator", icon: FlaskConical },
+    { path: "/wiki", label: "Wiki", icon: BookOpen },
   ];
 
+  // Sections with sub-pages (/wiki/<slug>) stay highlighted on them.
+  const isActivePath = (path: string) =>
+    path === "/" ? location.pathname === "/" : location.pathname === path || location.pathname.startsWith(`${path}/`);
+
   const colorClassesFor = (path: string, isActive: boolean) => {
-    const tone = path === "/designer" ? "blue" : path === "/simulator" ? "amber" : "emerald";
+    const tone = path === "/designer" ? "blue" : path === "/simulator" ? "amber" : path === "/wiki" ? "teal" : "emerald";
     const classes = {
       blue: isActive
         ? "bg-blue-500/30 text-blue-300 border border-blue-500/40 ring-1 ring-offset-0 ring-blue-400"
@@ -21,6 +26,9 @@ export const Navigation: React.FC = () => {
       amber: isActive
         ? "bg-amber-500/30 text-amber-300 border border-amber-500/40 ring-1 ring-offset-0 ring-amber-400"
         : "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/20 hover:border-amber-500/30",
+      teal: isActive
+        ? "bg-teal-500/30 text-teal-300 border border-teal-500/40 ring-1 ring-offset-0 ring-teal-400"
+        : "bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/20 hover:border-teal-500/30",
       emerald: isActive
         ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 ring-1 ring-offset-0 ring-emerald-400"
         : "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/20 hover:border-emerald-500/30",
@@ -44,7 +52,7 @@ export const Navigation: React.FC = () => {
 
           <div className="hidden md:flex items-center space-x-2">
             {navItems.map(({ path, label, icon: Icon }) => {
-              const isActive = location.pathname === path;
+              const isActive = isActivePath(path);
               const colorClasses = colorClassesFor(path, isActive);
               
               return (
@@ -85,7 +93,7 @@ export const Navigation: React.FC = () => {
           <div className="md:hidden border-t border-slate-700 pt-3 py-2">
             <div className="flex flex-col space-y-1 gap-1">
               {navItems.map(({ path, label, icon: Icon }) => {
-                const isActive = location.pathname === path;
+                const isActive = isActivePath(path);
                 const colorClasses = colorClassesFor(path, isActive);
                 
                 return (

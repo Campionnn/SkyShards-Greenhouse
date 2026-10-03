@@ -90,40 +90,43 @@ export function stepExitHolds(exit: readonly Condition[], v: TriggerView, match?
 /** Resolves a step id to a display name; defaults to the id itself. */
 export type StepNamer = (stepId: string) => string;
 
-export function describeConditions(list: readonly Condition[], match?: ConditionMatch, stepName?: StepNamer): string {
+/** Resolves an item, plant or mutation id to a display name; defaults to the id itself. */
+export type ItemNamer = (id: string) => string;
+
+export function describeConditions(list: readonly Condition[], match?: ConditionMatch, stepName?: StepNamer, itemName?: ItemNamer): string {
   const joiner = match === "any" ? " or " : " and ";
-  return list.map((c) => describeCondition(c, stepName)).join(joiner);
+  return list.map((c) => describeCondition(c, stepName, itemName)).join(joiner);
 }
 
-export function describeCondition(c: Condition, stepName?: StepNamer): string {
-  if (c.kind === "group") return c.of.length === 0 ? "(empty group)" : `(${describeConditions(c.of, c.match, stepName)})`;
-  return describeTrigger(c, stepName);
+export function describeCondition(c: Condition, stepName?: StepNamer, itemName?: ItemNamer): string {
+  if (c.kind === "group") return c.of.length === 0 ? "(empty group)" : `(${describeConditions(c.of, c.match, stepName, itemName)})`;
+  return describeTrigger(c, stepName, itemName);
 }
 
-export function describeTrigger(t: Trigger, stepName: StepNamer = (id) => id): string {
+export function describeTrigger(t: Trigger, stepName: StepNamer = (id) => id, itemName: ItemNamer = (id) => id): string {
   switch (t.kind) {
     case "cycles":
       return `${t.n} cycles in step`;
     case "inventoryAtLeast":
-      return `inventory ${t.item} >= ${t.qty}`;
+      return `inventory ${itemName(t.item)} >= ${t.qty}`;
     case "inventoryBelow":
-      return `inventory ${t.item} < ${t.qty}`;
+      return `inventory ${itemName(t.item)} < ${t.qty}`;
     case "allFullyGrown":
       return "everything fully grown";
     case "noneFullyGrown":
       return "nothing fully grown";
     case "fullyGrown":
-      return (t.count ?? 1) > 1 ? `${t.count} x ${t.mutationId} fully grown` : `${t.mutationId} fully grown`;
+      return (t.count ?? 1) > 1 ? `${t.count} x ${itemName(t.mutationId)} fully grown` : `${itemName(t.mutationId)} fully grown`;
     case "mutationHarvested":
-      return `${t.count} x ${t.mutationId} harvested`;
+      return `${t.count} x ${itemName(t.mutationId)} harvested`;
     case "targetsFilled":
       return t.count <= 0 ? "every target filled" : `${t.count} targets filled`;
     case "decayImminent":
       return `something decays within ${t.withinCycles} cycles`;
     case "plantDecayed":
-      return `a ${t.kindId} decayed`;
+      return `a ${itemName(t.kindId)} decayed`;
     case "mutationSpawned":
-      return `${t.count} x ${t.mutationId} spawned`;
+      return `${t.count} x ${itemName(t.mutationId)} spawned`;
     case "stepVisits":
       return `entered this step ${t.count}+ times${t.sinceStep !== undefined ? ` since ${stepName(t.sinceStep)}` : ""}`;
   }

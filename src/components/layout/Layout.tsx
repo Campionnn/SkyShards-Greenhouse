@@ -5,13 +5,16 @@ import { ErrorBoundary } from "./ErrorBoundary";
 
 export const Layout: React.FC = () => {
   const location = useLocation();
+  // Remount per top-level section, not per path, so moving between wiki
+  // entries keeps the wiki sidebar (search text, scroll) mounted.
+  const sectionKey = location.pathname.split("/")[1] ?? "";
   return (
     <div className="min-h-screen bg-slate-950">
       <Navigation />
       <main className="px-2 sm:px-4 lg:px-6 py-4">
         <div className="max-w-screen-xl mx-auto w-full">
           <ErrorBoundary>
-            <Outlet key={location.pathname} />
+            <Outlet key={sectionKey} />
           </ErrorBoundary>
         </div>
       </main>

@@ -165,6 +165,17 @@ describe("new triggers", () => {
 
   it("validation warns about a targetsFilled trigger on a layout without targets", () => {
     const issues = engine.validate(scenario([flow([step("a", layout([["wheat", 0, 0]]), [{ kind: "targetsFilled", count: 0 }]), step("b", layout())], true)]));
-    expect(issues.some((i) => i.level === "warning" && /no targets/.test(i.message))).toBe(true);
+    expect(issues.some((i) => i.level === "warning" && /no target cells/.test(i.message))).toBe(true);
+  });
+
+  it("validation explains a missing requirement in plain words, with a readable location", () => {
+    const sc = scenario([
+      flow([step("a", layout([["wheat", 0, 0]]), [{ kind: "fullyGrown", mutationId: "magic_jellybean", count: 9 }]), step("b", layout())], true),
+    ]);
+    sc.plots[0].flow.steps[0].label = "Full Harvest";
+    const w = engine.validate(sc).find((i) => i.level === "warning" && i.message.includes("Magic Jellybean"));
+    expect(w?.path).toBe('Plot 1 › Step 1 "Full Harvest" › Leave when "9 x Magic Jellybean fully grown"');
+    expect(w?.message).toMatch(/^Magic Jellybean needs Sugar Cane and Duskbloom next to it to spawn, but this step's layout doesn't have them\./);
+    expect(w?.path).not.toMatch(/plots\[|steps\[/);
   });
 });

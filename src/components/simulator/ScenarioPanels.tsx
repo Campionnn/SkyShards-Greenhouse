@@ -24,6 +24,14 @@ import { buttonClass, inputClass } from "./styles";
 
 // ---- Scenario: share links, plots, import/export ---------------------------
 
+/** One validation issue: where it is (e.g. "Plot 1 › Step 3 › Leave when") above what's wrong. */
+const IssueLine: React.FC<{ issue: ScenarioIssue }> = ({ issue }) => (
+  <div>
+    <div className="font-medium">{issue.path}</div>
+    <div className="opacity-90">{issue.message}</div>
+  </div>
+);
+
 export const ScenarioPanel: React.FC<{
   scenario: Scenario;
   onChange: (sc: Scenario) => void;
@@ -127,16 +135,14 @@ export const ScenarioPanel: React.FC<{
       </div>
 
       {(errors.length > 0 || error) && (
-        <div className="mt-3 rounded-md bg-red-500/10 border border-red-500/30 px-2 py-1.5 text-xs text-red-200 space-y-0.5">
-          {errors.length ? errors.map((i, k) => <div key={k}>{i.path}: {i.message}</div>) : <div>{error}</div>}
+        <div className="mt-3 rounded-md bg-red-500/10 border border-red-500/30 px-2 py-1.5 text-xs text-red-200 space-y-1.5">
+          {errors.length ? errors.map((i, k) => <IssueLine key={k} issue={i} />) : <div>{error}</div>}
         </div>
       )}
       {warnings.length > 0 && (
-        <div className="mt-3 rounded-md bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-200 space-y-0.5">
+        <div className="mt-3 rounded-md bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-200 space-y-1.5">
           {warnings.map((i, k) => (
-            <div key={k}>
-              {i.path}: {i.message}
-            </div>
+            <IssueLine key={k} issue={i} />
           ))}
         </div>
       )}

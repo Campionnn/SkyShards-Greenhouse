@@ -12,6 +12,8 @@ const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((module) =
 const AboutPage = lazy(() => import("./pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const ContactPage = lazy(() => import("./pages/ContactPage").then((module) => ({ default: module.ContactPage })));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const WikiPage = lazy(() => import("./pages/WikiPage").then((module) => ({ default: module.WikiPage })));
+const ShortLinkRedirect = lazy(() => import("./pages/ShortLinkRedirect").then((module) => ({ default: module.ShortLinkRedirect })));
 
 // Redirects /?layout=X to /designer?layout=X; otherwise renders the calculator.
 const IndexRouteWithRedirect: React.FC = () => {
@@ -84,6 +86,22 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: "wiki",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <WikiPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "wiki/:slug",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <WikiPage />
+          </Suspense>
+        ),
+      },
+      {
         path: "about",
         element: (
           <Suspense fallback={<LoadingSpinner />}>
@@ -107,11 +125,16 @@ const router = createBrowserRouter([
           </Suspense>
         ),
       },
+      {
+        // /gloomgourd -> /wiki/gloomgourd; any other unknown path -> /.
+        path: "*",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <ShortLinkRedirect />
+          </Suspense>
+        ),
+      },
     ],
-  },
-  {
-    path: "*",
-    element: <Navigate to="/" replace />,
   },
 ]);
 

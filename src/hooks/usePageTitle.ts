@@ -5,6 +5,9 @@ export const usePageTitle = () => {
   const location = useLocation();
 
   useEffect(() => {
+    // Wiki pages set a per-item title themselves.
+    if (location.pathname === "/wiki" || location.pathname.startsWith("/wiki/")) return;
+
     const getTitle = () => {
       const path = location.pathname;
 

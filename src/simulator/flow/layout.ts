@@ -35,7 +35,7 @@ export function resolveLayout(layout: StepLayout, data: GameData): { resolved: R
   for (const p of spec.plants) {
     const def = kindDef(data, p.kindId);
     if (!def) {
-      issues.push(`unknown plant "${p.kindId}"`);
+      issues.push(`The layout has a plant the simulator doesn't know ("${p.kindId}").`);
       continue;
     }
     resolved.plants.push({
@@ -49,7 +49,7 @@ export function resolveLayout(layout: StepLayout, data: GameData): { resolved: R
   for (const s of spec.slots) {
     const m = data.mutations[s.mutationId];
     if (!m) {
-      issues.push(`slot target "${s.mutationId}" is not a mutation`);
+      issues.push(`A target cell is labelled "${s.mutationId}", which isn't a mutation.`);
       continue;
     }
     resolved.slots.push({ mutationId: s.mutationId, row: s.row, col: s.col, size: (s.size ?? m.size) as Size });
@@ -60,9 +60,9 @@ export function resolveLayout(layout: StepLayout, data: GameData): { resolved: R
   const knownGround = new Set(["farmland", "sand", "soul_sand", "mycelium", "netherrack", "end_stone"]);
   for (const t of spec.groundTiles ?? []) {
     if (!Number.isInteger(t.row) || !Number.isInteger(t.col) || !footprintFits(t.row, t.col, 1)) {
-      issues.push(`ground tile at (${t.row},${t.col}) does not fit on the plot`);
+      issues.push(`The ground tile at (${t.row},${t.col}) is outside the plot.`);
     } else if (!knownGround.has(t.ground)) {
-      issues.push(`unknown ground "${t.ground}" at (${t.row},${t.col})`);
+      issues.push(`The ground at (${t.row},${t.col}) is "${t.ground}", which is an unknown ground type.`);
     } else {
       resolved.groundTiles[cellKey(t.row, t.col)] = t.ground;
     }
