@@ -12,7 +12,18 @@ export interface FitCellSize {
  */
 export function useFitCellSize(
   containerRef: RefObject<HTMLElement | null>,
-  { max = 48, min = 22, cells = GRID_SIZE }: { max?: number; min?: number; cells?: number } = {}
+  {
+    max = 48,
+    min = 22,
+    cells = GRID_SIZE,
+    reserve = 0,
+  }: {
+    max?: number;
+    min?: number;
+    cells?: number;
+    /** Pixels of the container width taken by something beside the grid (e.g. a compass frame). */
+    reserve?: number;
+  } = {}
 ): FitCellSize {
   const [size, setSize] = useState<FitCellSize>({ cellSize: max, gap: 2 });
 
@@ -21,8 +32,8 @@ export function useFitCellSize(
     if (!el) return;
 
     const compute = () => {
-      const width = el.clientWidth;
-      if (!width) return;
+      const width = el.clientWidth - reserve;
+      if (width <= 0) return;
       const gap = width < 420 ? 1 : 2;
       const raw = Math.floor((width - (cells - 1) * gap) / cells);
       const cellSize = Math.max(min, Math.min(max, raw));
@@ -33,7 +44,7 @@ export function useFitCellSize(
     const observer = new ResizeObserver(compute);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [containerRef, max, min, cells]);
+  }, [containerRef, max, min, cells, reserve]);
 
   return size;
 }

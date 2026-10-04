@@ -9,7 +9,7 @@ import {
   effectiveEffects,
   effectsGivenBy,
 } from "../../utilities";
-import { GridBackground, DragValidationOverlay, EffectTooltip } from "../grid";
+import { GridBackground, DragValidationOverlay, EffectTooltip, CompassFrame } from "../grid";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { CropImage } from "../shared";
 import type { DesignerPlacement } from "../../context";
@@ -347,6 +347,7 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
   
 return (
     <>
+      <CompassFrame>
       <div
         ref={gridRef}
         data-grid-container
@@ -498,6 +499,7 @@ return (
         />
       )}
       </div>
+      </CompassFrame>
       
       <StatusMessage
         hoveredPlacementId={hoveredPlacementId}

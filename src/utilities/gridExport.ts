@@ -8,7 +8,6 @@ export const ANIMATED_CROPS: ReadonlySet<string> = new Set([
   'all_in_aloe',
   'fire',
   'noctilume',
-  'shellfruit',
   'startlevine',
 ]);
 

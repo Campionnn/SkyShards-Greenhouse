@@ -22,6 +22,8 @@ import {
   CropCell,
   MutationCell,
   EffectTooltip,
+  CompassFrame,
+  COMPASS_RESERVE,
 } from "../grid";
 import { CropImage } from "../shared";
 import { SectionLabel } from "../ui";
@@ -187,7 +189,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
 
   // Grid sizing: fit the available width, never scroll.
   const fitRef = useRef<HTMLDivElement>(null);
-  const { cellSize, gap } = useFitCellSize(fitRef, { max: 60 });
+  const { cellSize, gap } = useFitCellSize(fitRef, { max: 60, reserve: COMPASS_RESERVE });
   const gridRef = useRef<HTMLDivElement>(null);
   const { width: gridWidth, height: gridHeight } = getGridDimensions(cellSize, gap);
 
@@ -344,6 +346,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
 
   const renderGrid = () => (
     <div ref={fitRef} className="w-full">
+      <CompassFrame className="mx-auto">
       <div
         ref={gridRef}
         className="relative select-none mx-auto"
@@ -468,6 +471,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
           />
         )}
       </div>
+      </CompassFrame>
     </div>
   );
 

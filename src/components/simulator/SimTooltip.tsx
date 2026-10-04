@@ -21,7 +21,7 @@ import {
 import { effectiveEffects, effectsGivenBy, getCellPixelPosition, getEffectName, sortEffects } from "../../utilities";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage, EffectChips } from "../shared";
-import { formatCount, formatDuration, formatRemaining, kindData, nameOf } from "./format";
+import { formatCount, formatDuration, formatRemaining, kindData, nameOf, plantIconOf } from "./format";
 import { closestBlocked, describeBlocker, formatChance, occupantName } from "./sanityFormat";
 
 export type TooltipTarget =
@@ -178,7 +178,7 @@ export const SimTooltip: React.FC<{
       role="tooltip"
     >
       <div className="flex items-center gap-2 mb-2">
-        {kindId && <CropImage cropId={kindId} cropName={nameOf(kindId)} size="sm" showFallback />}
+        {kindId && <CropImage cropId={target.kind === "plant" ? plantIconOf(target.plant) : kindId} cropName={nameOf(kindId)} size="sm" showFallback />}
         <div className="min-w-0">
           <div className={`text-sm font-medium ${rarity ? getRarityTextColor(rarity) : "text-slate-100"}`}>
             {target.kind === "check" ? "Empty cell" : target.kind === "plant" && target.plant.isDeadPlant ? "Dead Plant" : nameOf(kindId)}
@@ -361,7 +361,7 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
                 : "primes at the next tick"}
           </Row>
         )}
-        {p.kindId === "turtlellini" && <Row label="Blasts taken">{p.gate.exploded ?? 0} / 2 (2 = Shellfruit)</Row>}
+        {p.kindId === "turtlellini" && <Row label="Blasts taken">{p.gate.exploded ?? 0} / 2 (1 = cracked, 2 = Shellfruit)</Row>}
         {p.kindId === "thunderling" && p.gate.charge !== undefined && (
           <Row label="Charge" tone={p.gate.charge >= THUNDERLING_MAX_CHARGE ? "text-amber-300" : undefined}>
             {p.gate.charge.toLocaleString("en-US")} / {THUNDERLING_MAX_CHARGE.toLocaleString("en-US")}

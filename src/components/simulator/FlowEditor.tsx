@@ -15,8 +15,17 @@ import type {
   Trigger,
 } from "../../simulator";
 import type { LayoutTransform } from "../../utilities";
-import { CropSelectionPalette, DesignerGrid, LayoutClearControls, LayoutHistoryControls, LayoutTransformControls, MutationValidator } from "../designer";
+import {
+  CropSelectionPalette,
+  DesignerGrid,
+  LayoutClearControls,
+  LayoutCropSummary,
+  LayoutHistoryControls,
+  LayoutTransformControls,
+  MutationValidator,
+} from "../designer";
 import { CropImage } from "../shared";
+import { COMPASS_RESERVE } from "../grid";
 import { Panel, SectionLabel, useToast } from "../ui";
 import { CheckboxField, IdSelect, NumberInput, SelectField } from "./controls";
 import { ALL_KIND_IDS, ALL_MUTATION_IDS, allItemIds, describeConditions, nameOf } from "./format";
@@ -51,7 +60,7 @@ const StepLayoutEditor: React.FC<{ layout: StepLayout; onChange: (layout: StepLa
   const [version, setVersion] = useState(0);
   const [picking, setPicking] = useState(false);
   const fitRef = useRef<HTMLDivElement>(null);
-  const { cellSize, gap } = useFitCellSize(fitRef, { max: 52 });
+  const { cellSize, gap } = useFitCellSize(fitRef, { max: 52, reserve: COMPASS_RESERVE });
   const code = layoutCode(layout);
   // Re-read the layout only when the editor is (re)mounted, not on every keystroke it produced.
   const initial = useMemo(() => layoutToPlacements(layout), [version]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -109,14 +118,19 @@ const StepLayoutEditor: React.FC<{ layout: StepLayout; onChange: (layout: StepLa
       >
         {/* Same arrangement as the Designer page: transform/clear/validation | grid | palette. */}
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[300px_minmax(0,1fr)_300px] gap-4 lg:items-start">
-          <div className="order-3 lg:col-start-2 lg:row-start-1 lg:row-span-2 2xl:row-span-1 2xl:col-start-3 bg-slate-900/40 border border-slate-600/30 rounded-lg p-3 max-h-[640px] overflow-y-auto scrollbar-dark">
-            <CropSelectionPalette />
+          {/* Stretches to the height of the grid column (grid + crop summary); the palette is
+              absolutely positioned so its own list never makes the row taller, and scrolls inside. */}
+          <div className="relative order-3 h-[500px] lg:h-auto lg:min-h-[480px] lg:self-stretch lg:col-start-2 lg:row-start-1 lg:row-span-2 2xl:row-span-1 2xl:col-start-3 bg-slate-900/40 border border-slate-600/30 rounded-lg">
+            <div className="absolute inset-3">
+              <CropSelectionPalette className="h-full" />
+            </div>
           </div>
           <div className="order-1 lg:col-start-1 lg:row-start-1 2xl:col-start-2 min-w-0 bg-slate-900/40 border border-slate-600/30 rounded-lg p-3">
             <LayoutHistoryControls className="justify-end mb-2" />
             <div ref={fitRef} className="w-full flex flex-col items-center">
               <DesignerGrid cellSize={cellSize} gap={gap} showTargets />
             </div>
+            <LayoutCropSummary className="mt-4" />
           </div>
           <div className="order-2 lg:col-start-1 lg:row-start-2 2xl:col-start-1 2xl:row-start-1 space-y-4">
             <div className="bg-slate-900/40 border border-slate-600/30 rounded-lg p-3 space-y-3">
@@ -166,9 +180,9 @@ export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] 
   const span = (n: number) => n * PICK_CELL + (n - 1) * PICK_GAP;
   const at = (n: number) => n * (PICK_CELL + PICK_GAP);
 
-  if (targets.length === 0) {
-    return <p className="text-xs text-slate-500">This step has no target cells. Add targets in the layout below to check their uptime.</p>;
-  }
+  // Always render the same structure (grid included) so the layout editor below doesn't jump
+  // when the first target is added or the last one removed.
+  const empty = targets.length === 0;
 
   return (
     <div className="space-y-2">
@@ -177,13 +191,17 @@ export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] 
         something else, or its mutation stands there dried out.
       </p>
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-slate-300">
-          {count} of {targets.length} checked{step.watch === undefined && <span className="text-slate-500"> (all, the default)</span>}
-        </span>
-        <button className={buttonClass.neutral} disabled={step.watch === undefined} onClick={() => onChange(undefined)}>
+        {empty ? (
+          <span className="text-slate-500">This step has no target cells. Add targets in the layout below to check their uptime.</span>
+        ) : (
+          <span className="text-slate-300">
+            {count} of {targets.length} checked{step.watch === undefined && <span className="text-slate-500"> (all, the default)</span>}
+          </span>
+        )}
+        <button className={buttonClass.neutral} disabled={empty || step.watch === undefined} onClick={() => onChange(undefined)}>
           All
         </button>
-        <button className={buttonClass.neutral} disabled={count === 0} onClick={() => onChange([])}>
+        <button className={buttonClass.neutral} disabled={empty || count === 0} onClick={() => onChange([])}>
           None
         </button>
       </div>

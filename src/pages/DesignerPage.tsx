@@ -5,15 +5,16 @@ import {
   CropSelectionPalette,
   DesignerActions,
   DesignerGrid,
+  LayoutCropSummary,
   LayoutHistoryControls,
   MutationValidator,
   Panel,
 } from "../components";
-import { CropImage } from "../components/shared";
+import { COMPASS_RESERVE } from "../components/grid";
 import { useToast } from "../components/ui/toastContext";
 import { useDesigner, useGreenhouseData } from "../context";
 import { useFitCellSize } from "../hooks";
-import { decodeDesign, getRarityTextColor } from "../utilities";
+import { decodeDesign } from "../utilities";
 import { captureGridAsPng, aggregateCropInfo } from "../utilities/gridExport";
 import type { DesignerGridHandle } from "../components";
 
@@ -28,52 +29,8 @@ export const DesignerPage: React.FC = () => {
   
   // Cells fit the available width; the grid never scrolls.
   const fitRef = useRef<HTMLDivElement>(null);
-  const gridSize = useFitCellSize(fitRef);
+  const gridSize = useFitCellSize(fitRef, { reserve: COMPASS_RESERVE });
 
-  const inputCropCounts = React.useMemo(() => {
-    const counts = new Map<string, { name: string; rarity: string; count: number }>();
-    for (const p of inputPlacements) {
-      const existing = counts.get(p.cropId);
-      if (existing) {
-        existing.count++;
-      } else {
-        const mutationDef = getMutationDef(p.cropId);
-        counts.set(p.cropId, { 
-          name: p.cropName, 
-          rarity: mutationDef?.rarity || "common",
-          count: 1 
-        });
-      }
-    }
-    return Array.from(counts.entries()).map(([cropId, data]) => ({ cropId, ...data }));
-  }, [inputPlacements, getMutationDef]);
-  
-  const targetCropCounts = React.useMemo(() => {
-    const counts = new Map<string, { name: string; rarity: string; count: number }>();
-    for (const p of targetPlacements) {
-      const existing = counts.get(p.cropId);
-      if (existing) {
-        existing.count++;
-      } else {
-        const mutationDef = getMutationDef(p.cropId);
-        counts.set(p.cropId, { 
-          name: p.cropName, 
-          rarity: mutationDef?.rarity || "common",
-          count: 1 
-        });
-      }
-    }
-    return Array.from(counts.entries()).map(([cropId, data]) => ({ cropId, ...data }));
-  }, [targetPlacements, getMutationDef]);
-  
-  const totalInputCells = React.useMemo(() => {
-    return inputPlacements.reduce((sum, p) => sum + (p.size * p.size), 0);
-  }, [inputPlacements]);
-  
-  const totalTargetCells = React.useMemo(() => {
-    return targetPlacements.reduce((sum, p) => sum + (p.size * p.size), 0);
-  }, [targetPlacements]);
-  
   // Share-image export, called by the Playwright renderer via window.exportGrid.
   const exportGridForShare = useCallback(async (): Promise<string> => {
     if (!gridRef.current) {
@@ -282,70 +239,7 @@ export const DesignerPage: React.FC = () => {
               </div>
             </div>
             
-            {(targetCropCounts.length > 0 || inputCropCounts.length > 0) && (
-              <>
-                {targetCropCounts.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
-                      Target Mutations
-                    </h4>
-                    <div className="space-y-2">
-                      {targetCropCounts.map(({ cropId, name, rarity, count }) => (
-                        <div
-                          key={cropId}
-                          className="flex items-center justify-between bg-slate-700/30 rounded-md px-3 py-2"
-                        >
-                          <div className="flex items-center gap-2">
-                            <CropImage
-                              cropId={cropId}
-                              cropName={name}
-                              size="xs"
-                              showFallback={false}
-                            />
-                            <span className={`text-sm ${getRarityTextColor(rarity)}`}>{name}</span>
-                          </div>
-                          <span className="text-sm font-medium text-emerald-400">x{count}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {inputCropCounts.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
-                      Input Crops
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {inputCropCounts.map(({ cropId, name, count }) => (
-                        <div
-                          key={cropId}
-                          className="flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1"
-                        >
-                          <CropImage
-                            cropId={cropId}
-                            cropName={name}
-                            size="xs"
-                            showFallback={false}
-                          />
-                          <span className="text-xs text-slate-300">{name}</span>
-                          <span className="text-xs text-slate-500">x{count}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                <div className="bg-slate-700/30 rounded-md px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-400">Total Cells Used:</span>
-                    <span className="text-sm font-medium text-emerald-400">
-                      {totalInputCells + totalTargetCells}
-                    </span>
-                  </div>
-                </div>
-              </>
-            )}
+            <LayoutCropSummary />
           </div>
         </div>
         

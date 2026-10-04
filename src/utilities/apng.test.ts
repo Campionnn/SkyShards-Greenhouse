@@ -12,7 +12,6 @@ const EXPECTED_FRAMES: Record<string, number> = {
   all_in_aloe: 5,
   fire: 5,
   noctilume: 2,
-  shellfruit: 2,
   startlevine: 2,
 };
 
@@ -40,6 +39,8 @@ describe("animated crop icons", () => {
 
   it("parses a static crop icon as a single frame", () => {
     expect(parseApng(load("wheat")).frames).toHaveLength(1);
+    expect(parseApng(load("shellfruit")).frames).toHaveLength(1);
+    expect(parseApng(load("cracked_turtlellini")).frames).toHaveLength(1);
   });
 
   it("GIF export length covers whole loops of every animation", () => {

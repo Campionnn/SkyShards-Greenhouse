@@ -15,7 +15,7 @@ import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
 import { AloeHarvestPreview, ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 import { SimTooltip } from "./SimTooltip";
 import { closestBlocked, hoveredCellOffset } from "./sanityFormat";
-import { describeEvent } from "./format";
+import { describeEvent, plantIconOf } from "./format";
 
 // Server-render every simulator panel against a real simulation, to catch
 // render-time errors (no browser needed).
@@ -201,6 +201,13 @@ describe("simulator panels render", () => {
     expect(hoveredCellOffset(half.width - 1, half.height / 2, half, 3, 40, 2)).toEqual({ dr: 1, dc: 2 });
   });
 
+  it("plantIconOf: a Turtlellini shows cracked after one Blastberry hit", () => {
+    expect(plantIconOf({ kindId: "turtlellini", gate: {} })).toBe("turtlellini");
+    expect(plantIconOf({ kindId: "turtlellini", gate: { exploded: 1 } })).toBe("cracked_turtlellini");
+    expect(plantIconOf({ kindId: "shellfruit", gate: {} })).toBe("shellfruit");
+    expect(plantIconOf({ kindId: "wheat", gate: { exploded: 1 } })).toBe("wheat");
+  });
+
   it("describeEvent: decayExtended, and a decayed dead plant leaves nothing", () => {
     const at = { cycle: 1, plotId: 1, plantId: 1, row: 2, col: 3 };
     expect(describeEvent({ ...at, kind: "decayExtended", kindId: "wheat", mutatesRemaining: 3, combined: null })).toBe(
@@ -324,6 +331,8 @@ describe("simulator panels render", () => {
     expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1 flow");
     expect(html).toContain("Leave this step when");
     expect(html).toContain("checked targets");
+    // The Designer's crop summary sits under the embedded grid.
+    expect(html).toContain("Total Cells Used:");
   });
 
   it("the flow editor with routes, a chosen next step and AND/OR groups", () => {

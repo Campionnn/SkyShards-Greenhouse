@@ -32,6 +32,11 @@ export function nameOf(id: string): string {
   );
 }
 
+/** Icon id for a standing plant: a Turtlellini that took a Blastberry hit shows cracked. */
+export function plantIconOf(p: { kindId: string; gate: { exploded?: number } }): string {
+  return p.kindId === "turtlellini" && (p.gate.exploded ?? 0) >= 1 ? "cracked_turtlellini" : p.kindId;
+}
+
 /** The crop or mutation definition for an id, if it is one. */
 export function kindData(id: string): KindDef | undefined {
   return data.crops[id] ?? data.mutations[id];

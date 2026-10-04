@@ -19,7 +19,8 @@ import {
 import { getGroundImagePath } from "../../types/greenhouse";
 import { getCellPixelPosition, getGridDimensions } from "../../utilities";
 import { CropImage } from "../shared";
-import { kindData, nameOf } from "./format";
+import { CompassFrame, COMPASS_RESERVE } from "../grid";
+import { kindData, nameOf, plantIconOf } from "./format";
 import { hoveredCellOffset } from "./sanityFormat";
 import { SimTooltip, type TooltipTarget } from "./SimTooltip";
 import { buttonClass } from "./styles";
@@ -178,7 +179,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
 }) => {
   const fitRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<TooltipTarget | null>(null);
-  const { cellSize, gap } = useFitCellSize(fitRef, { max: maxCell, min: 16 });
+  const { cellSize, gap } = useFitCellSize(fitRef, { max: maxCell, min: 16, reserve: COMPASS_RESERVE });
   const { width, height } = getGridDimensions(cellSize, gap);
   const marks = useMemo(() => marksFrom(events), [events]);
   // Sanity Check results, memoised per cell for the current snapshot state.
@@ -277,7 +278,8 @@ export const PlotView: React.FC<PlotViewProps> = ({
       </div>
 
       <div ref={fitRef} className="w-full">
-        <div className="relative mx-auto select-none" style={{ width, height }}>
+        <CompassFrame className="mx-auto">
+        <div className="relative select-none" style={{ width, height }}>
           {Array.from({ length: 100 }, (_, i) => {
             const r = Math.floor(i / 10);
             const c = i % 10;
@@ -391,7 +393,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
                 }}
               >
                 <CropImage
-                  cropId={p.kindId}
+                  cropId={plantIconOf(p)}
                   cropName={nameOf(p.kindId)}
                   width={size * (p.size === 1 ? 0.8 : 0.6)}
                   height={size * (p.size === 1 ? 0.8 : 0.6)}
@@ -462,6 +464,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
             />
           )}
         </div>
+        </CompassFrame>
       </div>
 
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
