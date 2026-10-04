@@ -18,7 +18,9 @@ function willGrow(p: PlantState): boolean {
  *   `ROOT_SPREAD_CHANCE`.
  * - Chorus Fruit: each tick it starts still growing, teleports to any other
  *   cell (air included) and turns it into End Stone. It teleports on the tick
- *   it becomes fully grown, never after.
+ *   it becomes fully grown, never after. With `chorusOverflow` (default on)
+ *   they jump simultaneously to distinct cells empty at tick start; extra
+ *   chorus overwrite random occupied cells.
  * Blastberry explosions: sim/explosion.ts.
  */
 export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
@@ -38,26 +40,48 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
 
   let occ = buildOccupancy(plot);
   let moved = false;
+  // Chorus Overflow (emptyOnly only): all growing chorus jump at once, each to
+  // a distinct cell that was empty at tick start (cells vacated this tick are
+  // not available). Once those run out, each extra chorus lands on a random
+  // occupied cell and destroys it (chorus vs chorus: the higher stage wins).
+  const overflow = config.chorusOverflow && config.chorusTeleportTargets === "emptyOnly";
+  const freeAtStart: number[] = [];
+  if (overflow) for (let idx = 0; idx < TOTAL_CELLS; idx++) if (!occ[idx]) freeAtStart.push(idx);
   for (const p of [...plot.plants]) {
     if (p.kindId !== "chorus_fruit" || !willGrow(p) || !plot.plants.includes(p)) continue;
     const own = cellIndex(p.row, p.col);
-    const targets: number[] = [];
-    for (let idx = 0; idx < TOTAL_CELLS; idx++) {
-      if (idx === own) continue;
-      if (config.chorusTeleportTargets === "emptyOnly" && occ[idx]) continue;
-      targets.push(idx);
+    let t: number;
+    let overflowed = false;
+    if (overflow) {
+      if (freeAtStart.length > 0) {
+        t = freeAtStart.splice(intInclusive(rng, 0, freeAtStart.length - 1), 1)[0];
+      } else {
+        const occupied: number[] = [];
+        for (let idx = 0; idx < TOTAL_CELLS; idx++) if (idx !== own && occ[idx]) occupied.push(idx);
+        if (occupied.length === 0) continue;
+        t = occupied[intInclusive(rng, 0, occupied.length - 1)];
+        overflowed = true;
+      }
+    } else {
+      const targets: number[] = [];
+      for (let idx = 0; idx < TOTAL_CELLS; idx++) {
+        if (idx === own) continue;
+        if (config.chorusTeleportTargets === "emptyOnly" && occ[idx]) continue;
+        targets.push(idx);
+      }
+      if (targets.length === 0) continue;
+      t = targets[intInclusive(rng, 0, targets.length - 1)];
     }
-    if (targets.length === 0) continue;
-    const t = targets[intInclusive(rng, 0, targets.length - 1)];
     const occupant = occ[t];
     if (occupant) {
       // Chorus collision: higher stage survives.
       if (occupant.kindId === "chorus_fruit" && occupant.stage > p.stage) {
-        destroyPlant(plot, p, ctx, "chorus collision");
+        destroyPlant(plot, p, ctx, overflowed ? "chorus overflow collision" : "chorus collision");
         occ = buildOccupancy(plot);
         continue;
       }
-      destroyPlant(plot, occupant, ctx, occupant.kindId === "chorus_fruit" ? "chorus collision" : "chorus teleport");
+      const by = occupant.kindId === "chorus_fruit" ? "chorus collision" : "chorus teleport";
+      destroyPlant(plot, occupant, ctx, overflowed ? `${by} (overflow)` : by);
     }
     const fromRow = p.row;
     const fromCol = p.col;

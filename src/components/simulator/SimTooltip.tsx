@@ -372,7 +372,13 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
           <Row label="Roots">{p.stage < p.growthStages ? `${Math.round(DEVOURER_ROOT_CHANCE * 100)}% per tick while growing` : "none (fully grown)"}</Row>
         )}
         {p.kindId === "chorus_fruit" && p.origin === "spawned" && (
-          <Row label="Teleports">{p.stage < p.growthStages ? "every tick while growing" : "no (fully grown)"}</Row>
+          <Row label="Teleports">
+            {p.stage < p.growthStages
+              ? config.chorusOverflow && config.chorusTeleportTargets === "emptyOnly"
+                ? "every tick while growing (overwrites a plant if no empty cell is left)"
+                : "every tick while growing"
+              : "no (fully grown)"}
+          </Row>
         )}
         {p.kindId === "devourer_root" && <Row label="Spreads">{Math.round(ROOT_SPREAD_CHANCE * 100)}% per tick</Row>}
       </div>

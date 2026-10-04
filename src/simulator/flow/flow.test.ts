@@ -336,7 +336,7 @@ describe("destruction", () => {
     const wheat: [string, number, number][] = [];
     for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) if (r !== 5 || c !== 5) wheat.push(["wheat", r, c]);
     const full = (mode: "emptyOnly" | "anyCell") => {
-      const s = start(scenario([flow([step("a", layout(wheat))])], { config: { chorusTeleportTargets: mode }, activity: NEVER_ACTIVE }));
+      const s = start(scenario([flow([step("a", layout(wheat))])], { config: { chorusTeleportTargets: mode, chorusOverflow: false }, activity: NEVER_ACTIVE }));
       inject(s, 1, "chorus_fruit", 5, 5, "spawned");
       return engine.run(s, 1);
     };
@@ -348,6 +348,76 @@ describe("destruction", () => {
     expect(r.state.plots[0].groundOverrides[`${moved.row},${moved.col}`]).toBe("end_stone");
     expect(plantAt(r.state, 1, moved.row, moved.col)?.kindId).toBe("chorus_fruit");
     expect(r.summary.destroyed.wheat).toBe(1);
+  });
+
+  describe("Chorus Overflow", () => {
+    /** Wheat everywhere except `empty` cells and `chorus` cells (growing chorus at stage 1). */
+    const packed = (chorus: [number, number][], empty: [number, number][], config: Record<string, unknown> = {}, seed = 1) => {
+      const skip = new Set([...chorus, ...empty].map(([r, c]) => `${r},${c}`));
+      const wheat: [string, number, number][] = [];
+      for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) if (!skip.has(`${r},${c}`)) wheat.push(["wheat", r, c]);
+      const s = start(scenario([flow([step("a", layout(wheat))])], { config, activity: NEVER_ACTIVE, seed }));
+      for (const [r, c] of chorus) inject(s, 1, "chorus_fruit", r, c, "spawned");
+      return s;
+    };
+    const destroyedTotal = (r: { summary: { destroyed: Record<string, number> } }) =>
+      Object.values(r.summary.destroyed).reduce((a, b) => a + b, 0);
+    const emptyCells = (s: ReturnType<typeof start>) => {
+      const taken = new Set(s.plots[0].plants.map((p) => `${p.row},${p.col}`));
+      return 100 - taken.size;
+    };
+
+    it("is on by default", () => {
+      expect(packed([], []).scenario.settings.config.chorusOverflow).toBe(true);
+    });
+
+    it("cells vacated this tick can't be reused: 3 growing chorus, 2 empty cells -> one overwrites a plant", () => {
+      for (const seed of [1, 2, 3, 4, 5]) {
+        const s = packed([[0, 0], [5, 5], [9, 9]], [[3, 3], [7, 1]], {}, seed);
+        const r = engine.run(s, 1);
+        expect(destroyedTotal(r)).toBe(1);
+        // The 3 vacated cells are open now; both formerly empty cells were taken.
+        expect(emptyCells(r.state)).toBe(3);
+        expect(plantAt(r.state, 1, 3, 3)?.kindId).toBe("chorus_fruit");
+        expect(plantAt(r.state, 1, 7, 1)?.kindId).toBe("chorus_fruit");
+        expect(ofKind(r.events, "destroyed")[0].by).toMatch(/overflow/);
+      }
+    });
+
+    it("off: chorus teleport one at a time into vacated cells, so nothing is overwritten", () => {
+      for (const seed of [1, 2, 3, 4, 5]) {
+        const s = packed([[0, 0], [5, 5], [9, 9]], [[3, 3], [7, 1]], { chorusOverflow: false }, seed);
+        const r = engine.run(s, 1);
+        expect(destroyedTotal(r)).toBe(0);
+        expect(ofKind(r.events, "teleported")).toHaveLength(3);
+      }
+    });
+
+    it("a full plot: a growing chorus overwrites a random plant", () => {
+      const s = packed([[5, 5]], []);
+      const r = engine.run(s, 1);
+      const [moved] = ofKind(r.events, "teleported");
+      expect(plantAt(r.state, 1, moved.row, moved.col)?.kindId).toBe("chorus_fruit");
+      expect(r.summary.destroyed.wheat).toBe(1);
+      expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
+    });
+
+    it("overflowing onto another chorus: the higher stage wins", () => {
+      const s = start(scenario([flow([step("a", layout())])], { activity: NEVER_ACTIVE }));
+      for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) if (r !== 5 || c !== 5) inject(s, 1, "chorus_fruit", r, c, "spawned", { stage: 12 });
+      inject(s, 1, "chorus_fruit", 5, 5, "spawned", { stage: 5 });
+      const r = engine.run(s, 1);
+      expect(ofKind(r.events, "teleported")).toHaveLength(0);
+      expect(r.summary.destroyed.chorus_fruit).toBe(1);
+      expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
+      expect(r.state.plots[0].plants.every((p) => p.stage === 12)).toBe(true);
+    });
+
+    it("anyCell ignores the setting", () => {
+      const a = engine.run(packed([[0, 0], [5, 5]], [[3, 3]], { chorusTeleportTargets: "anyCell", chorusOverflow: true }), 1);
+      const b = engine.run(packed([[0, 0], [5, 5]], [[3, 3]], { chorusTeleportTargets: "anyCell", chorusOverflow: false }), 1);
+      expect(JSON.stringify([a.state.plots, a.state.summary, a.state.rng])).toBe(JSON.stringify([b.state.plots, b.state.summary, b.state.rng]));
+    });
   });
 
   it("a growing Chorus Fruit teleports and converts its landing cell; once grown it stays put", () => {

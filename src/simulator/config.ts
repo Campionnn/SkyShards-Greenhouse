@@ -69,6 +69,14 @@ export interface SimConfig {
   /** Chance a stage is skipped while water < 0 (Q9). */
   negativeWaterSkipChance: number;
   chorusTeleportTargets: ChorusTeleport;
+  /**
+   * Chorus Overflow (emptyOnly only): growing chorus teleport simultaneously,
+   * each to a distinct cell empty at tick start; when there are more growing
+   * chorus than such cells, each extra one overwrites a random occupied cell
+   * (another chorus: the higher stage wins). Off: they jump one at a time and
+   * can reuse a cell another chorus just left.
+   */
+  chorusOverflow: boolean;
   /** Water a Soggybud draws per tick from each neighbouring crop that has water. */
   soggybudWaterPerNeighbour: number;
   /** Soggybud stage = floor(water / this). */
@@ -109,6 +117,7 @@ export const DEFAULT_CONFIG: SimConfig = {
 
   negativeWaterSkipChance: 0.5,
   chorusTeleportTargets: "emptyOnly",
+  chorusOverflow: true,
   soggybudWaterPerNeighbour: 2,
   soggybudWaterPerStage: 10,
   capRareCropChance: false,
@@ -148,6 +157,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "soggybudWaterPerNeighbour", label: "Soggybud water per neighbour", group: "unpublished", input: { type: "number", min: 0 }, description: "Water a Soggybud takes each tick from each neighbouring crop that has water (never from another Soggybud)." },
   { key: "soggybudWaterPerStage", label: "Soggybud water per stage", group: "unpublished", input: { type: "number", min: 1 }, description: "Soggybud's growth stage is floor(water / this)." },
   { key: "chorusTeleportTargets", label: "Chorus teleport targets", group: "unpublished", ref: "Q11", input: { type: "select", options: ["emptyOnly", "anyCell"] }, description: "Either way it can land on AIR, which becomes End Stone. anyCell also lets it land on (and destroy) a plant." },
+  { key: "chorusOverflow", label: "Chorus Overflow", group: "unpublished", input: { type: "boolean" }, description: "Observed in game (emptyOnly only): all growing Chorus Fruit teleport at the same time, each to a different cell that was empty at the start of the tick (cells being left that tick don't count). When there are more growing Chorus Fruit than empty cells, each extra one lands on a random occupied cell and destroys what's there: an input, a base crop or another Chorus Fruit (the higher stage wins). Off: they teleport one at a time and can reuse a cell another one just left, so they never overflow unless the plot is full." },
   { key: "fleshtrapHungerPerStage", label: "Fleshtrap hunger per stage", group: "unpublished", input: { type: "number", min: 0 }, description: "Hunger used per stage grown." },
   { key: "fleshtrapFeedHunger", label: "Fleshtrap feed amount", group: "unpublished", input: { type: "number", min: 0 }, description: "Hunger added per feeding (enchanted cooked meat = 6)." },
   { key: "aloeAutoHarvest", label: "All-in Aloe: auto harvest stage", group: "unpublished", input: { type: "boolean" }, description: "Each session the player harvests All-in Aloe at the stage that makes the most aloe per cycle, given how many cycles until they are next online and the chance a new aloe spawns in the emptied cell. Checking every cycle gives 14 (the wiki optimum). A longer time offline lowers it (about 12 for 4 cycles, 10 for 8), because an aloe left growing may reset before the player is back. A slow respawn raises it. Off: always harvest at the fixed stage below." },
