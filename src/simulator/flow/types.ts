@@ -28,6 +28,23 @@ export type Trigger =
   /** Natural spawns of this mutation harvested on this plot since entering the step. */
   | { kind: "mutationHarvested"; mutationId: MutationId; count: number }
   /**
+   * Every plant of this mutation on the plot (Dead Plants excluded) is at growth
+   * stage `stage` or higher. Needs at least one such plant to hold.
+   */
+  | { kind: "lowestStageAtLeast"; mutationId: MutationId; stage: number }
+  /**
+   * The exact complement of `lowestStageAtLeast`: some plant of this mutation is
+   * below growth stage `stage`, or there is none on the plot.
+   */
+  | { kind: "lowestStageBelow"; mutationId: MutationId; stage: number }
+  /** Some plant of this mutation on the plot (Dead Plants excluded) is at growth stage `stage` or higher. */
+  | { kind: "highestStageAtLeast"; mutationId: MutationId; stage: number }
+  /**
+   * The exact complement of `highestStageAtLeast`: every plant of this mutation is
+   * below growth stage `stage`, or there is none on the plot.
+   */
+  | { kind: "highestStageBelow"; mutationId: MutationId; stage: number }
+  /**
    * Target slots of this step's layout holding their labelled mutation
    * (growing or fully grown). count 0 = every target; otherwise at least `count`.
    */

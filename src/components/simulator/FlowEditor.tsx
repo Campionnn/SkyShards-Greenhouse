@@ -291,6 +291,33 @@ const TriggerRow: React.FC<{ trigger: Trigger; steps: StepOption[]; onChange: (t
         onChange={(count) => onChange({ ...trigger, count })}
       />
     )}
+    {(trigger.kind === "lowestStageAtLeast" ||
+      trigger.kind === "lowestStageBelow" ||
+      trigger.kind === "highestStageAtLeast" ||
+      trigger.kind === "highestStageBelow") && (
+      <>
+        <IdSelect value={trigger.mutationId} ids={ALL_MUTATION_IDS} onChange={(mutationId) => onChange({ ...trigger, mutationId })} />
+        <span className="text-xs text-slate-500">stage</span>
+        <NumberInput
+          integer
+          min={0}
+          className={`${inputClass} w-16`}
+          title="Growth stage"
+          value={trigger.stage}
+          onChange={(stage) => onChange({ ...trigger, stage })}
+        />
+        <span className="text-xs text-slate-500">
+          {
+            {
+              lowestStageAtLeast: "every one at this stage or higher",
+              lowestStageBelow: "some one below this stage, or none on the plot",
+              highestStageAtLeast: "some one at this stage or higher",
+              highestStageBelow: "every one below this stage, or none on the plot",
+            }[trigger.kind]
+          }
+        </span>
+      </>
+    )}
     {trigger.kind === "targetsFilled" && (
       <>
         <NumberInput

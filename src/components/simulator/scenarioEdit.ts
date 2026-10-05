@@ -237,6 +237,11 @@ export function defaultTrigger(kind: TriggerKind): Trigger {
       return { kind, mutationId: "chloronite", count: 5 };
     case "mutationHarvested":
       return { kind, mutationId: "chorus_fruit", count: 9 };
+    case "lowestStageAtLeast":
+    case "lowestStageBelow":
+    case "highestStageAtLeast":
+    case "highestStageBelow":
+      return { kind, mutationId: "magic_jellybean", stage: 3 };
     case "targetsFilled":
       return { kind, count: 0 };
     case "stepVisits":
@@ -292,6 +297,10 @@ export const TRIGGER_KINDS: { value: TriggerKind; label: string }[] = [
   { value: "plantDecayed", label: "a plant decayed" },
   { value: "decayImminent", label: "something decays within" },
   { value: "fullyGrown", label: "mutation fully grown" },
+  { value: "lowestStageAtLeast", label: "lowest stage of mutation >=" },
+  { value: "lowestStageBelow", label: "lowest stage of mutation <" },
+  { value: "highestStageAtLeast", label: "highest stage of mutation >=" },
+  { value: "highestStageBelow", label: "highest stage of mutation <" },
   { value: "allFullyGrown", label: "everything fully grown" },
   { value: "noneFullyGrown", label: "nothing fully grown" },
   { value: "stepVisits", label: "times this step entered >=" },

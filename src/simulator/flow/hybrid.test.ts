@@ -163,6 +163,40 @@ describe("new triggers", () => {
     expect(stepIdOf(r.state)).toBe("b");
   });
 
+  it("lowestStageAtLeast / lowestStageBelow read the least-grown plant of a mutation", () => {
+    const run = (trigger: Trigger, plants: number[]) => {
+      const sc = scenario([flow([step("a", layout(), [trigger]), step("b", layout())])], { policies: { spawnedHarvest: "never" } });
+      const s = start(sc);
+      plants.forEach((stage, i) => inject(s, 1, "magic_jellybean", 0, i * 2, "spawned", { stage }));
+      return stepIdOf(engine.run(s, 1).state);
+    };
+    const atLeast: Trigger = { kind: "lowestStageAtLeast", mutationId: "magic_jellybean", stage: 3 };
+    const below: Trigger = { kind: "lowestStageBelow", mutationId: "magic_jellybean", stage: 3 };
+    // The tick advances each jellybean one stage before the player checks the exit.
+    expect(run(atLeast, [2, 10])).toBe("b"); // 3 and 11
+    expect(run(atLeast, [1, 10])).toBe("a"); // 2 and 11
+    expect(run(atLeast, [])).toBe("a"); // none on the plot
+    expect(run(below, [2, 10])).toBe("a");
+    expect(run(below, [1, 10])).toBe("b");
+    expect(run(below, [])).toBe("b");
+
+    const highAtLeast: Trigger = { kind: "highestStageAtLeast", mutationId: "magic_jellybean", stage: 3 };
+    const highBelow: Trigger = { kind: "highestStageBelow", mutationId: "magic_jellybean", stage: 3 };
+    expect(run(highAtLeast, [1, 2])).toBe("b"); // 2 and 3
+    expect(run(highAtLeast, [1, 1])).toBe("a"); // 2 and 2
+    expect(run(highAtLeast, [])).toBe("a");
+    expect(run(highBelow, [1, 2])).toBe("a");
+    expect(run(highBelow, [1, 1])).toBe("b");
+    expect(run(highBelow, [])).toBe("b");
+  });
+
+  it("validation warns about a stage above the mutation's growth stages", () => {
+    const issues = engine.validate(
+      scenario([flow([step("a", layout(), [{ kind: "lowestStageAtLeast", mutationId: "magic_jellybean", stage: 500 }]), step("b", layout())], true)])
+    );
+    expect(issues.some((i) => i.level === "warning" && /only grows to stage 120/.test(i.message))).toBe(true);
+  });
+
   it("validation warns about a targetsFilled trigger on a layout without targets", () => {
     const issues = engine.validate(scenario([flow([step("a", layout([["wheat", 0, 0]]), [{ kind: "targetsFilled", count: 0 }]), step("b", layout())], true)]));
     expect(issues.some((i) => i.level === "warning" && /no target cells/.test(i.message))).toBe(true);

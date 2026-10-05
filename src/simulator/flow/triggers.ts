@@ -36,6 +36,14 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
     }
     case "mutationHarvested":
       return (v.runner.harvestedInStep?.[t.mutationId] ?? 0) >= t.count;
+    case "lowestStageAtLeast":
+      return lowestStageAtLeast(v.plot, t.mutationId, t.stage);
+    case "lowestStageBelow":
+      return !lowestStageAtLeast(v.plot, t.mutationId, t.stage);
+    case "highestStageAtLeast":
+      return highestStageAtLeast(v.plot, t.mutationId, t.stage);
+    case "highestStageBelow":
+      return !highestStageAtLeast(v.plot, t.mutationId, t.stage);
     case "targetsFilled": {
       const slots = v.plot.slots;
       if (slots.length === 0) return false;
@@ -56,6 +64,17 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
     case "stepVisits":
       return stepVisits(v.runner, t.sinceStep) >= Math.max(1, t.count);
   }
+}
+
+/** At least one plant of `mutationId` stands on the plot (Dead Plants excluded) and none is below `stage`. */
+function lowestStageAtLeast(plot: PlotState, mutationId: string, stage: number): boolean {
+  const plants = plot.plants.filter((p) => p.kindId === mutationId && !p.isDeadPlant);
+  return plants.length > 0 && plants.every((p) => p.stage >= stage);
+}
+
+/** Some plant of `mutationId` on the plot (Dead Plants excluded) is at `stage` or higher. */
+function highestStageAtLeast(plot: PlotState, mutationId: string, stage: number): boolean {
+  return plot.plants.some((p) => p.kindId === mutationId && !p.isDeadPlant && p.stage >= stage);
 }
 
 /** Entries into the current step (this one included) since `sinceStep` was last entered or run start; from history. */
@@ -114,6 +133,14 @@ export function describeTrigger(t: Trigger, stepName: StepNamer = (id) => id, it
       return (t.count ?? 1) > 1 ? `${t.count} x ${itemName(t.mutationId)} fully grown` : `${itemName(t.mutationId)} fully grown`;
     case "mutationHarvested":
       return `${t.count} x ${itemName(t.mutationId)} harvested`;
+    case "lowestStageAtLeast":
+      return `every ${itemName(t.mutationId)} at stage ${t.stage}+`;
+    case "lowestStageBelow":
+      return `some ${itemName(t.mutationId)} below stage ${t.stage} (or none)`;
+    case "highestStageAtLeast":
+      return `some ${itemName(t.mutationId)} at stage ${t.stage}+`;
+    case "highestStageBelow":
+      return `every ${itemName(t.mutationId)} below stage ${t.stage} (or none)`;
     case "targetsFilled":
       return t.count <= 0 ? "every target filled" : `${t.count} targets filled`;
     case "decayImminent":

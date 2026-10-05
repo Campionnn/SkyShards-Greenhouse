@@ -202,6 +202,30 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
         }
         break;
       }
+      case "lowestStageAtLeast":
+      case "lowestStageBelow":
+      case "highestStageAtLeast":
+      case "highestStageBelow": {
+        const m = data.mutations[t.mutationId];
+        if (!m) {
+          err(path, `"${t.mutationId}" isn't a mutation the simulator knows about. Pick another mutation.`);
+          break;
+        }
+        if (!(t.stage >= 0)) {
+          err(path, "The stage can't be negative.");
+          break;
+        }
+        const max = m.growthStages ?? 0;
+        if (t.stage > max) {
+          warn(
+            path,
+            t.kind === "lowestStageAtLeast" || t.kind === "highestStageAtLeast"
+              ? `${m.name} only grows to stage ${max}, so this condition can never be met.`
+              : `${m.name} only grows to stage ${max}, so this condition always holds.`
+          );
+        }
+        break;
+      }
       case "allFullyGrown":
       case "noneFullyGrown":
         break;
