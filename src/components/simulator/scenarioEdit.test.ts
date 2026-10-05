@@ -206,6 +206,16 @@ describe("flow export / import", () => {
     expect(old.plots[0].flow.steps[0]).toHaveProperty("routes"); // input untouched
   });
 
+  it("moves the per-step checkExitsOnEntry flag onto each of that step's exits", () => {
+    const when = [{ kind: "cycles", n: 1 }];
+    const old = {
+      plots: [{ id: 1, flow: { loop: false, startIndex: 0, steps: [{ id: "a", layout: { code: LAYOUT_A_CODE }, checkExitsOnEntry: true, exits: [{ when }, { to: "a", when }] }, { id: "b", layout: { code: LAYOUT_A_CODE }, exits: [{ when }] }] } }],
+    };
+    const [a, b] = (migrateScenario(old).plots[0].flow as unknown as Scenario["plots"][number]["flow"]).steps;
+    expect(a).toEqual({ id: "a", layout: { code: LAYOUT_A_CODE }, exits: [{ when, checkOnEntry: true }, { to: "a", when, checkOnEntry: true }] });
+    expect(b.exits).toEqual([{ when }]);
+  });
+
   it("upgrades a scenario saved before the rename, config keys included", () => {
     const saved = { ...withPlots(LAYOUT_A_CODE), plots: [{ id: 1, flow: { stages: [{ id: "a", layout: { code: LAYOUT_A_CODE }, exit: [] }], loop: false, startIndex: 0 } }] };
     (saved.settings.config as unknown as Record<string, unknown>) = { stageBaselineSeconds: 7200, keepIdenticalOnStageChange: false };

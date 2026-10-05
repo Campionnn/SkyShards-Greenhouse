@@ -216,6 +216,9 @@ describe("simulator panels render", () => {
     expect(describeEvent({ ...at, kind: "decayExtended", kindId: "wheat", mutatesRemaining: -1, combined: 5 })).toContain("shared pool");
     expect(describeEvent({ ...at, kind: "decayed", kindId: "dead_plant" })).toBe("Dead Plant decayed at (2,3)");
     expect(describeEvent({ ...at, kind: "decayed", kindId: "wheat" })).toBe("Wheat decayed at (2,3) and left a Dead Plant");
+    expect(describeEvent({ ...at, kind: "decayed", kindId: "zombud", drops: { zombud: 3 }, coinValue: 0 })).toContain(
+      "3 adjacent Dead Plants became Zombud mobs"
+    );
   });
 
   it("the outcomes list counts decay extensions, and tolerates a summary without them", () => {

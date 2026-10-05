@@ -67,8 +67,10 @@ const migrateExit = (e: unknown): unknown => (isObj(e) && Array.isArray(e.when) 
  */
 function migrateStep(s: unknown, stepIds: ReadonlySet<unknown>): unknown {
   if (!isObj(s)) return s;
-  const { exit, exitMatch, next, routes, ...out } = s;
-  if (Array.isArray(s.exits)) return { ...out, exits: s.exits.map(migrateExit) };
+  const { exit, exitMatch, next, routes, checkExitsOnEntry, ...out } = s;
+  // Briefly a per-step flag; now per exit: a flagged step had every exit checked on arrival.
+  const onEntry = (e: unknown): unknown => (checkExitsOnEntry === true && isObj(e) ? { ...e, checkOnEntry: true } : e);
+  if (Array.isArray(s.exits)) return { ...out, exits: s.exits.map(migrateExit).map(onEntry) };
   if (!Array.isArray(exit) && !Array.isArray(routes)) return s; // not a step we recognise
   const exits: unknown[] = Array.isArray(routes) ? routes.map(migrateExit) : [];
   if (Array.isArray(exit) && exit.length > 0) {

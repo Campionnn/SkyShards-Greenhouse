@@ -229,6 +229,7 @@ export const FlowTimeline: React.FC<{ flows: FlowRunnerState[]; defs: ScenarioPl
               <span className="text-xs text-slate-400 w-12 flex-shrink-0">Plot {f.plotId}</span>
               <div className="relative flex-1 h-5 bg-slate-700/30 rounded overflow-hidden">
                 {f.history.map((h, i) => {
+                  if (h.skipped) return null; // passed through without being built
                   const end = h.endCycle ?? cycle;
                   const left = (h.startCycle / span) * 100;
                   const width = Math.max(0.5, ((end - h.startCycle) / span) * 100);

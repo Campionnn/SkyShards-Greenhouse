@@ -90,6 +90,77 @@ describe("choosing the next step", () => {
   });
 });
 
+describe("an exit checked before its step is built (checkOnEntry)", () => {
+  const rich = { kind: "inventoryAtLeast", item: "chloronite", qty: 1 } as const;
+  const early = (e: StepExit): StepExit => ({ ...e, checkOnEntry: true });
+  const steps = (flag: boolean) =>
+    flow([at("s1", "wheat", [cycles(1)]), at("s2", "potato", [], { exits: [flag ? early(go(undefined, rich)) : go(undefined, rich)] }), at("s3", "carrot")], false);
+  const kinds = (s: ReturnType<typeof start>) => s.plots[0].plants.map((p) => p.kindId);
+
+  it("off: the next step is built for a cycle even though its exit already holds", () => {
+    const r = engine.run(start(scenario([steps(false)], { inventory: { chloronite: 1 } })), 2);
+    expect(ids(r.state)).toEqual(["s1", "s2", "s3"]);
+    expect(r.state.flows[0].history[1]).toMatchObject({ startCycle: 0, endCycle: 1 });
+  });
+
+  it("on: goes straight through to the step after, without building it", () => {
+    const r = engine.run(start(scenario([steps(true)], { inventory: { chloronite: 1 } })), 2);
+    expect(ids(r.state)).toEqual(["s1", "s2", "s3"]);
+    const [, skipped, s3] = r.state.flows[0].history;
+    expect(skipped).toMatchObject({ stepId: "s2", startCycle: 0, endCycle: 0, skipped: true });
+    expect(s3).toMatchObject({ stepId: "s3", startCycle: 0 });
+    expect(r.events.filter((e) => e.kind === "placed").map((e) => (e as { kindId: string }).kindId)).not.toContain("potato");
+    const change = r.events.find((e) => e.kind === "stepChanged");
+    expect(change).toMatchObject({ fromStep: "s1", toStep: "s3", skipped: ["s2"] });
+    expect(kinds(r.state)).toEqual(["carrot"]);
+  });
+
+  it("on, exits not met yet: the step is built as usual", () => {
+    const r = engine.run(start(scenario([steps(true)], {})), 3);
+    expect(ids(r.state)).toEqual(["s1", "s2"]);
+    expect(r.state.flows[0].history[1].skipped).toBeUndefined();
+    expect(kinds(r.state)).toEqual(["potato"]);
+  });
+
+  it("checks with fresh counters, so a cycles exit never skips", () => {
+    const f = flow([at("s1", "wheat", [cycles(1)]), at("s2", "potato", [], { exits: [early(go(undefined, cycles(1)))] }), at("s3", "carrot")], false);
+    expect(ids(engine.run(start(scenario([f], {})), 1).state)).toEqual(["s1", "s2"]);
+  });
+
+  it("only flagged exits are checked on arrival; unflagged ones wait for the step's first session", () => {
+    // s2: unflagged exit to s1 (holds) above a flagged exit to s3 (holds): on arrival only the flagged one counts.
+    const f = flow([at("s1", "wheat", [cycles(1)]), at("s2", "potato", [], { exits: [go("s1", rich), early(go("s3", rich))] }), at("s3", "carrot")], false);
+    const r = engine.run(start(scenario([f], { inventory: { chloronite: 1 } })), 1);
+    expect(ids(r.state)).toEqual(["s1", "s2", "s3"]);
+    expect(r.state.flows[0].history[1].skipped).toBe(true);
+    // An unflagged-only step is built and left normally.
+    const g = flow([at("s1", "wheat", [cycles(1)]), at("s2", "potato", [], { exits: [go("s3", rich)] }), at("s3", "carrot")], false);
+    expect(engine.run(start(scenario([g], { inventory: { chloronite: 1 } })), 1).state.flows[0].history[1].skipped).toBeUndefined();
+  });
+
+  it("chains through several steps and stops on a loop", () => {
+    const f = flow(
+      [
+        at("s1", "wheat", [cycles(1)]),
+        at("s2", "potato", [], { exits: [early(go("s3", rich))] }),
+        at("s3", "carrot", [], { exits: [early(go("s2", rich))] }),
+      ],
+      false
+    );
+    const r = engine.run(start(scenario([f], { inventory: { chloronite: 1 } })), 1);
+    // s2 -> s3 -> s2 again: s2 was already passed through this change, so it is built.
+    expect(ids(r.state)).toEqual(["s1", "s2", "s3", "s2"]);
+    expect(r.state.flows[0].history.map((h) => !!h.skipped)).toEqual([false, true, true, false]);
+  });
+
+  it("stays deterministic and splittable", () => {
+    const s = start(scenario([{ ...steps(true), loop: true }], { inventory: { chloronite: 1 }, activity: { kind: "everyN", n: 3, offset: 1 } }));
+    const whole = engine.run(s, 30).state;
+    const split = engine.run(engine.run(s, 13).state, 17).state;
+    expect(JSON.stringify(split)).toBe(JSON.stringify(whole));
+  });
+});
+
 describe("AND / OR conditions", () => {
   const two = (when: Condition[], match?: "all" | "any") =>
     flow([at("s1", "wheat", [], { exits: [{ when, ...(match ? { match } : {}) }] }), at("s2", "potato")], false);

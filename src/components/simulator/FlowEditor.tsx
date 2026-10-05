@@ -518,6 +518,17 @@ const ExitsEditor: React.FC<{
                 set(i, next);
               }}
             />
+            <CheckboxField
+              label="Also check before building this step"
+              title="When the plot arrives at this step, check this exit first. If it already holds, go straight on without building this step's layout (no cycle spent here)."
+              checked={!!e.checkOnEntry}
+              onChange={(v) => {
+                const next: StepExit = { ...e };
+                if (v) next.checkOnEntry = true;
+                else delete next.checkOnEntry;
+                set(i, next);
+              }}
+            />
           </div>
         </React.Fragment>
       ))}
@@ -543,7 +554,9 @@ function stepNamer(steps: FlowStep[]): (id: string) => string {
 /** One-line summary of where a step goes and when, for the step list. */
 function stepExitSummary(s: FlowStep, steps: FlowStep[]): string {
   const name = stepNamer(steps);
-  const parts = s.exits.map((e) => `→ ${e.to !== undefined ? `${name(e.to)} ` : ""}when ${e.when.length ? describeConditions(e.when, e.match, name) : "never"}`);
+  const parts = s.exits.map(
+    (e) => `→ ${e.to !== undefined ? `${name(e.to)} ` : ""}when ${e.when.length ? describeConditions(e.when, e.match, name) : "never"}${e.checkOnEntry ? " (also on arrival)" : ""}`
+  );
   return parts.length ? parts.join(" · ") : "no exit";
 }
 

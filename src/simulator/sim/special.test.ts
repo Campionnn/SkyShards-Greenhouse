@@ -307,18 +307,40 @@ describe("Zombud", () => {
     expect(full.wild_rose).toBe(none.wild_rose);
   });
 
-  it("decay just leaves a Dead Plant: the adjacent dead plants stay and nothing drops", () => {
+  it("decay turns the adjacent dead plants into mobs (1 Zombud each), fills nothing and drops no crop bundle", () => {
     // Timer-only: the Zombud never helped a mutation, so its minimum (6) would otherwise extend it.
-    // A 6 h timer, so it decays within the 3 cycles.
+    // A 6 h timer, so it decays within the 3 cycles. Offline, with dead plants in stock: decay never fills.
+    const eng = engineWith({ timerOnly: true, decayDays: { zombud: 0.25 } });
+    const s = start(scenario([flow([step("a", layout())])], { activity: NEVER_ACTIVE, inventory: { dead_plant: 5 } }), eng);
+    inject(s, 1, "zombud", 5, 5, "spawned", grown, eng);
+    inject(s, 1, "dead_plant", 4, 4, "placed", {}, eng);
+    inject(s, 1, "dead_plant", 6, 5, "placed", {}, eng);
+    inject(s, 1, "wheat", 4, 5, "planted", { lockedEffects: [], stage: 99 }, eng);
+    const r = eng.run(s, 3);
+    expect(r.summary.decayed.zombud).toBe(1);
+    const d = ofKind(r.events, "decayed").find((e) => e.kindId === "zombud")!;
+    expect(d.drops).toEqual({ zombud: 2 }); // no pumpkin / wild_rose bundle
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
+    expect(plantAt(r.state, 1, 4, 4)).toBeUndefined();
+    expect(plantAt(r.state, 1, 6, 5)).toBeUndefined();
+    expect(plantAt(r.state, 1, 4, 5)?.kindId).toBe("wheat"); // other neighbours untouched
+    expect(r.state.inventory.zombud).toBe(2);
+    expect(r.state.inventory.dead_plant).toBe(5); // nothing filled from stock, nothing given back
+    expect(r.state.inventory.pumpkin ?? 0).toBe(0);
+    expect(ofKind(r.events, "removed").filter((e) => e.reason === "became a Zombud mob")).toHaveLength(2);
+    expect(r.state.summary.debtEvents).toBe(0);
+  });
+
+  it("a decaying placed Zombud makes no mobs: the adjacent dead plants stay", () => {
     const eng = engineWith({ timerOnly: true, decayDays: { zombud: 0.25 } });
     const s = blank(NEVER_ACTIVE, {}, eng);
-    inject(s, 1, "zombud", 5, 5, "spawned", grown, eng);
+    inject(s, 1, "zombud", 5, 5, "placed", grown, eng);
     inject(s, 1, "dead_plant", 4, 4, "placed", {}, eng);
     const r = eng.run(s, 3);
     expect(r.summary.decayed.zombud).toBe(1);
-    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "dead_plant", isDeadPlant: true });
     expect(plantAt(r.state, 1, 4, 4)?.kindId).toBe("dead_plant");
     expect(r.state.inventory.zombud ?? 0).toBe(0);
+    expect(ofKind(r.events, "decayed").find((e) => e.kindId === "zombud")?.drops).toBeUndefined();
   });
 });
 

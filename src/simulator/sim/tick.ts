@@ -25,7 +25,9 @@ import {
   removePlant,
   spawnStageOf,
 } from "./plants";
+import { credit } from "./inventory";
 import { bump, perPlot } from "./summary";
+import { isMobZombud, ZOMBUD, zombudMobs } from "./zombud";
 import type { PlantState, PlotState, SlotLabel, WatchStatus } from "./state";
 
 /**
@@ -224,7 +226,8 @@ function phaseWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
  * Decay timers count down in seconds (cycle length varies). Pools are snapshotted once per phase,
  * so pooled plants of a kind expiring this tick are judged together (sim/decay.ts). On expiry:
  * - minimum met: decays. A dead_plant leaves an empty cell; anything else becomes a Dead Plant,
- *   and a primed Blastberry explodes.
+ *   and a primed Blastberry explodes. A spawned Zombud first turns its ring's dead plants into
+ *   mobs (1 Zombud each, no fill from stock, no crop bundle).
  * - not met: timer extended by `DECAY_EXTENSION_HOURS` until positive; re-checked at the next expiry.
  * Dead Plants decay too. No RNG.
  */
@@ -252,7 +255,18 @@ function phaseDecay(plot: PlotState, ctx: CycleCtx): void {
       bump((ctx.state.summary.extended ??= {}), p.kindId);
       continue;
     }
-    ctx.emit(plot.id, { kind: "decayed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col });
+    // A decaying spawned Zombud turns its ring's dead plants into mobs, like a harvest but
+    // without filling empty cells (no player) and without its crop bundle.
+    const mobs = isMobZombud(p) ? zombudMobs(plot, p, ctx) : 0;
+    if (mobs > 0) {
+      credit(ctx.state, ZOMBUD, mobs);
+      const coinValue = mobs * ctx.prices.price(ZOMBUD);
+      ctx.state.summary.revenue.mutationItems += coinValue;
+      perPlot(ctx.state.summary, plot.id).revenue += coinValue;
+      ctx.emit(plot.id, { kind: "decayed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, drops: { [ZOMBUD]: mobs }, coinValue });
+    } else {
+      ctx.emit(plot.id, { kind: "decayed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col });
+    }
     bump(ctx.state.summary.decayed, p.kindId);
     perPlot(ctx.state.summary, plot.id).decayed += 1;
     if (p.kindId === DEAD_PLANT) {

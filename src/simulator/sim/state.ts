@@ -141,7 +141,8 @@ export interface FlowRunnerState {
   pendingTarget?: number;
   /** A non-looping flow that reached its last step's exit: the plot holds that step. */
   finished: boolean;
-  history: { stepId: string; stepIndex: number; startCycle: number; endCycle: number | null }[];
+  /** `skipped`: passed through without being built (`checkExitsOnEntry`); startCycle === endCycle. */
+  history: { stepId: string; stepIndex: number; startCycle: number; endCycle: number | null; skipped?: boolean }[];
 }
 
 export interface PlayerStats {
@@ -311,7 +312,9 @@ export type TickEvent =
   | { kind: "exploded"; plantId: number; row: number; col: number }
   | { kind: "rootSpread"; row: number; col: number; fromRow: number; fromCol: number }
   | { kind: "converted"; from: ItemId; to: ItemId; count: number }
-  | { kind: "decayed"; plantId: number; kindId: KindId; row: number; col: number }
+  /** `drops`/`coinValue`: only when the decay itself produced items (a spawned Zombud's ring mobs). */
+  | { kind: "decayed"; plantId: number; kindId: KindId; row: number; col: number;
+      drops?: Record<ItemId, number>; coinValue?: number }
   /** Decay timer ran out with minimum mutations unmet and was extended. `combined`: its kind's pool, null when not pooled. */
   | { kind: "decayExtended"; plantId: number; kindId: KindId; row: number; col: number;
       mutatesRemaining: number | "infinite" | null; combined: number | "infinite" | null }
@@ -329,7 +332,8 @@ export type TickEvent =
   | { kind: "debt"; item: ItemId; row: number; col: number; needed: number; available: number }
   /** `allowMutationDebt`: placed a mutation item without stock; `stock` is the (negative) stock after. */
   | { kind: "borrowed"; item: ItemId; row: number; col: number; qty: number; stock: number }
-  | { kind: "stepChanged"; fromStep: string; toStep: string; stepIndex: number }
+  /** `skipped`: steps passed through on the way (`checkExitsOnEntry`), in order. */
+  | { kind: "stepChanged"; fromStep: string; toStep: string; stepIndex: number; skipped?: string[] }
   | { kind: "playerSession" };
 
 export type TickEventKind = TickEvent["kind"];

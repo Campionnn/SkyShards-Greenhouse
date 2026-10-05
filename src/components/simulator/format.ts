@@ -125,9 +125,16 @@ export function describeEvent(e: TimedEvent): string {
         .join(", ");
       return `Harvested ${nameOf(e.kindId)}${at}: ${items || "nothing"} (${formatCoins(e.coinValue)} coins)`;
     }
-    case "decayed":
+    case "decayed": {
       // A decaying dead plant leaves nothing; the player re-places the layout's own from stock.
-      return e.kindId === "dead_plant" ? `${nameOf(e.kindId)} decayed${at}` : `${nameOf(e.kindId)} decayed${at} and left a Dead Plant`;
+      if (e.kindId === "dead_plant") return `${nameOf(e.kindId)} decayed${at}`;
+      // A decaying spawned Zombud turns its ring's dead plants into mobs.
+      const mobs = e.drops ? Object.values(e.drops).reduce((a, b) => a + b, 0) : 0;
+      if (mobs > 0) {
+        return `${nameOf(e.kindId)} decayed${at} and left a Dead Plant; ${formatCount(mobs)} adjacent Dead ${plural(mobs, "Plant", "Plants")} became Zombud mobs (${formatCount(mobs)} ${nameOf(e.kindId)}, ${formatCoins(e.coinValue ?? 0)} coins)`;
+      }
+      return `${nameOf(e.kindId)} decayed${at} and left a Dead Plant`;
+    }
     case "decayExtended":
       return `${nameOf(e.kindId)}'s decay timer ran out${at} but ${describeRemaining(e.mutatesRemaining, e.combined)} - extended 24h`;
     case "driedOut":
@@ -147,7 +154,7 @@ export function describeEvent(e: TimedEvent): string {
     case "borrowed":
       return `Placed ${nameOf(e.item)}${at} on mutation debt: borrowed ${formatCount(e.qty)}, stock now ${formatCount(e.stock)}`;
     case "stepChanged":
-      return `Step "${e.fromStep}" -> "${e.toStep}"`;
+      return `Step "${e.fromStep}" -> "${e.toStep}"${e.skipped?.length ? ` (skipped ${e.skipped.map((s) => `"${s}"`).join(", ")}: exits already met)` : ""}`;
     case "fullyGrown":
       return `${nameOf(e.kindId)} fully grown${at}`;
     case "growthBlocked":

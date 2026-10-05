@@ -6,6 +6,9 @@ import type { PlantState, PlotState } from "./state";
 
 export const ZOMBUD = "zombud";
 
+/** A spawned Zombud: harvesting or decaying it turns its ring's dead plants into mobs. */
+export const isMobZombud = (p: PlantState): boolean => p.kindId === ZOMBUD && p.origin === "spawned" && !p.isDeadPlant;
+
 /**
  * Zombud harvest. First fills empty ring cells with dead plants from stock
  * (optional: stops when stock runs out, never records debt). Then each ring
@@ -16,7 +19,7 @@ export const ZOMBUD = "zombud";
 export function zombudHarvest(plot: PlotState, p: PlantState, ctx: CycleCtx): number {
   const ring = ringCells(p.row, p.col, p.size);
 
-  let occ = buildOccupancy(plot);
+  const occ = buildOccupancy(plot);
   for (const idx of ring) {
     if (occ[idx]) continue;
     if ((ctx.state.inventory[DEAD_PLANT] ?? 0) < 1) break;
@@ -29,7 +32,18 @@ export function zombudHarvest(plot: PlotState, p: PlantState, ctx: CycleCtx): nu
     ctx.emit(plot.id, { kind: "placed", plantId: d.id, kindId: DEAD_PLANT, row, col, origin: "placed", replacement: false });
   }
 
-  occ = buildOccupancy(plot);
+  return zombudMobs(plot, p, ctx);
+}
+
+/**
+ * Turn every ring cell under a dead_plant into a mob (fight assumed won) and
+ * consume those dead plants with no item back. Returns the mob count, i.e. the
+ * Zombud items (1 per ring cell, not yield-scaled). Used by the harvest (after
+ * filling) and by decay (the game does it, so nothing is filled). No RNG.
+ */
+export function zombudMobs(plot: PlotState, p: PlantState, ctx: CycleCtx): number {
+  const ring = ringCells(p.row, p.col, p.size);
+  const occ = buildOccupancy(plot);
   let mobs = 0;
   const consumed: PlantState[] = [];
   for (const idx of ring) {

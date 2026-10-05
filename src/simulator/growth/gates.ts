@@ -61,7 +61,7 @@ export const GATES: Record<string, Gate> = {
 export const UNMODELLED_RULES: Record<string, string> = {
   thunderling: "Discharging into Thunder/Storm/Hurricane in a Bottle (bottle charge) is not modelled.",
   fleshtrap: "Feeding bonus drops (+20/+40%, cap +100%) are not modelled.",
-  zombud: "Zombud mob fight assumed won (1 Zombud per adjacent Dead Plant). Decay just leaves a Dead Plant; no mobs.",
+  zombud: "Zombud mob fight assumed won (1 Zombud per adjacent Dead Plant), on harvest and on decay alike. A decay fills no empty cells and drops no crop bundle.",
   timestalk: "Harvest-time clone fight assumed won (1 Timestalk per harvest, no yield scaling).",
 };
 

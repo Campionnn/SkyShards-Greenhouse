@@ -66,6 +66,13 @@ export interface StepExit {
    * (re-enters it: layout re-applied, counters reset).
    */
   to?: string;
+  /**
+   * Also check this exit when the plot arrives at its step, before the step's
+   * layout is built: if it already holds, the plot goes straight on to `to`
+   * and this step is skipped (no layout, no cycle spent in it). Chains through
+   * further steps' on-arrival exits.
+   */
+  checkOnEntry?: boolean;
 }
 
 export type SpawnedHarvestPolicy = "whenFullyGrown" | "beforeDecay" | "never";
