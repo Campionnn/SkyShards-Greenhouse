@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { BookOpen, ExternalLink, Link2, Loader2 } from "lucide-react";
+import { ArrowLeft, BookOpen, ExternalLink, Link2, Loader2 } from "lucide-react";
 import { CropImage, CropSearchInput } from "../components/shared";
 import { useToast } from "../components/ui";
 import { ItemDetails, ItemHeader, formatRarity, getRarityColor, useWikiData } from "../components/wiki";
@@ -67,6 +67,13 @@ const WikiArticle: React.FC<{ entry: WikiEntry; wiki: WikiData }> = ({ entry, wi
 
   return (
     <article className="space-y-4">
+      <Link
+        to="/wiki"
+        className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-teal-300 transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        All crops &amp; mutations
+      </Link>
       <div className="bg-slate-900 border border-slate-700 rounded-xl px-4 sm:px-6 py-4">
         <ItemHeader
           id={entry.id}

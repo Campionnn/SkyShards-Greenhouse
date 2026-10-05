@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, GitBranch, WandSparkles } from "lucide-react";
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, WandSparkles } from "lucide-react";
 import { CropImage } from "../shared";
 import type { GreenhouseDataJSON } from "../../services/greenhouseDataService";
-import { collectBaseIngredients, collectExpandablePaths, getRecipeSource } from "../../wiki/recipes";
+import { collectExpandablePaths, getRecipeSource } from "../../wiki/recipes";
 import { ItemLink } from "./ItemLink";
 import { formatName, getRarityColor } from "./format";
 
@@ -21,7 +21,6 @@ export const RecipeTree: React.FC<RecipeTreeProps> = ({ id, data }) => {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const root = getRecipeSource(data, id);
   const allPaths = useMemo(() => collectExpandablePaths(data, id), [data, id]);
-  const baseIngredients = useMemo(() => collectBaseIngredients(data, id), [data, id]);
   const allExpanded = allPaths.length > 0 && allPaths.every((path) => expanded.has(path));
 
   const toggle = (path: string) => {
@@ -63,27 +62,6 @@ export const RecipeTree: React.FC<RecipeTreeProps> = ({ id, data }) => {
           />
         ))}
       </ul>
-
-      {baseIngredients.length > 0 && allPaths.length > 0 && (
-        <div className="pt-3 border-t border-slate-600/30">
-          <div className="flex items-center gap-1.5 mb-2 text-xs text-slate-400">
-            <GitBranch className="w-3.5 h-3.5" />
-            <span>Everything starts from</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {baseIngredients.map((leaf) => (
-              <ItemLink
-                key={leaf}
-                id={leaf}
-                className="flex items-center gap-1 pl-1 pr-2 py-0.5 rounded-md bg-slate-700/40 border border-slate-600/30 hover:border-slate-500/60 transition-colors"
-              >
-                <CropImage cropId={leaf} cropName={nameOf(data, leaf)} width={18} height={18} showFallback={false} />
-                <span className={`text-xs ${getRarityColor(data.mutations[leaf]?.rarity)}`}>{nameOf(data, leaf)}</span>
-              </ItemLink>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
