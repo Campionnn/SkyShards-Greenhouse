@@ -107,22 +107,27 @@ function describe(
   const size = `${item.size}x${item.size}`;
 
   if (mutation) {
-    parts.push(`${entry.name} is a ${mutation.rarity} ${size} Greenhouse mutation in Hypixel SkyBlock.`);
+    parts.push(`${humanize(mutation.rarity)} ${size} Greenhouse Mutation.`);
     const source = getRecipeSource(data, entry.id);
     if (mutation.requirements.length > 0) {
       parts.push(`Requires ${mutation.requirements.map((req) => `${req.count}x ${nameOf(req.crop)}`).join(", ")}.`);
     }
     if (source.note) parts.push(source.note);
   } else {
-    parts.push(`${entry.name} is a ${size} base crop in the Hypixel SkyBlock Greenhouse.`);
+    parts.push(`${size} Greenhouse Crop.`);
   }
 
-  if (item.positive_buffs.length > 0) parts.push(`Effects: ${item.positive_buffs.map(humanize).join(", ")}.`);
-  const decay = mutation ? mutation.decay : data.crops[entry.id]?.decay;
-  if (decay) parts.push(`Decays after ${decay} day${decay === 1 ? "" : "s"}.`);
-  const uses = usedIn.get(entry.id)?.length ?? 0;
-  if (uses > 0) parts.push(`Used in ${uses} mutation${uses === 1 ? "" : "s"}.`);
+  if (item.positive_buffs.length > 0) parts.push(`Positive Effects: ${item.positive_buffs.map(humanize).join(", ")}.`);
+  if (item.negative_buffs.length > 0) parts.push(`Negative Effects: ${item.negative_buffs.map(humanize).join(", ")}.`);
+  const users = (usedIn.get(entry.id) ?? []).map(nameOf);
+  if (users.length > 0) parts.push(`Used in ${joinNames(users)} ${users.length === 1 ? "mutation" : "mutations"}.`);
   return parts.join(" ");
+}
+
+/** "A", "A and B", "A, B and C". */
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 function applyMeta(template: string, meta: PageMeta): string {

@@ -143,7 +143,7 @@ describe("wiki static pages", () => {
     expect(page.html).toContain('<meta property="og:image" content="https://example.com/greenhouse/crops/gloomgourd.png" />');
     expect(page.html).toContain('<link rel="canonical" href="https://example.com/wiki/gloomgourd" />');
     expect(page.html).not.toContain("og:image:width");
-    expect(page.html).toMatch(/<meta name="description" content="Gloomgourd is a common 1x1 Greenhouse mutation[^"]*Requires 1x Pumpkin, 1x Melon\./);
+    expect(page.html).toMatch(/<meta name="description" content="Common 1x1 Greenhouse Mutation\.[^"]*Requires 1x Pumpkin, 1x Melon\./);
     expect(page.html).toContain('<script type="module" src="/assets/app.js"></script>');
     expect(page.html).toContain('<a href="https://example.com/wiki/soggybud">Soggybud</a>');
   });

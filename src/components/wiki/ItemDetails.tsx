@@ -27,7 +27,7 @@ import { UsedInList } from "./UsedInList";
 import { formatMinimumMutations, formatName, formatRarity, getRarityBgColor, getRarityColor } from "./format";
 
 const DECAY_RULE_NOTE =
-  "It can only decay once its timer has run out and it has helped create this many mutations; until then the timer extends by 24h. Plants of the same kind on a plot share the count.";
+  "It can only decay once its timer has run out and it has helped create this many mutations; until then the timer extends by 24h. Fully grown plants of the same kind on a plot share the count.";
 
 export type ItemDetailsVariant = "modal" | "page";
 
