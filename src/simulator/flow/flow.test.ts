@@ -15,6 +15,7 @@ import {
   TIMER_ONLY,
 } from "../testHelpers";
 import type { TimedEvent } from "../sim/state";
+import { GRID_SIZE } from "../grid/cells";
 
 const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
@@ -274,10 +275,15 @@ describe("destruction", () => {
     start(scenario([flow([step("a", layout())])], { config, activity }));
 
   const roots = (s: ReturnType<typeof start>) => s.plots[0].plants.filter((p) => p.kindId === "devourer_root").length;
+  /** Paint every cell of plot 1 (roots only grow onto ground, never AIR). */
+  const paintAll = (s: ReturnType<typeof start>, ground = "farmland") => {
+    for (let r = 0; r < GRID_SIZE; r++) for (let c = 0; c < GRID_SIZE; c++) s.plots[0].groundTiles[`${r},${c}`] = ground;
+  };
 
   it("a growing Devourer grows a root into a neighbouring cell, destroying what was there", () => {
     // Root chances are fixed (DEVOURER_ROOT_CHANCE 40%), so step until the first root appears.
     let s = blank({ waterLossMin: 0, waterLossMax: 0 });
+    paintAll(s);
     inject(s, 1, "devourer", 5, 5, "spawned");
     // Fill all 8 neighbours so the root must land on a plant.
     for (const [r, c] of [[4, 4], [4, 5], [4, 6], [5, 4], [5, 6], [6, 4], [6, 5], [6, 6]]) inject(s, 1, "wheat", r, c, "planted");
@@ -299,6 +305,7 @@ describe("destruction", () => {
   it("roots spread on their own, and the online player breaks them", () => {
     // Root spread chance is fixed (ROOT_SPREAD_CHANCE 40%): step while the player is away until one has spread.
     let s = blank();
+    paintAll(s);
     inject(s, 1, "devourer_root", 0, 0, "placed");
     for (let i = 0; i < 50 && roots(s) < 3; i++) s = engine.run(s, 1).state;
     expect(roots(s)).toBeGreaterThanOrEqual(3);
@@ -308,6 +315,24 @@ describe("destruction", () => {
     const r = engine.run(online, 1);
     expect(roots(r.state)).toBe(0);
     expect(ofKind(r.events, "removed").filter((e) => e.reason === "cleared root").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("roots never grow into AIR, only onto cells with ground", () => {
+    let s = blank();
+    expect(s.plots[0].groundTiles).toEqual({});
+    // Only (5,6) and the Chorus End Stone at (4,4) have ground; every other neighbour is AIR.
+    s.plots[0].groundTiles["5,6"] = "farmland";
+    s.plots[0].groundOverrides["4,4"] = "end_stone";
+    inject(s, 1, "devourer", 5, 5, "spawned");
+    inject(s, 1, "devourer_root", 0, 0, "placed"); // surrounded by AIR: never spreads
+    for (let i = 0; i < 12; i++) {
+      const r = engine.run(s, 1);
+      s = r.state;
+      for (const e of ofKind(r.events, "rootSpread")) expect(["5,6", "4,4"]).toContain(`${e.row},${e.col}`);
+    }
+    const keys = s.plots[0].plants.filter((p) => p.kindId === "devourer_root").map((p) => `${p.row},${p.col}`);
+    expect(keys).toContain("0,0");
+    for (const k of keys) expect(["0,0", "5,6", "4,4"]).toContain(k);
   });
 
   it("a fully grown Devourer grows no roots", () => {

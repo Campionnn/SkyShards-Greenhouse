@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import { X, Layers, Target, Palette } from "lucide-react";
 import { useGreenhouseData, useDesigner } from "../../context";
 import { getRarityTextColor, getRarityBorderColor } from "../../utilities";
@@ -9,6 +9,7 @@ import type { CropDefinition, MutationDefinition } from "../../types/greenhouse"
 import type { DesignerMode } from "../../context";
 import { GROUND_TYPES } from "../../utilities/designEncoding";
 import { getGroundImagePath } from "../../types/greenhouse";
+import { rarityRank } from "../../wiki/slugs";
 
 interface CropSelectionPaletteProps {
   className?: string;
@@ -74,11 +75,18 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
 
   // Targets mode lists mutations only.
   const additionalFilter = mode === "targets" ? (crop: CropDefinition) => crop.isMutation ?? false : undefined;
-  const { searchTerm, setSearchTerm, filter, setFilter, filteredCrops, getMutationDef } = useCropFiltering({
+  const { searchTerm, setSearchTerm, filter, setFilter, filteredCrops: unsortedCrops, getMutationDef } = useCropFiltering({
     crops,
     mutations,
     additionalFilter,
   });
+
+  // Group by rarity (crops first) rather than trusting data.json order, which appends
+  // some mutations after a later rarity. The sort is stable, so each group keeps data order.
+  const filteredCrops = useMemo(() => {
+    const rank = (crop: CropDefinition) => (crop.isMutation ? rarityRank(getMutationDef(crop.id)?.rarity ?? null) : -1);
+    return [...unsortedCrops].sort((a, b) => rank(a) - rank(b));
+  }, [unsortedCrops, getMutationDef]);
 
   // Switching to targets clears a selected plain crop, which cannot be a target.
   const handleModeChange = useCallback((newMode: DesignerMode) => {

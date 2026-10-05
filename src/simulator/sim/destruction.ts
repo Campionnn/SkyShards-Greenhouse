@@ -15,7 +15,7 @@ function willGrow(p: PlantState): boolean {
  * Tick phase "destruction", first in the tick (before effects and growth):
  * - Devourer: while growing, `DEVOURER_ROOT_CHANCE` per tick to grow a root into
  *   one of its 8 neighbours, destroying what's there. Each root spreads with
- *   `ROOT_SPREAD_CHANCE`.
+ *   `ROOT_SPREAD_CHANCE`. Roots only grow onto cells with ground, never AIR.
  * - Chorus Fruit: each tick it starts still growing, teleports to any other
  *   cell (air included) and turns it into End Stone. It teleports on the tick
  *   it becomes fully grown, never after. With `chorusOverflow` (default on)
@@ -95,10 +95,18 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
   if (moved) sortPlants(plot);
 }
 
-/** Grow a root into a random neighbour of `src` that isn't a root or Devourer. */
+/** Any ground (painted, implied or Chorus End Stone) under the cell; missing means AIR. */
+function hasGround(plot: PlotState, idx: number): boolean {
+  const key = cellKey(Math.floor(idx / GRID_SIZE), idx % GRID_SIZE);
+  const g = plot.groundOverrides[key] ?? plot.groundTiles[key];
+  return !!g && g !== "air";
+}
+
+/** Grow a root into a random neighbour of `src` that has ground and isn't a root or Devourer. */
 function growRoot(plot: PlotState, src: PlantState, ctx: CycleCtx): void {
   const occ = buildOccupancy(plot);
   const cells = ringCells(src.row, src.col, src.size).filter((idx) => {
+    if (!hasGround(plot, idx)) return false; // roots can't grow into AIR
     const q = occ[idx];
     return !q || (q.kindId !== DEVOURER_ROOT && q.kindId !== "devourer");
   });
