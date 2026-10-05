@@ -76,13 +76,17 @@ export const SanityCheckSection: React.FC<{ result: SanityCheckResult; anchor?: 
           <ul className="space-y-0.5">
             {result.canSpawn.map((e) => (
               <li key={e.mutationId} className="flex items-center justify-between gap-2 text-emerald-300">
-                <span className="truncate">{nameOf(e.mutationId)}</span>
+                <span className="truncate">
+                  {nameOf(e.mutationId)}
+                  {e.priority === "rollFirst" && <span className="text-[11px] text-slate-500"> (rolls first)</span>}
+                  {e.priority === "exclusive" && <span className="text-[11px] text-slate-500"> (priority)</span>}
+                </span>
                 <span className="tabular-nums text-slate-200">{formatChance(e.chance)}</span>
               </li>
             ))}
             <li className="text-[11px] text-slate-500">
               Anything spawns: {formatChance(result.anyChance)}
-              {result.denominator > result.totalWeight ? " (the rest is a blank roll)" : ""}
+              {result.anyChance < 1 - 1e-9 ? " (the rest is a blank roll)" : ""}
             </li>
           </ul>
         )}

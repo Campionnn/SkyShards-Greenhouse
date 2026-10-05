@@ -4,7 +4,8 @@ import { cellIndex, footprint, footprintFits, GRID_SIZE, inBounds, ringCells } f
 import { candidateMutations } from "../spawn/candidates";
 import { locationOpenFor, ringCounts, type RingCounts } from "../spawn/eligibility";
 import { effectiveWeight, isAllPositiveSpecial, requiresZeroAdjacent } from "../spawn/multiplicity";
-import { applyMutationChanceBonus, poolDenominator, type SpawnPool } from "../spawn/pool";
+import { applyMutationChanceBonus, planPool, poolDenominator, spawnChances, type SpawnPool } from "../spawn/pool";
+import { SPAWN_PRIORITY, type SpawnPriority } from "../config";
 import { buildOccupancy, isDry, isFootprintFree, removePlant, type Occupancy } from "../sim/plants";
 import type { PlantState, PlotId, SimulationState } from "../sim/state";
 
@@ -39,6 +40,8 @@ export type SanityBlocker =
   | { kind: "ringNotEmpty"; occupants: SanityOccupant[] }
   /** Godseed: effects the spot does not receive (EffectIds). */
   | { kind: "missingEffects"; effects: string[] }
+  /** Eligible, but a priority mutation that is eligible here shuts it out (Zombud over Witherbloom). */
+  | { kind: "outranked"; by: MutationId }
   /** Not in the plot's spawn pool: a required kind isn't on the plot. */
   | { kind: "notCandidate" }
   /** Unexplained by the above (unmodelled special rule). */
@@ -77,8 +80,14 @@ export interface SanityEntry {
   canSpawn: boolean;
   /** Weight in the spawn pool after Bioanalysis (0 when it can't spawn). */
   weight: number;
-  /** Chance per spawn roll: weight / max(SPAWN_POOL_FLOOR, sum of weights over the pool). 0 when it can't spawn. */
+  /**
+   * Chance per spawn roll, priority included (`spawnChances`): a `rollFirst` mutation gets
+   * weight / max(SPAWN_POOL_FLOOR, weight); the rest get (chance every `rollFirst` roll
+   * missed) × weight / max(SPAWN_POOL_FLOOR, sum of their weights). 0 when it can't spawn.
+   */
   chance: number;
+  /** Spawn priority it holds here (`SPAWN_PRIORITY`), when it can spawn. */
+  priority: SpawnPriority | null;
   /** Blocking reasons in check order. Empty when it can spawn. */
   blockers: SanityBlocker[];
   /** Display aid: total missing (requirement cells, wrong ground, footprint, ring occupants, effects). */
@@ -93,11 +102,11 @@ export interface SanityCheckResult {
   occupied: SanityOccupant | null;
   /** The labelled slot's target, when the cell is a slot anchor. */
   slotTarget: MutationId | null;
-  /** Sum of pool weights after Bioanalysis. */
+  /** Sum of pool weights after Bioanalysis (priority mutations and shut-out ones included). */
   totalWeight: number;
-  /** max(SPAWN_POOL_FLOOR, totalWeight). */
+  /** max(SPAWN_POOL_FLOOR, Σ weights of the main roll): the roll made after every `rollFirst` roll missed. */
   denominator: number;
-  /** Chance a roll spawns anything: totalWeight / denominator. */
+  /** Chance a roll spawns anything: the sum of the entries' chances. */
   anyChance: number;
   /** Every mutation with a spawn weight, plus the slot's target, in data.json order. */
   entries: SanityEntry[];
@@ -167,7 +176,10 @@ export function sanityCheck(state: SimulationState, data: GameData, plotId: Plot
     }
   }
   const boosted = applyMutationChanceBonus(pool, playerStats.mutationChanceBonus);
-  const denominator = poolDenominator(boosted.weights);
+  // Spawn priority, as `rollPool` applies it.
+  const plan = planPool(boosted);
+  const chances = spawnChances(boosted);
+  const denominator = poolDenominator(plan.main.weights);
   const totalWeight = boosted.weights.reduce((a, b) => a + b, 0);
 
   const entries: SanityEntry[] = [];
@@ -185,7 +197,8 @@ export function sanityCheck(state: SimulationState, data: GameData, plotId: Plot
         effects,
         poolKind: m === target && !candidates.includes(m) ? "slotTarget" : candidates.includes(m) ? "candidate" : "no",
         weight,
-        chance: weight / denominator,
+        chance: chances[id] ?? 0,
+        outrankedBy: plan.excluded.find((e) => e.id === id)?.by ?? null,
         ring: ringBySize.get(m.size),
       })
     );
@@ -199,7 +212,7 @@ export function sanityCheck(state: SimulationState, data: GameData, plotId: Plot
     slotTarget: slot?.mutationId ?? null,
     totalWeight,
     denominator,
-    anyChance: totalWeight / denominator,
+    anyChance: entries.reduce((a, e) => a + e.chance, 0),
     entries,
     canSpawn: entries.filter((e) => e.canSpawn),
     cannot: entries.filter((e) => !e.canSpawn),
@@ -215,6 +228,8 @@ interface EntryCtx {
   poolKind: SanityEntry["pool"];
   weight: number;
   chance: number;
+  /** The priority mutation that shuts this one out here, if any. */
+  outrankedBy: MutationId | null;
   /** Ring computed for this size, if any. */
   ring: RingCounts | undefined;
 }
@@ -270,10 +285,11 @@ function entryFor(m: MutationDef, c: EntryCtx): SanityEntry {
     }
   }
 
-  // The pool is authoritative.
-  const canSpawn = c.weight > 0;
+  // The pool is authoritative; a priority mutation can still shut an eligible one out.
+  const canSpawn = c.weight > 0 && !c.outrankedBy;
+  if (canSpawn || c.outrankedBy) blockers.length = 0;
+  if (c.outrankedBy) blockers.push({ kind: "outranked", by: c.outrankedBy });
   if (!canSpawn && blockers.length === 0) blockers.push(c.poolKind === "no" ? { kind: "notCandidate" } : { kind: "noWeight" });
-  if (canSpawn) blockers.length = 0;
 
   let missingCount = 0;
   for (const b of blockers) {
@@ -297,6 +313,7 @@ function entryFor(m: MutationDef, c: EntryCtx): SanityEntry {
     canSpawn,
     weight: canSpawn ? c.weight : 0,
     chance: canSpawn ? c.chance : 0,
+    priority: canSpawn ? (SPAWN_PRIORITY[m.id] ?? null) : null,
     blockers,
     missingCount,
   };

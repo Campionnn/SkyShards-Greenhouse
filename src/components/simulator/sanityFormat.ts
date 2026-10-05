@@ -49,6 +49,8 @@ export function describeBlocker(b: SanityBlocker, mutationId: string): string {
       return `${nameOf(mutationId)}: ring not empty (${b.occupants.map(occupantName).join(", ")})`;
     case "missingEffects":
       return `${nameOf(mutationId)}: missing ${b.effects.map(getEffectName).join(", ")}`;
+    case "outranked":
+      return `${nameOf(b.by)} can spawn here and takes priority`;
     case "notCandidate":
       return "none of its required crops stand on this plot";
     case "noWeight":

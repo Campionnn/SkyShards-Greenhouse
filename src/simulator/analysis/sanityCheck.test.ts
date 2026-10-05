@@ -4,7 +4,7 @@ import type { LayoutSpec } from "../flow/types";
 import { seedRng } from "../rng";
 import { recomputeEffects } from "../effects/adapter";
 import { candidateMutations } from "../spawn/candidates";
-import { applyMutationChanceBonus, buildPool, poolDenominator, spawnProbability, type SpawnPool } from "../spawn/pool";
+import { applyMutationChanceBonus, buildPool, planPool, poolDenominator, spawnProbability, type SpawnPool } from "../spawn/pool";
 import { locationOpenFor, ringCounts } from "../spawn/eligibility";
 import { buildOccupancy } from "../sim/plants";
 import type { SimulationState } from "../sim/state";
@@ -18,6 +18,48 @@ const farm = (spec: LayoutSpec, ...cells: [number, number][]): LayoutSpec => ({
 });
 const block3x3 = (r: number, c: number): [number, number][] => Array.from({ length: 9 }, (_, i) => [r + Math.floor(i / 3), c + (i % 3)]);
 const quiet = { activity: NEVER_ACTIVE };
+
+/** Zombud slot at (4,4): 4 dead plants, 2 Cindershade, 2 Fleshtrap in its ring (Witherbloom eligible too). */
+const ZOMBUD_RING = layout(
+  [
+    ["dead_plant", 3, 3],
+    ["dead_plant", 3, 4],
+    ["dead_plant", 3, 5],
+    ["dead_plant", 4, 3],
+    ["cindershade", 4, 5],
+    ["cindershade", 5, 3],
+    ["fleshtrap", 5, 4],
+    ["fleshtrap", 5, 5],
+  ],
+  [["zombud", 4, 4]]
+);
+
+/**
+ * Snoozling slot (4,4)-(6,6) with its full 16-cell ring, plus a placed Godseed above the
+ * Thornshade at (3,5): the Thornshade relays all six positive effects into the slot.
+ */
+const SNOOZLING_ALL_EFFECTS = layout(
+  [
+    ["godseed", 0, 4],
+    ["creambloom", 3, 3],
+    ["dustgrain", 3, 4],
+    ["thornshade", 3, 5],
+    ["creambloom", 3, 6],
+    ["creambloom", 3, 7],
+    ["witherbloom", 4, 3],
+    ["duskbloom", 4, 7],
+    ["witherbloom", 5, 3],
+    ["duskbloom", 5, 7],
+    ["witherbloom", 6, 3],
+    ["duskbloom", 6, 7],
+    ["creambloom", 7, 3],
+    ["dustgrain", 7, 4],
+    ["thornshade", 7, 5],
+    ["dustgrain", 7, 6],
+    ["thornshade", 7, 7],
+  ],
+  [["snoozling", 4, 4]]
+);
 
 const check = (s: SimulationState, row: number, col: number) => sanityCheck(s, data, 1, row, col);
 const ids = (es: { mutationId: string }[]) => es.map((e) => e.mutationId);
@@ -240,6 +282,32 @@ describe("sanityCheck on the cells of a multi-cell element", () => {
   });
 });
 
+describe("sanityCheck: spawn priority (Zombud, Godseed)", () => {
+  it("a Zombud spot offers only Zombud; Witherbloom is shut out", () => {
+    const s = start(singlePlot(ZOMBUD_RING, quiet));
+    const r = check(s, 4, 4);
+    expect(ids(r.canSpawn)).toEqual(["zombud"]);
+    expect(r.canSpawn[0]).toMatchObject({ priority: "exclusive" });
+    expect(r.canSpawn[0].chance).toBeCloseTo(0.25, 12);
+    const w = entry(s, 4, 4, "witherbloom");
+    expect(w.canSpawn).toBe(false);
+    expect(w.blockers).toEqual([{ kind: "outranked", by: "zombud" }]);
+    expect(r.anyChance).toBeCloseTo(0.25, 12);
+  });
+
+  it("a Snoozling slot with every positive effect: Godseed rolls first at 5%, Snoozling gets 25% of the rest", () => {
+    const s = start(singlePlot(SNOOZLING_ALL_EFFECTS, quiet));
+    const r = check(s, 4, 4);
+    expect(ids(r.canSpawn)).toEqual(["snoozling", "godseed"]);
+    const g = entry(s, 4, 4, "godseed");
+    const z = entry(s, 4, 4, "snoozling");
+    expect(g).toMatchObject({ priority: "rollFirst" });
+    expect(g.chance).toBeCloseTo(0.05, 12);
+    expect(z.chance).toBeCloseTo(0.95 * 0.25, 12);
+    expect(r.anyChance).toBeCloseTo(0.05 + 0.95 * 0.25, 12);
+  });
+});
+
 describe("sanityCheck is read-only", () => {
   it("does not change the state (no effects written, no RNG drawn)", () => {
     const s = start(singlePlot(farm(layout([["pumpkin", 4, 3], ["melon", 4, 5], ["wheat", 4, 4], ["wheat", 0, 0]], [["godseed", 7, 7]]), [5, 5]), quiet));
@@ -292,6 +360,8 @@ describe("sanityCheck agrees with phaseSpawn", () => {
       },
     },
     { name: "a 3x3 target (godseed) that is short of effects", spec: layout([["wheat", 0, 0]], [["godseed", 4, 4]]), row: 4, col: 4 },
+    { name: "a Zombud ring (Zombud shuts Witherbloom out)", spec: ZOMBUD_RING, row: 4, col: 4 },
+    { name: "a Snoozling slot holding every positive effect (Godseed rolls first)", spec: SNOOZLING_ALL_EFFECTS, row: 4, col: 4 },
   ];
 
   for (const { name, spec, row, col, extra } of cases) {
@@ -319,13 +389,15 @@ describe("sanityCheck agrees with phaseSpawn", () => {
         enginePool.weights.push(...one.weights);
       }
       const boosted = applyMutationChanceBonus(enginePool, s.scenario.settings.playerStats.mutationChanceBonus);
-      expect(ids(r.canSpawn)).toEqual(boosted.ids);
-      const denominator = poolDenominator(boosted.weights);
+      const plan = planPool(boosted);
+      const shutOut = new Set(plan.excluded.map((e) => e.id));
+      expect(ids(r.canSpawn)).toEqual(boosted.ids.filter((id) => !shutOut.has(id)));
+      const denominator = poolDenominator(plan.main.weights);
       expect(r.denominator).toBeCloseTo(denominator, 9);
-      r.canSpawn.forEach((e, i) => {
-        expect(e.weight).toBeCloseTo(boosted.weights[i], 9);
+      for (const e of r.canSpawn) {
+        expect(e.weight).toBeCloseTo(boosted.weights[boosted.ids.indexOf(e.mutationId)], 9);
         expect(e.chance).toBeCloseTo(spawnProbability(boosted, e.mutationId), 12);
-      });
+      }
       for (const e of r.cannot) expect(e.chance).toBe(0);
 
       // 2. Against real spawn rolls: every spawn is one the check listed.

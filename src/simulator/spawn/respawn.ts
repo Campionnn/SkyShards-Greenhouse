@@ -5,13 +5,14 @@ import type { PlantState, PlotState } from "../sim/state";
 import { candidateMutations } from "./candidates";
 import { locationOpenFor, ringCounts, type RingCounts } from "./eligibility";
 import { effectiveWeight, isAllPositiveSpecial } from "./multiplicity";
-import { applyMutationChanceBonus, poolDenominator, type SpawnPool } from "./pool";
+import { applyMutationChanceBonus, spawnProbability, type SpawnPool } from "./pool";
 
 /**
  * Chance per spawn roll that `mutationId` spawns at `plant`'s anchor once the
  * plant is gone, with everything else as it stands now. Same pool as
  * `phaseSpawn` (sim/tick.ts) and the Sanity Check: candidates from the kinds on
- * the plot, the slot's target, ring and ground checks, Bioanalysis, the floor.
+ * the plot, the slot's target, ring and ground checks, Bioanalysis, the floor,
+ * spawn priority (`planPool`).
  * Godseed eligibility uses `effects` (the cycle's effect simulation; null =
  * not eligible). Read-only: draws no RNG, writes nothing.
  */
@@ -50,7 +51,6 @@ export function respawnChance(
       pool.weights.push(w);
     }
   }
-  const boosted = applyMutationChanceBonus(pool, mutationChanceBonus);
-  const i = boosted.ids.indexOf(mutationId);
-  return i < 0 ? 0 : boosted.weights[i] / poolDenominator(boosted.weights);
+  // Priority (Godseed rolls first, Zombud shuts others out) as in `rollPool`.
+  return spawnProbability(applyMutationChanceBonus(pool, mutationChanceBonus), mutationId);
 }

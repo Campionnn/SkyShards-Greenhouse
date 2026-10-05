@@ -6,7 +6,7 @@ import { engine, flow, layout, scenario, step, start } from "../testHelpers";
 import { candidateMutations } from "./candidates";
 import type { RingCounts } from "./eligibility";
 import { effectiveWeight, fullWeightMultiplicity, multiplicity } from "./multiplicity";
-import { applyMutationChanceBonus, buildPool, poolDenominator, rollPool, spawnProbability, type SpawnPool } from "./pool";
+import { applyMutationChanceBonus, buildPool, planPool, poolDenominator, rollPool, spawnChances, spawnProbability, type SpawnPool } from "./pool";
 
 // Spawn weights, multiplicity, pool building and rolling (mirrors SkyShards-API tests/test_spawn_weights.py).
 
@@ -64,6 +64,65 @@ describe("one roll over the whole pool", () => {
     const wins: Record<string, number> = { a: 0, b: 0 };
     for (let i = 0; i < 20_000; i++) wins[rollPool(p, rng, 100)!]++;
     expect(wins.a / 20_000).toBeCloseTo(60 / 135, 1);
+  });
+});
+
+describe("spawn priority (Feb 4 2026 patch: Zombud and Godseed)", () => {
+  it("Godseed rolls first; Snoozling rolls only when it misses", () => {
+    const p = pool({ snoozling: 25, godseed: 5 });
+    expect(planPool(p)).toEqual({ first: [{ id: "godseed", weight: 5 }], main: pool({ snoozling: 25 }), excluded: [] });
+    expect(spawnProbability(p, "godseed", 100)).toBeCloseTo(0.05, 12);
+    expect(spawnProbability(p, "snoozling", 100)).toBeCloseTo(0.95 * 0.25, 12);
+    const rng = seedRng(3);
+    const wins: Record<string, number> = { godseed: 0, snoozling: 0, blank: 0 };
+    const n = 40_000;
+    for (let i = 0; i < n; i++) wins[rollPool(p, rng, 100) ?? "blank"]++;
+    expect(wins.godseed / n).toBeCloseTo(0.05, 2);
+    expect(wins.snoozling / n).toBeCloseTo(0.2375, 2);
+  });
+
+  it("Godseed's first roll is not diluted by a saturated pool", () => {
+    const p = pool({ a: 60, godseed: 5, b: 75 });
+    expect(spawnProbability(p, "godseed", 100)).toBeCloseTo(0.05, 12);
+    expect(spawnProbability(p, "a", 100) + spawnProbability(p, "b", 100)).toBeCloseTo(0.95, 12);
+  });
+
+  it("Zombud shuts every other mutation out: a Zombud spot never grows a Witherbloom", () => {
+    const p = pool({ witherbloom: 30, zombud: 25 });
+    expect(planPool(p).excluded).toEqual([{ id: "witherbloom", by: "zombud" }]);
+    expect(spawnProbability(p, "witherbloom", 100)).toBe(0);
+    expect(spawnProbability(p, "zombud", 100)).toBeCloseTo(0.25, 12);
+    const rng = seedRng(5);
+    for (let i = 0; i < 5_000; i++) expect(rollPool(p, rng, 100)).not.toBe("witherbloom");
+  });
+
+  it("a pool with no priority mutation rolls exactly as before (one draw)", () => {
+    const p = pool({ a: 25, b: 30 });
+    const r1 = seedRng(9);
+    const r2 = seedRng(9);
+    for (let i = 0; i < 1_000; i++) {
+      rollPool(p, r1, 100);
+      rollPool({ ids: ["x"], weights: [1] }, r2, 100);
+      expect(r1).toEqual(r2);
+    }
+  });
+
+  it("property: chances with priority never exceed 1", () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: 1, max: 60 }), { minLength: 1, maxLength: 6 }), fc.boolean(), fc.boolean(), (ws, g, z) => {
+        const p: SpawnPool = { ids: ws.map((_, i) => `m${i}`), weights: ws };
+        if (g) {
+          p.ids.push("godseed");
+          p.weights.push(5);
+        }
+        if (z) {
+          p.ids.push("zombud");
+          p.weights.push(25);
+        }
+        const total = Object.values(spawnChances(p, 100)).reduce((a, b) => a + b, 0);
+        return total <= 1 + 1e-9;
+      })
+    );
   });
 });
 

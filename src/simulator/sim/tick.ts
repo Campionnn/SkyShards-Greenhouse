@@ -6,7 +6,7 @@ import { chance, intInclusive } from "../rng";
 import { candidateMutations } from "../spawn/candidates";
 import { locationOpenFor, ringCounts, type RingCounts } from "../spawn/eligibility";
 import { effectiveWeight } from "../spawn/multiplicity";
-import { applyMutationChanceBonus, rollPool, type SpawnPool } from "../spawn/pool";
+import { applyMutationChanceBonus, planPool, rollPool, type SpawnPool } from "../spawn/pool";
 import { aloeRow } from "../growth/aloe";
 import { afterAdvance, growthBlockedBy, type GateEnv } from "../growth/gates";
 import type { CycleCtx, Phase, TickScratch } from "./context";
@@ -336,6 +336,8 @@ function recordWatch(plot: PlotState, ctx: CycleCtx, stepId: string, slot: SlotL
  * mutation eligible there; any candidate can win. Multi-cell candidates need their whole footprint
  * (top-left anchored) empty, and a spawn blocks later cells this tick. A slot always considers its
  * target, still gated by ground and ring requirements. Bioanalysis scales all weights uniformly.
+ * Spawn priority (config.ts SPAWN_PRIORITY): an eligible Godseed rolls on its own first and the
+ * rest roll only if it misses; an eligible Zombud shuts every other mutation out of the cell.
  */
 function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { config } = ctx;
@@ -386,21 +388,25 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
         pool.weights.push(w);
       }
     }
+    const boosted = applyMutationChanceBonus(pool, ctx.stats.mutationChanceBonus);
     if (slot) {
       const key = cellKey(slot.row, slot.col);
-      plot.slotIneligibleCycles[key] = targetWeight > 0 ? 0 : (plot.slotIneligibleCycles[key] ?? 0) + 1;
+      // Shut out by a priority mutation (Zombud): eligible, but it can't spawn here now.
+      const outranked = targetWeight > 0 && planPool(boosted).excluded.some((e) => e.id === slot.mutationId);
+      const canSpawnTarget = targetWeight > 0 && !outranked;
+      plot.slotIneligibleCycles[key] = canSpawnTarget ? 0 : (plot.slotIneligibleCycles[key] ?? 0) + 1;
       if (watch) {
-        const status: WatchStatus =
-          targetWeight > 0
-            ? "ready"
-            : target && footprintFits(row, col, target.size) && !isFootprintFree(occ, row, col, target.size)
-              ? "blocked"
-              : "requirements";
+        const status: WatchStatus = canSpawnTarget
+          ? "ready"
+          : outranked || (target && footprintFits(row, col, target.size) && !isFootprintFree(occ, row, col, target.size))
+            ? "blocked"
+            : "requirements";
         recordWatch(plot, ctx, step.id, slot, status);
       }
     }
 
-    const winner = rollPool(applyMutationChanceBonus(pool, ctx.stats.mutationChanceBonus), ctx.state.rng, SPAWN_POOL_FLOOR);
+    // Priority: Godseed rolls first, Zombud shuts the others out (spawn/pool.ts planPool).
+    const winner = rollPool(boosted, ctx.state.rng, SPAWN_POOL_FLOOR);
     if (!winner) continue;
 
     const plant = newPlant(ctx.state, data, config, winner, row, col, "spawned", ctx.cycle);

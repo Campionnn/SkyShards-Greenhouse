@@ -11,6 +11,16 @@
 /** Spawn pool denominator floor: max(SPAWN_POOL_FLOOR, Σweights); the remainder is the blank. */
 export const SPAWN_POOL_FLOOR = 100;
 /**
+ * Spawn priority (patch notes, Feb 4 2026: "Gave Zombud and Godseed priority over
+ * other crops in mutating"; user-confirmed reading). Per spawn roll at one cell:
+ * - `rollFirst` (Godseed): when eligible it rolls alone first, weight / max(floor, weight);
+ *   only on a miss does the rest of the pool roll (so a Snoozling can still spawn).
+ * - `exclusive` (Zombud): when eligible nothing else can spawn there; the roll is
+ *   over the exclusive mutations only (a Zombud spot never grows a Witherbloom).
+ */
+export type SpawnPriority = "rollFirst" | "exclusive";
+export const SPAWN_PRIORITY: Readonly<Record<string, SpawnPriority>> = { godseed: "rollFirst", zombud: "exclusive" };
+/**
  * At or below this water a plant halts: no growth, no effects given or
  * relayed, not counted for requirements or unique crops. It still blocks
  * Lonelily and keeps decaying. Watering un-halts it. Must stay below 0.

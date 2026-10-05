@@ -538,9 +538,11 @@ describe("Dead Plants", () => {
     // Consumed by the harvest, never decayed; the player re-places them from stock.
     expect(s.summary.decayed.dead_plant).toBeUndefined();
     expect(s.ledger.dead_plant.consumed).toBeGreaterThanOrEqual(4 * harvests.length);
-    // The 4 dead plants also let Witherbloom spawn as a rival (credited too), but each Zombud
-    // harvest consumes them before they reach their minimum of 10.
-    expect(s.summary.rivals.spawned).toBeGreaterThan(0);
+    // The 4 dead plants would also let Witherbloom spawn, but Zombud has priority: a Zombud-eligible
+    // spot never grows a Witherbloom (Feb 4 2026 patch). Each harvest consumes the dead plants before
+    // they reach their minimum of 10.
+    expect(s.summary.spawned.witherbloom).toBeUndefined();
+    expect(s.summary.rivals.spawned).toBe(0);
     expect(maxHelped).toBeGreaterThanOrEqual(1);
     expect(maxHelped).toBeLessThan(10);
   });
