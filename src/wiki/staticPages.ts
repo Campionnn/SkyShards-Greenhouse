@@ -36,7 +36,8 @@ export function buildWikiStaticPages(template: string, data: GreenhouseDataJSON,
 
   const pages: StaticPage[] = index.entries.map((entry) => {
     const url = wikiUrl(entry.id, siteUrl);
-    const description = describe(entry, data, usedIn, nameOf);
+    const summary = describe(entry, data, usedIn, nameOf);
+    const description = summary.text;
     return {
       file: `wiki/${entry.slug}.html`,
       url,
@@ -47,7 +48,7 @@ export function buildWikiStaticPages(template: string, data: GreenhouseDataJSON,
         image: `${siteUrl}/greenhouse/crops/${entry.id}.png`,
         imageAlt: entry.name,
         smallImage: true,
-        bodyHtml: `<h1>${escapeHtml(entry.name)}</h1><p>${escapeHtml(description)}</p>${linkList(
+        bodyHtml: `<h1>${escapeHtml(entry.name)}</h1>${summary.html}${linkList(
           "Ingredients",
           getRecipeSource(data, entry.id).ingredients,
           nameOf,
@@ -95,39 +96,85 @@ export function addToSitemap(sitemap: string, urls: string[], lastmod: string): 
   return sitemap.replace(/<\/urlset>\s*$/, `${entries}</urlset>\n`);
 }
 
+/**
+ * One block of an item's summary: plain text lines and/or a bulleted list under
+ * an optional heading. Rendered as text for the meta description / link embeds
+ * and as HTML for the <noscript> body.
+ */
+interface Section {
+  key: "intro" | "requires" | "positive" | "negative" | "usedIn";
+  heading?: string;
+  text?: string;
+  items?: string[];
+}
+
+interface Summary {
+  /** Newline-separated plain text with "•" bullets: the meta/embed description. */
+  text: string;
+  /** The same sections as HTML, minus "Used in" (the page body links those). */
+  html: string;
+}
+
 function describe(
   entry: WikiEntry,
   data: GreenhouseDataJSON,
   usedIn: Map<string, string[]>,
   nameOf: (id: string) => string,
-): string {
-  const parts: string[] = [];
+): Summary {
+  const sections: Section[] = [];
   const mutation = data.mutations[entry.id];
   const item = mutation ?? data.crops[entry.id];
   const size = `${item.size}x${item.size}`;
 
   if (mutation) {
-    parts.push(`${humanize(mutation.rarity)} ${size} Greenhouse Mutation.`);
     const source = getRecipeSource(data, entry.id);
+    sections.push({
+      key: "intro",
+      text: [`${humanize(mutation.rarity)} ${size} Greenhouse Mutation`, source.note].filter(Boolean).join("\n"),
+    });
     if (mutation.requirements.length > 0) {
-      parts.push(`Requires ${mutation.requirements.map((req) => `${req.count}x ${nameOf(req.crop)}`).join(", ")}.`);
+      sections.push({
+        key: "requires",
+        heading: "Requires",
+        items: mutation.requirements.map((req) => `${req.count}x ${nameOf(req.crop)}`),
+      });
     }
-    if (source.note) parts.push(source.note);
   } else {
-    parts.push(`${size} Greenhouse Crop.`);
+    sections.push({ key: "intro", text: `${size} Greenhouse Crop` });
   }
 
-  if (item.positive_buffs.length > 0) parts.push(`Positive Effects: ${item.positive_buffs.map(humanize).join(", ")}.`);
-  if (item.negative_buffs.length > 0) parts.push(`Negative Effects: ${item.negative_buffs.map(humanize).join(", ")}.`);
+  if (item.positive_buffs.length > 0) {
+    sections.push({ key: "positive", heading: "Positive Effects", items: item.positive_buffs.map(humanize) });
+  }
+  if (item.negative_buffs.length > 0) {
+    sections.push({ key: "negative", heading: "Negative Effects", items: item.negative_buffs.map(humanize) });
+  }
   const users = (usedIn.get(entry.id) ?? []).map(nameOf);
-  if (users.length > 0) parts.push(`Used in ${joinNames(users)} ${users.length === 1 ? "mutation" : "mutations"}.`);
-  return parts.join(" ");
-}
+  if (users.length > 0) sections.push({ key: "usedIn", heading: "Used in", items: users });
 
-/** "A", "A and B", "A, B and C". */
-function joinNames(names: string[]): string {
-  if (names.length <= 1) return names.join("");
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const text = sections
+    .map((section) => {
+      const lines: string[] = [];
+      if (section.heading) lines.push(`${section.heading}:`);
+      if (section.text) lines.push(section.text);
+      for (const entryText of section.items ?? []) lines.push(`• ${entryText}`);
+      return lines.join("\n");
+    })
+    .join("\n\n");
+
+  const html = sections
+    .filter((section) => section.key !== "usedIn")
+    .map((section) => {
+      const heading = section.heading ? `<h2>${escapeHtml(section.heading)}</h2>` : "";
+      const paragraph = section.text
+        ? `<p>${section.text.split("\n").map(escapeHtml).join("<br>")}</p>`
+        : "";
+      const list = section.items ? `<ul>${section.items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : "";
+      return `${heading}${paragraph}${list}`;
+    })
+    .join("");
+
+  return { text, html };
 }
 
 function applyMeta(template: string, meta: PageMeta): string {
