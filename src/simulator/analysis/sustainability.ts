@@ -5,6 +5,8 @@ import { uptimeRatio, zeroUptime } from "../sim/summary";
 export type ItemStatus =
   /** Went into debt at some point. */
   | "bottleneck"
+  /** Placed without stock under `allowMutationDebt` (stock went below 0) at some point. */
+  | "borrowed"
   /** Consumed, never produced: comes only from the starting inventory. */
   | "externally-seeded"
   /** Produced more than consumed, never short. */
@@ -19,6 +21,8 @@ export interface ItemReport {
   stock: number;
   minStock: number;
   shortfall: number;
+  /** Units placed without stock under `allowMutationDebt`. */
+  borrowed: number;
   firstStockoutCycle: number | null;
   status: ItemStatus;
   /** Never decays (no timer or infinite minimum), per data.json; overrides ignored. */
@@ -61,6 +65,8 @@ export interface SustainabilityReport {
   debtCount: number;
   /** Failed placement attempts (cells left empty for lack of stock). */
   unfilledCellCycles: number;
+  /** Mutation items placed without stock (`allowMutationDebt`), units in total. */
+  borrowedCount: number;
   items: ItemReport[];
 }
 
@@ -68,10 +74,13 @@ export interface SustainabilityReport {
 export function analyseSustainability(state: SimulationState, data: GameData): SustainabilityReport {
   const items: ItemReport[] = Object.entries(state.ledger)
     .map(([item, row]) => {
+      const borrowed = state.summary.borrowed?.[item] ?? 0;
       const status: ItemStatus =
         row.shortfall > 0
           ? "bottleneck"
-          : row.produced === 0 && row.consumed > 0
+          : borrowed > 0
+            ? "borrowed"
+            : row.produced === 0 && row.consumed > 0
             ? "externally-seeded"
             : row.produced > row.consumed
               ? "surplus"
@@ -84,6 +93,7 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
         stock: state.inventory[item] ?? 0,
         minStock: row.minStock,
         shortfall: row.shortfall,
+        borrowed,
         firstStockoutCycle: row.firstStockoutCycle,
         status,
         permanent: !!m && (m.decayDays === 0 || m.minimumMutations === "infinite"),
@@ -139,6 +149,7 @@ export function analyseSustainability(state: SimulationState, data: GameData): S
     debts: state.debts,
     debtCount: state.summary.debtEvents,
     unfilledCellCycles: state.summary.unfilledCellCycles,
+    borrowedCount: Object.values(state.summary.borrowed ?? {}).reduce((a, n) => a + n, 0),
     items,
   };
 }

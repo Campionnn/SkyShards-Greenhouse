@@ -144,7 +144,7 @@ describe("new triggers", () => {
     expect(stepIdOf(engine.run(s, 1).state)).toBe("b");
 
     const all = structuredClone(sc);
-    all.plots[0].flow.steps[0].exit = [{ kind: "targetsFilled", count: 0 }];
+    all.plots[0].flow.steps[0].exits = [{ when: [{ kind: "targetsFilled", count: 0 }] }];
     const s2 = start(all);
     inject(s2, 1, "gloomgourd", 4, 5, "spawned");
     expect(stepIdOf(engine.run(s2, 1).state)).toBe("a"); // only 1 of 2

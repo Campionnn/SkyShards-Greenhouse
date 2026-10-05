@@ -47,11 +47,17 @@ export interface SpendRequest {
   action: string;
   /** Re-placing something that decayed or was destroyed. */
   replacement: boolean;
+  /**
+   * `config.allowMutationDebt` for a mutation item: an uncovered spend still
+   * succeeds, taking the stock below 0 (booked in `summary.borrowed`).
+   */
+  allowDebt?: boolean;
 }
 
 /**
- * Required spend. Inventory never goes negative: an uncovered spend fails and
- * records debt once per (plot, cell, item) episode.
+ * Required spend. Without `req.allowDebt` inventory never goes negative: an
+ * uncovered spend fails and records debt once per (plot, cell, item) episode.
+ * With it, the spend always succeeds and the uncovered units are borrowed.
  */
 export function spend(
   state: SimulationState,
@@ -65,7 +71,12 @@ export function spend(
   const available = state.inventory[item] ?? 0;
   const episode = `${req.plotId}:${req.row},${req.col}:${item}`;
 
-  if (available >= qty) {
+  if (available >= qty || req.allowDebt) {
+    const borrowed = Math.min(qty, qty - available);
+    if (borrowed > 0) {
+      bump((state.summary.borrowed ??= {}), item, borrowed);
+      emit(req.plotId, { kind: "borrowed", item, row: req.row, col: req.col, qty: borrowed, stock: available - qty });
+    }
     state.inventory[item] = available - qty;
     row.consumed += qty;
     row.minStock = Math.min(row.minStock, state.inventory[item]);
@@ -107,7 +118,8 @@ export function spend(
 
 /**
  * Manually add (or remove, if negative) inventory items. Pure. Tracked in
- * summary.injected, not as revenue or ledger production. Clamped at 0.
+ * summary.injected, not as revenue or ledger production. Removing stops at 0
+ * (a stock already below 0 from mutation debt is never pushed further down).
  */
 export function injectItems(input: SimulationState, items: Record<ItemId, number>): SimulationState {
   const state = structuredClone(input);
@@ -116,7 +128,7 @@ export function injectItems(input: SimulationState, items: Record<ItemId, number
     if (!Number.isFinite(qty) || qty === 0) continue;
     const row = ledgerRow(state, item);
     const have = state.inventory[item] ?? 0;
-    const next = Math.max(0, have + qty);
+    const next = Math.max(Math.min(0, have), have + qty);
     state.inventory[item] = next;
     bump(state.summary.injected, item, next - have);
     if (next < row.minStock) row.minStock = next;

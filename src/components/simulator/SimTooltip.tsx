@@ -6,6 +6,7 @@ import {
   DEVOURER_ROOT_CHANCE,
   HALT_WATER,
   isDry,
+  isFreePlacedItem,
   jellybeanMultiplier,
   MAX_WATER,
   ROOT_SPREAD_CHANCE,
@@ -116,7 +117,7 @@ const Row: React.FC<{ label: string; children: React.ReactNode; tone?: string }>
 function originLabel(p: PlantState): string {
   if (p.kindId === "devourer_root") return "Devourer root";
   if (p.isDeadPlant) return "Dead Plant";
-  if (p.origin === "placed") return "Placed from inventory";
+  if (p.origin === "placed") return isFreePlacedItem(p.kindId) ? "Placed (free, unlimited)" : "Placed from inventory";
   if (p.origin === "spawned") return p.isRival ? "Natural spawn (rival)" : "Natural spawn";
   return "Planted crop";
 }

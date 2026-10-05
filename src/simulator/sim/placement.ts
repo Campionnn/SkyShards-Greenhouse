@@ -1,4 +1,4 @@
-import type { SimConfig } from "../config";
+import { isFreePlacedItem, type SimConfig } from "../config";
 import { cellIndex, footprint } from "../grid/cells";
 import type { CycleCtx, ResolvedLayout, TickScratch } from "./context";
 import { destroyPlant } from "./explosion";
@@ -31,9 +31,10 @@ export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, sc
 export type PlacementMode = "setup" | "step" | "replace";
 
 /**
- * Place missing layout plants on free cells. Base crops are free; outside
- * setup, placed items are a required spend and a shortfall records debt
- * (cell stays empty, retried next session).
+ * Place missing layout plants on free cells. Base crops and free placed items
+ * (fire, `FREE_PLACED_ITEMS`) cost nothing; outside setup, other placed items are a required spend and a shortfall records debt
+ * (cell stays empty, retried next session). With `config.allowMutationDebt`, a mutation item is placed anyway and its
+ * stock goes below 0 (borrowed).
  */
 export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, mode: PlacementMode): void {
   const replacement = mode === "replace";
@@ -42,8 +43,10 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
     const at = occ[cellIndex(d.row, d.col)];
     if (at && at.kindId === d.kindId && at.row === d.row && at.col === d.col && at.origin === d.origin) continue;
     if (!isFootprintFree(occ, d.row, d.col, d.size)) continue;
-    if (d.origin === "placed" && mode !== "setup") {
-      const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement };
+    if (d.origin === "placed" && mode !== "setup" && !isFreePlacedItem(d.kindId)) {
+      // Mutation debt: mutation items only (not fermento or dead plants).
+      const allowDebt = ctx.config.allowMutationDebt === true && !!ctx.env.data.mutations[d.kindId];
+      const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement, allowDebt };
       if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
     } else if (replacement) {
       ctx.state.summary.replacements += 1;

@@ -344,31 +344,38 @@ describe("simulator panels render", () => {
       </>
     );
     expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1 flow");
-    expect(html).toContain("Leave this step when");
+    expect(html).toContain("Leave this step");
+    expect(html).not.toContain("then go to");
     expect(html).toContain("checked targets");
     // The Designer's crop summary sits under the embedded grid.
     expect(html).toContain("Total Cells Used:");
   });
 
-  it("the flow editor with routes, a chosen next step and AND/OR groups", () => {
+  it("the flow editor with several exits to chosen steps and AND/OR groups", () => {
     const routed = scenario([
       flow(
         [
           step("s1", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 2 }]),
-          step("s2", { code: LAYOUT_B_CODE }, [{ kind: "group", match: "any", of: [{ kind: "cycles", n: 3 }, { kind: "inventoryBelow", item: "chloronite", qty: 4 }] }, { kind: "cycles", n: 1 }], {
-            next: "s1",
-            routes: [{ to: "s3", when: [{ kind: "stepVisits", count: 3, sinceStep: "s3" }] }],
+          step("s2", { code: LAYOUT_B_CODE }, [], {
+            exits: [
+              { to: "s3", when: [{ kind: "stepVisits", count: 3, sinceStep: "s3" }] },
+              {
+                to: "s1",
+                when: [{ kind: "group", match: "any", of: [{ kind: "cycles", n: 3 }, { kind: "inventoryBelow", item: "chloronite", qty: 4 }] }, { kind: "cycles", n: 1 }],
+              },
+            ],
           }),
-          step("s3", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 5 }], { next: "s1" }),
+          step("s3", { code: LAYOUT_B_CODE }, [], { exits: [{ to: "s1", when: [{ kind: "cycles", n: 5 }] }] }),
         ],
         false
       ),
     ]);
     const html = wrap(<FlowEditor scenario={routed} plotId={1} initialStep={1} onChange={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");
-    expect(html).toContain("Routes to other steps");
+    expect(html).toContain("Leave this step");
+    expect(html).toContain("otherwise");
+    expect(html).toContain("Another exit");
     expect(html).toContain("ANY (OR)");
-    expect(html).toContain("then go to");
-    expect(html).toContain("→ 3. s3 if entered this step 3+ times since 3. s3");
+    expect(html).toContain("→ 3. s3 when entered this step 3+ times since 3. s3");
   });
 
   it("the layout picker: an incoming layout asks where it goes", () => {

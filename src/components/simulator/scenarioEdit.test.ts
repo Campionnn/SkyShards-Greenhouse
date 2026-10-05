@@ -53,7 +53,7 @@ describe("placing a layout from the Calculator / Designer / saved layouts", () =
   it("replacing a plot drops its flow but keeps its policy overrides", () => {
     const sc = withPlots(LAYOUT_A_CODE, LAYOUT_A_CODE);
     sc.plots[1].policies = { baseCropUpkeep: "harvestWhenGrown" };
-    sc.plots[1].flow.steps.push({ id: "step-2", layout: { code: LAYOUT_A_CODE }, exit: [] });
+    sc.plots[1].flow.steps.push({ id: "step-2", layout: { code: LAYOUT_A_CODE }, exits: [] });
     const r = placeLayout(sc, { kind: "replacePlot", plotId: 2 }, { code: LAYOUT_B_CODE }, "B")!;
     const p2 = r.scenario.plots.find((p) => p.id === 2)!;
     expect(p2.flow.steps).toHaveLength(1);
@@ -68,8 +68,8 @@ describe("placing a layout from the Calculator / Designer / saved layouts", () =
     const steps = r.scenario.plots[0].flow.steps;
     expect(r.stepIndex).toBe(1);
     expect(steps).toHaveLength(2);
-    expect(steps[0].exit).toEqual([{ kind: "cycles", n: 20 }]);
-    expect(steps[1]).toMatchObject({ id: "step-2", label: "B", layout: { code: LAYOUT_B_CODE }, exit: [] });
+    expect(steps[0].exits).toEqual([{ when: [{ kind: "cycles", n: 20 }] }]);
+    expect(steps[1]).toMatchObject({ id: "step-2", label: "B", layout: { code: LAYOUT_B_CODE }, exits: [] });
     expect(sc.plots[0].flow.steps).toHaveLength(1); // input untouched
   });
 });
@@ -80,17 +80,17 @@ describe("duplicating a plot", () => {
     sc.plots = sc.plots.filter((p) => p.id !== 1); // only Plot 2 left; the copy fills id 1
     const p2 = sc.plots[0];
     p2.policies = { baseCropUpkeep: "harvestWhenGrown" };
-    p2.flow.steps[0].exit = [{ kind: "cycles", n: 7 }];
+    p2.flow.steps[0].exits = [{ when: [{ kind: "cycles", n: 7 }] }];
     p2.flow.steps[0].watch = [];
-    p2.flow.steps.push({ id: "step-2", label: "Two", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "cycles", n: 3 }], next: "step-1" });
+    p2.flow.steps.push({ id: "step-2", label: "Two", layout: { code: LAYOUT_A_CODE }, exits: [{ to: "step-1", when: [{ kind: "cycles", n: 3 }] }] });
     p2.flow.loop = true;
     p2.flow.startIndex = 1;
     const next = duplicatePlot(sc, 2);
     expect(next.plots.map((p) => p.id)).toEqual([1, 2]);
     const copy = next.plots[0];
     expect({ ...copy, id: 2 }).toEqual(p2);
-    copy.flow.steps[0].exit.push({ kind: "cycles", n: 1 });
-    expect(p2.flow.steps[0].exit).toHaveLength(1); // a deep copy, not shared
+    copy.flow.steps[0].exits.push({ when: [{ kind: "cycles", n: 1 }] });
+    expect(p2.flow.steps[0].exits).toHaveLength(1); // a deep copy, not shared
   });
 
   it("does nothing when all plots are in use or the plot is unknown", () => {
@@ -109,8 +109,8 @@ describe("flow export / import", () => {
       loop: true,
       startIndex: 1,
       steps: [
-        { id: "step-1", label: "grow", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "cycles", n: 7 }], watch: ["0,0"], fullClear: true, policies: { watering: "never" } },
-        { id: "step-2", label: "harvest", layout: { code: LAYOUT_B_CODE }, exit: [{ kind: "targetsFilled", count: 0 }] },
+        { id: "step-1", label: "grow", layout: { code: LAYOUT_A_CODE }, exits: [{ when: [{ kind: "cycles", n: 7 }] }], watch: ["0,0"], fullClear: true, policies: { watering: "never" } },
+        { id: "step-2", label: "harvest", layout: { code: LAYOUT_B_CODE }, exits: [{ when: [{ kind: "targetsFilled", count: 0 }] }] },
       ],
     };
     sc.startingInventory = { chloronite: 9 };
@@ -169,8 +169,41 @@ describe("flow export / import", () => {
     expect(flow.steps.map((s) => s.id)).toEqual(["stage-1", "stage-2"]); // step ids are not renamed
     expect(flow).not.toHaveProperty("stages");
     const renamed = { kind: "stepVisits", count: 3, sinceStep: "stage-1" };
-    expect(flow.steps[0].exit).toEqual([{ kind: "group", match: "any", of: [renamed] }]);
-    expect(flow.steps[0].routes).toEqual([{ to: "stage-2", when: [renamed] }]);
+    // The route comes first, then the old normal exit; both become entries of `exits`.
+    expect(flow.steps[0].exits).toEqual([{ to: "stage-2", when: [renamed] }, { when: [{ kind: "group", match: "any", of: [renamed] }] }]);
+    expect(flow.steps[1].exits).toEqual([{ when: [{ kind: "cycles", n: 2 }] }]);
+  });
+
+  it("merges a step's old routes, normal exit, exitMatch and next into one ordered exits list", () => {
+    const old = {
+      plots: [
+        {
+          id: 1,
+          flow: {
+            loop: false,
+            startIndex: 0,
+            steps: [
+              { id: "a", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "cycles", n: 1 }, { kind: "cycles", n: 2 }], exitMatch: "any", next: "a", routes: [{ to: "b", when: [{ kind: "cycles", n: 9 }] }] },
+              { id: "b", layout: { code: LAYOUT_A_CODE }, exit: [{ kind: "cycles", n: 3 }], next: "gone" },
+              { id: "c", layout: { code: LAYOUT_A_CODE }, exit: [] },
+            ],
+          },
+        },
+      ],
+    };
+    const [a, b, c] = (migrateScenario(old).plots[0].flow as unknown as Scenario["plots"][number]["flow"]).steps;
+    expect(a).toEqual({
+      id: "a",
+      layout: { code: LAYOUT_A_CODE },
+      exits: [
+        { to: "b", when: [{ kind: "cycles", n: 9 }] },
+        { to: "a", match: "any", when: [{ kind: "cycles", n: 1 }, { kind: "cycles", n: 2 }] },
+      ],
+    });
+    // A `next` to a missing step used to fall back to the following step: dropped.
+    expect(b.exits).toEqual([{ when: [{ kind: "cycles", n: 3 }] }]);
+    expect(c).toEqual({ id: "c", layout: { code: LAYOUT_A_CODE }, exits: [] });
+    expect(old.plots[0].flow.steps[0]).toHaveProperty("routes"); // input untouched
   });
 
   it("upgrades a scenario saved before the rename, config keys included", () => {
@@ -269,7 +302,7 @@ describe("flow export / import", () => {
     expect(() => importFlows(sc, "nope")).toThrow("not valid JSON");
     expect(() => importFlows(sc, "{}")).toThrow("No plots");
     expect(() => importFlows(sc, JSON.stringify({ plots: [{ id: 1, flow: { steps: [] } }] }))).toThrow("Plot 1: no steps");
-    expect(() => importFlows(sc, JSON.stringify({ plots: [{ id: 1, flow: { steps: [{ id: "s", layout: { code: "x" }, exit: [] }] } }, { id: 1, flow: { steps: [{ id: "s", layout: { code: "x" }, exit: [] }] } }] }))).toThrow("unique");
+    expect(() => importFlows(sc, JSON.stringify({ plots: [{ id: 1, flow: { steps: [{ id: "s", layout: { code: "x" }, exits: [] }] } }, { id: 1, flow: { steps: [{ id: "s", layout: { code: "x" }, exits: [] }] } }] }))).toThrow("unique");
   });
 });
 
@@ -333,11 +366,11 @@ describe("watched targets follow a layout transform", () => {
       { id: "a", cropId: "chloronite", cropName: "", size: 1, position: [0, 0], isMutation: true },
       { id: "b", cropId: "chloronite", cropName: "", size: 1, position: [3, 4], isMutation: true },
     ]);
-    const step = { id: "s", layout: { code }, exit: [], watch: ["3,4"] };
+    const step = { id: "s", layout: { code }, exits: [], watch: ["3,4"] };
     expect(transformWatch(step, { kind: "rotate", direction: "cw" }).watch).toEqual(["4,6"]);
     expect(transformWatch(step, { kind: "mirror", axis: "horizontal" }).watch).toEqual(["3,5"]);
     expect(transformWatch(step, { kind: "nudge", dRow: 1, dCol: 0 }).watch).toEqual(["4,4"]);
-    const all = { id: "s", layout: { code }, exit: [] };
+    const all = { id: "s", layout: { code }, exits: [] };
     expect(transformWatch(all, { kind: "rotate", direction: "cw" })).toBe(all);
   });
 });

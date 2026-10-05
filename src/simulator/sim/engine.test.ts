@@ -3,12 +3,15 @@ import {
   ALWAYS_SPAWN,
   engine,
   engineWith,
+  flow,
   inject,
   layout,
   NEVER_ACTIVE,
   plantAt,
+  scenario,
   singlePlot,
   start,
+  step,
   runCycles,
   TIMER_ONLY,
 } from "../testHelpers";
@@ -479,6 +482,54 @@ describe("debt: would it ever need something it does not have?", () => {
     stocked.inventory.chloronite = 1;
     const later = TIMER_ONLY.run(stocked, 1);
     expect(plantAt(later.state, 1, 5, 5)?.kindId).toBe("chloronite");
+  });
+
+  it("fire is free like base crops: later steps place it without inventory or debt", () => {
+    const sc = scenario([
+      flow([step("bare", layout([["wheat", 1, 1]]), [{ kind: "cycles", n: 1 }]), step("fire", layout([["fire", 0, 0], ["fire", 0, 2], ["wheat", 1, 1]]))], false),
+    ]);
+    const r = engine.run(start(sc), 3);
+    expect(plantAt(r.state, 1, 0, 0)).toMatchObject({ kindId: "fire", origin: "placed" });
+    expect(plantAt(r.state, 1, 0, 2)?.kindId).toBe("fire");
+    expect(r.state.debts).toEqual([]);
+    expect(r.state.inventory.fire ?? 0).toBe(0);
+    expect(r.summary.placedItems.fire).toBeUndefined();
+  });
+
+  it("allowMutationDebt: a mutation item is re-placed without stock, borrowed below 0, no debt", () => {
+    const sc = singlePlot(layout([["chloronite", 5, 5]]), { config: { allowMutationDebt: true } });
+    const r = TIMER_ONLY.run(start(sc, TIMER_ONLY), 18); // decays at cycle 17, re-placed that session
+    expect(plantAt(r.state, 1, 5, 5)?.kindId).toBe("chloronite");
+    expect(r.state.inventory.chloronite).toBe(-1);
+    expect(r.state.debts).toEqual([]);
+    expect(r.summary.debtEvents).toBe(0);
+    expect(r.summary.borrowed).toEqual({ chloronite: 1 });
+    expect(r.state.ledger.chloronite).toMatchObject({ consumed: 1, minStock: -1, shortfall: 0 });
+    expect(ofKind(r.events, "borrowed")).toEqual([expect.objectContaining({ item: "chloronite", row: 5, col: 5, qty: 1, stock: -1 })]);
+    const report = TIMER_ONLY.analyse(r.state);
+    expect(report.borrowedCount).toBe(1);
+    expect(report.items.find((i) => i.item === "chloronite")).toMatchObject({ status: "borrowed", borrowed: 1, stock: -1 });
+  });
+
+  it("allowMutationDebt borrows only what stock does not cover, and never for non-mutation items", () => {
+    const sc = scenario(
+      [flow([step("bare", layout([["wheat", 1, 1]]), [{ kind: "cycles", n: 1 }]), step("use", layout([["chloronite", 5, 5], ["chloronite", 5, 7], ["fermento", 0, 0]]))], false)],
+      { config: { allowMutationDebt: true }, inventory: { chloronite: 1 } }
+    );
+    const r = engine.run(start(sc), 3);
+    expect(plantAt(r.state, 1, 5, 5)?.kindId).toBe("chloronite");
+    expect(plantAt(r.state, 1, 5, 7)?.kindId).toBe("chloronite");
+    expect(r.state.inventory.chloronite).toBe(-1); // one from stock, one borrowed
+    expect(r.summary.borrowed).toEqual({ chloronite: 1 });
+    // Fermento is not a mutation: it still needs stock, a normal shortfall.
+    expect(plantAt(r.state, 1, 0, 0)).toBeUndefined();
+    expect(r.state.debts.map((d) => d.item)).toEqual(["fermento"]);
+    expect(r.state.inventory.fermento ?? 0).toBe(0);
+    // Adding stock while in debt pays it back first; removing never goes further below 0.
+    const paid = engine.addItems(r.state, { chloronite: 3 });
+    expect(paid.inventory.chloronite).toBe(2);
+    const owed = engine.addItems(r.state, { chloronite: -5 });
+    expect(owed.inventory.chloronite).toBe(-1);
   });
 
   it("inventory never goes negative", () => {

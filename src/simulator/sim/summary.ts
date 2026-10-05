@@ -31,6 +31,7 @@ export function zeroSummary(plotIds: PlotId[]): RunSummary {
     destroyed: {},
     driedOut: {},
     placedItems: {},
+    borrowed: {},
     rareCrops: {},
     injected: {},
     replacements: 0,

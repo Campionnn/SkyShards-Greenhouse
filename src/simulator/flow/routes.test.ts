@@ -1,36 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { engine, flow, layout, scenario, step, start } from "../testHelpers";
-import type { Condition, FlowStep, StepRoute } from "./types";
+import type { Condition, FlowStep, StepExit } from "./types";
 import { describeConditions } from "./triggers";
 import { deleteStep } from "../../components/simulator/scenarioEdit";
 
-// Choosing which step to go to: routes (conditional jumps), `next`, AND / OR
-// condition groups and the stepVisits condition.
+// Choosing which step to go to: a step's ordered `exits` ("go to X when ..."),
+// AND / OR condition groups and the stepVisits condition.
 
 const ids = (s: ReturnType<typeof start>, plotId = 1) => s.flows.find((f) => f.plotId === plotId)!.history.map((h) => h.stepId);
 const at = (id: string, crop: string, exit: Condition[] = [], extra: Partial<FlowStep> = {}) => step(id, layout([[crop, 0, 0]]), exit, extra);
 const cycles = (n: number): Condition => ({ kind: "cycles", n });
+const go = (to: string | undefined, ...when: Condition[]): StepExit => (to === undefined ? { when } : { to, when });
 
 describe("choosing the next step", () => {
-  it("next sends the normal exit to a chosen step instead of the following one", () => {
+  it("an exit with a target sends the plot there instead of the following step", () => {
     // 1 -> 2 -> 1 -> 2 ... ; step 3 is never reached.
-    const f = flow([at("s1", "wheat", [cycles(1)]), at("s2", "potato", [cycles(1)], { next: "s1" }), at("s3", "carrot")], false);
+    const f = flow([at("s1", "wheat", [cycles(1)]), at("s2", "potato", [], { exits: [go("s1", cycles(1))] }), at("s3", "carrot")], false);
     const r = engine.run(start(scenario([f], {})), 6);
     expect(ids(r.state)).toEqual(["s1", "s2", "s1", "s2", "s1", "s2", "s1"]);
   });
 
-  it("a route jumps to its step once its conditions hold, before the normal exit is looked at", () => {
-    const route: StepRoute = { to: "s3", when: [{ kind: "inventoryAtLeast", item: "chloronite", qty: 1 }] };
-    const f = flow([at("s1", "wheat", [cycles(1)], { routes: [route] }), at("s2", "potato"), at("s3", "carrot")], false);
+  it("an earlier exit wins over a later one once its conditions hold", () => {
+    const toS3 = go("s3", { kind: "inventoryAtLeast", item: "chloronite", qty: 1 });
+    const f = flow([at("s1", "wheat", [cycles(1)], { exits: [toS3] }), at("s2", "potato"), at("s3", "carrot")], false);
     expect(ids(engine.run(start(scenario([f], {})), 3).state)).toEqual(["s1", "s2"]);
     expect(ids(engine.run(start(scenario([f], { inventory: { chloronite: 1 } })), 3).state)).toEqual(["s1", "s3"]);
   });
 
-  it("routes are checked in order; the first that holds wins", () => {
-    const f = flow(
-      [at("s1", "wheat", [], { routes: [{ to: "s3", when: [cycles(1)] }, { to: "s2", when: [cycles(1)] }] }), at("s2", "potato"), at("s3", "carrot")],
-      false
-    );
+  it("exits are checked in order; the first that holds wins", () => {
+    const f = flow([at("s1", "wheat", [], { exits: [go("s3", cycles(1)), go("s2", cycles(1))] }), at("s2", "potato"), at("s3", "carrot")], false);
     expect(ids(engine.run(start(scenario([f], {})), 2).state)).toEqual(["s1", "s3"]);
   });
 
@@ -38,11 +36,8 @@ describe("choosing the next step", () => {
     const f = flow(
       [
         at("s1", "wheat", [cycles(1)]),
-        at("s2", "potato", [cycles(1)], {
-          next: "s1",
-          routes: [{ to: "s3", when: [{ kind: "stepVisits", count: 3, sinceStep: "s3" }] }],
-        }),
-        at("s3", "carrot", [cycles(1)], { next: "s1" }),
+        at("s2", "potato", [], { exits: [go("s3", { kind: "stepVisits", count: 3, sinceStep: "s3" }), go("s1", cycles(1))] }),
+        at("s3", "carrot", [], { exits: [go("s1", cycles(1))] }),
       ],
       false
     );
@@ -50,11 +45,9 @@ describe("choosing the next step", () => {
     expect(ids(r.state)).toEqual(["s1", "s2", "s1", "s2", "s1", "s2", "s3", "s1", "s2", "s1", "s2", "s1", "s2", "s3", "s1"]);
   });
 
-  it("a non-looping plot holding its final step can still leave through a route", () => {
-    const f = flow(
-      [at("s1", "wheat", [cycles(1)]), at("s2", "potato", [cycles(1)], { routes: [{ to: "s1", when: [{ kind: "inventoryAtLeast", item: "wheat", qty: 1 }] }] })],
-      false
-    );
+  it("a non-looping plot holding its final step can still leave through a later exit", () => {
+    const back = go("s1", { kind: "inventoryAtLeast", item: "wheat", qty: 1 });
+    const f = flow([at("s1", "wheat", [cycles(1)]), at("s2", "potato", [], { exits: [go(undefined, cycles(1)), back] })], false);
     const s = start(scenario([f], {}));
     const held = engine.run(s, 4).state;
     expect(held.flows[0].finished).toBe(true);
@@ -65,8 +58,8 @@ describe("choosing the next step", () => {
     expect(moved.flows[0].finished).toBe(false);
   });
 
-  it("a route that becomes due while the player is away keeps its target for the next session", () => {
-    const f = flow([at("s1", "wheat", [cycles(1)], { routes: [{ to: "s3", when: [cycles(1)] }] }), at("s2", "potato"), at("s3", "carrot")], false);
+  it("an exit that becomes due while the player is away keeps its target for the next session", () => {
+    const f = flow([at("s1", "wheat", [], { exits: [go("s3", cycles(1))] }), at("s2", "potato"), at("s3", "carrot")], false);
     const r = engine.run(start(scenario([f], { activity: { kind: "everyN", n: 4, offset: 3 } })), 2);
     expect(r.state.flows[0]).toMatchObject({ pendingTransition: true, pendingTarget: 2 });
     const later = engine.run(r.state, 2).state;
@@ -74,18 +67,18 @@ describe("choosing the next step", () => {
     expect(later.flows[0].pendingTarget).toBeUndefined();
   });
 
-  it("a step can route to itself: the layout is re-applied and its counters restart", () => {
-    const f = flow([at("s1", "wheat", [], { routes: [{ to: "s1", when: [cycles(2)] }] })], false);
+  it("a step can exit to itself: the layout is re-applied and its counters restart", () => {
+    const f = flow([at("s1", "wheat", [], { exits: [go("s1", cycles(2))] })], false);
     const r = engine.run(start(scenario([f], {})), 5);
     expect(ids(r.state)).toEqual(["s1", "s1", "s1"]);
     expect(r.state.flows[0].cyclesInStep).toBe(1);
   });
 
-  it("routes keep runs deterministic and splittable", () => {
+  it("exits keep runs deterministic and splittable", () => {
     const f = flow(
       [
         at("s1", "wheat", [cycles(2)]),
-        at("s2", "potato", [cycles(1)], { next: "s1", routes: [{ to: "s3", when: [{ kind: "stepVisits", count: 2, sinceStep: "s3" }] }] }),
+        at("s2", "potato", [], { exits: [go("s3", { kind: "stepVisits", count: 2, sinceStep: "s3" }), go("s1", cycles(1))] }),
         at("s3", "carrot", [cycles(1)]),
       ],
       true
@@ -98,11 +91,11 @@ describe("choosing the next step", () => {
 });
 
 describe("AND / OR conditions", () => {
-  const two = (exit: Condition[], exitMatch?: "all" | "any") =>
-    flow([at("s1", "wheat", exit, exitMatch ? { exitMatch } : {}), at("s2", "potato")], false);
+  const two = (when: Condition[], match?: "all" | "any") =>
+    flow([at("s1", "wheat", [], { exits: [{ when, ...(match ? { match } : {}) }] }), at("s2", "potato")], false);
   const blocked: Condition = { kind: "inventoryAtLeast", item: "chloronite", qty: 1 };
 
-  it("exitMatch any leaves when one condition holds; all waits for every one", () => {
+  it("match any leaves when one condition holds; all waits for every one", () => {
     const any = engine.run(start(scenario([two([cycles(2), blocked], "any")], {})), 5).state;
     expect(ids(any)).toEqual(["s1", "s2"]);
     const all = engine.run(start(scenario([two([cycles(2), blocked])], {})), 5).state;
@@ -110,8 +103,8 @@ describe("AND / OR conditions", () => {
   });
 
   it("nested groups: (blocked or 2 cycles) and 3 cycles", () => {
-    const exit: Condition[] = [{ kind: "group", match: "any", of: [blocked, cycles(2)] }, cycles(3)];
-    const r = engine.run(start(scenario([two(exit)], {})), 5).state;
+    const when: Condition[] = [{ kind: "group", match: "any", of: [blocked, cycles(2)] }, cycles(3)];
+    const r = engine.run(start(scenario([two(when)], {})), 5).state;
     expect(r.flows[0].history[1]).toMatchObject({ stepId: "s2", startCycle: 2 });
   });
 
@@ -130,18 +123,11 @@ describe("AND / OR conditions", () => {
   });
 });
 
-describe("validation of routes", () => {
-  it("rejects a route, next or stepVisits naming a step that does not exist", () => {
-    const f = flow(
-      [
-        at("s1", "wheat", [{ kind: "stepVisits", count: 2, sinceStep: "gone" }], { next: "nope", routes: [{ to: "missing", when: [cycles(1)] }] }),
-        at("s2", "potato"),
-      ],
-      true
-    );
+describe("validation of exits", () => {
+  it("rejects an exit or stepVisits naming a step that does not exist", () => {
+    const f = flow([at("s1", "wheat", [{ kind: "stepVisits", count: 2, sinceStep: "gone" }], { exits: [go("missing", cycles(1))] }), at("s2", "potato")], true);
     const errors = engine.validate(scenario([f])).filter((i) => i.level === "error").map((i) => i.message);
     expect(errors.some((m) => m.includes('"missing"'))).toBe(true);
-    expect(errors.some((m) => m.includes('"nope"'))).toBe(true);
     expect(errors.some((m) => m.includes('"gone"'))).toBe(true);
   });
 
@@ -152,19 +138,25 @@ describe("validation of routes", () => {
     expect(issues.some((i) => i.level === "warning" && /empty AND\/OR group/.test(i.message))).toBe(true);
   });
 
-  it("a step that only leaves through a route is not warned about", () => {
-    const f = flow([at("s1", "wheat", [], { routes: [{ to: "s2", when: [cycles(1)] }] }), at("s2", "potato", [cycles(1)])], true);
+  it("warns about a step with no exits, and about an exit without conditions", () => {
+    const f = flow([at("s1", "wheat"), at("s2", "potato", [], { exits: [go("s1")] })], true);
+    const warnings = engine.validate(scenario([f])).filter((i) => i.level === "warning");
+    expect(warnings.some((i) => /no way out/.test(i.message) && /Step 1/.test(i.path))).toBe(true);
+    expect(warnings.some((i) => /never be taken/.test(i.message) && /Step 2/.test(i.path))).toBe(true);
+  });
+
+  it("a step whose only exit jumps to another step is not warned about", () => {
+    const f = flow([at("s1", "wheat", [], { exits: [go("s2", cycles(1))] }), at("s2", "potato", [cycles(1)])], true);
     expect(engine.validate(scenario([f])).some((i) => /forever/.test(i.message))).toBe(false);
   });
 });
 
 describe("deleting a step", () => {
-  it("drops routes to it, resets a next to it and un-anchors stepVisits since it", () => {
+  it("drops exits to it and un-anchors stepVisits since it", () => {
     const f = flow(
       [
         at("s1", "wheat", [{ kind: "group", match: "any", of: [{ kind: "stepVisits", count: 2, sinceStep: "s3" }] }], {
-          next: "s3",
-          routes: [{ to: "s3", when: [cycles(1)] }, { to: "s2", when: [cycles(5)] }],
+          exits: [go("s3", cycles(1)), go("s2", cycles(5))],
         }),
         at("s2", "potato"),
         at("s3", "carrot"),
@@ -172,11 +164,14 @@ describe("deleting a step", () => {
       true
     );
     const p = deleteStep({ id: 1, flow: f }, 2);
-    const s1 = p.flow.steps[0];
     expect(p.flow.steps.map((s) => s.id)).toEqual(["s1", "s2"]);
-    expect(s1.next).toBeUndefined();
-    expect(s1.routes).toEqual([{ to: "s2", when: [cycles(5)] }]);
-    expect(s1.exit).toEqual([{ kind: "group", match: "any", of: [{ kind: "stepVisits", count: 2 }] }]);
+    expect(p.flow.steps[0].exits).toEqual([go("s2", cycles(5)), { when: [{ kind: "group", match: "any", of: [{ kind: "stepVisits", count: 2 }] }] }]);
     expect(engine.validate(scenario([p.flow])).filter((i) => i.level === "error")).toEqual([]);
+  });
+
+  it("a step whose only exits led to it keeps them, going to the following step instead", () => {
+    const f = flow([at("s1", "wheat", [], { exits: [go("s3", cycles(4))] }), at("s2", "potato"), at("s3", "carrot")], true);
+    const p = deleteStep({ id: 1, flow: f }, 2);
+    expect(p.flow.steps[0].exits).toEqual([{ when: [cycles(4)] }]);
   });
 });

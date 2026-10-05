@@ -412,6 +412,20 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
         </div>
       )}
 
+      {report.borrowedCount > 0 && (
+        <div className="mt-3 text-xs text-slate-300">
+          <SectionLabel>Mutation debt</SectionLabel>
+          <p className="text-slate-400">
+            {formatCount(report.borrowedCount)} mutation item{report.borrowedCount === 1 ? "" : "s"} placed without stock (Allow mutation debt is on):{" "}
+            {report.items
+              .filter((i) => i.borrowed > 0)
+              .map((i) => `${formatCount(i.borrowed)} ${nameOf(i.item)}${i.stock < 0 ? ` (still owed ${formatCount(-i.stock)})` : ""}`)
+              .join(", ")}
+            . A real player would need these items first.
+          </p>
+        </div>
+      )}
+
       {report.debts.length > 1 && (
         <div className="mt-2">
           <SectionLabel>Shortfalls</SectionLabel>
@@ -440,13 +454,13 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
             <span className="text-slate-500 text-right" title="Lowest stock seen">min</span>
             {watched.map((i) => (
               <React.Fragment key={i.item}>
-                <span className={i.status === "bottleneck" ? "text-red-300" : "text-slate-300"} title={i.status}>
+                <span className={i.status === "bottleneck" ? "text-red-300" : i.status === "borrowed" ? "text-pink-300" : "text-slate-300"} title={i.status}>
                   {nameOf(i.item)}
                   {i.permanent && <span className="text-slate-500"> (never decays)</span>}
                 </span>
                 <span className="text-right text-slate-400">{formatCount(i.consumed)}</span>
                 <span className="text-right text-slate-400">{formatCount(i.produced)}</span>
-                <span className={`text-right ${i.minStock === 0 ? "text-amber-300" : "text-slate-400"}`}>{formatCount(i.minStock)}</span>
+                <span className={`text-right ${i.minStock < 0 ? "text-red-300" : i.minStock === 0 ? "text-amber-300" : "text-slate-400"}`}>{formatCount(i.minStock)}</span>
               </React.Fragment>
             ))}
           </div>
@@ -676,7 +690,14 @@ export const InventoryPanel: React.FC<{
                       <span className="text-slate-300 break-words min-w-0">{nameOf(r.id)}</span>
                       {isMut ? (
                         <>
-                          {showHeld && <span className="text-slate-100 tabular-nums text-right">{formatCount(r.qty)}</span>}
+                          {showHeld && (
+                            <span
+                              className={`tabular-nums text-right ${r.qty < 0 ? "text-red-300" : "text-slate-100"}`}
+                              title={r.qty < 0 ? "Below 0: placed on mutation debt (Advanced › Allow mutation debt); later harvests pay it back." : undefined}
+                            >
+                              {formatCount(r.qty)}
+                            </span>
+                          )}
                           <span className="text-emerald-300 tabular-nums text-right">{qtyText(r.gross)}</span>
                           {netCell(r.net)}
                         </>

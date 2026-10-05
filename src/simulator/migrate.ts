@@ -1,6 +1,6 @@
 // Converts older saved scenario JSON (localStorage, exported flow files):
-// flow `stages` -> `steps`, renamed triggers and config keys, removed config
-// keys dropped. Pure: returns a converted copy. Unknown input is returned as is.
+// flow `stages` -> `steps`, a step's `exit`/`next`/`routes` -> `exits`, renamed
+// triggers and config keys, removed config keys dropped. Pure: returns a converted copy. Unknown input is returned as is.
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.isArray(v);
@@ -57,20 +57,37 @@ function migrateCondition(c: unknown): unknown {
   return { ...rest, kind: "stepVisits", ...(sinceStage !== undefined ? { sinceStep: sinceStage } : {}) };
 }
 
-function migrateStep(s: unknown): unknown {
+const migrateExit = (e: unknown): unknown => (isObj(e) && Array.isArray(e.when) ? { ...e, when: e.when.map(migrateCondition) } : e);
+
+/**
+ * One step. Before 0.27.3 a step had `routes` (conditional jumps, checked first) plus one
+ * "normal exit" (`exit` + `exitMatch`, going to `next` or the following step). Both are now
+ * one ordered `exits` list: the routes, then the normal exit. A `next` naming a step that
+ * doesn't exist used to fall back to the following step, so it is dropped.
+ */
+function migrateStep(s: unknown, stepIds: ReadonlySet<unknown>): unknown {
   if (!isObj(s)) return s;
-  const out: Json = { ...s };
-  if (Array.isArray(s.exit)) out.exit = s.exit.map(migrateCondition);
-  if (Array.isArray(s.routes)) out.routes = s.routes.map((r) => (isObj(r) && Array.isArray(r.when) ? { ...r, when: r.when.map(migrateCondition) } : r));
-  return out;
+  const { exit, exitMatch, next, routes, ...out } = s;
+  if (Array.isArray(s.exits)) return { ...out, exits: s.exits.map(migrateExit) };
+  if (!Array.isArray(exit) && !Array.isArray(routes)) return s; // not a step we recognise
+  const exits: unknown[] = Array.isArray(routes) ? routes.map(migrateExit) : [];
+  if (Array.isArray(exit) && exit.length > 0) {
+    const normal: Json = { when: exit.map(migrateCondition) };
+    if (exitMatch === "any") normal.match = "any";
+    if (typeof next === "string" && stepIds.has(next)) normal.to = next;
+    exits.push(normal);
+  }
+  return { ...out, exits };
 }
 
-/** One saved plot: `flow.stages` -> `flow.steps`, `stageVisits` -> `stepVisits`. */
+/** One saved plot: `flow.stages` -> `flow.steps`, `stageVisits` -> `stepVisits`, exits/routes -> `exits`. */
 export function migratePlot(p: unknown): unknown {
   if (!isObj(p) || !isObj(p.flow)) return p;
   const { stages, ...flow } = p.flow;
   const steps = flow.steps ?? stages;
-  return { ...p, flow: { ...flow, steps: Array.isArray(steps) ? steps.map(migrateStep) : steps } };
+  if (!Array.isArray(steps)) return { ...p, flow: { ...flow, steps } };
+  const ids = new Set(steps.map((s) => (isObj(s) ? s.id : undefined)));
+  return { ...p, flow: { ...flow, steps: steps.map((s) => migrateStep(s, ids)) } };
 }
 
 /** A saved scenario, or any object with a `plots` list (an exported flows file). */

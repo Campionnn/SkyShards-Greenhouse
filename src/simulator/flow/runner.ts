@@ -2,7 +2,7 @@ import type { CycleCtx, TickScratch } from "../sim/context";
 import { applyStepLayout } from "../sim/placement";
 import type { FlowRunnerState, PlotState, ScenarioPlot, TickEvent } from "../sim/state";
 import { bump } from "../sim/summary";
-import { conditionsHold, stepExitHolds } from "./triggers";
+import { conditionsHold } from "./triggers";
 
 // One runner per plot; plots are coupled only through the shared inventory.
 
@@ -63,33 +63,32 @@ export function transition(
 }
 
 /**
- * Target step index, or null to stay. Routes in order first, then the normal
- * exit (`next`, else the following step). The last step of a non-looping flow
- * without `next` marks the runner finished. Unknown step ids are ignored
+ * Target step index, or null to stay. Exits are checked in order; the first
+ * that holds and has somewhere to go wins. An exit to "the following step" on
+ * the last step of a non-looping flow has nowhere to go: it marks the runner
+ * finished and the later exits are still checked. Unknown step ids are skipped
  * (validation reports them).
  */
 function dueTarget(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState, ctx: CycleCtx): number | null {
   const { steps } = def.flow;
   const step = steps[runner.stepIndex];
   const view = { plot, runner, inventory: ctx.state.inventory, cycleSeconds: ctx.cycleSeconds };
-  const indexOf = (id: string) => steps.findIndex((s) => s.id === id);
-
-  for (const route of step.routes ?? []) {
-    const to = indexOf(route.to);
-    if (to >= 0 && conditionsHold(route.when, route.match, view)) return to;
-  }
-  if (runner.finished) return null; // the normal exit already has nowhere to go
-  if (!stepExitHolds(step.exit, view, step.exitMatch)) return null;
-  if (step.next !== undefined) {
-    const to = indexOf(step.next);
-    if (to >= 0) return to;
-  }
   const isLast = runner.stepIndex === steps.length - 1;
-  if (isLast && !def.flow.loop) {
-    runner.finished = true; // routes can still move it
-    return null;
+
+  for (const exit of step.exits) {
+    let to: number;
+    if (exit.to !== undefined) {
+      to = steps.findIndex((s) => s.id === exit.to);
+      if (to < 0) continue;
+    } else if (isLast && !def.flow.loop) {
+      if (!runner.finished && conditionsHold(exit.when, exit.match, view)) runner.finished = true;
+      continue;
+    } else {
+      to = (runner.stepIndex + 1) % steps.length;
+    }
+    if (conditionsHold(exit.when, exit.match, view)) return to;
   }
-  return (runner.stepIndex + 1) % steps.length;
+  return null;
 }
 
 /**

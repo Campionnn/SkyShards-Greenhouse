@@ -10,8 +10,8 @@ import type {
   PolicyOverrides,
   Scenario,
   ScenarioPlot,
+  StepExit,
   StepLayout,
-  StepRoute,
   Trigger,
 } from "../../simulator";
 import type { LayoutTransform } from "../../utilities";
@@ -433,69 +433,100 @@ export const ConditionListEditor: React.FC<{
   );
 };
 
-/** Routes: conditional jumps to chosen steps, checked in order before the normal exit. */
-const RoutesEditor: React.FC<{ routes: StepRoute[]; steps: StepOption[]; currentId: string; onChange: (routes: StepRoute[]) => void }> = ({
-  routes,
-  steps,
-  currentId,
-  onChange,
-}) => {
-  const set = (i: number, r: StepRoute) => onChange(routes.map((x, j) => (j === i ? r : x)));
+/**
+ * A step's ways out: each is "Go to [step] when [conditions]", checked top to bottom, the first
+ * that holds wins. One list replaces the old "leave when / then go to" plus separate routes.
+ */
+const ExitsEditor: React.FC<{
+  exits: StepExit[];
+  steps: StepOption[];
+  currentId: string;
+  /** Label for "the following step" (`to` omitted), e.g. "the next step (2. Harvest)". */
+  followingLabel: string;
+  onChange: (exits: StepExit[]) => void;
+}> = ({ exits, steps, currentId, followingLabel, onChange }) => {
+  const set = (i: number, e: StepExit) => onChange(exits.map((x, j) => (j === i ? e : x)));
   const move = (from: number, to: number) => {
-    const next = [...routes];
-    const [r] = next.splice(from, 1);
-    next.splice(to, 0, r);
+    const next = [...exits];
+    const [e] = next.splice(from, 1);
+    next.splice(to, 0, e);
     onChange(next);
   };
-  const defaultTarget = steps.find((s) => s.id !== currentId)?.id ?? currentId;
+  // A first exit goes to the following step; another one most likely jumps somewhere else.
+  const addTarget = exits.length === 0 ? undefined : (steps.find((s) => s.id !== currentId)?.id ?? currentId);
+  const many = exits.length > 1;
   return (
     <div className="space-y-2">
-      <p className="text-[11px] text-slate-500">
-        Checked in order before the normal exit; the first route whose conditions hold sends the plot to its step. Use them to go somewhere other than the
-        next step, e.g. usually swap between steps 1 and 2, but go to step 3 every 5th visit or once an item runs low.
-      </p>
-      {routes.map((r, i) => (
-        <div key={i} className="rounded-md border border-sky-500/30 bg-sky-500/5 p-2 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-300">
-            <span className="text-slate-500 w-4">{i + 1}</span>
-            Go to
-            <select className={inputClass} value={r.to} onChange={(e) => set(i, { ...r, to: e.target.value })}>
-              {!steps.some((s) => s.id === r.to) && <option value={r.to}>missing step "{r.to}"</option>}
-              {steps.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                  {s.id === currentId ? " (restart this step)" : ""}
-                </option>
-              ))}
-            </select>
-            when
-            <span className="flex-1" />
-            <button className={buttonClass.icon} disabled={i === 0} onClick={() => move(i, i - 1)} title="Check earlier">
-              <ArrowUp className="w-3 h-3" />
-            </button>
-            <button className={buttonClass.icon} disabled={i === routes.length - 1} onClick={() => move(i, i + 1)} title="Check later">
-              <ArrowDown className="w-3 h-3" />
-            </button>
-            <button className={buttonClass.icon} onClick={() => onChange(routes.filter((_, j) => j !== i))} title="Remove route">
-              <Trash2 className="w-3 h-3" />
-            </button>
+      {exits.length === 0 && <p className="text-xs text-slate-500">No exits: the plot stays on this step.</p>}
+      {many && (
+        <p className="text-[11px] text-slate-500">
+          Checked top to bottom; the first exit whose conditions hold is taken. E.g. usually go to the next step, but put "go to step 3 when entered this step
+          5+ times" above it.
+        </p>
+      )}
+      {exits.map((e, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <div className="text-[10px] uppercase tracking-wide text-slate-500 pl-1">otherwise</div>}
+          <div className="rounded-md border border-sky-500/30 bg-sky-500/5 p-2 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-300">
+              {many && <span className="text-slate-500 w-4">{i + 1}</span>}
+              Go to
+              <select
+                className={inputClass}
+                value={e.to ?? NEXT_DEFAULT}
+                onChange={(ev) => {
+                  const next = { ...e };
+                  if (ev.target.value === NEXT_DEFAULT) delete next.to;
+                  else next.to = ev.target.value;
+                  set(i, next);
+                }}
+              >
+                <option value={NEXT_DEFAULT}>{followingLabel}</option>
+                {e.to !== undefined && !steps.some((s) => s.id === e.to) && <option value={e.to}>missing step "{e.to}"</option>}
+                {steps.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {s.id === currentId ? " (restart this step)" : ""}
+                  </option>
+                ))}
+              </select>
+              when
+              <span className="flex-1" />
+              {many && (
+                <>
+                  <button className={buttonClass.icon} disabled={i === 0} onClick={() => move(i, i - 1)} title="Check earlier">
+                    <ArrowUp className="w-3 h-3" />
+                  </button>
+                  <button className={buttonClass.icon} disabled={i === exits.length - 1} onClick={() => move(i, i + 1)} title="Check later">
+                    <ArrowDown className="w-3 h-3" />
+                  </button>
+                </>
+              )}
+              <button className={buttonClass.icon} onClick={() => onChange(exits.filter((_, j) => j !== i))} title="Remove exit">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+            <ConditionListEditor
+              list={e.when}
+              match={e.match ?? "all"}
+              steps={steps}
+              empty="No conditions: this exit is never taken."
+              onChange={(when, m) => {
+                const next: StepExit = { ...e, when };
+                if (m === "any") next.match = "any";
+                else delete next.match;
+                set(i, next);
+              }}
+            />
           </div>
-          <ConditionListEditor
-            list={r.when}
-            match={r.match ?? "all"}
-            steps={steps}
-            empty="No conditions: this route never fires."
-            onChange={(when, m) => {
-              const next: StepRoute = { ...r, when };
-              if (m === "any") next.match = "any";
-              else delete next.match;
-              set(i, next);
-            }}
-          />
-        </div>
+        </React.Fragment>
       ))}
-      <button className={buttonClass.neutral} onClick={() => onChange([...routes, { to: defaultTarget, when: [defaultTrigger("cycles")] }])}>
-        <Plus className="w-3.5 h-3.5" /> Route
+      <button
+        className={buttonClass.neutral}
+        onClick={() => onChange([...exits, { ...(addTarget !== undefined ? { to: addTarget } : {}), when: [defaultTrigger("cycles")] }])}
+        title={exits.length ? "Another way out, e.g. to a different step under other conditions" : undefined}
+      >
+        <Plus className="w-3.5 h-3.5" /> {exits.length ? "Another exit" : "Exit"}
       </button>
     </div>
   );
@@ -512,8 +543,7 @@ function stepNamer(steps: FlowStep[]): (id: string) => string {
 /** One-line summary of where a step goes and when, for the step list. */
 function stepExitSummary(s: FlowStep, steps: FlowStep[]): string {
   const name = stepNamer(steps);
-  const parts = (s.routes ?? []).map((r) => `→ ${name(r.to)} if ${r.when.length ? describeConditions(r.when, r.match, name) : "never"}`);
-  if (s.exit.length) parts.push(`${s.next ? `→ ${name(s.next)} ` : ""}when ${describeConditions(s.exit, s.exitMatch, name)}`);
+  const parts = s.exits.map((e) => `→ ${e.to !== undefined ? `${name(e.to)} ` : ""}when ${e.when.length ? describeConditions(e.when, e.match, name) : "never"}`);
   return parts.length ? parts.join(" · ") : "no exit";
 }
 
@@ -804,51 +834,13 @@ export const FlowEditor: React.FC<{
                 checked={!!step.fullClear}
                 onChange={(v) => editStep((s) => ({ ...s, fullClear: v || undefined }))}
               />
-              <SectionLabel className="pt-1">Leave this step when</SectionLabel>
-              <ConditionListEditor
-                list={step.exit}
-                match={step.exitMatch ?? "all"}
-                steps={stepOptions}
-                empty={step.routes?.length ? "No normal exit: the plot only leaves through a route." : "No exit conditions: the plot stays on this step."}
-                onChange={(exit, m) =>
-                  editStep((s) => {
-                    const next: FlowStep = { ...s, exit };
-                    if (m === "any") next.exitMatch = "any";
-                    else delete next.exitMatch;
-                    return next;
-                  })
-                }
-              />
-              <SelectField
-                label="then go to"
-                value={step.next ?? NEXT_DEFAULT}
-                options={[
-                  { value: NEXT_DEFAULT, label: defaultNextLabel },
-                  ...(step.next !== undefined && !steps.some((s) => s.id === step.next) ? [{ value: step.next, label: `missing step "${step.next}"` }] : []),
-                  ...stepOptions.map((s) => ({ value: s.id, label: s.id === step.id ? `${s.name} (restart)` : s.name })),
-                ]}
-                onChange={(v) =>
-                  editStep((s) => {
-                    const next = { ...s };
-                    if (v === NEXT_DEFAULT) delete next.next;
-                    else next.next = v;
-                    return next;
-                  })
-                }
-              />
-              <SectionLabel className="pt-2">Routes to other steps</SectionLabel>
-              <RoutesEditor
-                routes={step.routes ?? []}
+              <SectionLabel className="pt-1">Leave this step</SectionLabel>
+              <ExitsEditor
+                exits={step.exits}
                 steps={stepOptions}
                 currentId={step.id}
-                onChange={(routes) =>
-                  editStep((s) => {
-                    const next = { ...s };
-                    if (routes.length) next.routes = routes;
-                    else delete next.routes;
-                    return next;
-                  })
-                }
+                followingLabel={defaultNextLabel}
+                onChange={(exits) => editStep((s) => ({ ...s, exits }))}
               />
             </div>
             <div className="space-y-2">
@@ -868,7 +860,7 @@ export const FlowEditor: React.FC<{
           Step {index + 1} layout · {step.label || step.id}
         </SectionLabel>
         <p className="text-[11px] text-slate-500 mb-3">
-          Inputs are planted (base crops free; mutation items come from inventory after setup). Targets are EMPTY cells labelled with the mutation expected to spawn there.
+          Inputs are planted (base crops and fire free; mutation items come from inventory after setup). Targets are EMPTY cells labelled with the mutation expected to spawn there.
         </p>
         <StepLayoutEditor key={`${plotId}-${step.id}`} layout={step.layout} onChange={(layout, transform) =>
             editStep((s) => pruneWatch({ ...(transform ? transformWatch(s, transform) : s), layout }))

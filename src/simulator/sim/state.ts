@@ -137,7 +137,7 @@ export interface FlowRunnerState {
   harvestedInStep?: Record<MutationId, number>;
   /** Triggers fired on an inactive cycle; the layout is applied at the next player session. */
   pendingTransition: boolean;
-  /** Target step index of the pending change (route target or exit `next`). Missing = next step. */
+  /** Target step index of the pending change (the exit that fired). Missing = next step. */
   pendingTarget?: number;
   /** A non-looping flow that reached its last step's exit: the plot holds that step. */
   finished: boolean;
@@ -204,6 +204,7 @@ export interface LedgerRow {
   consumed: number;
   /** Units a required spend could not get. */
   shortfall: number;
+  /** Lowest stock seen; below 0 when `allowMutationDebt` borrowed the item. */
   minStock: number;
   firstStockoutCycle: number | null;
 }
@@ -255,6 +256,11 @@ export interface RunSummary {
   driedOut: Record<KindId, number>;
   /** Items spent placing plants, by item. */
   placedItems: Record<ItemId, number>;
+  /**
+   * Mutation items placed without stock under `config.allowMutationDebt`, by item (units
+   * borrowed, taking the stock below 0). May be missing in old states: created on first use.
+   */
+  borrowed: Record<ItemId, number>;
   /** Rare Crops dropped (armor bonus + mutation Ethereal Vine), by item. */
   rareCrops: Record<ItemId, number>;
   /** Items the user added to the live run's inventory, by item. Never revenue. */
@@ -321,6 +327,8 @@ export type TickEvent =
   | { kind: "destroyed"; plantId: number; kindId: KindId; row: number; col: number; by: string }
   | { kind: "teleported"; plantId: number; kindId: KindId; fromRow: number; fromCol: number; row: number; col: number }
   | { kind: "debt"; item: ItemId; row: number; col: number; needed: number; available: number }
+  /** `allowMutationDebt`: placed a mutation item without stock; `stock` is the (negative) stock after. */
+  | { kind: "borrowed"; item: ItemId; row: number; col: number; qty: number; stock: number }
   | { kind: "stepChanged"; fromStep: string; toStep: string; stepIndex: number }
   | { kind: "playerSession" };
 

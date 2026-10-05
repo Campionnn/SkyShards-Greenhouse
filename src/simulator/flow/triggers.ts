@@ -82,11 +82,6 @@ export function conditionsHold(list: readonly Condition[], match: ConditionMatch
   return match === "any" ? list.some((c) => conditionHolds(c, v)) : list.every((c) => conditionHolds(c, v));
 }
 
-/** A step's normal exit. An empty list never exits. */
-export function stepExitHolds(exit: readonly Condition[], v: TriggerView, match?: ConditionMatch): boolean {
-  return conditionsHold(exit, match, v);
-}
-
 /** Resolves a step id to a display name; defaults to the id itself. */
 export type StepNamer = (stepId: string) => string;
 

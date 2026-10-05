@@ -144,6 +144,8 @@ export function describeEvent(e: TimedEvent): string {
       return `${nameOf(e.kindId)} teleported (${e.fromRow},${e.fromCol}) -> (${e.row},${e.col}), End Stone left behind`;
     case "debt":
       return `Short of ${nameOf(e.item)}${at}: needed ${e.needed}, had ${e.available}`;
+    case "borrowed":
+      return `Placed ${nameOf(e.item)}${at} on mutation debt: borrowed ${formatCount(e.qty)}, stock now ${formatCount(e.stock)}`;
     case "stepChanged":
       return `Step "${e.fromStep}" -> "${e.toStep}"`;
     case "fullyGrown":

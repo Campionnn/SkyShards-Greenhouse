@@ -43,7 +43,7 @@ export function defaultSettings(): Settings {
 
 /** A one-step flow: a static layout. */
 export function staticFlow(code: string, label = "Layout"): Flow {
-  return { steps: [{ id: "step-1", label, layout: { code }, exit: [] }], loop: false, startIndex: 0 };
+  return { steps: [{ id: "step-1", label, layout: { code }, exits: [] }], loop: false, startIndex: 0 };
 }
 
 /** One plot per share code, each holding its layout as a single step. */

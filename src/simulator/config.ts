@@ -42,6 +42,13 @@ export const HARVEST_BOUNTY_ROLLS = 1;
 export const FLESHTRAP_INITIAL_HUNGER = 0;
 /** Magic Jellybean drop multiplier cap (+1 per 12 stages from 12). */
 export const JELLYBEAN_MULTIPLIER_CAP = 10;
+/**
+ * Placed items the player has an unlimited supply of: placing them never spends
+ * inventory or records debt, like base crops. They are still `placed` (fully grown,
+ * never harvested).
+ */
+export const FREE_PLACED_ITEMS: readonly string[] = ["fire"];
+export const isFreePlacedItem = (kindId: string): boolean => FREE_PLACED_ITEMS.includes(kindId);
 
 export type ChorusTeleport = "emptyOnly" | "anyCell";
 /**
@@ -107,6 +114,13 @@ export interface SimConfig {
    * and re-placed from inventory. Enables hybrid flows.
    */
   spawnsFillLayoutInputs: boolean;
+  /**
+   * Placing a mutation item the inventory doesn't hold still goes ahead: the
+   * stock goes negative (paid back by later harvests) and the units are booked
+   * in `summary.borrowed`. Other placed items (fermento, dead plants) still
+   * need stock. Off: a shortfall leaves the cell empty and records debt.
+   */
+  allowMutationDebt: boolean;
   /** Plot iteration order; plots contend for shared inventory in this order. */
   plotOrder: number[];
 }
@@ -130,6 +144,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   mutationCreditOrder: "ringOrder",
   keepIdenticalOnStepChange: true,
   spawnsFillLayoutInputs: true,
+  allowMutationDebt: false,
   plotOrder: [1, 2, 3],
 };
 
@@ -168,6 +183,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "mutationCreditOrder", label: "Mutation credit order", group: "model", input: { type: "select", options: [...MUTATION_CREDIT_ORDERS] }, description: "When a mutation spawns, it credits as many ring neighbours of each required kind as the requirement count (each counts toward their minimum mutations). Which ones, when more stand there, is unknown in game. ringOrder: row by row from the top-left (extra neighbours never age). mostRemainingFirst: the ones with the most left to help (spreads the use evenly). fewestRemainingFirst: the ones with the fewest left (uses the same ones up). random: a seeded random pick." },
   { key: "keepIdenticalOnStepChange", label: "Keep identical plants on step change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a step change untouched." },
   { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid flows work: grow Magic Jellybeans in one step, then use them as inputs in the next while they finish growing." },
+  { key: "allowMutationDebt", label: "Allow mutation debt", group: "model", input: { type: "boolean" }, description: "The player places mutation items even when the inventory has none: the stock goes negative (shown in red in the Inventory) and later harvests pay it back. Useful to see what a flow produces before you have the items. Fermento and dead plants still need stock. Off: a missing item leaves the cell empty and is recorded as a shortfall." },
 ];
 
 export function withConfigDefaults(partial?: Partial<SimConfig>): SimConfig {

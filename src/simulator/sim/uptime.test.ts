@@ -81,17 +81,14 @@ describe("target uptime", () => {
     const b = layout(ASHWREATH_RING, [["ashwreath", 4, 4]]);
     const sc = (inventory: Record<string, number>) =>
       scenario([flow([step("bare", a, [{ kind: "cycles", n: 2 }]), step("ringed", b)], false)], { inventory });
-    const r = engine.run(start(sc({ fire: 2 })), 5);
+    // Fire is free like base crops: the second step lays out with an empty inventory.
+    const r = engine.run(start(sc({})), 5);
     const report = engine.analyse(r.state);
     const byStep = Object.fromEntries(report.spots.map((s) => [s.stepId, s]));
     expect(byStep.bare.requirements).toBe(2);
     expect(byStep.ringed.requirements).toBe(0);
     expect(byStep.ringed.watched).toBe(3);
-
-    // Without the fire to lay the second step out, it goes into debt and its target loses uptime too.
-    const broke = engine.analyse(engine.run(start(sc({})), 5).state);
-    expect(broke.debtCount).toBeGreaterThan(0);
-    expect(broke.spots.find((s) => s.stepId === "ringed")!.requirements).toBe(3);
+    expect(report.debtCount).toBe(0);
   });
 
   it("warns about watched cells that are not targets in the layout", () => {

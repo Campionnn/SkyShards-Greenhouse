@@ -7,6 +7,7 @@ export type Mark =
   | "dried"
   | "destroyed"
   | "debt"
+  | "borrowed"
   | "teleported"
   | "exploded"
   | "groundFixed";
@@ -22,6 +23,7 @@ export const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: stri
   dried: { ring: "rgba(217,119,6,0.95)", glyph: "◌", color: "text-amber-500", label: "dried out (halted until watered)" },
   destroyed: { ring: "rgba(251,146,60,0.9)", glyph: "✕", color: "text-orange-300", label: "destroyed" },
   debt: { ring: "rgba(239,68,68,0.95)", glyph: "!", color: "text-red-400", label: "short of an item" },
+  borrowed: { ring: "rgba(244,114,182,0.9)", glyph: "−", color: "text-pink-300", label: "placed on mutation debt (no stock)" },
   teleported: { ring: "rgba(192,132,252,0.9)", glyph: "»", color: "text-purple-300", label: "teleported here" },
   exploded: { ring: "rgba(244,63,94,0.95)", glyph: "✹", color: "text-rose-400", label: "exploded" },
   groundFixed: { ring: "rgba(163,230,53,0.9)", glyph: "▦", color: "text-lime-300", label: "ground fixed" },

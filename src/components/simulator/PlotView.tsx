@@ -42,6 +42,7 @@ function marksFrom(events: TimedEvent[]): Map<string, { mark: Mark; size: number
     else if (e.kind === "driedOut") at(e.row, e.col, "dried", sizeOf(e.kindId));
     else if (e.kind === "destroyed") at(e.row, e.col, "destroyed", sizeOf(e.kindId));
     else if (e.kind === "debt") at(e.row, e.col, "debt", sizeOf(e.item));
+    else if (e.kind === "borrowed") at(e.row, e.col, "borrowed", sizeOf(e.item));
     else if (e.kind === "teleported") at(e.row, e.col, "teleported");
     else if (e.kind === "exploded") at(e.row, e.col, "exploded");
     else if (e.kind === "groundFixed") at(e.row, e.col, "groundFixed");

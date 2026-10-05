@@ -11,6 +11,7 @@ import {
   type Condition,
   type ConditionGroup,
   type ConditionMatch,
+  type StepExit,
   type StepLayout,
   type Trigger,
   type TriggerKind,
@@ -32,7 +33,7 @@ export function newStepId(steps: FlowStep[]): string {
 
 export function blankStep(steps: FlowStep[]): FlowStep {
   const id = newStepId(steps);
-  return { id, label: `Step ${steps.length + 1}`, layout: { code: EMPTY_LAYOUT_CODE }, exit: [{ kind: "cycles", n: 20 }] };
+  return { id, label: `Step ${steps.length + 1}`, layout: { code: EMPTY_LAYOUT_CODE }, exits: [{ when: [{ kind: "cycles", n: 20 }] }] };
 }
 
 export function updatePlot(sc: Scenario, plotId: number, fn: (p: ScenarioPlot) => ScenarioPlot): Scenario {
@@ -51,14 +52,14 @@ export function addPlot(sc: Scenario, layout: StepLayout = { code: EMPTY_LAYOUT_
   const id = nextPlotId(sc)!;
   const plot: ScenarioPlot = {
     id,
-    flow: { steps: [{ id: "step-1", label: label || `Plot ${id} layout`, layout, exit: [] }], loop: false, startIndex: 0 },
+    flow: { steps: [{ id: "step-1", label: label || `Plot ${id} layout`, layout, exits: [] }], loop: false, startIndex: 0 },
   };
   return { ...sc, plots: [...sc.plots, plot].sort((a, b) => a.id - b.id) };
 }
 
 /**
  * Copies a plot (whole flow and policy overrides) under the next free plot id. Step ids and
- * routes are per plot, so they carry over unchanged. No-op when every plot is in use.
+ * exits are per plot, so they carry over unchanged. No-op when every plot is in use.
  */
 export function duplicatePlot(sc: Scenario, plotId: number): Scenario {
   const source = sc.plots.find((p) => p.id === plotId);
@@ -118,7 +119,7 @@ export function placeLayout(
     // Replaces the flow; the plot's policy overrides stay.
     const next = updatePlot(sc, dest.plotId, (p) => ({
       ...p,
-      flow: { steps: [{ id: "step-1", label, layout, exit: [] }], loop: false, startIndex: 0 },
+      flow: { steps: [{ id: "step-1", label, layout, exits: [] }], loop: false, startIndex: 0 },
     }));
     return { scenario: next, plotId: dest.plotId, stepIndex: 0 };
   }
@@ -127,8 +128,10 @@ export function placeLayout(
     const steps = p.flow.steps;
     // A final step without an exit would never reach the new step, so give it a default exit.
     const last = steps[steps.length - 1];
-    if (last && last.exit.length === 0 && !p.flow.loop) steps[steps.length - 1] = { ...last, exit: [defaultTrigger("cycles")] };
-    const step: FlowStep = { id: newStepId(steps), label, layout, exit: [] };
+    if (last && !last.exits.some((e) => e.to === undefined) && !p.flow.loop) {
+      steps[steps.length - 1] = { ...last, exits: [...last.exits, { when: [defaultTrigger("cycles")] }] };
+    }
+    const step: FlowStep = { id: newStepId(steps), label, layout, exits: [] };
     p.flow.steps = [...steps, step];
     stepIndex = p.flow.steps.length - 1;
     return p;
@@ -200,7 +203,7 @@ export function importFlows(sc: Scenario, text: string): Scenario {
     const steps = p.flow?.steps;
     if (!Array.isArray(steps) || steps.length === 0) throw new Error(`${where}: no steps.`);
     steps.forEach((s, j) => {
-      if (!s || typeof s.id !== "string" || !s.layout || !Array.isArray(s.exit)) throw new Error(`${where}, step ${j + 1}: needs an id, a layout and an exit list.`);
+      if (!s || typeof s.id !== "string" || !s.layout || !Array.isArray(s.exits)) throw new Error(`${where}, step ${j + 1}: needs an id, a layout and an exits list.`);
     });
   });
   const clean = (plots as ScenarioPlot[]).map((p) => ({
@@ -260,23 +263,21 @@ function dropStepConditions(list: Condition[], stepId: string): Condition[] {
 }
 
 /**
- * Deletes a step and its references: routes to it are removed, a `next` to it falls back to
- * the following step, and "step visits since it" counts from the start of the run.
+ * Deletes a step and its references: exits to it are removed (if that would leave a step with
+ * no way out, its exits go to the following step instead), and "step visits since it" counts
+ * from the start of the run.
  */
 export function deleteStep(p: ScenarioPlot, index: number): ScenarioPlot {
   const gone = p.flow.steps[index];
   if (!gone || p.flow.steps.length <= 1) return p;
   const steps = p.flow.steps
     .filter((_, i) => i !== index)
-    .map((s) => {
-      const next: FlowStep = { ...s, exit: dropStepConditions(s.exit, gone.id) };
-      if (next.next === gone.id) delete next.next;
-      if (s.routes) {
-        const routes = s.routes.filter((r) => r.to !== gone.id).map((r) => ({ ...r, when: dropStepConditions(r.when, gone.id) }));
-        if (routes.length) next.routes = routes;
-        else delete next.routes;
-      }
-      return next;
+    .map((s): FlowStep => {
+      const exits = s.exits.map((e): StepExit => ({ ...e, when: dropStepConditions(e.when, gone.id) }));
+      const kept = exits.filter((e) => e.to !== gone.id);
+      if (kept.length || !exits.length) return { ...s, exits: kept };
+      for (const e of exits) delete e.to;
+      return { ...s, exits };
     });
   return { ...p, flow: { ...p.flow, steps, startIndex: Math.min(p.flow.startIndex, steps.length - 1) } };
 }

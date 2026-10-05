@@ -53,15 +53,19 @@ export interface ConditionGroup {
 export type Condition = Trigger | ConditionGroup;
 
 /**
- * A conditional jump to a chosen step. A step's routes are checked in order
- * before its normal exit; the first whose conditions hold wins.
+ * One way out of a step: "go to `to` when `when` holds". A step's exits are
+ * checked in order; the first whose conditions hold wins.
  */
-export interface StepRoute {
-  /** Target step id. */
-  to: string;
+export interface StepExit {
   when: Condition[];
   /** How `when` combines (default "all"). An empty `when` never holds. */
   match?: ConditionMatch;
+  /**
+   * Target step id. Omitted = the following step; past the end, step 0 if the
+   * flow loops, else the plot holds this final step. May name the current step
+   * (re-enters it: layout re-applied, counters reset).
+   */
+  to?: string;
 }
 
 export type SpawnedHarvestPolicy = "whenFullyGrown" | "beforeDecay" | "never";
@@ -108,14 +112,8 @@ export interface FlowStep {
   id: string;
   label?: string;
   layout: StepLayout;
-  /** The normal exit's conditions (combined per `exitMatch`). An empty list never exits. */
-  exit: Condition[];
-  /** How `exit` combines (default "all", AND). */
-  exitMatch?: ConditionMatch;
-  /** Normal exit target. Omitted = next step; past the end, step 0 if looping, else stay. */
-  next?: string;
-  /** Conditional jumps to chosen steps, checked in order before the normal exit. */
-  routes?: StepRoute[];
+  /** Ways out of this step, checked in order; the first that holds wins. Empty = the plot stays. */
+  exits: StepExit[];
   policies?: PolicyOverrides;
   /** Break every plant on entry instead of keeping identical ones. */
   fullClear?: boolean;
@@ -123,7 +121,7 @@ export interface FlowStep {
   watch?: string[];
 }
 
-/** One plot's flow. Steps run in order unless `next`/`routes` redirect; never references another plot. */
+/** One plot's flow. Steps run in order unless an exit names another step; never references another plot. */
 export interface Flow {
   steps: FlowStep[];
   loop: boolean;

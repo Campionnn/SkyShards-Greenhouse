@@ -68,8 +68,13 @@ export function layout(plants: Cellish[] = [], slots: Cellish[] = []): LayoutSpe
   };
 }
 
+/**
+ * A step whose `exit` conditions (if any) lead to the following step; pass more
+ * exits (e.g. jumps to other steps) in `extra.exits`, which go first, then the `exit` one.
+ */
 export function step(id: string, spec: StepLayout, exit: Condition[] = [], extra: Partial<FlowStep> = {}): FlowStep {
-  return { id, label: id, layout: spec, exit, ...extra };
+  const { exits = [], ...rest } = extra;
+  return { id, label: id, layout: spec, ...rest, exits: [...exits, ...(exit.length ? [{ when: exit }] : [])] };
 }
 
 export function flow(steps: FlowStep[], loop = false, startIndex = 0): Flow {

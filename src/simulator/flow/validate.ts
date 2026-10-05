@@ -102,22 +102,19 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
       const kinds = new Set(resolved.plants.map((p) => p.kindId));
 
       const isLast = si === steps.length - 1;
-      const routes = step.routes ?? [];
-      if (step.exit.length === 0 && routes.length === 0 && (!isLast || plot.flow.loop) && steps.length > 1) {
-        warn(path, "This step has no conditions for leaving it, so the plot will stay on it forever. Add a \"Leave this step when\" condition.");
-      }
-      if (step.next !== undefined && !known(step.next)) {
-        err(`${path}${SEP}Next step`, `It goes to step "${step.next}", which no longer exists. Pick another next step.`);
+      if (step.exits.length === 0 && (!isLast || plot.flow.loop) && steps.length > 1) {
+        warn(path, "This step has no way out, so the plot will stay on it forever. Add a \"Leave this step\" exit.");
       }
       const checkList = (list: Condition[], where: string) => {
         for (const c of list) checkCondition(c, where, kinds, resolved.slots.length, known, stepName);
       };
-      checkList(step.exit, `${path}${SEP}Leave when`);
-      routes.forEach((route, ri) => {
-        const where = `${path}${SEP}Route ${ri + 1}${known(route.to) ? ` (to ${stepName(route.to)})` : ""}`;
-        if (!known(route.to)) err(where, `It goes to step "${route.to}", which no longer exists. Pick another step or remove the route.`);
-        if (route.when.length === 0) warn(where, "This route has no conditions, so it will never be taken.");
-        checkList(route.when, where);
+      step.exits.forEach((exit, ei) => {
+        const one = step.exits.length === 1;
+        const target = exit.to === undefined ? "" : known(exit.to) ? ` (to ${stepName(exit.to)})` : "";
+        const where = `${path}${SEP}${one ? "Leave when" : `Exit ${ei + 1}${target}`}`;
+        if (exit.to !== undefined && !known(exit.to)) err(where, `It goes to step "${exit.to}", which no longer exists. Pick another step or remove the exit.`);
+        if (exit.when.length === 0) warn(where, "This exit has no conditions, so it will never be taken.");
+        checkList(exit.when, where);
       });
       if (step.watch && layoutIssues.length === 0) {
         const slotKeys = new Set(resolved.slots.map((s) => `${s.row},${s.col}`));
