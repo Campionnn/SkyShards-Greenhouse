@@ -109,7 +109,7 @@ interface Section {
 }
 
 interface Summary {
-  /** Newline-separated plain text with "•" bullets: the meta/embed description. */
+  /** Plain text, one line per section: the meta/embed description. */
   text: string;
   /** The same sections as HTML, minus "Used in" (the page body links those). */
   html: string;
@@ -152,15 +152,14 @@ function describe(
   const users = (usedIn.get(entry.id) ?? []).map(nameOf);
   if (users.length > 0) sections.push({ key: "usedIn", heading: "Used in", items: users });
 
+  // Embeds are plain text and can't do columns, so each section is one line:
+  // "Heading: a, b, c".
   const text = sections
     .map((section) => {
-      const lines: string[] = [];
-      if (section.heading) lines.push(`${section.heading}:`);
-      if (section.text) lines.push(section.text);
-      for (const entryText of section.items ?? []) lines.push(`• ${entryText}`);
-      return lines.join("\n");
+      if (section.text) return section.text;
+      return `${section.heading}: ${(section.items ?? []).join(", ")}`;
     })
-    .join("\n\n");
+    .join("\n");
 
   const html = sections
     .filter((section) => section.key !== "usedIn")

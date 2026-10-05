@@ -144,7 +144,7 @@ describe("wiki static pages", () => {
     expect(page.html).toContain('<link rel="canonical" href="https://example.com/wiki/gloomgourd" />');
     expect(page.html).not.toContain("og:image:width");
     expect(page.html).toMatch(
-      /<meta name="description" content="Common 1x1 Greenhouse Mutation\n[^"]*Requires:\n• 1x Pumpkin\n• 1x Melon\n\n[^"]*Used in:\n• /,
+      /<meta name="description" content="Common 1x1 Greenhouse Mutation\n[^"]*Requires: 1x Pumpkin, 1x Melon\n[^"]*Used in: [^"\n]*Soggybud/,
     );
     expect(page.html).toContain("<h2>Requires</h2><ul><li>1x Pumpkin</li><li>1x Melon</li></ul>");
     expect(page.html).toContain('<script type="module" src="/assets/app.js"></script>');
