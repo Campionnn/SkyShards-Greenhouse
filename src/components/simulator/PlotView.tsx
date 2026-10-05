@@ -22,113 +22,15 @@ import { CropImage } from "../shared";
 import { CompassFrame, COMPASS_RESERVE } from "../grid";
 import { kindData, nameOf, plantIconOf } from "./format";
 import { hoveredCellOffset } from "./sanityFormat";
+import { PlotMarkLegend } from "./markers";
+import { DRY_FILTER, MARK_STYLE, type GridMarker, type Mark } from "./markerStyles";
 import { SimTooltip, type TooltipTarget } from "./SimTooltip";
 import { buttonClass } from "./styles";
-
-type Mark =
-  | "harvested"
-  | "spawned"
-  | "decayed"
-  | "extended"
-  | "dried"
-  | "destroyed"
-  | "debt"
-  | "teleported"
-  | "exploded"
-  | "groundFixed";
-
-/** Sandy tint for a dried-out (halted) plant, distinct from a Dead Plant's grey. */
-const DRY_FILTER = "sepia(0.85) saturate(0.6) brightness(0.8)";
-
-const MARK_STYLE: Record<Mark, { ring: string; glyph: string; color: string; label: string }> = {
-  harvested: { ring: "rgba(234,179,8,0.9)", glyph: "✦", color: "text-yellow-300", label: "harvested" },
-  spawned: { ring: "rgba(52,211,153,0.9)", glyph: "+", color: "text-emerald-300", label: "spawned" },
-  decayed: { ring: "rgba(248,113,113,0.9)", glyph: "✕", color: "text-red-300", label: "decayed" },
-  extended: { ring: "rgba(129,140,248,0.9)", glyph: "⧗", color: "text-indigo-300", label: "decay timer extended (minimum mutations not met)" },
-  dried: { ring: "rgba(217,119,6,0.95)", glyph: "◌", color: "text-amber-500", label: "dried out (halted until watered)" },
-  destroyed: { ring: "rgba(251,146,60,0.9)", glyph: "✕", color: "text-orange-300", label: "destroyed" },
-  debt: { ring: "rgba(239,68,68,0.95)", glyph: "!", color: "text-red-400", label: "short of an item" },
-  teleported: { ring: "rgba(192,132,252,0.9)", glyph: "»", color: "text-purple-300", label: "teleported here" },
-  exploded: { ring: "rgba(244,63,94,0.95)", glyph: "✹", color: "text-rose-400", label: "exploded" },
-  groundFixed: { ring: "rgba(163,230,53,0.9)", glyph: "▦", color: "text-lime-300", label: "ground fixed" },
-};
 
 /** Footprint size of a plant or item id, so large mutations mark their whole footprint. */
 const sizeOf = (id: string): number => kindData(id)?.size ?? 1;
 
-/** Legend for the grid marks (events of the last simulated cycle). */
-export const PlotMarkLegend: React.FC = () => (
-  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
-    {(Object.keys(MARK_STYLE) as Mark[]).map((m) => (
-      <span key={m} className="flex items-center gap-1">
-        <span className={`font-bold ${MARK_STYLE[m].color}`}>{MARK_STYLE[m].glyph}</span>
-        {MARK_STYLE[m].label}
-      </span>
-    ))}
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded border border-dashed border-cyan-400/70" />
-      <Eye className="w-3 h-3 text-cyan-300/80" />
-      empty checked target (cyan: ready or not yet evaluated)
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded border border-dashed border-amber-400/80" />
-      checked target blocked by something else
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded border border-dashed border-red-500/80" />
-      checked target without its requirements (not sustainable)
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded border-2 border-dashed border-amber-600/90" style={{ filter: DRY_FILTER }} />
-      checked target standing there dried out (halted: downtime, still sustainable)
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded border border-dashed border-slate-500/60" />
-      target not checked
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded border border-dashed border-red-500/70" />
-      missing - no stock to re-place
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded" style={{ boxShadow: "inset 0 0 0 1px rgba(103,232,249,0.7)" }} />
-      natural spawn
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded" style={{ boxShadow: "inset 0 0 0 2px rgba(251,146,60,0.8)" }} />
-      rival
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded" style={{ boxShadow: "inset 0 0 0 2px rgba(190,18,60,0.8)" }} />
-      devourer root
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-[3px] bg-emerald-400/80" />
-      still growing (bar = progress)
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded bg-slate-500" style={{ filter: "grayscale(1) brightness(0.55)" }} />
-      dead plant
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="inline-block w-3 h-3 rounded bg-emerald-500" style={{ filter: DRY_FILTER }} />
-      dried out - halted until watered
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="text-[9px] text-amber-300">z</span>
-      asleep / rat present / overcharged
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="text-[9px] text-rose-400">✹</span>
-      blastberry primed
-    </span>
-    <span className="flex items-center gap-1">
-      <span className="text-[9px] text-amber-300">⚠</span>
-      target requirements unmet
-    </span>
-  </div>
-);
-
+export { PlotMarkLegend };
 function marksFrom(events: TimedEvent[]): Map<string, { mark: Mark; size: number }> {
   const marks = new Map<string, { mark: Mark; size: number }>();
   for (const e of events) {
@@ -252,6 +154,43 @@ export const PlotView: React.FC<PlotViewProps> = ({
     .filter((m) => !occupied.has(`${m.row},${m.col}`));
   const missingKeys = new Set(missing.map((m) => `${m.row},${m.col}`));
 
+  /** The icons drawn on the hovered element, mirroring the rendering below, so the card explains them without the legend. */
+  const markersFor = (t: TooltipTarget): GridMarker[] => {
+    const out: GridMarker[] = [];
+    const anchorOf = t.kind === "plant" ? t.plant : t.kind === "slot" ? t.slot : t;
+    const key = `${anchorOf.row},${anchorOf.col}`;
+    if (t.kind === "plant") {
+      const p = t.plant;
+      if (p.isRival) out.push({ indicator: "rival", label: "rival (natural spawn)" });
+      else if (p.origin === "spawned") out.push({ indicator: "spawn", label: "natural spawn" });
+      else if (p.kindId === "devourer_root") out.push({ indicator: "root", label: "devourer root" });
+      if (p.isDeadPlant) out.push({ indicator: "dead", label: "dead plant" });
+      else if (isDry(p)) out.push({ indicator: "dry", label: "dried out - halted until watered" });
+      if (t.watchStatus === "halted") out.push({ indicator: "halted" });
+      if (!p.isDeadPlant && p.origin !== "placed" && p.readyStage > 0 && p.stage < p.readyStage)
+        out.push({ indicator: "growing", label: `still growing (stage ${p.stage} / ${p.readyStage})` });
+      const overcharged = p.kindId === "thunderling" && (p.gate.charge ?? 0) >= THUNDERLING_MAX_CHARGE;
+      if (p.gate.asleep) out.push({ indicator: "sleepy", label: "asleep - the player wakes it when online" });
+      else if (p.gate.ratAlive) out.push({ indicator: "sleepy", label: "a rat is eating it - vacuumed when online" });
+      else if (overcharged) out.push({ indicator: "sleepy", label: "overcharged - discharged when the player is online" });
+      if (p.kindId === "blastberry" && p.gate.primed) out.push({ indicator: "primed", label: "primed - breaking it blows up the 8 cells around it" });
+    } else if (t.kind === "slot") {
+      const status = t.watched ? t.watchStatus : undefined;
+      out.push({
+        indicator:
+          status === "requirements" ? "slotRequirements" : status === "blocked" ? "slotBlocked" : t.watched ? "slotReady" : "slotUnchecked",
+      });
+      if (t.ineligibleCycles > 0)
+        out.push({ indicator: "unmet", label: `requirements not met for the last ${t.ineligibleCycles} cycle${t.ineligibleCycles === 1 ? "" : "s"}` });
+    } else if (t.kind === "missing") {
+      out.push({ indicator: "missing" }, { mark: "debt", label: "short of this item - the player retries each time they are online" });
+    }
+    const mark = marks.get(key);
+    if (mark && !(mark.mark === "debt" && t.kind === "missing"))
+      out.push({ mark: mark.mark, label: `${MARK_STYLE[mark.mark].label} (last cycle)` });
+    return out;
+  };
+
   return (
     <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 min-w-0 flex flex-col">
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -287,12 +226,14 @@ export const PlotView: React.FC<PlotViewProps> = ({
             if (occupied.has(key)) return null;
             const { top, left } = getCellPixelPosition(r, c, cellSize, gap);
             const ground = plot.groundOverrides[key] ?? plot.groundTiles[key];
+            const groundText = ground ? (plot.groundOverrides[key] ? `${ground.replaceAll("_", " ")} (changed during simulation)` : ground.replaceAll("_", " ")) : "air (no ground)";
+            const cellMark = marks.get(key);
             return (
               <div
                 key={key}
                 className={`absolute rounded border ${ground ? "border-emerald-700/20" : "border-slate-700/20"}`}
                 style={{ top, left, width: cellSize, height: cellSize, ...(ground ? { backgroundImage: `url(${getGroundImagePath(ground)})`, backgroundSize: `${cellSize}px ${cellSize}px` } : {}) }}
-                title={ground ? (plot.groundOverrides[key] ? `${ground.replaceAll("_", " ")} (changed during simulation)` : ground.replaceAll("_", " ")) : "air (no ground)"}
+                title={cellMark ? `${groundText}\n${MARK_STYLE[cellMark.mark].glyph} ${MARK_STYLE[cellMark.mark].label} (last cycle)` : groundText}
                 {...(sanityState
                   ? {
                       onMouseEnter: () => setHover({ kind: "check", row: r, col: c, result: checkAt(r, c)! }),
@@ -461,6 +402,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
               cycleSeconds={cycleSeconds}
               config={config}
               plot={plot}
+              markers={markersFor(hover)}
             />
           )}
         </div>

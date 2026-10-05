@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import {
   aloeRow,
   decayStatus,
@@ -22,6 +22,8 @@ import { effectiveEffects, effectsGivenBy, getCellPixelPosition, getEffectName, 
 import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage, EffectChips } from "../shared";
 import { formatCount, formatDuration, formatRemaining, kindData, nameOf, plantIconOf } from "./format";
+import { GridMarkersSection } from "./markers";
+import type { GridMarker } from "./markerStyles";
 import { closestBlocked, describeBlocker, formatChance, occupantName } from "./sanityFormat";
 
 export type TooltipTarget =
@@ -38,6 +40,8 @@ const EST_HEIGHT = 300;
 const CHECK_EST_HEIGHT = 380;
 const PLANT_CHECK_EST_HEIGHT = 640;
 const OFFSET = 8;
+/** Space kept between the card and the browser window's edge when choosing its side. */
+const VIEWPORT_MARGIN = 8;
 
 // ---- Sanity Check card (display only) ----
 
@@ -150,7 +154,9 @@ export const SimTooltip: React.FC<{
   config: SimConfig;
   /** The plot the target stands on (a plant's minimum-mutation pool is per plot). */
   plot: PlotState;
-}> = ({ target, cellSize, gap, gridWidth, gridHeight, cycleSeconds, config, plot }) => {
+  /** The grid icons on the hovered element, explained at the top of the card (same text as the legend). */
+  markers?: GridMarker[];
+}> = ({ target, cellSize, gap, gridWidth, gridHeight, cycleSeconds, config, plot, markers = [] }) => {
   const row = target.kind === "plant" ? target.plant.row : target.kind === "slot" ? target.slot.row : target.row;
   const col = target.kind === "plant" ? target.plant.col : target.kind === "slot" ? target.slot.col : target.col;
   const size = target.kind === "plant" ? target.plant.size : target.kind === "slot" ? target.slot.size : target.kind === "check" ? 1 : kindData(target.item)?.size ?? 1;
@@ -158,14 +164,26 @@ export const SimTooltip: React.FC<{
 
   const { top, left } = getCellPixelPosition(row, col, cellSize, gap);
   const span = size * cellSize + (size - 1) * gap;
-  let x = left + span + OFFSET;
-  if (x + WIDTH > gridWidth) {
-    x = left - OFFSET - WIDTH;
-    if (x < 0) x = Math.max(0, gridWidth - WIDTH);
-  }
+  // Always beside the hovered element, never over it: the card may extend past the plot (and over a
+  // neighbouring plot). The side is picked from the room left in the browser window, measured before paint.
+  const rightX = left + span + OFFSET;
+  const leftX = left - OFFSET - WIDTH;
+  const ref = useRef<HTMLDivElement>(null);
+  const [side, setSide] = useState<"right" | "left">(() => (rightX + WIDTH <= gridWidth || leftX < 0 ? "right" : "left"));
+  useLayoutEffect(() => {
+    const parent = ref.current?.offsetParent;
+    if (!parent) return;
+    const origin = parent.getBoundingClientRect().left;
+    const viewport = document.documentElement.clientWidth;
+    const roomRight = viewport - VIEWPORT_MARGIN - (origin + rightX + WIDTH);
+    const roomLeft = origin + leftX - VIEWPORT_MARGIN;
+    setSide(roomRight >= 0 ? "right" : roomLeft >= 0 ? "left" : roomRight >= roomLeft ? "right" : "left");
+  }, [rightX, leftX]);
+  const x = side === "right" ? rightX : leftX;
   const hasCheck = target.kind === "check" || (target.kind === "slot" && !!target.check);
   const plantCheck = target.kind === "plant" && !!target.check;
-  const y = Math.max(0, Math.min(top, gridHeight - (plantCheck ? PLANT_CHECK_EST_HEIGHT : hasCheck ? CHECK_EST_HEIGHT : EST_HEIGHT)));
+  const estHeight = (plantCheck ? PLANT_CHECK_EST_HEIGHT : hasCheck ? CHECK_EST_HEIGHT : EST_HEIGHT) + (markers.length ? 20 + markers.length * 16 : 0);
+  const y = Math.max(0, Math.min(top, gridHeight - estHeight));
 
   const def = kindData(kindId);
   const m: MutationDef | undefined = def?.kind === "mutation" ? def : undefined;
@@ -173,6 +191,7 @@ export const SimTooltip: React.FC<{
 
   return (
     <div
+      ref={ref}
       className="absolute z-50 pointer-events-none bg-slate-900/95 border border-slate-600/60 rounded-lg shadow-xl p-3 backdrop-blur-sm text-xs"
       style={{ top: y, left: x, width: WIDTH }}
       role="tooltip"
@@ -189,6 +208,8 @@ export const SimTooltip: React.FC<{
           </div>
         </div>
       </div>
+
+      <GridMarkersSection markers={markers} />
 
       {target.kind === "slot" && (
         <div className="space-y-1.5">

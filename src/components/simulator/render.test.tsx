@@ -260,6 +260,21 @@ describe("simulator panels render", () => {
     expect(html).toContain("checked target standing there dried out (halted");
   });
 
+  it("hover cards explain the grid icons on the hovered element with the legend's wording", () => {
+    const s = startOf(singlePlot(layout([["wheat", 4, 3]], [["chloronite", 1, 1]])));
+    const plot = s.plots[0];
+    const tip = (target: React.ComponentProps<typeof SimTooltip>["target"], markers?: React.ComponentProps<typeof SimTooltip>["markers"]) =>
+      renderToString(<SimTooltip target={target} cellSize={40} gap={2} gridWidth={420} gridHeight={420} cycleSeconds={14400} config={s.scenario.settings.config} plot={plot} markers={markers} />).replace(/<!-- -->/g, "");
+    const slot = { kind: "slot" as const, slot: plot.slots[0], ineligibleCycles: 0, watched: true, watchStatus: "blocked" as const };
+    expect(tip(slot)).not.toContain("On the grid");
+    const html = tip(slot, [{ indicator: "slotBlocked" }, { mark: "harvested", label: "harvested (last cycle)" }]);
+    expect(html).toContain("On the grid");
+    expect(html).toContain("checked target blocked by something else"); // same text as the legend
+    expect(renderToString(<PlotMarkLegend />)).toContain("checked target blocked by something else");
+    expect(html).toContain("✦");
+    expect(html).toContain("harvested (last cycle)");
+  });
+
   it("report panels", () => {
     const html = wrap(
       <>
