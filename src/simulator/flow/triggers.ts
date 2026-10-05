@@ -1,7 +1,9 @@
 import { cellIndex } from "../grid/cells";
 import { wouldDecayWithin } from "../sim/decay";
 import { buildOccupancy, DEAD_PLANT, isFullyGrown } from "../sim/plants";
-import type { FlowRunnerState, PlotState } from "../sim/state";
+import { isFreePlacedItem } from "../config";
+import type { ResolvedLayout } from "../sim/context";
+import type { FlowRunnerState, PlotState, SimulationState } from "../sim/state";
 import type { Condition, ConditionMatch, Trigger } from "./types";
 
 export interface TriggerView {
@@ -10,6 +12,36 @@ export interface TriggerView {
   /** Shared inventory. Triggers never read another plot. */
   inventory: Readonly<Record<string, number>>;
   cycleSeconds: number;
+  /** Items collected in total (`collectedOf`). Missing: the current inventory stands in. */
+  collected?: (item: string) => number;
+  /** The step's resolved layout (`layoutShort`). Missing: `layoutShort` never holds. */
+  layout?: ResolvedLayout;
+}
+
+/**
+ * Placed items (not base crops or fire) the layout calls for that aren't standing in
+ * their cell, by item. A natural spawn of the same mutation at the cell counts as present
+ * (hybrid input).
+ */
+export function layoutMissing(plot: PlotState, layout: ResolvedLayout): Record<string, number> {
+  const occ = buildOccupancy(plot);
+  const missing: Record<string, number> = {};
+  for (const d of layout.plants) {
+    if (d.origin !== "placed" || isFreePlacedItem(d.kindId)) continue;
+    const q = occ[cellIndex(d.row, d.col)];
+    if (q && !q.isDeadPlant && q.kindId === d.kindId && q.row === d.row && q.col === d.col) continue;
+    if (q && q.isDeadPlant && d.kindId === DEAD_PLANT && q.row === d.row && q.col === d.col) continue;
+    missing[d.kindId] = (missing[d.kindId] ?? 0) + 1;
+  }
+  return missing;
+}
+
+/**
+ * Items collected in total since the run started: starting inventory + produced (ledger) +
+ * added mid-run (summary.injected). Spending never lowers it. Pure; reads only shared state.
+ */
+export function collectedOf(state: SimulationState, item: string): number {
+  return (state.scenario.startingInventory[item] ?? 0) + (state.ledger[item]?.produced ?? 0) + (state.summary.injected[item] ?? 0);
 }
 
 /** Base crops and natural spawns (the plants growth triggers consider). */
@@ -24,6 +56,11 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
       return (v.inventory[t.item] ?? 0) >= t.qty;
     case "inventoryBelow":
       return (v.inventory[t.item] ?? 0) < t.qty;
+    case "collectedAtLeast":
+      return (v.collected ? v.collected(t.item) : v.inventory[t.item] ?? 0) >= t.qty;
+    case "layoutShort":
+      if (!v.layout) return false;
+      return Object.entries(layoutMissing(v.plot, v.layout)).some(([item, n]) => (v.inventory[item] ?? 0) < n);
     case "allFullyGrown": {
       const plants = growable(v.plot);
       return plants.length > 0 && plants.every(isFullyGrown);
@@ -125,6 +162,10 @@ export function describeTrigger(t: Trigger, stepName: StepNamer = (id) => id, it
       return `inventory ${itemName(t.item)} >= ${t.qty}`;
     case "inventoryBelow":
       return `inventory ${itemName(t.item)} < ${t.qty}`;
+    case "collectedAtLeast":
+      return `collected ${itemName(t.item)} >= ${t.qty} in total`;
+    case "layoutShort":
+      return "inventory can't fill the layout";
     case "allFullyGrown":
       return "everything fully grown";
     case "noneFullyGrown":

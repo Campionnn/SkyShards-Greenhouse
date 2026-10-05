@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Local Rose Dragon solver cache (regenerated on demand)
+/tools/rose-dragon/cache/

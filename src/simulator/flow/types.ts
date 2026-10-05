@@ -18,6 +18,18 @@ export type Trigger =
   | { kind: "cycles"; n: number }
   | { kind: "inventoryAtLeast"; item: ItemId; qty: number }
   | { kind: "inventoryBelow"; item: ItemId; qty: number }
+  /**
+   * Collected in total since the run started: starting inventory + everything produced
+   * (harvests, conversions, cleared Dead Plants) + items added mid-run. Spending never
+   * lowers it, so it reads the same whichever plot uses the items, and when.
+   */
+  | { kind: "collectedAtLeast"; item: ItemId; qty: number }
+  /**
+   * The inventory can't fill what this step's layout is missing: for some placed item
+   * (mutation, fermento, dead plant; not base crops or fire), more cells lack it than the
+   * inventory holds. Checked on arrival it reads "can't build this layout".
+   */
+  | { kind: "layoutShort" }
   | { kind: "allFullyGrown" }
   | { kind: "noneFullyGrown" }
   /** At least `count` (default 1) natural spawns of this mutation stand fully grown on the plot. */

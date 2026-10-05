@@ -2,7 +2,7 @@ import type { CycleCtx, TickScratch } from "../sim/context";
 import { applyStepLayout } from "../sim/placement";
 import type { FlowRunnerState, PlotState, ScenarioPlot, TickEvent } from "../sim/state";
 import { bump } from "../sim/summary";
-import { conditionsHold } from "./triggers";
+import { collectedOf, conditionsHold } from "./triggers";
 
 // One runner per plot; plots are coupled only through the shared inventory.
 
@@ -120,7 +120,14 @@ function skipThrough(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState
 function dueTarget(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState, ctx: CycleCtx, onEntry = false): number | null {
   const { steps } = def.flow;
   const step = steps[runner.stepIndex];
-  const view = { plot, runner, inventory: ctx.state.inventory, cycleSeconds: ctx.cycleSeconds };
+  const view = {
+    plot,
+    runner,
+    inventory: ctx.state.inventory,
+    cycleSeconds: ctx.cycleSeconds,
+    collected: (item: string) => collectedOf(ctx.state, item),
+    layout: ctx.layoutFor(plot.id), // the step at runner.stepIndex (also during an on-arrival check)
+  };
   const isLast = runner.stepIndex === steps.length - 1;
 
   for (const exit of step.exits) {

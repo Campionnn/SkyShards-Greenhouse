@@ -272,7 +272,7 @@ const TriggerRow: React.FC<{ trigger: Trigger; steps: StepOption[]; onChange: (t
     {trigger.kind === "cycles" && (
       <NumberInput integer min={1} className={`${inputClass} w-20`} value={trigger.n} onChange={(n) => onChange({ ...trigger, n })} />
     )}
-    {(trigger.kind === "inventoryAtLeast" || trigger.kind === "inventoryBelow") && (
+    {(trigger.kind === "inventoryAtLeast" || trigger.kind === "inventoryBelow" || trigger.kind === "collectedAtLeast") && (
       <>
         <IdSelect value={trigger.item} ids={allItemIds()} onChange={(item) => onChange({ ...trigger, item })} />
         <NumberInput integer min={0} className={`${inputClass} w-20`} value={trigger.qty} onChange={(qty) => onChange({ ...trigger, qty })} />

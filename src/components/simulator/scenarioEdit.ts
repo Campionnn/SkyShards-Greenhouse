@@ -223,9 +223,11 @@ export function defaultTrigger(kind: TriggerKind): Trigger {
       return { kind, n: 20 };
     case "inventoryAtLeast":
     case "inventoryBelow":
+    case "collectedAtLeast":
       return { kind, item: "chloronite", qty: 5 };
     case "allFullyGrown":
     case "noneFullyGrown":
+    case "layoutShort":
       return { kind };
     case "fullyGrown":
       return { kind, mutationId: "chorus_fruit" };
@@ -294,6 +296,8 @@ export const TRIGGER_KINDS: { value: TriggerKind; label: string }[] = [
   { value: "mutationHarvested", label: "mutation harvested x" },
   { value: "inventoryAtLeast", label: "inventory at least" },
   { value: "inventoryBelow", label: "inventory below" },
+  { value: "collectedAtLeast", label: "collected in total at least" },
+  { value: "layoutShort", label: "inventory can't fill the layout" },
   { value: "plantDecayed", label: "a plant decayed" },
   { value: "decayImminent", label: "something decays within" },
   { value: "fullyGrown", label: "mutation fully grown" },

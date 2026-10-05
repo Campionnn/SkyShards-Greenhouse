@@ -161,6 +161,7 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
         break;
       case "inventoryAtLeast":
       case "inventoryBelow":
+      case "collectedAtLeast":
         if (!isKnownItem(data, t.item)) err(path, `"${t.item}" isn't an item the simulator knows about. Pick another item.`);
         if (!(t.qty >= 0)) err(path, "The amount can't be negative.");
         break;

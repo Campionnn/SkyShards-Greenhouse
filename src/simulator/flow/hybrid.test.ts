@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { engine, flow, inject, layout, plantAt, scenario, step, start, TIMER_ONLY } from "../testHelpers";
+import { engine, flow, inject, layout, plantAt, runCycles, scenario, step, start, TIMER_ONLY } from "../testHelpers";
 import type { SimulationState, TimedEvent } from "../sim/state";
 import type { Trigger } from "./types";
 
@@ -161,6 +161,36 @@ describe("new triggers", () => {
     const r = engine.run(s, 1);
     expect(ofKind(r.events, "harvested").map((e) => e.kindId)).toContain("gloomgourd");
     expect(stepIdOf(r.state)).toBe("b");
+  });
+
+  it("collectedAtLeast counts the starting stock, production and additions, never spending", () => {
+    const spec = layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]);
+    const want: Trigger = { kind: "collectedAtLeast", item: "gloomgourd", qty: 3 };
+    const sc = scenario([flow([step("a", spec, [want]), step("b", layout())])], { inventory: { gloomgourd: 2 } });
+    // 2 owned, 0 produced: stays.
+    expect(stepIdOf(engine.run(start(sc), 1).state)).toBe("a");
+    // One harvested: 3 collected in total, even though the stock was spent elsewhere.
+    const s = start(sc);
+    s.inventory.gloomgourd = 0;
+    inject(s, 1, "gloomgourd", 4, 5, "spawned", { stage: 1000 });
+    expect(stepIdOf(engine.run(s, 1).state)).toBe("b");
+    // Items added mid-run count too.
+    expect(stepIdOf(engine.run(engine.addItems(start(sc), { gloomgourd: 1 }), 1).state)).toBe("b");
+  });
+
+  it("layoutShort holds when the inventory can't fill the cells the layout is missing", () => {
+    const spec = layout([["chloronite", 2, 2], ["chloronite", 2, 4], ["wheat", 5, 5]]);
+    const sc = (stock: number) =>
+      scenario([flow([step("a", layout(), [{ kind: "cycles", n: 1 }]), step("b", spec, [{ kind: "layoutShort" }]), step("c", layout())])], {
+        inventory: { chloronite: stock },
+      });
+    // Enough for both cells: b is built and stays.
+    expect(stepIdOf(runCycles(start(sc(2)), 2).state)).toBe("b");
+    // One short: the layout places what it can and b gives up at the next session.
+    expect(stepIdOf(runCycles(start(sc(1)), 2).state)).toBe("c");
+    // Base crops never count as missing.
+    const crops = scenario([flow([step("a", layout(), [{ kind: "cycles", n: 1 }]), step("b", layout([["wheat", 1, 1]]), [{ kind: "layoutShort" }]), step("c", layout())])]);
+    expect(stepIdOf(runCycles(start(crops), 3).state)).toBe("b");
   });
 
   it("lowestStageAtLeast / lowestStageBelow read the least-grown plant of a mutation", () => {
