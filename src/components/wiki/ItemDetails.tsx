@@ -289,15 +289,15 @@ export const ItemDetails: React.FC<ItemDetailsProps> = ({ id, data, usedIn, vari
           </Card>
         )}
 
-        {hasTree && (
-          <Card icon={<Network className="w-4 h-4 text-teal-400" />} title="Crafting Tree">
-            <RecipeTree key={id} id={id} data={data} />
-          </Card>
-        )}
-
         {isMutation && drops.length > 0 && (
           <Card icon={<PackageOpen className="w-4 h-4 text-blue-400" />} title="Drops">
             {renderDropRows(drops)}
+          </Card>
+        )}
+
+        {hasTree && (
+          <Card icon={<Network className="w-4 h-4 text-teal-400" />} title="Crafting Tree">
+            <RecipeTree key={id} id={id} data={data} />
           </Card>
         )}
 

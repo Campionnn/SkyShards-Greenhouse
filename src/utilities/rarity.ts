@@ -1,5 +1,24 @@
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
+/** Display order of rarities, lowest first. */
+export const RARITY_ORDER = ["common", "uncommon", "rare", "epic", "legendary"] as const;
+
+/** Sort rank: null (a base crop) first, then by rarity; an unknown rarity sorts last. */
+export function rarityRank(rarity: string | null | undefined): number {
+  if (rarity == null) return -1;
+  const index = (RARITY_ORDER as readonly string[]).indexOf(rarity.toLowerCase());
+  return index === -1 ? RARITY_ORDER.length : index;
+}
+
+/**
+ * Returns a copy sorted by rarity (crops first). The sort is stable, so items keep their
+ * data.json order within a rarity. data.json appends some mutations (Turtellini, Zombud)
+ * after a later rarity, so lists shown to the user must not rely on its order.
+ */
+export function sortByRarity<T>(items: readonly T[], rarityOf: (item: T) => string | null | undefined): T[] {
+  return [...items].sort((a, b) => rarityRank(rarityOf(a)) - rarityRank(rarityOf(b)));
+}
+
 /** Rarity -> colour mappings used by all rarity-based styling. */
 export const RARITY_COLORS = {
   common: {

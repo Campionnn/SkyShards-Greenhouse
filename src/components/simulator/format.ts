@@ -13,6 +13,7 @@ import {
   type SpotReport,
   type TimedEvent,
 } from "../../simulator";
+import { sortByRarity } from "../../utilities/rarity";
 
 const data = defaultGameData();
 
@@ -180,7 +181,7 @@ export function describeEvent(e: TimedEvent): string {
 export function allItemIds(): string[] {
   // All-in Aloe Fragments are not offered: they only ever turn into All-in Aloe (9 at a time).
   const extra = [...RARE_CROP_ITEMS, ...RARE_DROP_ITEMS].filter((i) => !data.crops[i] && !data.mutations[i]);
-  return [...data.cropIds, ...data.mutationIds, "seeds", ...new Set(extra)];
+  return [...data.cropIds, ...MUTATION_IDS_BY_RARITY, "seeds", ...new Set(extra)];
 }
 
 export type ItemCategory = "mutation" | "crop" | "rareCrop" | "other";
@@ -202,5 +203,9 @@ export function npcPriceFor(): (id: string) => number {
   return (id) => src.price(id);
 }
 
-export const ALL_MUTATION_IDS = data.mutationIds;
-export const ALL_KIND_IDS = [...data.cropIds, ...data.mutationIds];
+// Display lists only: grouped by rarity. The engine keeps data.mutationIds in data.json order
+// (spawn-roll order), which appends Turtellini and Zombud after the epics.
+const MUTATION_IDS_BY_RARITY = sortByRarity(data.mutationIds, (id) => data.mutations[id].rarity);
+
+export const ALL_MUTATION_IDS = MUTATION_IDS_BY_RARITY;
+export const ALL_KIND_IDS = [...data.cropIds, ...MUTATION_IDS_BY_RARITY];

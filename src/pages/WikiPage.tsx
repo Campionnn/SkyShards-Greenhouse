@@ -122,7 +122,7 @@ const WikiHome: React.FC<{ wiki: WikiData }> = ({ wiki }) => {
           <h1 className="text-xl font-bold text-slate-100">Greenhouse Wiki</h1>
         </div>
         <p className="mt-2 text-sm text-slate-400">
-          Every crop and mutation: how it spawns, its effects, decay, drops, crafting tree and what it is used in.
+          Every crop and mutation: How to spawn/grow/harvest, its effects, drops, crafting tree and what it is used in.
         </p>
       </div>
 

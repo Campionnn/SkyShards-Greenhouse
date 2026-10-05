@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import type { CropDefinition, MutationDefinition, SelectedMutation } from "../types/greenhouse";
 import greenhouseData from "../../public/greenhouse/data.json";
 import defaultEffectWeights from "../../public/greenhouse/default_effect_weights.json";
-import { LocalStorageManager } from "../utilities";
+import { LocalStorageManager, sortByRarity } from "../utilities";
 
 /** Solver defaults, and the only weights whose solutions the server caches. */
 const DEFAULT_EFFECT_WEIGHTS: Record<string, number> = defaultEffectWeights;
@@ -88,7 +88,12 @@ function loadGreenhouseData() {
     });
   }
 
-  return { crops, mutations };
+  // Group by rarity, not data.json order (which appends some mutations after a later rarity).
+  const rarityById = new Map(mutations.map((m) => [m.id, m.rarity]));
+  return {
+    crops: sortByRarity(crops, (c) => (c.isMutation ? rarityById.get(c.id) : null)),
+    mutations: sortByRarity(mutations, (m) => m.rarity),
+  };
 }
 
 export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

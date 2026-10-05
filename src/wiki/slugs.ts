@@ -7,6 +7,7 @@
 // Pure (no DOM, no React): vite.config.ts imports it to generate static pages.
 
 import type { GreenhouseDataJSON } from "../services/greenhouseDataService";
+import { RARITY_ORDER, rarityRank } from "../utilities/rarity";
 
 export const SITE_URL = "https://greenhouse.skyshards.com";
 export const WIKI_BASE_PATH = "/wiki";
@@ -29,7 +30,7 @@ export interface WikiIndex {
   byKey: Map<string, WikiEntry>;
 }
 
-export const RARITY_ORDER = ["common", "uncommon", "rare", "epic", "legendary"] as const;
+export { RARITY_ORDER, rarityRank };
 
 /** Top-level paths a crop slug must never shadow: app routes and files in dist/. */
 export const RESERVED_TOP_LEVEL_PATHS = new Set([
@@ -75,11 +76,6 @@ export function compareEntries(a: WikiEntry, b: WikiEntry): number {
   return rarityRank(a.rarity) - rarityRank(b.rarity) || a.name.localeCompare(b.name);
 }
 
-export function rarityRank(rarity: string | null): number {
-  if (rarity === null) return -1;
-  const index = (RARITY_ORDER as readonly string[]).indexOf(rarity.toLowerCase());
-  return index === -1 ? RARITY_ORDER.length : index;
-}
 
 export function buildWikiIndex(data: GreenhouseDataJSON): WikiIndex {
   const entries: WikiEntry[] = [];
