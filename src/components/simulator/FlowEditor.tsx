@@ -657,6 +657,12 @@ export const PolicyDefaultsEditor: React.FC<{ value: Policies; onChange: (p: Pol
       checked={value.fixGround !== false}
       onChange={(v) => onChange({ ...value, fixGround: v })}
     />
+    <CheckboxField
+      label="Clear other spawns off target cells"
+      title="Break natural spawns of a different kind standing on a target cell (harvest them if fully grown), e.g. leftovers from the previous step."
+      checked={value.clearTargetBlockers !== false}
+      onChange={(v) => onChange({ ...value, clearTargetBlockers: v })}
+    />
     {GATE_FIELDS.map((g) => (
       <CheckboxField
         key={g.key}
@@ -715,6 +721,21 @@ const PolicyOverridesEditor: React.FC<{ value: PolicyOverrides | undefined; onCh
           const next = { ...v };
           if (choice === INHERIT) delete next.fixGround;
           else next.fixGround = choice === "yes";
+          set(next);
+        }}
+      />
+      <SelectField
+        label="Clear spawns off target cells"
+        value={v.clearTargetBlockers === undefined ? INHERIT : v.clearTargetBlockers ? "yes" : "no"}
+        options={[
+          { value: INHERIT, label: "inherit" },
+          { value: "yes", label: "yes" },
+          { value: "no", label: "no" },
+        ]}
+        onChange={(choice) => {
+          const next = { ...v };
+          if (choice === INHERIT) delete next.clearTargetBlockers;
+          else next.clearTargetBlockers = choice === "yes";
           set(next);
         }}
       />

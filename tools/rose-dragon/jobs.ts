@@ -68,13 +68,22 @@ export interface JobDef {
    * plants survive the step change), so only the difference is spent.
    */
   startWith?: number;
+  /**
+   * Enter through a scrub step (base crops on the target cells) that breaks anything
+   * inherited on them. Costs one session on every visit and shows base crops on the target
+   * cells meanwhile. Normally unnecessary: the simulator's default `clearTargetBlockers`
+   * player action breaks other spawns standing on target cells in the entry session.
+   */
+  scrubOnEntry?: boolean;
 }
 
 export const GOAL: Record<string, number> = { all_in_aloe: 2, devourer: 2, glasscorn: 2, phantomleaf: 2, timestalk: 2 };
 
 /** Lowest tier first. A plot's hub tries its jobs in `PLOT_PRIORITY` order. */
 export const JOBS: JobDef[] = [
-  { id: "commons", label: "Commons farm", plots: [1, 2, 3], yieldWhenLow: true, targets: [
+  // Committed batch: runs until every product reaches its high mark (no early handover),
+  // so the plot does not leave and come back to Commons as often.
+  { id: "commons", label: "Commons farm", plots: [1, 2, 3], targets: [
     { mutation: "ashwreath", count: 6 }, { mutation: "choconut", count: 8 }, { mutation: "dustgrain", count: 4 },
     { mutation: "gloomgourd", count: 4 }, { mutation: "scourroot", count: 6 }, { mutation: "shadevine", count: 4 },
     { mutation: "veilshroom", count: 6 }, { mutation: "witherbloom", count: 6 }] },

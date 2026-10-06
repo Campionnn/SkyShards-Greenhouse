@@ -7,7 +7,7 @@ import type { CycleCtx, Phase, TickScratch } from "./context";
 import { wouldDecayWithin } from "./decay";
 import { harvestPlant } from "./harvest";
 import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
-import { layoutInputAt, maintainLayout } from "./placement";
+import { layoutInputAt, maintainLayout, removeByPlayer } from "./placement";
 import type { PlantState, PlotState } from "./state";
 
 /** Timer runs out before the next session and its minimum is met (`wouldDecayWithin`). Never online again: any timer counts. */
@@ -114,6 +114,26 @@ function maintain(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
 }
 
 /**
+ * Break natural spawns of another kind standing on the step's target cells: leftovers
+ * from earlier steps (e.g. an unwatered Soggybud that can never finish) or off-target
+ * spawns. Fully grown ones are harvested (`removeByPlayer`). Same-kind plants, Dead
+ * Plants, roots and placed/planted plants are left alone (layout cells never overlap
+ * target cells; Dead Plants are `maintain`'s job).
+ */
+function clearTargetBlockers(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
+  if (ctx.policiesFor(plot.id).clearTargetBlockers === false || plot.slots.length === 0) return;
+  const occ = buildOccupancy(plot);
+  for (const slot of plot.slots) {
+    if (!footprintFits(slot.row, slot.col, slot.size)) continue;
+    for (const idx of footprint(slot.row, slot.col, slot.size)) {
+      const q = occ[idx];
+      if (!q || q.origin !== "spawned" || q.isDeadPlant || isRoot(q) || q.kindId === slot.mutationId || !plot.plants.includes(q)) continue;
+      removeByPlayer(plot, q, ctx, scratch, "blocking target");
+    }
+  }
+}
+
+/**
  * Restore each target slot's required ground on free footprint cells (e.g.
  * after Chorus Fruit End Stone). Occupied cells are skipped. Free: ground
  * blocks aren't tracked in inventory.
@@ -165,6 +185,11 @@ export const PLAYER_PHASES: readonly Phase[] = [
     },
   },
   { id: "maintain", summary: "Clear Dead Plants and re-place missing layout plants (replaceDecayed).", run: maintain },
+  {
+    id: "clearTargets",
+    summary: "Break natural spawns of another kind standing on target cells; harvest them if fully grown (clearTargetBlockers).",
+    run: clearTargetBlockers,
+  },
   { id: "fixGround", summary: "Swap wrong ground blocks under empty target cells back to what the target needs (fixGround).", run: fixGround },
 ];
 

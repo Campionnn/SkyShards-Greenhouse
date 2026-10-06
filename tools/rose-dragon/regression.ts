@@ -7,7 +7,7 @@
  * Defaults: focused checks; supplied empty seeds 1-10; every-1/every-6 schedules,
  * all named inventories + random1..4, seeds 11-12. --max defaults to 3000.
  * Broad runs retain no events and advance in batches. Only focused Noctilume
- * handoff and natural Devourer survivor proofs retain events one cycle at a time.
+ * target-blocker and natural Devourer survivor proofs retain events one cycle at a time.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -160,19 +160,19 @@ function runCase(name: string, inventory: Record<string, number>, seed: number, 
 }
 
 /**
- * Single-plot physical handoff proof. The exported hub and both farm steps are
- * unchanged, including their real exits. Isolating Plot 2 prevents another plot
- * spending the deliberately exact inventory before the handoff is inspected.
+ * Inherited target blockers (old Jellybeans, unwatered Soggybuds) on the Noctilume
+ * anchors. The real hub enters the farm directly (no scrub step, so no base crops on
+ * the target cells); the simulator's default `clearTargetBlockers` player action breaks
+ * them in the entry session. Paid inputs are spent exactly once. Plot 2 is isolated so
+ * no other plot spends the exact inventory.
  */
-function noctScrub(stage: number, onlineEvery: number): void {
+function noctBlockers(kind: "magic_jellybean" | "soggybud", stage: number, onlineEvery: number): void {
   const original = imported.plots.find((p) => p.id === 2)!;
   const main = original.flow.steps.find((s) => s.id === "noct-flesh");
-  const prepare = original.flow.steps.find((s) => s.id === "noct-flesh-prepare");
-  assert(main && prepare, "export must contain noct-flesh-prepare and noct-flesh; regenerate the root flow first");
+  assert(main, "export must contain noct-flesh");
+  assert(!original.flow.steps.some((s) => s.id === "noct-flesh-prepare"), "the potato scrub step should be gone (the simulator clears target blockers)");
+  assert(main.policies?.clearTargetBlockers !== false, "Noct farm must not disable clearTargetBlockers");
   const mainLayout = layout(main);
-  const prepareLayout = layout(prepare);
-  const mainPaid = paidPlants(mainLayout);
-  assert.deepEqual(paidPlants(prepareLayout), mainPaid, "scrub must retain the final farm's paid input footprints");
   const cost = costOf(mainLayout);
   assert(Object.keys(cost).length > 0, "Noct farm needs physical paid inputs for this proof");
   const anchors = mainLayout.slots.filter((s) => s.mutationId === "noctilume");
@@ -186,59 +186,33 @@ function noctScrub(stage: number, onlineEvery: number): void {
   const plot = state.plots[0];
   const injectedIds: number[] = [];
   for (const anchor of anchors) {
-    const jelly = newPlant(state, engine.data, sc.settings.config, "magic_jellybean", anchor.row, anchor.col, "spawned", state.cycle);
-    assert(footprint(jelly.row, jelly.col, jelly.size).every((cell) => buildOccupancy(plot)[cell] === null), "injected Jellybean must not overlap setup plants");
-    jelly.stage = stage;
-    insertPlant(plot, jelly);
-    injectedIds.push(jelly.id);
+    const p = newPlant(state, engine.data, sc.settings.config, kind, anchor.row, anchor.col, "spawned", state.cycle);
+    assert(footprint(p.row, p.col, p.size).every((cell) => buildOccupancy(plot)[cell] === null), "injected blocker must not overlap setup plants");
+    p.stage = stage;
+    insertPlant(plot, p);
+    injectedIds.push(p.id);
   }
   const events: TimedEvent[] = [];
-  // Both stages are far below Jellybean's normal stage-120 harvest, even at the
-  // sparse schedule. Removal must occur on scrub entry, not normal maturation.
   const deadline = 2 * onlineEvery + 4;
   while (state.cycle < deadline && stepId(state, 2) === "hub") {
     const batch = engine.run(state, 1, { retainEvents: "all" });
     state = batch.state;
     events.push(...batch.events);
   }
-  assert.equal(stepId(state, 2), "noct-flesh-prepare", "hub must route through scrub rather than directly into the farm");
-  assert(injectedIds.every((id) => !state.plots[0].plants.some((p) => p.id === id)), "scrub left an injected Jellybean standing");
-  const entering = events.findIndex((e) => e.kind === "stepChanged" && e.toStep === "noct-flesh-prepare");
-  assert(entering >= 0, "missing actual scrub entry event");
+  assert.equal(stepId(state, 2), "noct-flesh", "hub must enter the Noct farm directly");
+  const entering = events.findIndex((e) => e.kind === "stepChanged" && e.toStep === "noct-flesh");
+  assert(entering >= 0, "missing farm entry event");
+  assert(injectedIds.every((id) => !state.plots[0].plants.some((p) => p.id === id)), "a blocker was left on a Noctilume anchor");
   for (const id of injectedIds) {
     const removed = events.findIndex((e) => (e.kind === "destroyed" || e.kind === "harvested") && e.plantId === id);
-    assert(removed > entering, `Jellybean ${id} must disappear during scrub layout placement`);
-    const event = events[removed];
-    if (stage < 12) assert(event.kind === "destroyed" && event.by === "step change", "young Jellybean must be broken by scrub");
-    else assert(event.kind === "harvested", "stage-36 Jellybean should yield when broken by scrub");
+    assert(removed > entering, `blocker ${id} must be removed in the entry session`);
+    assert.equal(events[removed].cycle, events[entering].cycle, `blocker ${id} must be removed in the same session as the step change`);
   }
-  const paidIds = new Map<string, number>();
-  const key = (p: { kindId: string; row: number; col: number }) => `${p.kindId}:${p.row},${p.col}`;
-  for (const wanted of mainPaid) {
-    const physical = state.plots[0].plants.find((p) => key(p) === key(wanted) && p.origin === "placed" && p.size === wanted.size);
-    assert(physical, `scrub did not place ${key(wanted)}`);
-    paidIds.set(key(wanted), physical.id);
-    const occ = buildOccupancy(state.plots[0]);
-    assert(footprint(wanted.row, wanted.col, wanted.size).every((cell) => occ[cell]?.id === physical.id), `wrong paid footprint for ${key(wanted)}`);
-  }
-  assert.deepEqual(paidConsumption(state), cost, "scrub entry must pay the exact input cost once");
-  for (const [item, qty] of Object.entries(cost)) assert.equal(consumed(state, item), qty);
-  while (state.cycle < deadline && stepId(state, 2) === "noct-flesh-prepare") {
-    const batch = engine.run(state, 1, { retainEvents: "all" });
-    state = batch.state;
-    events.push(...batch.events);
-  }
-  assert.equal(stepId(state, 2), "noct-flesh", "scrub must lead into the farm despite the inventory now being spent");
-  for (const wanted of mainPaid) {
-    const id = paidIds.get(key(wanted));
-    const occ = buildOccupancy(state.plots[0]);
-    assert(footprint(wanted.row, wanted.col, wanted.size).every((cell) => occ[cell]?.id === id && occ[cell]?.kindId === wanted.kindId), `farm entry replaced/lost paid input ${key(wanted)}`);
-    assert.equal(events.filter((e) => e.kind === "placed" && e.origin === "placed" && key(e) === key(wanted)).length, 1, `input ${key(wanted)} was placed more than once`);
-  }
-  assert.deepEqual(paidConsumption(state), cost, "farm entry double-spent scrub inputs");
-  for (const [item, qty] of Object.entries(cost)) assert.equal(consumed(state, item), qty);
-  assert.equal(state.summary.debtEvents, 0, "scrub-to-farm transition attempted an uncovered spend");
-  console.log(`  Noct stage=${stage} onlineEvery=${onlineEvery} cycles=${state.cycle} removed=${injectedIds.length} retainedPaidIds=${paidIds.size} cost=${JSON.stringify(cost)}`);
+  const occ = buildOccupancy(state.plots[0]);
+  for (const a of anchors) assert(footprint(a.row, a.col, a.size).every((c) => occ[c] === null || occ[c]!.kindId === "noctilume"), "Noctilume anchor not free after entry");
+  assert.deepEqual(paidConsumption(state), cost, "farm entry must pay the exact input cost once");
+  assert.equal(state.summary.debtEvents, 0, "farm entry attempted an uncovered spend");
+  console.log(`  Noct ${kind} stage=${stage} onlineEvery=${onlineEvery} cycle=${state.cycle} removed=${injectedIds.length} cost=${JSON.stringify(cost)}`);
 }
 
 check("actual UI import and validation", () => {
@@ -447,8 +421,8 @@ if (groups.includes("focused")) {
   for (const name of ["allDone", "devGlassDone", "aloeOnly"]) {
     check(`partial inventory ${name}`, () => runCase(name, { ...FREE_STOCK, ...INVENTORIES[name] }, 1, 3));
   }
-  for (const stage of [1, 36]) for (const onlineEvery of [1, 6]) {
-    check(`Noct scrub stage ${stage} / online every ${onlineEvery}`, () => noctScrub(stage, onlineEvery));
+  for (const [kind, stage] of [["magic_jellybean", 1], ["magic_jellybean", 36], ["soggybud", 3]] as const) for (const onlineEvery of [1, 6]) {
+    check(`Noct inherited ${kind} stage ${stage} / online every ${onlineEvery}`, () => noctBlockers(kind, stage, onlineEvery));
   }
 }
 if (groups.includes("supplied")) {

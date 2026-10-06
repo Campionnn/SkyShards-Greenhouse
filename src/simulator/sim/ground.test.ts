@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ALWAYS_SPAWN, engine, flow, inject, layout, NEVER_ACTIVE, scenario, singlePlot, step, start } from "../testHelpers";
+// clearTargetBlockers tests live here too: both are per-session target-cell upkeep.
 import type { LayoutSpec } from "../flow/types";
 
 const painted = (spec: LayoutSpec, ground: string, row: number, col: number): LayoutSpec => ({
@@ -107,7 +108,7 @@ describe("mutation ground eligibility", () => {
 
   it("fixGround skips occupied cells, respects the policy and needs the player online", () => {
     const online = { kind: "everyN" as const, n: 1, offset: 0 };
-    const occupied = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { activity: online, policies: { spawnedHarvest: "never" } }));
+    const occupied = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { activity: online, policies: { spawnedHarvest: "never", clearTargetBlockers: false } }));
     occupied.plots[0].groundOverrides["4,4"] = "end_stone";
     inject(occupied, 1, "chorus_fruit", 4, 4, "spawned", { stage: 12 });
     expect(engine.run(occupied, 1).state.plots[0].groundOverrides["4,4"]).toBe("end_stone");
@@ -119,6 +120,55 @@ describe("mutation ground eligibility", () => {
     const away = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { activity: NEVER_ACTIVE }));
     away.plots[0].groundOverrides["4,4"] = "end_stone";
     expect(engine.run(away, 1).state.plots[0].groundOverrides["4,4"]).toBe("end_stone");
+  });
+
+  describe("clearTargetBlockers", () => {
+    const online = { kind: "everyN" as const, n: 1, offset: 0 };
+    // Soggybud never finishes without wet neighbours: a growing one is a permanent blocker.
+    // spawnedHarvest "never" keeps the same-kind target from being harvested normally.
+    const blocked = (opts: { policies?: object; activity?: typeof NEVER_ACTIVE } = {}) => {
+      const s = start(singlePlot(layout([], [["ashwreath", 4, 4], ["ashwreath", 6, 6]]), { activity: online, ...opts, policies: { spawnedHarvest: "never", ...opts.policies } }));
+      const sog = inject(s, 1, "soggybud", 4, 4, "spawned", { stage: 3 });
+      const same = inject(s, 1, "ashwreath", 6, 6, "spawned", { stage: 1 });
+      const outside = inject(s, 1, "soggybud", 0, 0, "spawned", { stage: 3 });
+      return { s, sog, same, outside };
+    };
+
+    it("breaks a foreign growing spawn on a target cell, keeps same-kind targets and off-target spawns", () => {
+      const { s, sog, same, outside } = blocked();
+      const r = engine.run(s, 1);
+      const ids = r.state.plots[0].plants.map((p) => p.id);
+      expect(ids).not.toContain(sog.id);
+      expect(ids).toContain(same.id);
+      expect(ids).toContain(outside.id);
+      expect(r.events).toContainEqual(expect.objectContaining({ kind: "destroyed", plantId: sog.id, by: "blocking target" }));
+    });
+
+    it("harvests a fully grown blocker instead of breaking it", () => {
+      const s = start(singlePlot(layout([], [["ashwreath", 4, 4]]), { activity: online, policies: { spawnedHarvest: "never" } }));
+      const grown = inject(s, 1, "chorus_fruit", 4, 4, "spawned");
+      grown.stage = grown.readyStage;
+      grown.lockedEffects = [];
+      const r = engine.run(s, 1);
+      expect(r.events).toContainEqual(expect.objectContaining({ kind: "harvested", plantId: grown.id }));
+    });
+
+    it("respects the policy (off) and needs the player online", () => {
+      const off = blocked({ policies: { clearTargetBlockers: false } });
+      expect(engine.run(off.s, 1).state.plots[0].plants.map((p) => p.id)).toContain(off.sog.id);
+      const away = blocked({ activity: NEVER_ACTIVE });
+      expect(engine.run(away.s, 1).state.plots[0].plants.map((p) => p.id)).toContain(away.sog.id);
+    });
+
+    it("clears a leftover on the next step's target cells right at the step change", () => {
+      const first = layout([["melon", 4, 5]]);
+      const second = layout([], [["ashwreath", 4, 4]]);
+      const s = start(scenario([flow([step("one", first, [{ kind: "cycles", n: 1 }]), step("two", second)])], { activity: online }));
+      const sog = inject(s, 1, "soggybud", 4, 4, "spawned", { stage: 3 });
+      const r = engine.run(s, 1);
+      expect(r.events).toContainEqual(expect.objectContaining({ kind: "stepChanged", toStep: "two" }));
+      expect(r.state.plots[0].plants.map((p) => p.id)).not.toContain(sog.id);
+    });
   });
 
   it("rejects unknown or out-of-bounds explicitly painted ground", () => {

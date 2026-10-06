@@ -446,9 +446,12 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
       )}
 
       {watched.length > 0 && (
-        <div className="mt-3">
-          <SectionLabel>Placed items</SectionLabel>
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 text-xs">
+        <details className="group mt-3">
+          <summary className="flex items-center gap-1.5 rounded py-1 text-xs font-medium text-slate-400 uppercase tracking-wide cursor-pointer list-none hover:text-slate-200 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+            <ChevronRight aria-hidden="true" className="w-3.5 h-3.5 shrink-0 group-open:rotate-90" />
+            Placed items
+          </summary>
+          <div className="mt-2 grid grid-cols-[1fr_auto_auto_auto] gap-x-3 text-xs">
             <span className="text-slate-500">item</span>
             <span className="text-slate-500 text-right">used</span>
             <span className="text-slate-500 text-right">made</span>
@@ -465,20 +468,23 @@ export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summa
               </React.Fragment>
             ))}
           </div>
-        </div>
+        </details>
       )}
 
       {losses.length > 0 && (
-        <div className="mt-3">
-          <SectionLabel>Losses, halts and decay extensions</SectionLabel>
-          <ul className="text-xs text-slate-300 space-y-0.5">
+        <details className="group mt-3">
+          <summary className="flex items-center gap-1.5 rounded py-1 text-xs font-medium text-slate-400 uppercase tracking-wide cursor-pointer list-none hover:text-slate-200 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+            <ChevronRight aria-hidden="true" className="w-3.5 h-3.5 shrink-0 group-open:rotate-90" />
+            Losses, halts and decay extensions
+          </summary>
+          <ul className="mt-2 text-xs text-slate-300 space-y-0.5">
             {losses.slice(0, 8).map((l) => (
               <li key={`${l.what}-${l.k}`}>
                 {formatCount(l.n)} {nameOf(l.k)} {l.what}
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
     </Panel>
   );

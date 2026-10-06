@@ -55,12 +55,20 @@ did not increase useful production, and that padding has been removed.
   stage 8 (one owned) while the inputs stay standing. A break latched while offline is
   skipped if the Aloe reset meanwhile. Stage pairs 11/9, 10/8, 9/7 and 8/6 all measured
   within noise of each other; 10/8 was chosen.
-- **Commons/Uncommons hand over when low marks are met (`yieldWhenLow`).** These
-  farms used to run until **every** product reached its high mark. One trace held Plot 1
-  in Uncommons for 132 cycles to raise Duskbloom from 32 to 33, while Snoozling's
-  inputs were already in stock. Now, once every product is at its low mark, the farm
-  hands the plot to an earlier farm in the priority list that is wanted and in stock.
-  The same rule for Rares/Blast-Cheese/Soggybud measured no gain and was not added.
+- **Uncommons hands over when low marks are met (`yieldWhenLow`); Commons stays.**
+  Uncommons used to run until **every** product reached its high mark. One trace held
+  Plot 1 there for 132 cycles to raise Duskbloom from 32 to 33, while Snoozling's inputs
+  were already in stock. Now, once every Uncommons product is at its low mark, the farm
+  hands the plot to an earlier farm that is wanted and in stock. Commons is a committed
+  batch again (fills to its high marks): that cuts Commons visits per run from 5.4 to
+  3.5 (fewer leave-and-come-back layout changes) at no measured time cost. Committing
+  Uncommons too was measured **+10 cycles** on average (+34 on Aloe-only); the same
+  rule for Rares/Blast-Cheese/Soggybud measured no gain.
+- **Target cells are cleared by the simulator.** The default `clearTargetBlockers`
+  player action breaks other spawns standing on a step's target cells, including
+  leftovers inherited from the previous farm (unwatered Soggybuds never finish growing
+  off their farm; Jellybeans need 120 stages). The old Noctilume `-prepare` step, which
+  stood Potatoes on the Noctilume cells for one session, is gone.
 - **Startlevine may run on two plots at once.** No flow condition can see another
   plot's step. Restricting Startlevine to one plot measured slower (+2 to +9 cycles), so
   both Plots 1 and 3 keep it. When Glasscorn is the last missing legendary, doubling its
@@ -70,8 +78,8 @@ did not increase useful production, and that padding has been removed.
   Boost 0.3, Harvest Loss −0.2). Every target anchor is checked with the real
   sanity check.
 - **Kept from earlier revisions:** one Soggybud owner (Plot 3, 12 targets); committed
-  batches; one-time Noctilume target scrub for inherited Jellybeans; single-step
-  survivor-preserving Devourer; on-arrival shortage rechecks; Shellfruit blast layout.
+  batches; single-step survivor-preserving Devourer; on-arrival shortage rechecks;
+  Shellfruit blast layout. (`scrubOnEntry` still exists in jobs.ts but no job uses it.)
 
 Some layouts intentionally leave cells empty: **Lonelily needs empty neighbours,
 Chorus needs teleport landing space, Devourer needs its AIR moat, and Shellfruit needs
@@ -104,6 +112,20 @@ Aloe-only, epics, Devourer+Glasscorn-done inventories; 100 seeds each unless not
 
   Multiple plots running the same job mostly happens for Uncommons and Commons. That
   overlap helps, because those batches gate everything downstream.
+- **Why Commons/Uncommons still come back.** Over a full run from empty the flow places
+  ~130 Choconut and ~80 Ashwreath, because every downstream farm is rebuilt several
+  times. Any single batch sized for the whole run would hold a plot for hundreds of
+  cycles while downstream farms wait, so batches are sized to the stock levels
+  (high mark = 1.5 x what all consumer layouts place at once) and repeat as stock is
+  spent. A hindsight audit (40 empty seeds) found ~0.7 Commons and ~1 Uncommons visits
+  per run whose output was never consumed. These are mostly at the end of a run, when
+  the plot has nothing better to do, so they don't delay completion.
+- **Blocked-target experiments (before `clearTargetBlockers`).** A harness oracle that
+  removed every foreign spawn on target cells each session changed completion by
+  −0.4 ± 4.8 (empty) to +6 ± 4.5 (half-legendary) cycles: blocked cells cost little
+  time because the other target cells keep spawning. Flow-only fixes were slower: a
+  clear-the-plot step after Soggybud/Jellybean farms +3.5, `fullClear` on every
+  Plot 3 farm +6.3, on every farm +13.8 cycles on average.
 ## Scheduling and inventory
 
 Every plot starts at a free **hub**, never a paid farm. The hub first checks the overall
@@ -194,7 +216,8 @@ for step timelines; failure sets a nonzero exit status. The regression CLI suppo
 - Use the real engine, not a solver score, for completion and debt checks. Test both
   high-stock coverage and the recommended finite supply buffer.
 - CLI `busy` measures time outside hub/done, **not physical occupancy or productivity**.
-- Leave the simulator and game data unchanged when tuning this flow.
+- Leave the simulator and game data unchanged when tuning this flow, unless the user
+  explicitly approves a simulator change (as for `clearTargetBlockers`).
 
 ## Measured verification
 
@@ -204,41 +227,49 @@ scheduling; realistic 250/50 supply tests are separate). Means are in-game days 
 finish all plots over **seeds 1–100 per inventory**. "Previous" is the rejected padded
 revision, which had the same production counts as the revision before it.
 
-| Starting inventory | Rejected padded flow | Bigger batches + focus | **Current** (+ Aloe break, hand-over) |
-|---|---:|---:|---:|
-| Empty mutations | 43.1 (52.9) | 36.9 (60.0) | **34.7** (41.7) |
-| Commons stocked | 43.1 (56.9) | 35.6 (46.0) | **33.6** (41.7) |
-| Rares stocked | 37.0 (53.4) | 32.1 (45.4) | **30.1** (37.4) |
-| Half the legendaries | 40.8 (55.1) | 34.5 (45.7) | **32.1** (40.9) |
-| Devourer + Glasscorn complete | 32.6 (50.6) | 28.1 (37.7) | **25.0** (37.7) |
-| Only Aloe still needed | 28.5 (40.3) | 23.8 (33.1) | **18.4** (24.0) |
-| Epics stocked | 14.7 (37.1) | 14.7 (31.7) | **11.2** (21.4) |
-| All goals already owned | 0.3 | 0.3 | 0.3 |
+| Starting inventory | Rejected padded flow | Bigger batches + focus | + Aloe break, hand-over | **Current** (300 seeds) |
+|---|---:|---:|---:|---:|
+| Empty mutations | 43.1 (52.9) | 36.9 (60.0) | 34.7 (41.7) | **35.5** (46.3) |
+| Commons stocked | 43.1 (56.9) | 35.6 (46.0) | 33.6 (41.7) | **34.7** (46.6) |
+| Rares stocked | 37.0 (53.4) | 32.1 (45.4) | 30.1 (37.4) | **31.1** (44.6) |
+| Half the legendaries | 40.8 (55.1) | 34.5 (45.7) | 32.1 (40.9) | **33.1** (45.7) |
+| Devourer + Glasscorn complete | 32.6 (50.6) | 28.1 (37.7) | 25.0 (37.7) | **24.7** (31.7) |
+| Only Aloe still needed | 28.5 (40.3) | 23.8 (33.1) | 18.4 (24.0) | **17.9** (23.1) |
+| Epics stocked | 14.7 (37.1) | 14.7 (31.7) | 11.2 (21.4) | **11.0** (24.0) |
+| All goals already owned | 0.3 | 0.3 | 0.3 | 0.3 |
 
-Mean (max) in-game days. In cycles, the average over all eight inventories fell from
-**315.1 to 243.4** (−71.7); from empty, 452.7 → 364.1 (±3.6). All 800 runs reached
-the goal with zero debt. The early Aloe break was the largest single gain: it removed
-the long Aloe-reset tails.
+Mean (max) in-game days. The first three columns are seeds 1–100 on the simulator
+before `clearTargetBlockers`; the current column is seeds 1–300 with it. Seeds
+101–300 run longer on average than seeds 1–100 for every flow, so compare in cycles
+on the same seeds: the current flow averages **247.2** cycles over the eight
+inventories vs **246.5** for the previous flow under the same simulator and seeds
+(no measurable difference; on seeds 1–100, 0.0; on 101–300, +1.1 ± ~1.4). The
+current flow has 24.8 farm visits per run vs 26.6 (Commons 3.5 vs 5.4). All 2,400
+runs reached the goal with zero debt. History: the average fell from 315.1 (padded
+flow) to 243.4 cycles on seeds 1–100; the early Aloe break was the largest single
+gain, removing the long Aloe-reset tails.
 
 Under the **GUI default settings** (stronger stats, online every cycle, 250 Dead
-Plants/50 Fermento, empty inventory, seeds 1–50), the mean is 293.9 cycles vs 318.2
-for the intermediate flow (max 372 vs 402). These are not the tuning preset.
+Plants/50 Fermento, empty inventory, seeds 1–50), an earlier revision measured 293.9
+cycles vs 318.2 for the intermediate flow (max 372 vs 402); seed 42 now finishes at
+cycle 294. These are not the tuning preset.
 - **160 random-inventory runs** (random1–160, seed 21): all goals reached, all plots
-  done, zero debt; mean 29.1 days, range 16.0–38.3.
+  done, zero debt; mean 29.4 days, range 15.7–43.1.
 - **Static layout audit:** 337 production target anchors across 37 layouts physically
   feasible; 54 layouts with disjoint input/target footprints.
-- **Regression suite (`regression.ts`), all 78 checks pass:**
-  - 10 empty-inventory seeds with 250 Dead Plants/50 Fermento: at most **63 Dead
-    Plants and 20 Fermento** used.
+- **Regression suite (`regression.ts`), all 76 checks pass:**
+  - 10 empty-inventory seeds with 250 Dead Plants/50 Fermento: at most **51 Dead
+    Plants and 30 Fermento** used.
   - 48 named/random cases at online-every-1 and online-every-6.
   - Focused partial-goal cases (allDone spends nothing; devGlassDone and aloeOnly skip
     irrelevant branches).
   - Default-settings missing-supply notice and supplied startup.
-  - Four Noctilume scrub handoffs (stage 1/36 × every 1/6).
+  - Six Noctilume inherited-blocker entries (Jellybean stage 1/36 and Soggybud ×
+    every 1/6): removed in the entry session, inputs paid once.
   - Eight natural Devourer survivor cases (exact 4 Puffercloud + 4 Zombud ring).
   - UI import validation, no paid initial setup, Soggybud single owner.
 
-The export has **54 steps** (15/19/20 across plots 1/2/3).
+The export has **53 steps** (15/18/20 across plots 1/2/3).
 
 ```powershell
 pnpm exec tsc -p tools/rose-dragon/tsconfig.json

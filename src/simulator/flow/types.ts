@@ -138,6 +138,11 @@ export interface Policies {
    * the target (e.g. Chorus Fruit End Stone). Missing = on.
    */
   fixGround?: boolean;
+  /**
+   * Break natural spawns of another kind standing on the current step's target cells
+   * (harvested if fully grown), e.g. leftovers from the previous step. Missing = on.
+   */
+  clearTargetBlockers?: boolean;
 }
 
 export type PolicyOverrides = Partial<Omit<Policies, "gateInteractions">> & {

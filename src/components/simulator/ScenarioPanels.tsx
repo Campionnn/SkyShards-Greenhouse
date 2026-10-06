@@ -26,7 +26,8 @@ import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui
 import { CheckboxField, NumberField, NumberInput, SelectField } from "./controls";
 import { formatDuration, nameOf } from "./format";
 import { PolicyDefaultsEditor } from "./FlowEditor";
-import { addPlot, duplicatePlot, exportFlows, importFlows, layoutSummary, nextPlotId, removePlot } from "./scenarioEdit";
+import { FlowExportDialog } from "./FlowExportDialog";
+import { addPlot, duplicatePlot, exportFlows, importFlows, layoutSummary, nextPlotId, removePlot, type FlowExportOptions } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
 
 // ---- Scenario: share links, plots, import/export ---------------------------
@@ -53,6 +54,7 @@ export const ScenarioPanel: React.FC<{
   const [json, setJson] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [readingFile, setReadingFile] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const fileReadId = useRef(0);
 
   const toggleImport = () => {
@@ -82,17 +84,27 @@ export const ScenarioPanel: React.FC<{
     }
   };
 
-  // Exports flows only: no player stats, schedule, seed, Actions defaults, config or inventory.
-  const exportJson = () => {
-    const text = JSON.stringify(exportFlows(scenario), null, 2);
-    navigator.clipboard.writeText(text).catch(() => undefined);
+  const exportJson = async (options: FlowExportOptions) => {
+    const text = JSON.stringify(exportFlows(scenario, options), null, 2);
     const blob = new Blob([text], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "greenhouse-flows.json";
     a.click();
     URL.revokeObjectURL(a.href);
-    toast({ title: "Flows exported", description: "Downloaded and copied. Your player settings and inventory are not included.", variant: "success" });
+    setExporting(false);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      // Download still works when clipboard access is unavailable or denied.
+    }
+    toast({
+      title: "Flows exported",
+      description: `${copied ? "Downloaded and copied." : "Downloaded."} ${Object.values(options).some(Boolean) ? "Includes your selected setup sections." : "Only flows are included; settings and starting inventory are left out."}`,
+      variant: "success",
+    });
   };
 
   const importJson = () => {
@@ -105,7 +117,9 @@ export const ScenarioPanel: React.FC<{
       toast({
         id: "simulator-flows-imported",
         title: `Imported ${next.plots.length} plot${next.plots.length > 1 ? "s" : ""}`,
-        description: "Replaced your plots; your player settings and inventory are unchanged.",
+        description: next.settings !== before.settings || next.startingInventory !== before.startingInventory
+          ? "Replaced your plots and applied the included setup. Omitted settings are unchanged."
+          : "Replaced your plots; your player settings and inventory are unchanged.",
         variant: "success",
         duration: 6000,
         action: { label: "Undo", onClick: () => onChange(before) },
@@ -188,18 +202,20 @@ export const ScenarioPanel: React.FC<{
       <div className="flex gap-2 mt-4">
         <button
           className={buttonClass.neutral}
-          onClick={exportJson}
-          title="Download (and copy) every plot's flow as JSON: steps, layouts, exits, loop, checked targets and policy overrides. Player stats, schedule, seed, Actions defaults, Advanced settings and inventory are left out."
+          onClick={() => setExporting(true)}
+          aria-haspopup="dialog"
+          title="Choose what to include, then download and copy your flows as JSON."
         >
           <Download className="w-3.5 h-3.5" /> Export flows
         </button>
-        <button className={buttonClass.neutral} onClick={toggleImport} aria-expanded={json !== null} title="Replace your plots with ones from an exported flows file">
+        <button className={buttonClass.neutral} onClick={toggleImport} aria-expanded={json !== null} title="Replace your plots and apply any setup sections included in an exported flows file">
           <Upload className="w-3.5 h-3.5" /> Import flows
         </button>
       </div>
+      {exporting && <FlowExportDialog onClose={() => setExporting(false)} onExport={exportJson} />}
       {json !== null && (
         <div className="mt-2 space-y-1.5">
-          <p className="text-[11px] text-slate-500">Replaces your plots. Your player stats, schedule, Actions defaults, Advanced settings and inventory stay as they are.</p>
+          <p className="text-[11px] text-slate-500">Replaces your plots and any setup sections included in the export. Settings and starting inventory left out of the file stay as they are.</p>
           <label className="block space-y-1 text-xs text-slate-300">
             <span>Select a JSON file</span>
             <input

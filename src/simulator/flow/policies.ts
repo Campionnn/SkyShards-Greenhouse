@@ -8,6 +8,7 @@ export const DEFAULT_POLICIES: Policies = {
   gateInteractions: { wakeSnoozling: true, vacuumRat: true, dischargeThunderling: true, noctilumeTime: true, feedFleshtrap: true, clearRoots: true },
   replaceDecayed: true,
   fixGround: true,
+  clearTargetBlockers: true,
 };
 
 /** Scenario defaults, then plot overrides, then step overrides. */

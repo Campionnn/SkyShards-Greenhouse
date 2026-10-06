@@ -7,6 +7,7 @@ import { readIncomingLayout, solverResultCells, summarizeTargets } from "../../u
 import {
   addPlot,
   duplicatePlot,
+  DEFAULT_FLOW_EXPORT_OPTIONS,
   exportFlows,
   importFlows,
   isBlankScenario,
@@ -16,6 +17,7 @@ import {
   placeLayout,
   placementsToCode,
   transformWatch,
+  type FlowExportOptions,
 } from "./scenarioEdit";
 
 const blank = (): Scenario => addPlot({ plots: [], startingInventory: {}, settings: defaultSettings() });
@@ -313,6 +315,378 @@ describe("flow export / import", () => {
     expect(() => importFlows(sc, "{}")).toThrow("No plots");
     expect(() => importFlows(sc, JSON.stringify({ plots: [{ id: 1, flow: { steps: [] } }] }))).toThrow("Plot 1: no steps");
     expect(() => importFlows(sc, JSON.stringify({ plots: [{ id: 1, flow: { steps: [{ id: "s", layout: { code: "x" }, exits: [] }] } }, { id: 1, flow: { steps: [{ id: "s", layout: { code: "x" }, exits: [] }] } }] }))).toThrow("unique");
+  });
+});
+
+describe("selectable flow export / import", () => {
+  const allOptions: FlowExportOptions = {
+    startingInventory: true,
+    playerSettings: true,
+    onlineSchedule: true,
+    actionDefaults: true,
+    advancedSettings: true,
+    seed: true,
+  };
+  const source = (): Scenario => {
+    const sc = withPlots(LAYOUT_A_CODE, LAYOUT_B_CODE);
+    sc.startingInventory = { chloronite: 9, magic_jellybean: 0 };
+    sc.settings.seed = 777;
+    sc.settings.playerStats = { ...sc.settings.playerStats, farmingFortune: 123, floraShard: 2, startTimeOfDay: 7 };
+    sc.settings.activity = { kind: "windows", windows: [{ from: 8, to: 11 }, { from: 17, to: 20 }] };
+    sc.settings.playerActions = false;
+    sc.settings.policies = {
+      ...sc.settings.policies,
+      watering: "never",
+      baseCropUpkeep: "harvestWhenGrown",
+      gateInteractions: { ...sc.settings.policies.gateInteractions, wakeSnoozling: false, dischargeThunderling: false },
+    };
+    sc.settings.config = { ...sc.settings.config, waterLossMin: 2, waterLossMax: 3, allowMutationDebt: true, plotOrder: [2, 1, 3] };
+    sc.plots[0].policies = { watering: "never" };
+    sc.plots[0].flow.steps[0].watch = ["0,0"];
+    sc.plots[0].flow.steps[0].exits = [{ when: [{ kind: "cycles", n: 7 }] }];
+    return sc;
+  };
+  const current = (): Scenario => {
+    const sc = withPlots(LAYOUT_B_CODE);
+    sc.startingInventory = { magic_jellybean: 4 };
+    sc.settings.seed = 321;
+    sc.settings.playerStats = { ...sc.settings.playerStats, farmingFortune: 900, floraShard: 8, startTimeOfDay: 18 };
+    sc.settings.activity = { kind: "everyN", n: 5, offset: 2 };
+    sc.settings.config = { ...sc.settings.config, waterLossMax: 30, negativeWaterSkipChance: 0, plotOrder: [3, 2, 1] };
+    sc.settings.policies.gateInteractions.vacuumRat = false;
+    return sc;
+  };
+  const v2 = (extras: Record<string, unknown> = {}) => ({ kind: "skyshards-greenhouse-flows", version: 2, plots: source().plots, ...extras });
+
+  it("keeps defaults, omitted options and explicitly disabled options byte-for-byte compatible with v1", () => {
+    const sc = source();
+    expect(DEFAULT_FLOW_EXPORT_OPTIONS).toEqual({
+      startingInventory: false,
+      playerSettings: false,
+      onlineSchedule: false,
+      actionDefaults: false,
+      advancedSettings: false,
+      seed: false,
+    });
+    const expected = { kind: "skyshards-greenhouse-flows", version: 1, plots: sc.plots };
+    for (const file of [exportFlows(sc), exportFlows(sc, {}), exportFlows(sc, DEFAULT_FLOW_EXPORT_OPTIONS), exportFlows(sc, { seed: false })]) {
+      expect(file).toEqual(expected);
+      expect(JSON.stringify(file)).toBe(JSON.stringify(expected));
+    }
+  });
+
+  it("includes only starting inventory when selected, without an empty settings object", () => {
+    const sc = source();
+    expect(exportFlows(sc, { startingInventory: true })).toEqual(v2({ startingInventory: sc.startingInventory }));
+  });
+
+  it("includes only player stats, excluding the schedule-owned starting clock", () => {
+    const sc = source();
+    const stats = { ...sc.settings.playerStats };
+    delete (stats as Partial<typeof stats>).startTimeOfDay;
+    expect(exportFlows(sc, { playerSettings: true })).toEqual(v2({ settings: { playerStats: stats } }));
+  });
+
+  it("includes only the online schedule and its starting clock", () => {
+    const sc = source();
+    expect(exportFlows(sc, { onlineSchedule: true })).toEqual(v2({ settings: {
+      activity: sc.settings.activity,
+      playerStats: { startTimeOfDay: sc.settings.playerStats.startTimeOfDay },
+    } }));
+  });
+
+  it("includes only action defaults, keeping an explicit false playerActions", () => {
+    const sc = source();
+    expect(exportFlows(sc, { actionDefaults: true })).toEqual(v2({ settings: { policies: sc.settings.policies, playerActions: false } }));
+  });
+
+  it("exports missing playerActions as true without filling it into the input", () => {
+    const sc = source();
+    delete sc.settings.playerActions;
+    expect(exportFlows(sc, { actionDefaults: true })).toEqual(v2({ settings: { policies: sc.settings.policies, playerActions: true } }));
+    expect(sc.settings).not.toHaveProperty("playerActions");
+  });
+
+  it("includes only advanced config when selected", () => {
+    const sc = source();
+    expect(exportFlows(sc, { advancedSettings: true })).toEqual(v2({ settings: { config: sc.settings.config } }));
+  });
+
+  it("includes only the seed when selected, preserving zero", () => {
+    const sc = source();
+    sc.settings.seed = 0;
+    expect(exportFlows(sc, { seed: true })).toEqual(v2({ settings: { seed: 0 } }));
+  });
+
+  it("combines player and online choices into one complete playerStats object", () => {
+    const sc = source();
+    expect(exportFlows(sc, { playerSettings: true, onlineSchedule: true, seed: false })).toEqual(v2({ settings: {
+      playerStats: sc.settings.playerStats,
+      activity: sc.settings.activity,
+    } }));
+    expect(DEFAULT_FLOW_EXPORT_OPTIONS.seed).toBe(false);
+  });
+
+  it("round-trips all selected sections, replacing inventory and restoring the entire source scenario", () => {
+    const sc = source();
+    const mine = current();
+    const file = exportFlows(sc, allOptions);
+    expect(file).toEqual(v2({ startingInventory: sc.startingInventory, settings: sc.settings }));
+    expect(importFlows(mine, JSON.stringify(file))).toEqual(sc);
+  });
+
+  it.each(["startingInventory", "playerSettings", "onlineSchedule", "actionDefaults", "advancedSettings", "seed"] as const)(
+    "imports %s without changing omitted sections or their references",
+    (option) => {
+      const mine = current();
+      const before = structuredClone(mine);
+      const sc = source();
+      const next = importFlows(mine, JSON.stringify(exportFlows(sc, { [option]: true })));
+      expect(next.plots).toEqual(sc.plots);
+      expect(next.startingInventory).toEqual(option === "startingInventory" ? sc.startingInventory : mine.startingInventory);
+      if (option !== "startingInventory") expect(next.startingInventory).toBe(mine.startingInventory);
+      if (option === "startingInventory") expect(next.settings).toBe(mine.settings);
+      expect(next.settings.seed).toBe(option === "seed" ? sc.settings.seed : mine.settings.seed);
+      expect(next.settings.playerActions).toBe(option === "actionDefaults" ? sc.settings.playerActions : mine.settings.playerActions);
+      for (const [key, selected] of [["activity", "onlineSchedule"], ["policies", "actionDefaults"], ["config", "advancedSettings"]] as const) {
+        expect(next.settings[key]).toEqual(option === selected ? sc.settings[key] : mine.settings[key]);
+        if (option !== selected) expect(next.settings[key]).toBe(mine.settings[key]);
+      }
+      const expectedStats = option === "playerSettings"
+        ? { ...sc.settings.playerStats, startTimeOfDay: mine.settings.playerStats.startTimeOfDay }
+        : option === "onlineSchedule"
+          ? { ...mine.settings.playerStats, startTimeOfDay: sc.settings.playerStats.startTimeOfDay }
+          : mine.settings.playerStats;
+      expect(next.settings.playerStats).toEqual(expectedStats);
+      if (option !== "playerSettings" && option !== "onlineSchedule") expect(next.settings.playerStats).toBe(mine.settings.playerStats);
+      expect(mine).toEqual(before);
+    }
+  );
+
+  it("imports a mixed subset while preserving every omitted current setting", () => {
+    const mine = current();
+    const sc = source();
+    const next = importFlows(mine, JSON.stringify(exportFlows(sc, { startingInventory: true, playerSettings: true, actionDefaults: true })));
+    expect(next.startingInventory).toEqual(sc.startingInventory);
+    expect(next.settings.playerStats).toEqual({ ...sc.settings.playerStats, startTimeOfDay: 18 });
+    expect(next.settings.policies).toEqual(sc.settings.policies);
+    expect(next.settings.playerActions).toBe(false);
+    expect(next.settings.activity).toBe(mine.settings.activity);
+    expect(next.settings.config).toBe(mine.settings.config);
+    expect(next.settings.seed).toBe(mine.settings.seed);
+  });
+
+  it("merges partial stats, config and policy defaults over current values, including nested gates", () => {
+    const mine = current();
+    const before = structuredClone(mine);
+    const next = importFlows(mine, JSON.stringify(v2({ settings: {
+      playerStats: { farmingFortune: 42 },
+      config: { waterLossMin: 1 },
+      policies: { watering: "never", gateInteractions: { dischargeThunderling: false } },
+    } })));
+    expect(next.settings.playerStats).toEqual({ ...mine.settings.playerStats, farmingFortune: 42 });
+    expect(next.settings.config).toEqual({ ...mine.settings.config, waterLossMin: 1 });
+    expect(next.settings.policies).toEqual({
+      ...mine.settings.policies,
+      watering: "never",
+      gateInteractions: { ...mine.settings.policies.gateInteractions, dischargeThunderling: false },
+    });
+    expect(next.settings.policies.gateInteractions.vacuumRat).toBe(false);
+    expect(next.settings.policies.gateInteractions.wakeSnoozling).toBe(true);
+    expect(next.settings.playerActions).toBe(mine.settings.playerActions);
+    expect(next.settings.activity).toBe(mine.settings.activity);
+    expect(next.startingInventory).toBe(mine.startingInventory);
+    expect(mine).toEqual(before);
+  });
+
+  it("keeps unrelated defaults when importing a flat partial policy with no gates", () => {
+    const mine = current();
+    const next = importFlows(mine, JSON.stringify(v2({ settings: { policies: { baseCropUpkeep: "harvestWhenGrown" } } })));
+    expect(next.settings.policies).toEqual({ ...mine.settings.policies, baseCropUpkeep: "harvestWhenGrown" });
+    expect(next.settings.playerStats).toBe(mine.settings.playerStats);
+    expect(next.settings.config).toBe(mine.settings.config);
+    expect(next.settings.activity).toBe(mine.settings.activity);
+  });
+
+  it.each([14, 11])("migrates included old config before merging it, including aloe stage %s", (aloeHarvestStage) => {
+    const mine = current();
+    const oldConfig = {
+      stageBaselineSeconds: 7200,
+      keepIdenticalOnStageChange: false,
+      deathWater: -80,
+      rareDropValues: { chloronite: 1000 },
+      waterLossMin: 2,
+      waterLossMax: 3,
+      aloeHarvestStage,
+    };
+    const next = importFlows(mine, JSON.stringify(v2({ settings: { config: oldConfig } })));
+    expect(next.settings.config).toEqual({
+      ...mine.settings.config,
+      keepIdenticalOnStepChange: false,
+      waterLossMin: 2,
+      waterLossMax: 3,
+      aloeHarvestStage,
+      aloeAutoHarvest: aloeHarvestStage === 14,
+    });
+    for (const key of REMOVED_CONFIG) expect(next.settings.config).not.toHaveProperty(key);
+    expect(next.settings.config).not.toHaveProperty("keepIdenticalOnStageChange");
+    expect(next.settings.config).not.toHaveProperty("deathWater");
+    expect(next.settings.playerStats).toBe(mine.settings.playerStats);
+    expect(next.settings.policies).toBe(mine.settings.policies);
+    expect(oldConfig.keepIdenticalOnStageChange).toBe(false);
+  });
+
+  it.each(["v1", "untagged scenario", "other kind"] as const)("keeps %s imports plots-only even with optional sections present", (format) => {
+    const sc = source();
+    const mine = current();
+    const file = format === "untagged scenario" ? sc : {
+      kind: format === "v1" ? "skyshards-greenhouse-flows" : "skyshards-greenhouse-rotations",
+      version: format === "v1" ? 1 : 2,
+      plots: sc.plots,
+      startingInventory: sc.startingInventory,
+      settings: sc.settings,
+    };
+    const next = importFlows(mine, JSON.stringify(file));
+    expect(next.plots).toEqual(sc.plots);
+    expect(next.settings).toBe(mine.settings);
+    expect(next.startingInventory).toBe(mine.startingInventory);
+  });
+
+  it("does not validate extras in legacy plots-only files", () => {
+    const mine = current();
+    for (const file of [
+      { ...v2({ startingInventory: { chloronite: -1 }, settings: null }), version: 1 },
+      { plots: source().plots, startingInventory: [], settings: { seed: "invalid", playerActions: "invalid" } },
+    ]) {
+      const next = importFlows(mine, JSON.stringify(file));
+      expect(next.settings).toBe(mine.settings);
+      expect(next.startingInventory).toBe(mine.startingInventory);
+    }
+  });
+
+  it("explicit empty inventory clears existing stock, and false actions and a zero seed are retained", () => {
+    const sc = source();
+    sc.startingInventory = {};
+    sc.settings.seed = 0;
+    const mine = current();
+    const next = importFlows(mine, JSON.stringify(exportFlows(sc, { startingInventory: true, actionDefaults: true, seed: true })));
+    expect(next.startingInventory).toEqual({});
+    expect(next.startingInventory).not.toBe(mine.startingInventory);
+    expect(next.settings.playerActions).toBe(false);
+    expect(next.settings.seed).toBe(0);
+    expect(mine.startingInventory).toEqual({ magic_jellybean: 4 });
+  });
+
+  it("keeps the whole current settings object when a v2 file has no settings section", () => {
+    const mine = current();
+    const next = importFlows(mine, JSON.stringify(v2()));
+    expect(next.settings).toBe(mine.settings);
+    expect(next.startingInventory).toBe(mine.startingInventory);
+  });
+
+  it("keeps default v1 exports deep-copied without changing the scenario", () => {
+    const sc = source();
+    const before = structuredClone(sc);
+    const file = exportFlows(sc);
+    expect(sc).toEqual(before);
+    file.plots[0].flow.steps[0].watch!.push("1,1");
+    file.plots[0].policies!.watering = "toMax";
+    file.plots[0].flow.steps[0].exits[0].when.push({ kind: "cycles", n: 1 });
+    expect(sc).toEqual(before);
+  });
+
+  it("deep-copies exports, including plots, schedule windows, nested gates and config arrays", () => {
+    const sc = source();
+    const before = structuredClone(sc);
+    const file = exportFlows(sc, allOptions);
+    expect(sc).toEqual(before);
+    file.plots[0].flow.steps[0].watch!.push("1,1");
+    file.plots[0].flow.steps[0].exits[0].when.push({ kind: "cycles", n: 1 });
+    file.startingInventory!.chloronite = 0;
+    file.settings!.playerStats!.farmingFortune = 0;
+    file.settings!.policies!.gateInteractions!.wakeSnoozling = true;
+    file.settings!.config!.plotOrder!.reverse();
+    const activity = file.settings!.activity!;
+    expect(activity.kind).toBe("windows");
+    if (activity.kind === "windows") activity.windows[0].from = 0;
+    expect(sc).toEqual(before);
+  });
+
+  it("does not mutate inputs on import and gives imported sections independent deep copies", () => {
+    const mine = current();
+    const sc = source();
+    const mineBefore = structuredClone(mine);
+    const sourceBefore = structuredClone(sc);
+    const file = exportFlows(sc, allOptions);
+    const fileBefore = structuredClone(file);
+    const text = JSON.stringify(file);
+    const next = importFlows(mine, text);
+    const again = importFlows(mine, text);
+    expect(mine).toEqual(mineBefore);
+    expect(sc).toEqual(sourceBefore);
+    expect(file).toEqual(fileBefore);
+    next.plots[0].flow.steps[0].watch!.push("1,1");
+    next.startingInventory.chloronite = 0;
+    next.settings.playerStats.farmingFortune = 0;
+    next.settings.policies.gateInteractions.wakeSnoozling = true;
+    next.settings.config.plotOrder.reverse();
+    if (next.settings.activity.kind === "windows") next.settings.activity.windows[0].from = 0;
+    expect(again).toEqual(sourceBefore);
+    expect(mine).toEqual(mineBefore);
+    expect(sc).toEqual(sourceBefore);
+    expect(file).toEqual(fileBefore);
+  });
+
+  it.each([0, 3, 999, "2", null, undefined])("rejects unsupported matching-kind version %s with a readable version error", (version) => {
+    expect(() => importFlows(current(), JSON.stringify(v2({ version })))).toThrow(/version/i);
+  });
+
+  it.each([
+    { label: "negative inventory", section: "startingInventory", extras: { startingInventory: { chloronite: -1 } } },
+    { label: "string inventory quantity", section: "startingInventory", extras: { startingInventory: { chloronite: "9" } } },
+    { label: "null inventory quantity", section: "startingInventory", extras: { startingInventory: { chloronite: null } } },
+    { label: "boolean inventory quantity", section: "startingInventory", extras: { startingInventory: { chloronite: false } } },
+    { label: "null inventory", section: "startingInventory", extras: { startingInventory: null } },
+    { label: "array inventory", section: "startingInventory", extras: { startingInventory: [] } },
+    { label: "null settings", section: "settings", extras: { settings: null } },
+    { label: "array settings", section: "settings", extras: { settings: [] } },
+    { label: "null stats", section: "playerStats", extras: { settings: { playerStats: null } } },
+    { label: "array stats", section: "playerStats", extras: { settings: { playerStats: [] } } },
+    { label: "null schedule", section: "activity", extras: { settings: { activity: null } } },
+    { label: "array schedule", section: "activity", extras: { settings: { activity: [] } } },
+    { label: "null policies", section: "policies", extras: { settings: { policies: null } } },
+    { label: "array policies", section: "policies", extras: { settings: { policies: [] } } },
+    { label: "null gates", section: "policies", extras: { settings: { policies: { gateInteractions: null } } } },
+    { label: "array gates", section: "policies", extras: { settings: { policies: { gateInteractions: [] } } } },
+    { label: "null config", section: "config", extras: { settings: { config: null } } },
+    { label: "array config", section: "config", extras: { settings: { config: [] } } },
+    { label: "string actions", section: "playerActions", extras: { settings: { playerActions: "false" } } },
+    { label: "number actions", section: "playerActions", extras: { settings: { playerActions: 0 } } },
+    { label: "null actions", section: "playerActions", extras: { settings: { playerActions: null } } },
+    { label: "string seed", section: "seed", extras: { settings: { seed: "0" } } },
+    { label: "null seed", section: "seed", extras: { settings: { seed: null } } },
+    { label: "boolean seed", section: "seed", extras: { settings: { seed: false } } },
+    { label: "string stats field", section: "playerStats", extras: { settings: { playerStats: { farmingFortune: "42" } } } },
+    { label: "null config field", section: "config", extras: { settings: { config: { waterLossMin: null } } } },
+    { label: "number gate toggle", section: "policies", extras: { settings: { policies: { gateInteractions: { wakeSnoozling: 0 } } } } },
+    { label: "string policy toggle", section: "policies", extras: { settings: { policies: { replaceDecayed: "false" } } } },
+    { label: "string interval count", section: "activity", extras: { settings: { activity: { kind: "everyN", n: "5", offset: 0 } } } },
+    { label: "null online window", section: "activity", extras: { settings: { activity: { kind: "windows", windows: [null] } } } },
+  ])("rejects $label while identifying $section", ({ extras, section }) => {
+    const mine = current();
+    const before = structuredClone(mine);
+    const sectionNames: Record<string, RegExp> = {
+      startingInventory: /starting\s*inventory/i,
+      settings: /settings/i,
+      playerStats: /player\s*(stats|settings)/i,
+      activity: /activity|online\s*schedule/i,
+      policies: /policies|action\s*defaults/i,
+      config: /config|advanced\s*settings/i,
+      playerActions: /player\s*actions|action\s*defaults/i,
+      seed: /seed/i,
+    };
+    expect(() => importFlows(mine, JSON.stringify(v2(extras)))).toThrow(sectionNames[section]);
+    expect(mine).toEqual(before);
   });
 });
 

@@ -1,7 +1,13 @@
 import type { DesignerPlacement } from "../../context";
 import {
+  ARMOR_SETS,
+  CONFIG_META,
+  DEFAULT_CONFIG,
+  DEFAULT_PLAYER_STATS,
+  DEFAULT_POLICIES,
   defaultGameData,
   kindDef,
+  mergePolicies,
   MAX_PLOTS,
   migrateScenario,
   type FlowStep,
@@ -166,23 +172,160 @@ export function layoutDestinations(sc: Scenario): DestinationOption[] {
 
 export const FLOWS_FILE_KIND = "skyshards-greenhouse-flows";
 
-/**
- * The shareable part of a scenario: each plot's flow and its plot/step policy overrides.
- * Player stats, schedule, seed, Actions defaults, advanced config and starting inventory are excluded.
- */
+/** Optional scenario-wide sections. Flow details and plot/step overrides are always included. */
+export interface FlowExportOptions {
+  startingInventory: boolean;
+  playerSettings: boolean;
+  onlineSchedule: boolean;
+  actionDefaults: boolean;
+  advancedSettings: boolean;
+  seed: boolean;
+}
+
+/** Preserve the original flows-only export unless the user opts into additional sections. */
+export const DEFAULT_FLOW_EXPORT_OPTIONS: FlowExportOptions = {
+  startingInventory: false,
+  playerSettings: false,
+  onlineSchedule: false,
+  actionDefaults: false,
+  advancedSettings: false,
+  seed: false,
+};
+
+type ExportedSettings = Partial<Omit<Scenario["settings"], "playerStats" | "policies" | "config">> & {
+  playerStats?: Partial<Scenario["settings"]["playerStats"]>;
+  policies?: Scenario["plots"][number]["policies"];
+  config?: Partial<Scenario["settings"]["config"]>;
+};
+
 export interface FlowsFile {
   kind: typeof FLOWS_FILE_KIND;
-  version: 1;
+  /** v1 is the original plots-only format; v2 explicitly opts into importing optional sections. */
+  version: 1 | 2;
   plots: ScenarioPlot[];
+  startingInventory?: Scenario["startingInventory"];
+  settings?: ExportedSettings;
 }
 
-export function exportFlows(sc: Scenario): FlowsFile {
-  return { kind: FLOWS_FILE_KIND, version: 1, plots: structuredClone(sc.plots) };
+export function exportFlows(sc: Scenario, options: Partial<FlowExportOptions> = {}): FlowsFile {
+  const file: FlowsFile = { kind: FLOWS_FILE_KIND, version: 1, plots: sc.plots };
+  const settings: ExportedSettings = {};
+  if (options.startingInventory) file.startingInventory = sc.startingInventory;
+  if (options.playerSettings) {
+    // Starting time belongs to the Online panel, not the Player panel.
+    settings.playerStats = { ...sc.settings.playerStats };
+    delete settings.playerStats.startTimeOfDay;
+  }
+  if (options.onlineSchedule) {
+    settings.activity = sc.settings.activity;
+    settings.playerStats = { ...settings.playerStats, startTimeOfDay: sc.settings.playerStats.startTimeOfDay };
+  }
+  if (options.actionDefaults) {
+    settings.policies = sc.settings.policies;
+    settings.playerActions = sc.settings.playerActions !== false;
+  }
+  if (options.advancedSettings) settings.config = sc.settings.config;
+  if (options.seed) settings.seed = sc.settings.seed;
+  if (Object.keys(settings).length) file.settings = settings;
+  if (file.settings || file.startingInventory !== undefined) file.version = 2;
+  return structuredClone(file);
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+const finiteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+function sectionRecord(value: unknown, section: string): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error(`${section} must be an object.`);
+  return value;
+}
+
+/** Validate recognized fields before they can reach panels or the worker; ignore future unknown keys. */
+function readSettingsSection<T extends object>(value: unknown, defaults: T, section: string): Partial<T> {
+  const raw = sectionRecord(value, section);
+  const entries = Object.entries(defaults).flatMap(([key, example]) => {
+    if (!(key in raw)) return [];
+    const v = raw[key];
+    const valid = typeof example === "number" ? finiteNumber(v)
+      : Array.isArray(example) ? Array.isArray(v) && v.every(finiteNumber)
+      : typeof v === typeof example;
+    if (!valid) throw new Error(`${section}: invalid ${key}.`);
+    return [[key, v]];
+  });
+  return Object.fromEntries(entries) as Partial<T>;
+}
+
+function importOptionalSections(sc: Scenario, file: Record<string, unknown>): Scenario {
+  let next = sc;
+  if ("startingInventory" in file) {
+    const inventory = sectionRecord(file.startingInventory, "Starting inventory");
+    for (const [item, qty] of Object.entries(inventory)) {
+      if (!finiteNumber(qty) || qty < 0) throw new Error(`Starting inventory: ${item} must have a non-negative amount.`);
+    }
+    next = { ...next, startingInventory: structuredClone(inventory) as Scenario["startingInventory"] };
+  }
+  if (!("settings" in file)) return next;
+  const raw = sectionRecord(file.settings, "Settings");
+  const settings = { ...sc.settings };
+  if ("playerStats" in raw) {
+    const stats = readSettingsSection(raw.playerStats, DEFAULT_PLAYER_STATS, "Player settings");
+    if (stats.armorSet !== undefined && !ARMOR_SETS.includes(stats.armorSet)) throw new Error("Player settings: invalid armorSet.");
+    settings.playerStats = { ...settings.playerStats, ...stats };
+  }
+  if ("activity" in raw) {
+    const activity = sectionRecord(raw.activity, "Online schedule");
+    if (activity.kind === "everyN" && finiteNumber(activity.n) && Number.isInteger(activity.n) && activity.n >= 1 &&
+        finiteNumber(activity.offset) && Number.isInteger(activity.offset) && activity.offset >= 0) {
+      settings.activity = { kind: "everyN", n: activity.n, offset: activity.offset };
+    } else if (activity.kind === "windows" && Array.isArray(activity.windows) && activity.windows.every((w) =>
+      isRecord(w) && finiteNumber(w.from) && w.from >= 0 && w.from <= 24 && finiteNumber(w.to) && w.to >= 0 && w.to <= 24)) {
+      settings.activity = { kind: "windows", windows: structuredClone(activity.windows) };
+    } else {
+      throw new Error("Online schedule: expected valid cycle intervals or time windows.");
+    }
+  }
+  if ("playerActions" in raw) {
+    if (typeof raw.playerActions !== "boolean") throw new Error("Action defaults: playerActions must be a boolean.");
+    settings.playerActions = raw.playerActions;
+  }
+  if ("policies" in raw) {
+    const policies = sectionRecord(raw.policies, "Action defaults");
+    const { gateInteractions: gates, ...scalarDefaults } = DEFAULT_POLICIES;
+    const patch = readSettingsSection(policies, scalarDefaults, "Action defaults");
+    const choices = {
+      spawnedHarvest: ["whenFullyGrown", "beforeDecay", "never"],
+      layoutInputSpawns: ["keep", "harvest"],
+      baseCropUpkeep: ["leaveUntilDecay", "harvestWhenGrown", "harvestBeforeDecay"],
+      watering: ["toMax", "never"],
+    };
+    for (const [key, allowed] of Object.entries(choices)) {
+      if (key in policies && !allowed.includes(policies[key] as string)) throw new Error(`Action defaults: invalid ${key}.`);
+    }
+    const gateInteractions = "gateInteractions" in policies ? readSettingsSection(policies.gateInteractions, gates, "Action defaults: gateInteractions") : undefined;
+    settings.policies = mergePolicies(settings.policies, { ...patch, gateInteractions });
+  }
+  if ("config" in raw) {
+    const config = readSettingsSection(raw.config, DEFAULT_CONFIG, "Advanced settings");
+    for (const meta of CONFIG_META) {
+      if (meta.key in config && meta.input.type === "select" && !meta.input.options.includes(config[meta.key] as string)) {
+        throw new Error(`Advanced settings: invalid ${meta.key}.`);
+      }
+    }
+    if (config.plotOrder && (new Set(config.plotOrder).size !== config.plotOrder.length || config.plotOrder.some((id) => ![1, 2, 3].includes(id)))) {
+      throw new Error("Advanced settings: plotOrder must contain unique plot ids (1, 2 or 3).");
+    }
+    settings.config = { ...settings.config, ...structuredClone(config) };
+  }
+  if ("seed" in raw) {
+    if (!finiteNumber(raw.seed)) throw new Error("Random seed must be a number.");
+    settings.seed = raw.seed;
+  }
+  return { ...next, settings };
 }
 
 /**
- * Reads a flows file (or a full scenario export, using only its plots) into `sc`, replacing
- * its plots. Throws a readable message when the file is unusable.
+ * Replaces plots and applies explicitly included v2 sections, preserving omitted settings.
+ * Legacy v1 files and untagged full scenarios still import plots only.
+ * Throws a readable message when the file is unusable.
  */
 export function importFlows(sc: Scenario, text: string): Scenario {
   let parsed: unknown;
@@ -191,7 +334,11 @@ export function importFlows(sc: Scenario, text: string): Scenario {
   } catch {
     throw new Error("That is not valid JSON.");
   }
-  const plots = (migrateScenario(parsed) as { plots?: unknown } | null)?.plots;
+  const file = migrateScenario(parsed);
+  if (isRecord(file) && file.kind === FLOWS_FILE_KIND && file.version !== 1 && file.version !== 2) {
+    throw new Error("Unsupported flows file version. Export it again with a supported version of the simulator.");
+  }
+  const plots = isRecord(file) ? file.plots : undefined;
   if (!Array.isArray(plots) || plots.length === 0) throw new Error("No plots found. Expected an exported flows file.");
   if (plots.length > MAX_PLOTS) throw new Error(`At most ${MAX_PLOTS} plots; the file has ${plots.length}.`);
   const seen = new Set<number>();
@@ -210,7 +357,8 @@ export function importFlows(sc: Scenario, text: string): Scenario {
     ...p,
     flow: { steps: p.flow.steps, loop: !!p.flow.loop, startIndex: Math.min(Math.max(0, Math.floor(Number(p.flow.startIndex) || 0)), p.flow.steps.length - 1) },
   }));
-  return { ...sc, plots: structuredClone(clean).sort((a, b) => a.id - b.id) };
+  const next = isRecord(file) && file.kind === FLOWS_FILE_KIND && file.version === 2 ? importOptionalSections(sc, file) : sc;
+  return { ...next, plots: structuredClone(clean).sort((a, b) => a.id - b.id) };
 }
 
 export function removePlot(sc: Scenario, plotId: number): Scenario {

@@ -310,8 +310,8 @@ function jobSteps(b: BuiltJob, plot: 1 | 2 | 3, c: Ctx, preempt: StepExit[]): Fl
         const reset: StepExit = { to: id, when: [{ kind: "highestStageBelow", mutationId: target, stage: Math.min(...stages) }], checkOnEntry: true };
         return [farm, { id: `${id}-pick`, label: `${label}: break it early (${stages.map((s, n) => `stage ${s} with ${n} owned`).join(", ")})`, layout: { code: encode(pick) }, exits: [reset, { to: id, when: [{ kind: "cycles", n: 1 }] }], watch: [] }];
       }
-      if (id !== "noct-flesh") return [farm];
-      // Target labels don't clear inherited Jellybeans (which otherwise wait 120
+      if (!b.def.scrubOnEntry) return [farm];
+      // Target labels don't clear inherited plants (Jellybeans otherwise wait 120
       // stages). Clear their complete footprints ONCE on entry, preserving paid
       // input anchors. Never scrub repeatedly while legitimate targets grow.
       return [
@@ -331,7 +331,7 @@ export function buildPlots(built: BuiltJob[], priorities: Record<1 | 2 | 3, stri
     const focusOf = (b: BuiltJob) => built.filter((v) => v.def.focusOf === b.def.id && v.def.plots.includes(plot));
     // Each full job is followed by its focus variants (their own steps).
     const order = listed.flatMap((b) => [b, ...focusOf(b)]);
-    const entry = (b: BuiltJob): string => (b.def.id === "noct-flesh" ? `${b.def.id}-prepare` : b.def.id);
+    const entry = (b: BuiltJob): string => (b.def.scrubOnEntry ? `${b.def.id}-prepare` : b.def.id);
     const startOf = (b: BuiltJob): StepExit => ({ to: entry(b), when: [wanted(b, c), ...inStock(b, plot)], checkOnEntry: true });
     // Hub exits: [focused variants] -> full job -> [fallback variants]. A variant is
     // "focused" when only its products are wanted (the family's other products are at

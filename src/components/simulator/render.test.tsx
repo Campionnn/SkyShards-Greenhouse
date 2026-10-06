@@ -246,6 +246,36 @@ describe("simulator panels render", () => {
     expect(() => wrap(<SustainabilityPanel report={view.snapshot!.report} summary={old as typeof state.summary} />)).not.toThrow();
   });
 
+  it("placed items and losses are separate disclosures, collapsed by default", () => {
+    const report = view.snapshot!.report;
+    const watched = report.items.filter((item) => item.consumed > 0 || item.shortfall > 0);
+    expect(watched.length).toBeGreaterThan(0);
+    const summary = { ...state.summary, extended: { wheat: 3 } };
+    const html = wrap(<SustainabilityPanel report={report} summary={summary} />).replace(/<!-- -->/g, "");
+    const disclosures = [...html.matchAll(/<details\b([^>]*)>([\s\S]*?)<\/details>/g)];
+
+    expect(disclosures).toHaveLength(2);
+    for (const [attributes, content] of disclosures.map((match) => [match[1], match[2]])) {
+      expect(attributes).not.toMatch(/\bopen(?:\s|=|$)/);
+      expect(content).toMatch(/^<summary\b[^>]*>/);
+      expect(content).toContain("group-open:rotate-90");
+    }
+    expect(disclosures[0][2]).toContain("Placed items</summary>");
+    expect(disclosures[0][2]).toContain(">used</span>");
+    expect(disclosures[0][2]).not.toContain("decay timers extended");
+    expect(disclosures[1][2]).toContain("Losses, halts and decay extensions</summary>");
+    expect(disclosures[1][2]).toContain("3 Wheat decay timers extended (minimum not met)");
+  });
+
+  it("empty sustainability detail sections stay hidden", () => {
+    const report = { ...view.snapshot!.report, items: [] };
+    const summary = { ...state.summary, decayed: {}, destroyed: {}, extended: {}, driedOut: {} };
+    const html = wrap(<SustainabilityPanel report={report} summary={summary} />);
+    expect(html).not.toContain("<details");
+    expect(html).not.toContain("Placed items");
+    expect(html).not.toContain("Losses, halts and decay extensions");
+  });
+
   it("the Advanced tab counts the settings changed from their defaults", () => {
     const tuned = structuredClone(sc);
     tuned.settings.config.waterLossMin = 2;
