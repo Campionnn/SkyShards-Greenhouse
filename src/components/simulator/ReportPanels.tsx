@@ -3,7 +3,8 @@ import { ChevronDown, ChevronRight, Coins, Minus, Package, Plus, ShieldCheck, Sh
 import { UNIQUE_CROP_CAP, uptimeRatio, type RunSummary, type SimulationState, type SpotReport, type SustainabilityReport, type UptimeCounts } from "../../simulator";
 import { InfoHint, Panel, SectionLabel, SegmentedControl } from "../ui";
 import { CropImage } from "../shared";
-import { allItemIds, debtText, spotFailureText, formatCoins, formatCount, formatDuration, formatRate, itemCategory, nameOf, npcPriceFor, type ItemCategory } from "./format";
+import { getRarityTextColor } from "../../utilities/rarity";
+import { allItemIds, debtText, spotFailureText, formatCoins, formatCount, formatDuration, formatRate, itemCategory, nameOf, npcPriceFor, rarityOf, type ItemCategory } from "./format";
 import { IdSelect, NumberInput, Stat } from "./controls";
 import { buttonClass, inputClass } from "./styles";
 
@@ -687,7 +688,7 @@ export const InventoryPanel: React.FC<{
                   {rows.map((r) => (
                     <React.Fragment key={r.id}>
                       <CropImage cropId={r.id} cropName={nameOf(r.id)} size="xs" showFallback />
-                      <span className="text-slate-300 break-words min-w-0">{nameOf(r.id)}</span>
+                      <span className={`${isMut ? getRarityTextColor(rarityOf(r.id) ?? "common") : "text-slate-300"} break-words min-w-0`}>{nameOf(r.id)}</span>
                       {isMut ? (
                         <>
                           {showHeld && (

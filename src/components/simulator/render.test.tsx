@@ -4,7 +4,8 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { GreenhouseDataProvider, InfoModalProvider } from "../../context";
 import type { SimulationView } from "../../hooks/useSimulation";
-import { sanityCheck } from "../../simulator";
+import { defaultGameData, sanityCheck } from "../../simulator";
+import { getRarityTextColor } from "../../utilities/rarity";
 import { engine, flow, inject, LAYOUT_A_CODE, LAYOUT_B_CODE, layout, scenario, singlePlot, start as startOf, step } from "../../simulator/testHelpers";
 import { ToastProvider } from "../ui";
 import { PlotMarkLegend, PlotView } from "./PlotView";
@@ -57,6 +58,21 @@ const wrap = (node: React.ReactNode) =>
 
 describe("simulator panels render", () => {
   const state = after.state;
+
+  it("inventory mutation names use their rarity colors without recoloring other items", () => {
+    const data = defaultGameData();
+    const inventory = Object.fromEntries([...data.mutationIds, "wheat", "fermento", "dead_plant"].map((id) => [id, 10]));
+    const inventoryState = startOf(singlePlot(layout(), { inventory }));
+    const html = wrap(<InventoryPanel state={inventoryState} />);
+
+    for (const id of data.mutationIds) {
+      const mutation = data.mutations[id];
+      expect(html).toContain(`<span class="${getRarityTextColor(mutation.rarity ?? "common")} break-words min-w-0">${mutation.name}</span>`);
+    }
+    for (const name of ["Wheat", "Fermento", "Dead Plant"]) {
+      expect(html).toContain(`<span class="text-slate-300 break-words min-w-0">${name}</span>`);
+    }
+  });
 
   it("plots", () => {
     const html = wrap(
