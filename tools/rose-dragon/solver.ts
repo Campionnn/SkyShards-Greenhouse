@@ -2,7 +2,7 @@
  * Local solver client (SkyShards-Solver on 127.0.0.1:8765) with an on-disk cache,
  * so re-running the generator never re-solves a layout it already has.
  *
- * Only used while DESIGNING layouts (tools/rose-dragon/design.ts). The generated
+ * Only used while generating or exploring layouts. The generated
  * flow stores plain share codes; nothing at runtime talks to the solver.
  */
 import { createHash } from "node:crypto";
@@ -61,21 +61,28 @@ export function defaultPriorities(): Record<string, number> {
   return JSON.parse(readFileSync(p, "utf8"));
 }
 
+/** Same effect objective used by the calculator's default solver settings. */
+export function defaultEffectWeights(): Record<string, number> {
+  const p = join(HERE, "..", "..", "public", "greenhouse", "default_effect_weights.json");
+  return JSON.parse(readFileSync(p, "utf8"));
+}
+
 /** Cache files read or written by this process (cli-generate --prune deletes the others). */
 export const usedCacheFiles = new Set<string>();
 export const CACHE_PATH = CACHE_DIR;
 
-// At most 2 solves at a time: the local solver shares its threads between jobs.
-let running = 0;
-const waiting: (() => void)[] = [];
+// Exactly one local solve at a time: each request can use the user's CPU fully.
+// Chain reservations rather than counting permits (which can race on handoff).
+let solveQueue: Promise<void> = Promise.resolve();
 async function slot<T>(fn: () => Promise<T>): Promise<T> {
-  if (running >= 2) await new Promise<void>((r) => waiting.push(r));
-  running++;
+  const previous = solveQueue;
+  let release!: () => void;
+  solveQueue = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
   try {
     return await fn();
   } finally {
-    running--;
-    waiting.shift()?.();
+    release();
   }
 }
 
@@ -89,7 +96,7 @@ async function solveNow(req: SolveRequest): Promise<SolveResult> {
     targets: req.targets.map((t) => ({ mutation: t.mutation, maximize: !!t.maximize, count: t.maximize ? null : t.count ?? 1 })),
     priorities: req.priorities ?? defaultPriorities(),
     locks: req.locks ?? [],
-    effect_weights: req.effectWeights ?? {},
+    effect_weights: req.effectWeights ?? defaultEffectWeights(),
     ...(req.uniqueCrops ? { unique_crops: req.uniqueCrops } : {}),
   };
   const timeLimit = req.timeLimit ?? 20;

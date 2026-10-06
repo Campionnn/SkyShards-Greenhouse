@@ -15,7 +15,7 @@ import { writeFileSync } from "node:fs";
 import type { Condition, FlowStep, StepExit } from "../../src/simulator/flow/types";
 import type { ScenarioPlot } from "../../src/simulator/sim/state";
 import { GOAL, JOBS, PLOT_PRIORITY, type JobDef } from "./jobs";
-import { encode, fromAscii, fromSolve, inputCost, merge, type Layout } from "./layouts";
+import { cheapestCarve, clearTargetCells, encode, fromAscii, fromSolve, inputCost, merge, targetCounts, type Layout } from "./layouts";
 import { rect, solve } from "./solver";
 
 /** Plot 2 keeps one of each unique crop group in column 9 for the Unique Crop Bonus. */
@@ -26,7 +26,6 @@ export const STRIP: Layout = {
   ),
   targets: [],
 };
-const YIELD_WEIGHTS = { improved_harvest_boost: 0.3, harvest_boost: 0.2, harvest_loss: -0.2, immunity: 0.02 };
 /** Never counted as needed: assumed bought / free. */
 const FREE_ITEMS = new Set(["fermento", "dead_plant"]);
 /** high mark = HIGH_FACTOR x what all consumer layouts place together. */
@@ -38,6 +37,19 @@ export interface BuiltJob {
   layouts: Partial<Record<1 | 2 | 3, { layout: Layout; code: string }>>;
   cost: Record<string, number>;
   produces: string[];
+  /** Expandable jobs (`startWith`): the starter sub-layout per plot. */
+  starter?: Partial<Record<1 | 2 | 3, { layout: Layout; code: string }>>;
+}
+
+/** Starter sub-layouts for an expandable job (Plot 2 keeps its unique-crop strip). */
+export function withStarter(b: BuiltJob): BuiltJob {
+  if (!b.def.startWith) return b;
+  const starter: BuiltJob["starter"] = {};
+  for (const plot of b.def.plots) {
+    const layout = cheapestCarve(b.layouts[plot]!.layout, b.def.startWith, (p) => plot === STRIP_PLOT && p.position[1] === 9);
+    starter[plot] = { layout, code: encode(layout) };
+  }
+  return { ...b, starter };
 }
 
 async function layoutFor(def: JobDef, plot: 1 | 2 | 3): Promise<Layout> {
@@ -45,32 +57,43 @@ async function layoutFor(def: JobDef, plot: 1 | 2 | 3): Promise<Layout> {
   if (def.ascii) layout = fromAscii(def.ascii.rows, def.ascii.legend);
   else {
     const cells = plot === STRIP_PLOT ? rect(0, 0, 9, 8) : undefined;
-    const r = await solve({ cells, targets: def.targets!, timeLimit: def.timeLimit ?? 20, effectWeights: def.yieldEffects ? YIELD_WEIGHTS : undefined });
+    const r = await solve({ cells, targets: def.targets!, timeLimit: def.timeLimit ?? 300 });
+    if (!["OPTIMAL", "FEASIBLE"].includes(r.status)) {
+      throw new Error(`Plot ${plot}/${def.id}: local solver returned ${r.status}, not a usable layout`);
+    }
     layout = fromSolve(r);
+    const actual = targetCounts(layout);
+    for (const { mutation, count } of def.targets!) {
+      if (actual[mutation] !== count) {
+        throw new Error(`Plot ${plot}/${def.id}: expected ${count} ${mutation} targets, got ${actual[mutation] ?? 0}`);
+      }
+    }
   }
   if (plot === STRIP_PLOT) {
     layout = { inputs: layout.inputs.filter((p) => p.position[1] < 9), targets: layout.targets.filter((p) => p.position[1] < 9), ground: (layout.ground ?? []).filter((g) => g.position[1] < 9) };
     layout = merge(layout, STRIP);
   }
+  // Keep only solver-selected requirements and effect sources. Empty cells are
+  // opportunities for useful mutation targets, never cosmetic crop padding.
   return layout;
 }
 
 export async function buildJobs(jobs: JobDef[] = JOBS): Promise<BuiltJob[]> {
-  return Promise.all(
-    jobs.map(async (def) => {
-      const layouts: BuiltJob["layouts"] = {};
-      let cost: Record<string, number> = {};
-      for (const plot of def.plots) {
-        const layout = await layoutFor(def, plot);
-        layouts[plot] = { layout, code: encode(layout) };
-        const c = inputCost(layout);
-        // marks use the largest version of the layout
-        for (const [k, v] of Object.entries(c)) cost[k] = Math.max(cost[k] ?? 0, v);
-      }
-      cost = Object.fromEntries(Object.entries(cost).sort());
-      return { def, layouts, cost, produces: def.produces ?? def.targets!.map((t) => t.mutation) };
-    })
-  );
+  const built: BuiltJob[] = [];
+  for (const def of jobs) {
+    const layouts: BuiltJob["layouts"] = {};
+    let cost: Record<string, number> = {};
+    for (const plot of def.plots) {
+      const layout = await layoutFor(def, plot);
+      layouts[plot] = { layout, code: encode(layout) };
+      const c = inputCost(layout);
+      // Marks use the largest version of the layout, not duplicate plot copies.
+      for (const [k, v] of Object.entries(c)) cost[k] = Math.max(cost[k] ?? 0, v);
+    }
+    cost = Object.fromEntries(Object.entries(cost).sort());
+    built.push(withStarter({ def, layouts, cost, produces: def.produces ?? def.targets!.map((t) => t.mutation) }));
+  }
+  return built;
 }
 
 export interface Marks {
@@ -79,18 +102,30 @@ export interface Marks {
 }
 
 /** low = the most any one consumer layout places; high = HIGH_FACTOR x all consumers together (+ extra). */
-export function computeMarks(built: BuiltJob[]): Marks {
+/** Cost per job family (full job + its focus variants): one consumer, componentwise max. */
+function familyCosts(built: BuiltJob[]): Record<string, number>[] {
+  const fam = new Map<string, Record<string, number>>();
+  for (const b of built) {
+    const id = b.def.focusOf ?? b.def.id;
+    const c = fam.get(id) ?? {};
+    for (const [k, n] of Object.entries(b.cost)) c[k] = Math.max(c[k] ?? 0, n);
+    fam.set(id, c);
+  }
+  return [...fam.values()];
+}
+
+export function computeMarks(built: BuiltJob[], highFactor = HIGH_FACTOR): Marks {
   const low: Record<string, number> = {};
   const sum: Record<string, number> = {};
-  for (const b of built) {
-    for (const [item, n] of Object.entries(b.cost)) {
+  for (const cost of familyCosts(built)) {
+    for (const [item, n] of Object.entries(cost)) {
       if (FREE_ITEMS.has(item)) continue;
       low[item] = Math.max(low[item] ?? 0, n);
       sum[item] = (sum[item] ?? 0) + n;
     }
   }
   const high: Record<string, number> = {};
-  for (const item of Object.keys(sum)) high[item] = Math.max(low[item], Math.ceil(sum[item] * HIGH_FACTOR));
+  for (const item of Object.keys(sum)) high[item] = Math.max(low[item], Math.ceil(sum[item] * highFactor));
   for (const b of built) for (const [item, n] of Object.entries(b.def.extra ?? {})) high[item] = (high[item] ?? 0) + n;
   for (const [l, n] of Object.entries(GOAL)) {
     low[l] = n;
@@ -163,25 +198,31 @@ function satisfied(b: BuiltJob, c: Ctx): Condition[] {
   });
 }
 
-function inStock(b: BuiltJob): Condition[] {
-  return Object.entries(b.cost).map(([item, n]) => ({ kind: "inventoryAtLeast", item, qty: n }));
+/** Actual plot cost for dispatch; global maximum costs are only for demand marks. */
+function inStock(b: BuiltJob, plot: 1 | 2 | 3): Condition[] {
+  return costIn(b.layouts[plot]!.layout);
 }
+function costIn(l: Layout): Condition[] {
+  return Object.entries(inputCost(l)).map(([item, n]) => ({ kind: "inventoryAtLeast", item, qty: n }));
+}
+const targetCountText = (l: Layout) => Object.entries(targetCounts(l)).map(([m, n]) => `${n} ${m}`).join(", ");
 
 /**
  * Wanted and every farm-made input in stock, but short of a bought item (Fermento,
  * Dead Plant): the player has to add those to the inventory. Null if it uses none.
  */
-function blockedOnSupplies(b: BuiltJob, c: Ctx): Condition | null {
-  const bought = Object.entries(b.cost).filter(([item]) => FREE_ITEMS.has(item));
+function blockedOnSupplies(b: BuiltJob, plot: 1 | 2 | 3, c: Ctx): Condition | null {
+  const cost = inputCost(b.layouts[plot]!.layout);
+  const bought = Object.entries(cost).filter(([item]) => FREE_ITEMS.has(item));
   if (!bought.length) return null;
-  const made = Object.entries(b.cost)
+  const made = Object.entries(cost)
     .filter(([item]) => !FREE_ITEMS.has(item))
     .map(([item, n]): Condition => ({ kind: "inventoryAtLeast", item, qty: n }));
   const short = anyOf(bought.map(([item, n]): Condition => ({ kind: "inventoryBelow", item, qty: n })));
   return allOf([wanted(b, c), ...made, short]);
 }
 
-/** What to add to the starting inventory (measured: 63-160 Dead Plants and 10-30 Fermento per run from empty). */
+/** Suggested purchased-supply buffer; not a guarantee for every seed/settings. */
 export const SUPPLIES_ADVICE = "add Dead Plant x250 and Fermento x50 to the inventory";
 
 const IDLE: Record<1 | 2 | 3, Layout> = {
@@ -196,29 +237,33 @@ function jobSteps(b: BuiltJob, plot: 1 | 2 | 3, c: Ctx, preempt: StepExit[]): Fl
   const id = b.def.id;
   const label = b.def.label;
   const done: StepExit = { to: "hub", when: satisfied(b, c), checkOnEntry: true };
+  // Pending exits may have been latched while offline, before another plot spent stock.
+  // Recheck BEFORE placement, not just after the engine has attempted to spend inputs.
+  const short: StepExit = { to: "hub", when: [{ kind: "layoutShort" }], checkOnEntry: true };
   switch (b.def.special) {
     case "noReplaceWhileGrowing": {
       const target = b.def.targets![0].mutation;
-      return [
-        {
-          id,
-          label: `${label}: waiting for a spawn`,
-          layout: { code },
-          exits: [
-            done,
-            { to: `${id}-grow`, when: [{ kind: "targetsFilled", count: 1 }] },
-            // roots ate inputs the inventory can't replace: go make more
-            { to: "hub", when: [{ kind: "layoutShort" }] },
-          ],
-        },
-        {
-          id: `${id}-grow`,
-          label: `${label}: growing (don't re-place eaten inputs)`,
-          layout: { code },
-          policies: { replaceDecayed: false },
-          exits: [done, { to: id, when: [{ kind: "highestStageBelow", mutationId: target, stage: 1 }] }],
-        },
-      ];
+      const noTarget: Condition = { kind: "highestStageBelow", mutationId: target, stage: 0 };
+      // One step keeps every surviving input (and its effects) while roots grow.
+      // A separate grow-layout transition would either refill eaten paid inputs,
+      // or destroy omitted survivors. Refresh this layout only AFTER harvest/decay.
+      // The current exact 4+4 ring cannot spawn again once a paid input decays,
+      // so an offline-latched refresh cannot interrupt a newly spawned Devourer.
+      return [{
+        id,
+        label: `${label}: keep inputs while growing`,
+        layout: { code },
+        policies: { replaceDecayed: false },
+        exits: [
+          done,
+          { ...short, when: [...short.when, noTarget] },
+          { to: id, when: [noTarget, anyOf([
+            { kind: "mutationHarvested", mutationId: target, count: 1 },
+            { kind: "plantDecayed", kindId: target },
+            ...Object.keys(inputCost(layout)).map((kindId): Condition => ({ kind: "plantDecayed", kindId })),
+          ])] },
+        ],
+      }];
     }
     case "jellyBreak": {
       // Picking step: the same layout with Sugar Cane on the target cells, so the step
@@ -229,7 +274,7 @@ function jobSteps(b: BuiltJob, plot: 1 | 2 | 3, c: Ctx, preempt: StepExit[]): Fl
           id,
           label,
           layout: { code },
-          exits: [done, { to: `${id}-pick`, when: [{ kind: "targetsFilled", count: 0 }, { kind: "lowestStageAtLeast", mutationId: "magic_jellybean", stage: b.def.breakStage ?? 36 }] }],
+          exits: [done, short, { to: `${id}-pick`, when: [{ kind: "targetsFilled", count: 0 }, { kind: "lowestStageAtLeast", mutationId: "magic_jellybean", stage: b.def.breakStage ?? 36 }] }],
         },
         { id: `${id}-pick`, label: `${label}: break the Jellybeans (stage ${b.def.breakStage ?? 36}+)`, layout: { code: encode(pick) }, exits: [{ to: "hub", when: [{ kind: "cycles", n: 1 }] }], watch: [] },
       ];
@@ -246,21 +291,68 @@ function jobSteps(b: BuiltJob, plot: 1 | 2 | 3, c: Ctx, preempt: StepExit[]): Fl
           watch: [],
         },
       ];
-    default:
-      // layoutShort: inputs decayed or got destroyed and the inventory can't replace them.
-      // A filler is also left for any farm above it in the plot's list that can start now.
-      return [{ id, label, layout: { code }, exits: [done, ...preempt, { to: "hub", when: [{ kind: "layoutShort" }] }] }];
+    default: {
+      const farm: FlowStep = { id, label, layout: { code }, exits: [done, short, ...preempt] };
+      if (b.def.pickStages) {
+        // Break the target early (step change harvests it), keep every input, resume.
+        const target = b.def.targets![0].mutation;
+        const stages = b.def.pickStages;
+        const due = anyOf(stages.map((stage, n): Condition => allOf([
+          ...(n > 0 ? [{ kind: "inventoryAtLeast", item: target, qty: n } as Condition] : []),
+          ...(n < stages.length - 1 ? [{ kind: "inventoryBelow", item: target, qty: n + 1 } as Condition] : []),
+          { kind: "highestStageAtLeast", mutationId: target, stage },
+        ])));
+        farm.exits.push({ to: `${id}-pick`, when: [due] });
+        const pick: Layout = { inputs: [...layout.inputs, ...layout.targets.map((t) => ({ cropId: "sugar_cane", position: t.position }))], targets: [], ground: layout.ground };
+        // A break latched while offline is applied at the next session without a recheck.
+        // If the target reset to stage 1 meanwhile, skip the pick (checked on arrival) so
+        // a worthless stage-1 plant is not broken.
+        const reset: StepExit = { to: id, when: [{ kind: "highestStageBelow", mutationId: target, stage: Math.min(...stages) }], checkOnEntry: true };
+        return [farm, { id: `${id}-pick`, label: `${label}: break it early (${stages.map((s, n) => `stage ${s} with ${n} owned`).join(", ")})`, layout: { code: encode(pick) }, exits: [reset, { to: id, when: [{ kind: "cycles", n: 1 }] }], watch: [] }];
+      }
+      if (id !== "noct-flesh") return [farm];
+      // Target labels don't clear inherited Jellybeans (which otherwise wait 120
+      // stages). Clear their complete footprints ONCE on entry, preserving paid
+      // input anchors. Never scrub repeatedly while legitimate targets grow.
+      return [
+        { id: `${id}-prepare`, label: `${label}: clear inherited target blockers`, layout: { code: encode(clearTargetCells(layout)) }, exits: [done, short, { to: id, when: [{ kind: "cycles", n: 1 }] }], watch: [] },
+        farm,
+      ];
+    }
   }
 }
 
-export function buildPlots(built: BuiltJob[]): ScenarioPlot[] {
-  const c: Ctx = { marks: computeMarks(built), down: downstream(built) };
+export function buildPlots(built: BuiltJob[], priorities: Record<1 | 2 | 3, string[]> = PLOT_PRIORITY, highFactor = HIGH_FACTOR): ScenarioPlot[] {
+  const c: Ctx = { marks: computeMarks(built, highFactor), down: downstream(built) };
   const byId = new Map(built.map((b) => [b.def.id, b]));
   const allOwned = Object.keys(GOAL).map(owned);
   return ([1, 2, 3] as const).map((plot) => {
-    const order = PLOT_PRIORITY[plot].map((id) => byId.get(id)!).filter((b) => b && b.def.plots.includes(plot));
-    const start = order.map((b): StepExit => ({ to: b.def.id, when: [wanted(b, c), ...inStock(b)], checkOnEntry: true }));
-    const blocked = order.map((b) => blockedOnSupplies(b, c)).filter((x): x is Condition => x !== null);
+    const listed = priorities[plot].map((id) => byId.get(id)!).filter((b) => b && b.def.plots.includes(plot) && !b.def.focusOf);
+    const focusOf = (b: BuiltJob) => built.filter((v) => v.def.focusOf === b.def.id && v.def.plots.includes(plot));
+    // Each full job is followed by its focus variants (their own steps).
+    const order = listed.flatMap((b) => [b, ...focusOf(b)]);
+    const entry = (b: BuiltJob): string => (b.def.id === "noct-flesh" ? `${b.def.id}-prepare` : b.def.id);
+    const startOf = (b: BuiltJob): StepExit => ({ to: entry(b), when: [wanted(b, c), ...inStock(b, plot)], checkOnEntry: true });
+    // Hub exits: [focused variants] -> full job -> [fallback variants]. A variant is
+    // "focused" when only its products are wanted (the family's other products are at
+    // their low marks or obsolete): the smaller layout then makes exactly what is short
+    // without paying for the full layout. Fallback: the full layout can't be stocked.
+    const start = listed.flatMap((b): StepExit[] => {
+      const vs = focusOf(b);
+      const focused = vs.map((v): StepExit => {
+        const others = b.produces.filter((p) => !v.produces.includes(p));
+        const fine = others.map((p): Condition => {
+          const atLow: Condition = { kind: "inventoryAtLeast", item: p, qty: c.marks.low[p] ?? 1 };
+          const obs = obsolete(p, c);
+          return obs && !(p in GOAL) ? anyOf([atLow, obs]) : atLow;
+        });
+        return { ...startOf(v), when: [...startOf(v).when, ...fine] };
+      });
+      // Expandable: start small when only the starter is affordable.
+      const starter = b.starter?.[plot] ? [{ to: `${b.def.id}-start`, when: [wanted(b, c), ...costIn(b.starter[plot]!.layout)], checkOnEntry: true }] : [];
+      return [...focused, startOf(b), ...starter, ...vs.filter((v) => v.def.fallback !== false).map(startOf)];
+    });
+    const blocked = order.map((b) => blockedOnSupplies(b, plot, c)).filter((x): x is Condition => x !== null);
     const hub: FlowStep = {
       id: "hub",
       label: "Choose next farm (idle: waiting for another plot's items; empty farmland grows Lonelilies)",
@@ -285,7 +377,43 @@ export function buildPlots(built: BuiltJob[]): ScenarioPlot[] {
     const steps: FlowStep[] = [
       hub,
       ...(blocked.length ? [supplies] : []),
-      ...order.flatMap((b, i) => jobSteps(b, plot, c, b.def.filler ? start.slice(0, i).map(({ checkOnEntry: _, ...e }) => e) : [])),
+      ...order.flatMap((b) => {
+        // Filler preemption: any hub exit to an earlier job family.
+        const earlier = new Set(listed.slice(0, listed.findIndex((x) => x.def.id === (b.def.focusOf ?? b.def.id))).flatMap((x) => [x, ...focusOf(x)].map(entry)));
+        const head = b.def.focusOf ? byId.get(b.def.focusOf)! : b;
+        const earlierStarts = start.filter((e) => earlier.has(e.to!)).map(({ checkOnEntry: _, ...e }) => ({ ...e, to: "hub" }));
+        if (b.def.filler) return jobSteps(b, plot, c, earlierStarts);
+        if (b.starter?.[plot]) {
+          // Starter: the cheapest sub-layout. Upgrade in place once the difference to the
+          // full layout is in stock; identical placed inputs and growing targets survive.
+          const s = b.starter[plot]!;
+          const full = inputCost(b.layouts[plot]!.layout);
+          const have = inputCost(s.layout);
+          const extra = Object.entries(full).map(([item, n]) => [item, n - (have[item] ?? 0)] as const).filter(([, n]) => n > 0);
+          const upgrade: StepExit = { to: b.def.id, when: extra.map(([item, n]): Condition => ({ kind: "inventoryAtLeast", item, qty: n })) };
+          const starterStep: FlowStep = {
+            id: `${b.def.id}-start`,
+            label: `${b.def.label}: starter (${targetCountText(s.layout)}); expands when the rest is in stock`,
+            layout: { code: s.code },
+            exits: [
+              { to: "hub", when: satisfied(b, c), checkOnEntry: true },
+              { to: "hub", when: [{ kind: "layoutShort" }], checkOnEntry: true },
+              upgrade,
+            ],
+          };
+          return [starterStep, ...jobSteps(b, plot, c, [])];
+        }
+        if (head.def.yieldWhenLow) {
+          // Hand over once every product of this layout is at its low mark (or obsolete).
+          const atLow = b.produces.map((p): Condition => {
+            const ok: Condition = { kind: "inventoryAtLeast", item: p, qty: c.marks.low[p] ?? 1 };
+            const obs = obsolete(p, c);
+            return obs && !(p in GOAL) ? anyOf([ok, obs]) : ok;
+          });
+          return jobSteps(b, plot, c, earlierStarts.map((e) => ({ ...e, when: [...atLow, ...e.when] })));
+        }
+        return jobSteps(b, plot, c, []);
+      }),
     ];
     // Every farm stops as soon as the Rose Dragon legendaries are all owned.
     for (const s of steps) if (s.id !== "hub") s.exits.unshift(finished);

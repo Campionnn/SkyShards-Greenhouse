@@ -29,7 +29,7 @@ export const PLAYER_STATS = {
 /** Online every 3 cycles (task brief). The ONLINE_EVERY env var overrides it for stress tests. */
 export const ONLINE_EVERY = Number(process.env.ONLINE_EVERY ?? 3);
 
-/** Fermento and Dead Plants are treated as free (bought from the bazaar): tests start with a big stock. */
+/** Purchased supplies: broad tests start with a big finite stock, never unlimited placement. */
 export const FREE_STOCK: Record<string, number> = { fermento: 5000, dead_plant: 5000 };
 
 export const LEGENDARY_GOAL: Record<string, number> = {

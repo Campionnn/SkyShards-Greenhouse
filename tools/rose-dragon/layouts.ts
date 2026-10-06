@@ -62,6 +62,54 @@ export function shift(l: Layout, dr: number, dc: number): Layout {
   };
 }
 
+/** Physical base crops clear target footprints on entry; labels alone never do. */
+export function clearTargetCells(l: Layout): Layout {
+  const inputs = [...l.inputs];
+  for (const t of l.targets) {
+    for (let dr = 0; dr < sizeOf(t.cropId); dr++) for (let dc = 0; dc < sizeOf(t.cropId); dc++) {
+      inputs.push({ cropId: "potato", position: [t.position[0] + dr, t.position[1] + dc] });
+    }
+  }
+  return { ...l, inputs, targets: [] };
+}
+
+const cellsOf = (p: Placement): [number, number][] => {
+  const s = sizeOf(p.cropId);
+  const out: [number, number][] = [];
+  for (let r = 0; r < s; r++) for (let c = 0; c < s; c++) out.push([p.position[0] + r, p.position[1] + c]);
+  return out;
+};
+
+/**
+ * Sub-layout for some of a layout's targets: those targets plus every input whose
+ * footprint touches their 8-way rings (requirements and cardinal effects live there).
+ * `keep` also keeps inputs matching it (e.g. Plot 2's unique-crop strip).
+ */
+export function carve(l: Layout, targets: Placement[], keep: (p: Placement) => boolean = () => false): Layout {
+  const ring = new Set<string>();
+  for (const t of targets) for (const [r, c] of cellsOf(t)) for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) ring.add(`${r + dr},${c + dc}`);
+  const inputs = l.inputs.filter((p) => keep(p) || cellsOf(p).some(([r, c]) => ring.has(`${r},${c}`)));
+  return { inputs, targets, ground: l.ground };
+}
+
+/** Cheapest carve keeping exactly `n` of the layout's targets (fewest spent inputs). */
+export function cheapestCarve(l: Layout, n: number, keep?: (p: Placement) => boolean): Layout {
+  let best: Layout | null = null;
+  let bestCost = Infinity;
+  const pick = (from: number, chosen: Placement[]) => {
+    if (chosen.length === n) {
+      const c = carve(l, chosen, keep);
+      const cost = Object.values(inputCost(c)).reduce((s, x) => s + x, 0);
+      if (cost < bestCost) { bestCost = cost; best = c; }
+      return;
+    }
+    for (let i = from; i < l.targets.length; i++) pick(i + 1, [...chosen, l.targets[i]]);
+  };
+  pick(0, []);
+  if (!best) throw new Error(`cheapestCarve: layout has fewer than ${n} targets`);
+  return best;
+}
+
 /** Union of several layouts (no overlap check beyond the encoder's). */
 export function merge(...ls: Layout[]): Layout {
   return { inputs: ls.flatMap((l) => l.inputs), targets: ls.flatMap((l) => l.targets), ground: ls.flatMap((l) => l.ground ?? []) };
