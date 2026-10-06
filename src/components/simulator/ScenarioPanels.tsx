@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import {
   aloeHarvestSchedule,
@@ -51,6 +51,36 @@ export const ScenarioPanel: React.FC<{
 }> = ({ scenario, onChange, onEditFlow, onLoadLayout, issues, warnings, error }) => {
   const { toast } = useToast();
   const [json, setJson] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [readingFile, setReadingFile] = useState(false);
+  const fileReadId = useRef(0);
+
+  const toggleImport = () => {
+    fileReadId.current += 1; // Ignore a pending read if the import panel is closed.
+    setReadingFile(false);
+    setFileName(null);
+    setJson(json === null ? "" : null);
+  };
+
+  const selectJsonFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = ""; // Allow choosing the same file again, including after a failed read.
+    if (!file) return;
+    const readId = ++fileReadId.current;
+    setReadingFile(true);
+    setFileName(null);
+    try {
+      const text = await file.text();
+      if (readId !== fileReadId.current) return;
+      setJson(text.replace(/^\uFEFF/, ""));
+      setFileName(file.name);
+    } catch {
+      if (readId !== fileReadId.current) return;
+      toast({ title: "Could not read file", description: "Try selecting the JSON file again, or paste its contents below.", variant: "error" });
+    } finally {
+      if (readId === fileReadId.current) setReadingFile(false);
+    }
+  };
 
   // Exports flows only: no player stats, schedule, seed, Actions defaults, config or inventory.
   const exportJson = () => {
@@ -71,6 +101,7 @@ export const ScenarioPanel: React.FC<{
       const before = scenario;
       onChange(next);
       setJson(null);
+      setFileName(null);
       toast({
         id: "simulator-flows-imported",
         title: `Imported ${next.plots.length} plot${next.plots.length > 1 ? "s" : ""}`,
@@ -162,15 +193,35 @@ export const ScenarioPanel: React.FC<{
         >
           <Download className="w-3.5 h-3.5" /> Export flows
         </button>
-        <button className={buttonClass.neutral} onClick={() => setJson(json === null ? "" : null)} title="Replace your plots with ones from an exported flows file">
+        <button className={buttonClass.neutral} onClick={toggleImport} aria-expanded={json !== null} title="Replace your plots with ones from an exported flows file">
           <Upload className="w-3.5 h-3.5" /> Import flows
         </button>
       </div>
       {json !== null && (
         <div className="mt-2 space-y-1.5">
           <p className="text-[11px] text-slate-500">Replaces your plots. Your player stats, schedule, Actions defaults, Advanced settings and inventory stay as they are.</p>
-          <textarea className={`${inputClass} w-full h-24 font-mono`} placeholder="Paste exported flows JSON" value={json} onChange={(e) => setJson(e.target.value)} />
-          <button className={buttonClass.primary} onClick={importJson}>
+          <label className="block space-y-1 text-xs text-slate-300">
+            <span>Select a JSON file</span>
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={selectJsonFile}
+              disabled={readingFile}
+              className={`${inputClass} w-full file:mr-3 file:rounded file:border-0 file:bg-slate-600 file:px-2 file:py-1 file:text-xs file:text-slate-100 file:cursor-pointer`}
+            />
+          </label>
+          <p className="text-[11px] text-slate-400 break-words" role="status">
+            {readingFile ? "Reading file..." : fileName ? `Loaded ${fileName}. Click Load JSON to import.` : "Or paste exported flows JSON below."}
+          </p>
+          <textarea
+            className={`${inputClass} w-full h-24 font-mono`}
+            aria-label="Flows JSON"
+            placeholder="Paste exported flows JSON"
+            value={json}
+            disabled={readingFile}
+            onChange={(e) => { setJson(e.target.value); setFileName(null); }}
+          />
+          <button className={buttonClass.primary} onClick={importJson} disabled={readingFile || !json.trim()}>
             <FileJson className="w-3.5 h-3.5" /> Load JSON
           </button>
         </div>
