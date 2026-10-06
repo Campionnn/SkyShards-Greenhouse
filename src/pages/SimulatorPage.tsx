@@ -235,7 +235,7 @@ export const SimulatorPage: React.FC = () => {
           {state && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
               <EventLog log={view.log} plotIds={plotIds} />
-              <FlowTimeline flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} />
+              <FlowTimeline key={`${state.scenario.settings.seed}-${state.cycle === 0 ? "setup" : "run"}`} flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} />
             </div>
           )}
 

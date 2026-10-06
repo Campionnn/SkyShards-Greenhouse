@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { History, ListOrdered, Play, RotateCcw, Square, StepBack, StepForward, Undo2 } from "lucide-react";
-import { uptimeRatio, type FlowRunnerState, type RunSummary, type ScenarioPlot, type SustainabilityReport, type TimedEvent } from "../../simulator";
+import { ListOrdered, Play, RotateCcw, Square, StepBack, StepForward, Undo2 } from "lucide-react";
+import { uptimeRatio, type RunSummary, type SustainabilityReport, type TimedEvent } from "../../simulator";
+export { FlowTimeline } from "./FlowTimeline";
 import type { SimulationView } from "../../hooks/useSimulation";
 import { LOG_CYCLES } from "../../hooks/useSimulation";
 import { Panel, SegmentedControl } from "../ui";
@@ -205,60 +206,6 @@ export const EventLog: React.FC<{ log: TimedEvent[]; plotIds: number[] }> = ({ l
             </ul>
           </div>
         ))}
-      </div>
-    </Panel>
-  );
-};
-
-// ---- Step timeline -------------------------------------------------------
-
-export const FlowTimeline: React.FC<{ flows: FlowRunnerState[]; defs: ScenarioPlot[]; cycle: number }> = ({ flows, defs, cycle }) => {
-  const span = Math.max(1, cycle);
-  const colours = ["bg-emerald-500/50", "bg-blue-500/50", "bg-purple-500/50", "bg-amber-500/50", "bg-cyan-500/50", "bg-pink-500/50"];
-  return (
-    <Panel title="Step timeline" icon={<History />} description="Each plot runs its own flow on the shared clock.">
-      <div className="space-y-2">
-        <div className="flex justify-between text-[10px] text-slate-500 pl-14">
-          <span>cycle 0</span>
-          <span>cycle {cycle}</span>
-        </div>
-        {flows.map((f) => {
-          const def = defs.find((d) => d.id === f.plotId);
-          return (
-            <div key={f.plotId} className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 w-12 flex-shrink-0">Plot {f.plotId}</span>
-              <div className="relative flex-1 h-5 bg-slate-700/30 rounded overflow-hidden">
-                {f.history.map((h, i) => {
-                  if (h.skipped) return null; // passed through without being built
-                  const end = h.endCycle ?? cycle;
-                  const left = (h.startCycle / span) * 100;
-                  const width = Math.max(0.5, ((end - h.startCycle) / span) * 100);
-                  const label = def?.flow.steps[h.stepIndex]?.label || h.stepId;
-                  return (
-                    <div
-                      key={i}
-                      className={`absolute top-0 bottom-0 ${colours[h.stepIndex % colours.length]} border-r border-slate-900/60 text-[10px] text-slate-100 flex items-center justify-center overflow-hidden`}
-                      style={{ left: `${left}%`, width: `${width}%` }}
-                      title={`${label}: cycles ${h.startCycle}-${h.endCycle ?? "now"}`}
-                    >
-                      {width >= 2.5 ? h.stepIndex + 1 : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1">
-          {defs.map((d) =>
-            d.flow.steps.map((s, i) => (
-              <span key={`${d.id}-${s.id}`} className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                <span className={`inline-flex w-4 h-4 items-center justify-center rounded text-[10px] text-slate-100 ${colours[i % colours.length]}`}>{i + 1}</span>
-                Plot {d.id}: {s.label || s.id}
-              </span>
-            ))
-          )}
-        </div>
       </div>
     </Panel>
   );

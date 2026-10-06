@@ -335,6 +335,26 @@ describe("simulator panels render", () => {
     expect(text).toContain("Undo the step from cycle 40");
   });
 
+  it("timeline uses accessible inspection tracks and bounded searchable plot legends", () => {
+    const html = wrap(<FlowTimeline flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} />).replace(/<!-- -->/g, "");
+    expect(html).toContain('aria-label="Plot 1 step timeline"');
+    expect(html).toContain('aria-label="Timeline cycle range"');
+    expect(html).toContain('aria-label="Search Plot 1 steps"');
+    expect(html).toContain("Click or tap to pin details");
+    expect(html).toContain("max-h-52 overflow-y-auto");
+    expect(html).toContain("Plot 1 steps");
+    expect(html).not.toContain("<details open");
+  });
+
+  it("timeline renders initial and newly entered zero-cycle visits safely", () => {
+    const initial = startOf(sc);
+    const html = wrap(<FlowTimeline flows={initial.flows} defs={sc.plots} cycle={0} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("Shared cycle clock · 0 cycles");
+    expect(html).toContain('aria-valuenow="0"');
+    expect(html).not.toContain("NaN");
+    expect(html).not.toContain("Infinity");
+  });
+
   it("run controls after going back", () => {
     const rewound: SimulationView = { ...view, lastCall: null, rewound: { undone: { kind: "run", fromCycle: 0, cycles: 40 } } };
     const html = wrap(
