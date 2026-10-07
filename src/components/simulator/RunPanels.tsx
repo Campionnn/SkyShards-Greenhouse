@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from "react";
-import { ListOrdered, Play, RotateCcw, Square, StepBack, StepForward, Undo2 } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Keyboard, ListOrdered, Play, RotateCcw, Square, StepBack, StepForward, Undo2 } from "lucide-react";
 import { uptimeRatio, type RunSummary, type SustainabilityReport, type TimedEvent } from "../../simulator";
 export { FlowTimeline } from "./FlowTimeline";
 import type { SimulationView } from "../../hooks/useSimulation";
 import { LOG_CYCLES } from "../../hooks/useSimulation";
-import { Panel, SegmentedControl } from "../ui";
+import { InfoHint, Panel, SegmentedControl } from "../ui";
+import { modalOpen, ownsKeys, RUN_SHORTCUTS, runShortcutFor } from "./runShortcuts";
 import { describeEvent, formatCoins, formatDuration, spotFailureText } from "./format";
 import { buttonClass, inputClass } from "./styles";
 import { NumberInput } from "./controls";
@@ -31,6 +32,52 @@ export const RunControls: React.FC<{
   const [n, setN] = useState(200);
   const running = view.status === "running";
   const ready = view.status === "ready";
+
+  // Keyboard shortcuts. The listener reads the latest props through a ref so it is bound once.
+  const latest = useRef({ view, n, onRun, onStep, onStepBack, onUndo, onStop });
+  useEffect(() => {
+    latest.current = { view, n, onRun, onStep, onStepBack, onUndo, onStop };
+  });
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      const action = runShortcutFor(e);
+      if (!action || ownsKeys(e.target, action) || modalOpen()) return;
+      const { view, n, onRun, onStep, onStepBack, onUndo, onStop } = latest.current;
+      const isReady = view.status === "ready";
+      const isRunning = view.status === "running";
+      // Holding Step / Back repeats; everything else fires once per press.
+      if (e.repeat && action !== "step" && action !== "back") {
+        e.preventDefault();
+        return;
+      }
+      if (action === "stop" && !isRunning) return; // leave Escape alone for other UI
+      e.preventDefault();
+      switch (action) {
+        case "step":
+          if (isReady) onStep();
+          break;
+        case "back":
+          if (isReady && view.history.canStepBack) onStepBack();
+          break;
+        case "run":
+          if (isReady) onRun(n);
+          break;
+        case "toggleRun":
+          if (isRunning) onStop();
+          else if (isReady) onRun(n);
+          break;
+        case "stop":
+          onStop();
+          break;
+        case "undo":
+          if (isReady && view.history.lastAction) onUndo();
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   // While a run is in flight, show the worker's running totals.
   const summary = (running && view.progress?.summary) || view.snapshot?.state.summary;
 
@@ -55,7 +102,7 @@ export const RunControls: React.FC<{
   return (
     <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <button className={buttonClass.primary} onClick={() => onRun(n)} disabled={!ready} title="Run N growth cycles">
+        <button className={buttonClass.primary} onClick={() => onRun(n)} disabled={!ready} title="Run N growth cycles (Space or Shift+→)">
           <Play className="w-3.5 h-3.5" /> Run
         </button>
         <input
@@ -80,28 +127,47 @@ export const RunControls: React.FC<{
           className={buttonClass.neutral}
           onClick={onStepBack}
           disabled={!ready || !view.history.canStepBack}
-          title="Go back exactly one growth cycle, inventory changes included"
+          title="Go back exactly one growth cycle, inventory changes included (← or ,)"
         >
           <StepBack className="w-3.5 h-3.5" /> Back
         </button>
-        <button className={buttonClass.neutral} onClick={onStep} disabled={!ready} title="Advance exactly one growth cycle">
+        <button className={buttonClass.neutral} onClick={onStep} disabled={!ready} title="Advance exactly one growth cycle (→ or .)">
           <StepForward className="w-3.5 h-3.5" /> Step
         </button>
         <button
           className={buttonClass.neutral}
           onClick={onUndo}
           disabled={!ready || !view.history.lastAction}
-          title={undoTitle(view.history.lastAction)}
+          title={view.history.lastAction ? `${undoTitle(view.history.lastAction)} (Ctrl/⌘+Z)` : undoTitle(null)}
         >
           <Undo2 className="w-3.5 h-3.5" /> Undo
         </button>
-        <button className={buttonClass.danger} onClick={onStop} disabled={!running}>
+        <button className={buttonClass.danger} onClick={onStop} disabled={!running} title="Stop the run (Space or Esc)">
           <Square className="w-3.5 h-3.5" /> Stop
         </button>
         <button className={buttonClass.neutral} onClick={onReset} disabled={running || view.status === "loading"} title="Back to cycle 0">
           <RotateCcw className="w-3.5 h-3.5" /> Reset
         </button>
-        <label className="flex items-center gap-1.5 text-xs text-slate-400 ml-auto" title="Changing the seed restarts the simulation">
+        <InfoHint
+          title="Keyboard shortcuts"
+          label="Keyboard shortcuts"
+          width={300}
+          className="ml-auto"
+          trigger={<Keyboard className="w-4 h-4" />}
+        >
+          <ul className="space-y-1">
+            {RUN_SHORTCUTS.map((s) => (
+              <li key={s.keys} className="flex gap-2">
+                <kbd className="shrink-0 min-w-[5.5rem] px-1.5 py-0.5 rounded bg-slate-700/60 border border-slate-600/60 text-[11px] text-slate-200 font-mono text-center">
+                  {s.keys}
+                </kbd>
+                <span>{s.action}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-slate-400">Shortcuts work anywhere on the page except while typing in a field or with a dialog open.</p>
+        </InfoHint>
+        <label className="flex items-center gap-1.5 text-xs text-slate-400" title="Changing the seed restarts the simulation">
           seed
           <NumberInput
             integer
