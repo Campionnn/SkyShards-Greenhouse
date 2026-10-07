@@ -87,17 +87,17 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "chorus_fruit",
-                    "qty": 5
+                    "qty": 7
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "shellfruit",
-                    "qty": 4
+                    "qty": 6
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "stoplight_petal",
-                    "qty": 4
+                    "qty": 5
                   }
                 ],
                 "checkOnEntry": true
@@ -144,7 +144,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "stoplight_petal",
-                        "qty": 4
+                        "qty": 5
                       },
                       {
                         "kind": "group",
@@ -310,6 +310,97 @@
                 "checkOnEntry": true
               },
               {
+                "to": "blast-cheese-cheese",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "blastberry",
+                        "qty": 5
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "turtlellini",
+                        "qty": 6
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
                 "to": "blast-cheese",
                 "when": [
                   {
@@ -422,6 +513,38 @@
                     "kind": "inventoryAtLeast",
                     "item": "soggybud",
                     "qty": 5
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
+                "to": "blast-cheese-cheese",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
                   }
                 ],
                 "checkOnEntry": true
@@ -949,7 +1072,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -959,7 +1082,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 15
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -999,7 +1122,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "scourroot",
-                        "qty": 10
+                        "qty": 12
                       },
                       {
                         "kind": "inventoryBelow",
@@ -1009,7 +1132,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "veilshroom",
-                        "qty": 9
+                        "qty": 15
                       },
                       {
                         "kind": "inventoryBelow",
@@ -1178,6 +1301,38 @@
                         "of": [
                           {
                             "kind": "group",
+                            "match": "all",
+                            "of": [
+                              {
+                                "kind": "inventoryBelow",
+                                "item": "cheesebite",
+                                "qty": 8
+                              },
+                              {
+                                "kind": "inventoryBelow",
+                                "item": "glasscorn",
+                                "qty": 2
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "creambloom",
+                            "qty": 8
+                          },
+                          {
+                            "kind": "inventoryBelow",
+                            "item": "fermento",
+                            "qty": 5
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "group",
                             "match": "any",
                             "of": [
                               {
@@ -1203,7 +1358,7 @@
                               {
                                 "kind": "inventoryBelow",
                                 "item": "scourroot",
-                                "qty": 10
+                                "qty": 12
                               },
                               {
                                 "kind": "inventoryBelow",
@@ -1213,7 +1368,7 @@
                               {
                                 "kind": "inventoryBelow",
                                 "item": "veilshroom",
-                                "qty": 9
+                                "qty": 15
                               },
                               {
                                 "kind": "inventoryBelow",
@@ -1316,17 +1471,17 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "chorus_fruit",
-                    "qty": 5
+                    "qty": 7
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "shellfruit",
-                    "qty": 4
+                    "qty": 6
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "stoplight_petal",
-                    "qty": 4
+                    "qty": 5
                   }
                 ]
               },
@@ -1371,7 +1526,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "stoplight_petal",
-                        "qty": 4
+                        "qty": 5
                       },
                       {
                         "kind": "group",
@@ -1537,6 +1692,96 @@
                 "when": [
                   {
                     "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "blastberry",
+                        "qty": 5
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "turtlellini",
+                        "qty": 6
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
                     "match": "any",
                     "of": [
                       {
@@ -1645,6 +1890,37 @@
                     "kind": "inventoryAtLeast",
                     "item": "soggybud",
                     "qty": 5
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
                   }
                 ]
               },
@@ -2168,7 +2444,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -2178,7 +2454,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 15
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -2217,7 +2493,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "scourroot",
-                        "qty": 10
+                        "qty": 12
                       },
                       {
                         "kind": "inventoryBelow",
@@ -2227,7 +2503,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "veilshroom",
-                        "qty": 9
+                        "qty": 15
                       },
                       {
                         "kind": "inventoryBelow",
@@ -2330,7 +2606,7 @@
             "id": "pt",
             "label": "Phantomleaf + Timestalk",
             "layout": {
-              "code": "S9RJ0TE01TG00DFMrDHM0jHMrtEjAaQkp6SmglnJjslOyRBWCkxML0kvEbs-AA"
+              "code": "S9RJ0TE01TG00DFMrDHM0jHMrtFDAUl6iRBGSnJyampqCojlmOKU6pQMZCUnpySnJqfokQwA"
             },
             "exits": [
               {
@@ -2507,7 +2783,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "stoplight_petal",
-                        "qty": 6
+                        "qty": 5
                       },
                       {
                         "kind": "group",
@@ -2749,7 +3025,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "startlevine",
-                        "qty": 9
+                        "qty": 6
                       },
                       {
                         "kind": "inventoryAtLeast",
@@ -2819,7 +3095,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "blastberry",
-                        "qty": 12
+                        "qty": 8
                       },
                       {
                         "kind": "group",
@@ -2851,7 +3127,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "cheesebite",
-                        "qty": 12
+                        "qty": 8
                       },
                       {
                         "kind": "inventoryAtLeast",
@@ -2867,7 +3143,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "turtlellini",
-                        "qty": 9
+                        "qty": 6
                       },
                       {
                         "kind": "group",
@@ -2884,6 +3160,76 @@
                             "qty": 2
                           }
                         ]
+                      }
+                    ]
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "layoutShort"
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "blast-cheese-cheese",
+            "label": "Cheesebite focus (the farm's Cheesebite corner only)",
+            "layout": {
+              "code": "S9cpqamo0YODpKTEpCQIyzHRMRHCSoSJUQIA"
+            },
+            "exits": [
+              {
+                "to": "done",
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "all_in_aloe",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "devourer",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "glasscorn",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "phantomleaf",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "timestalk",
+                    "qty": 2
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "glasscorn",
+                        "qty": 2
                       }
                     ]
                   }
@@ -3454,17 +3800,17 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "chorus_fruit",
-                    "qty": 5
+                    "qty": 7
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "shellfruit",
-                    "qty": 4
+                    "qty": 6
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "stoplight_petal",
-                    "qty": 4
+                    "qty": 5
                   }
                 ]
               },
@@ -3815,7 +4161,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "stoplight_petal",
-                        "qty": 4
+                        "qty": 5
                       },
                       {
                         "kind": "group",
@@ -4593,6 +4939,249 @@
                   },
                   {
                     "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "blastberry",
+                        "qty": 5
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "turtlellini",
+                        "qty": 6
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "cindershade",
+                        "qty": 4
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "coalroot",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 10
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thornshade",
+                    "qty": 6
+                  },
+                  {
+                    "kind": "group",
                     "match": "any",
                     "of": [
                       {
@@ -4701,6 +5290,190 @@
                     "kind": "inventoryAtLeast",
                     "item": "soggybud",
                     "qty": 5
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "cindershade",
+                        "qty": 4
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "coalroot",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 10
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thornshade",
+                    "qty": 6
+                  },
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
                   }
                 ]
               }
@@ -5007,17 +5780,17 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "chorus_fruit",
-                    "qty": 5
+                    "qty": 7
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "shellfruit",
-                    "qty": 4
+                    "qty": 6
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "stoplight_petal",
-                    "qty": 4
+                    "qty": 5
                   }
                 ]
               },
@@ -5200,7 +5973,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "stoplight_petal",
-                        "qty": 4
+                        "qty": 5
                       },
                       {
                         "kind": "group",
@@ -5642,6 +6415,165 @@
                   },
                   {
                     "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "blastberry",
+                        "qty": 5
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "turtlellini",
+                        "qty": 6
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
                     "match": "any",
                     "of": [
                       {
@@ -5752,6 +6684,106 @@
                     "qty": 5
                   }
                 ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  }
+                ]
               }
             ]
           },
@@ -5818,7 +6850,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 24
+                    "qty": 27
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -5828,7 +6860,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 21
+                    "qty": 30
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -6195,7 +7227,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "chorus_fruit",
-                        "qty": 5
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -6336,7 +7368,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 11
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -6346,7 +7378,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 8
+                    "qty": 15
                   }
                 ],
                 "checkOnEntry": true
@@ -6917,7 +7949,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -6927,7 +7959,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 15
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -6967,7 +7999,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "scourroot",
-                        "qty": 10
+                        "qty": 12
                       },
                       {
                         "kind": "inventoryBelow",
@@ -6977,7 +8009,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "veilshroom",
-                        "qty": 9
+                        "qty": 15
                       },
                       {
                         "kind": "inventoryBelow",
@@ -7091,7 +8123,7 @@
                               {
                                 "kind": "inventoryBelow",
                                 "item": "scourroot",
-                                "qty": 10
+                                "qty": 12
                               },
                               {
                                 "kind": "inventoryBelow",
@@ -7101,7 +8133,7 @@
                               {
                                 "kind": "inventoryBelow",
                                 "item": "veilshroom",
-                                "qty": 9
+                                "qty": 15
                               },
                               {
                                 "kind": "inventoryBelow",
@@ -7353,7 +8385,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "chorus_fruit",
-                        "qty": 5
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -7492,7 +8524,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 11
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -7502,7 +8534,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 8
+                    "qty": 15
                   }
                 ]
               },
@@ -8068,7 +9100,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -8078,7 +9110,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 15
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -8117,7 +9149,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "scourroot",
-                        "qty": 10
+                        "qty": 12
                       },
                       {
                         "kind": "inventoryBelow",
@@ -8127,7 +9159,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "veilshroom",
-                        "qty": 9
+                        "qty": 15
                       },
                       {
                         "kind": "inventoryBelow",
@@ -8718,7 +9750,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "chorus_fruit",
-                        "qty": 8
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -8847,7 +9879,7 @@
             "id": "rares",
             "label": "Chloronite + Do-not-eat Shroom",
             "layout": {
-              "code": "PYrRCoJQEER_aFjMMu2x-yc7u5Vptx4EIfHjXdKcgeFwmAEZIz444IgaJU44o0CFBpf5i2mWX0jeVvLk943oDzFVMya2otco3Z-iIZXJuziFc7IPMrXYl_yTd3ov"
+              "code": "JYpZCoAwEEMvFIL78mlvMm3dtw9BUDy8U02Y8HjMgRUndsRIUSJBhgIRclSonwv3Q_oQslUy1liy8zZEXe_NV3JQ5_XIkaQTcY5ToEYa4awkIVx-p7v-f7rbCw"
             },
             "exits": [
               {
@@ -10408,7 +11440,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "chorus_fruit",
-                        "qty": 5
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -10853,7 +11885,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 11
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -10863,7 +11895,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 8
+                    "qty": 15
                   }
                 ]
               },
@@ -11790,7 +12822,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "chorus_fruit",
-                        "qty": 5
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -12067,7 +13099,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 11
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -12077,7 +13109,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 8
+                    "qty": 15
                   }
                 ]
               },
@@ -12257,7 +13289,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 24
+                    "qty": 27
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -12267,7 +13299,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 21
+                    "qty": 30
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -12439,27 +13471,6 @@
                 "checkOnEntry": true
               },
               {
-                "to": "aloe",
-                "when": [
-                  {
-                    "kind": "inventoryBelow",
-                    "item": "all_in_aloe",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "magic_jellybean",
-                    "qty": 6
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "plantboy_advance",
-                    "qty": 1
-                  }
-                ],
-                "checkOnEntry": true
-              },
-              {
                 "to": "pt",
                 "when": [
                   {
@@ -12481,17 +13492,17 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "chorus_fruit",
-                    "qty": 5
+                    "qty": 7
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "shellfruit",
-                    "qty": 4
+                    "qty": 6
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "stoplight_petal",
-                    "qty": 4
+                    "qty": 5
                   }
                 ],
                 "checkOnEntry": true
@@ -12527,7 +13538,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "shellfruit",
-                        "qty": 4
+                        "qty": 6
                       },
                       {
                         "kind": "group",
@@ -12570,7 +13581,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "chorus_fruit",
-                        "qty": 5
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -12604,6 +13615,27 @@
                 "checkOnEntry": true
               },
               {
+                "to": "aloe",
+                "when": [
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "all_in_aloe",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "magic_jellybean",
+                    "qty": 6
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "plantboy_advance",
+                    "qty": 1
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
                 "to": "startlevine",
                 "when": [
                   {
@@ -12631,6 +13663,97 @@
                     "kind": "inventoryAtLeast",
                     "item": "cheesebite",
                     "qty": 8
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
+                "to": "blast-cheese-cheese",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "blastberry",
+                        "qty": 5
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "turtlellini",
+                        "qty": 6
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ],
                 "checkOnEntry": true
@@ -12753,6 +13876,38 @@
                 "checkOnEntry": true
               },
               {
+                "to": "blast-cheese-cheese",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
                 "to": "jelly",
                 "when": [
                   {
@@ -12860,7 +14015,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 9
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -12870,7 +14025,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 14
                   }
                 ],
                 "checkOnEntry": true
@@ -13446,7 +14601,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -13456,7 +14611,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 15
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -13496,7 +14651,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "scourroot",
-                        "qty": 10
+                        "qty": 12
                       },
                       {
                         "kind": "inventoryBelow",
@@ -13506,7 +14661,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "veilshroom",
-                        "qty": 9
+                        "qty": 15
                       },
                       {
                         "kind": "inventoryBelow",
@@ -13675,6 +14830,38 @@
                         "of": [
                           {
                             "kind": "group",
+                            "match": "all",
+                            "of": [
+                              {
+                                "kind": "inventoryBelow",
+                                "item": "cheesebite",
+                                "qty": 8
+                              },
+                              {
+                                "kind": "inventoryBelow",
+                                "item": "glasscorn",
+                                "qty": 2
+                              }
+                            ]
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "creambloom",
+                            "qty": 8
+                          },
+                          {
+                            "kind": "inventoryBelow",
+                            "item": "fermento",
+                            "qty": 5
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "group",
                             "match": "any",
                             "of": [
                               {
@@ -13700,7 +14887,7 @@
                               {
                                 "kind": "inventoryBelow",
                                 "item": "scourroot",
-                                "qty": 10
+                                "qty": 12
                               },
                               {
                                 "kind": "inventoryBelow",
@@ -13710,7 +14897,7 @@
                               {
                                 "kind": "inventoryBelow",
                                 "item": "veilshroom",
-                                "qty": 9
+                                "qty": 15
                               },
                               {
                                 "kind": "inventoryBelow",
@@ -13775,26 +14962,6 @@
                 "to": "hub",
                 "when": [
                   {
-                    "kind": "inventoryBelow",
-                    "item": "all_in_aloe",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "magic_jellybean",
-                    "qty": 6
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "plantboy_advance",
-                    "qty": 1
-                  }
-                ]
-              },
-              {
-                "to": "hub",
-                "when": [
-                  {
                     "kind": "group",
                     "match": "any",
                     "of": [
@@ -13813,17 +14980,17 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "chorus_fruit",
-                    "qty": 5
+                    "qty": 7
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "shellfruit",
-                    "qty": 4
+                    "qty": 6
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "stoplight_petal",
-                    "qty": 4
+                    "qty": 5
                   }
                 ]
               },
@@ -13857,7 +15024,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "shellfruit",
-                        "qty": 4
+                        "qty": 6
                       },
                       {
                         "kind": "group",
@@ -13899,7 +15066,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "chorus_fruit",
-                        "qty": 5
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -13935,6 +15102,26 @@
                 "to": "hub",
                 "when": [
                   {
+                    "kind": "inventoryBelow",
+                    "item": "all_in_aloe",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "magic_jellybean",
+                    "qty": 6
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "plantboy_advance",
+                    "qty": 1
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
                     "kind": "group",
                     "match": "all",
                     "of": [
@@ -13959,6 +15146,96 @@
                     "kind": "inventoryAtLeast",
                     "item": "cheesebite",
                     "qty": 8
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "blastberry",
+                        "qty": 5
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "turtlellini",
+                        "qty": 6
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
               },
@@ -14087,6 +15364,37 @@
                     "of": [
                       {
                         "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
                         "item": "magic_jellybean",
                         "qty": 6
                       },
@@ -14185,7 +15493,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 9
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -14195,7 +15503,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 14
                   }
                 ]
               },
@@ -14766,7 +16074,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 10
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -14776,7 +16084,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 15
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -14815,7 +16123,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "scourroot",
-                        "qty": 10
+                        "qty": 12
                       },
                       {
                         "kind": "inventoryBelow",
@@ -14825,7 +16133,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "veilshroom",
-                        "qty": 9
+                        "qty": 15
                       },
                       {
                         "kind": "inventoryBelow",
@@ -14866,172 +16174,10 @@
             "watch": []
           },
           {
-            "id": "aloe",
-            "label": "All-in Aloe",
-            "layout": {
-              "code": "M9VJ1EnRMTTUMTSrMUyt0UMFKSkpEEaqniOElQwShIglJeqRBQA"
-            },
-            "exits": [
-              {
-                "to": "done",
-                "when": [
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "all_in_aloe",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "devourer",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "glasscorn",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "phantomleaf",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "timestalk",
-                    "qty": 2
-                  }
-                ]
-              },
-              {
-                "to": "hub",
-                "when": [
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "all_in_aloe",
-                    "qty": 2
-                  }
-                ],
-                "checkOnEntry": true
-              },
-              {
-                "to": "hub",
-                "when": [
-                  {
-                    "kind": "layoutShort"
-                  }
-                ],
-                "checkOnEntry": true
-              },
-              {
-                "to": "aloe-pick",
-                "when": [
-                  {
-                    "kind": "group",
-                    "match": "any",
-                    "of": [
-                      {
-                        "kind": "group",
-                        "match": "all",
-                        "of": [
-                          {
-                            "kind": "inventoryBelow",
-                            "item": "all_in_aloe",
-                            "qty": 1
-                          },
-                          {
-                            "kind": "highestStageAtLeast",
-                            "mutationId": "all_in_aloe",
-                            "stage": 10
-                          }
-                        ]
-                      },
-                      {
-                        "kind": "group",
-                        "match": "all",
-                        "of": [
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "all_in_aloe",
-                            "qty": 1
-                          },
-                          {
-                            "kind": "highestStageAtLeast",
-                            "mutationId": "all_in_aloe",
-                            "stage": 8
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "id": "aloe-pick",
-            "label": "All-in Aloe: break it early (stage 10 with 0 owned, stage 8 with 1 owned)",
-            "layout": {
-              "code": "M9VJ1EnRMTTUMTTTMaup0UMFKSkpEEaqXhqElQwShIglJeqRBQA"
-            },
-            "exits": [
-              {
-                "to": "done",
-                "when": [
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "all_in_aloe",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "devourer",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "glasscorn",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "phantomleaf",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "timestalk",
-                    "qty": 2
-                  }
-                ]
-              },
-              {
-                "to": "aloe",
-                "when": [
-                  {
-                    "kind": "highestStageBelow",
-                    "mutationId": "all_in_aloe",
-                    "stage": 8
-                  }
-                ],
-                "checkOnEntry": true
-              },
-              {
-                "to": "aloe",
-                "when": [
-                  {
-                    "kind": "cycles",
-                    "n": 1
-                  }
-                ]
-              }
-            ],
-            "watch": []
-          },
-          {
             "id": "pt",
             "label": "Phantomleaf + Timestalk",
             "layout": {
-              "code": "S9RJ0TE01TG00DFMrDHM0jHMrtEjAaQkp6SmglnJjslOyRBWCkxML0kvEbs-AA"
+              "code": "S9RJ0TE01TG00DFMrDHM0jHMrtFDAUl6iRBGSnJyampqCojlmOKU6pQMZCUnpySnJqfokQwA"
             },
             "exits": [
               {
@@ -15201,11 +16347,13 @@
           },
           {
             "id": "shellfruit-pop",
-            "label": "Shellfruit (blast Turtlellini): break the Blastberries (Turtlellini hit twice become Shellfruit)",
+            "label": "Shellfruit (blast Turtlellini): break only the Blastberries (every Turtlellini is hit twice and becomes Shellfruit)",
             "layout": {
-              "code": "q6kxoAMAAA"
+              "code": "M0yuqTFIBEIIQLCoDAA"
             },
-            "fullClear": true,
+            "policies": {
+              "replaceDecayed": false
+            },
             "exits": [
               {
                 "to": "done",
@@ -15296,7 +16444,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "chorus_fruit",
-                        "qty": 8
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -15329,6 +16477,168 @@
                 "checkOnEntry": true
               }
             ]
+          },
+          {
+            "id": "aloe",
+            "label": "All-in Aloe",
+            "layout": {
+              "code": "M9VJ1EnRMTTUMTSrMUyt0UMFKSkpEEaqniOElQwShIglJeqRBQA"
+            },
+            "exits": [
+              {
+                "to": "done",
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "all_in_aloe",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "devourer",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "glasscorn",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "phantomleaf",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "timestalk",
+                    "qty": 2
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "all_in_aloe",
+                    "qty": 2
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "layoutShort"
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
+                "to": "aloe-pick",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryBelow",
+                            "item": "all_in_aloe",
+                            "qty": 1
+                          },
+                          {
+                            "kind": "highestStageAtLeast",
+                            "mutationId": "all_in_aloe",
+                            "stage": 10
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 1
+                          },
+                          {
+                            "kind": "highestStageAtLeast",
+                            "mutationId": "all_in_aloe",
+                            "stage": 8
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "aloe-pick",
+            "label": "All-in Aloe: break it early (stage 10 with 0 owned, stage 8 with 1 owned)",
+            "layout": {
+              "code": "M9VJ1EnRMTTUMTTTMaup0UMFKSkpEEaqXhqElQwShIglJeqRBQA"
+            },
+            "exits": [
+              {
+                "to": "done",
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "all_in_aloe",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "devourer",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "glasscorn",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "phantomleaf",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "timestalk",
+                    "qty": 2
+                  }
+                ]
+              },
+              {
+                "to": "aloe",
+                "when": [
+                  {
+                    "kind": "highestStageBelow",
+                    "mutationId": "all_in_aloe",
+                    "stage": 8
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
+                "to": "aloe",
+                "when": [
+                  {
+                    "kind": "cycles",
+                    "n": 1
+                  }
+                ]
+              }
+            ],
+            "watch": []
           },
           {
             "id": "startlevine",
@@ -15377,7 +16687,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "startlevine",
-                        "qty": 9
+                        "qty": 6
                       },
                       {
                         "kind": "inventoryAtLeast",
@@ -15447,7 +16757,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "blastberry",
-                        "qty": 12
+                        "qty": 8
                       },
                       {
                         "kind": "group",
@@ -15479,7 +16789,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "cheesebite",
-                        "qty": 12
+                        "qty": 8
                       },
                       {
                         "kind": "inventoryAtLeast",
@@ -15495,7 +16805,7 @@
                       {
                         "kind": "inventoryAtLeast",
                         "item": "turtlellini",
-                        "qty": 9
+                        "qty": 6
                       },
                       {
                         "kind": "group",
@@ -15512,6 +16822,76 @@
                             "qty": 2
                           }
                         ]
+                      }
+                    ]
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "layoutShort"
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "blast-cheese-cheese",
+            "label": "Cheesebite focus (the farm's Cheesebite corner only)",
+            "layout": {
+              "code": "S9cpqamo0YODpKTEpCQIyzHRMRHCSoSJUQIA"
+            },
+            "exits": [
+              {
+                "to": "done",
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "all_in_aloe",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "devourer",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "glasscorn",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "phantomleaf",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "timestalk",
+                    "qty": 2
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "glasscorn",
+                        "qty": 2
                       }
                     ]
                   }
@@ -15682,7 +17062,7 @@
             "id": "rares",
             "label": "Chloronite + Do-not-eat Shroom",
             "layout": {
-              "code": "lcjBCYBAEEPRhob0sNNJMrmKB0FQtnjTgv_0eVcddde5n3o3MENLNsBFtVsRxqKRNXAbEeYk_O8D"
+              "code": "NclBCsAwCETRC4l3qDeJOsuSRaDQksPHaVpB_DybDDnlkj5veaZy3LPpriN3pBd-9CPN6wKBeCUMBgYlwIQR-SbUqi4"
             },
             "exits": [
               {
@@ -16233,179 +17613,6 @@
                     "qty": 6
                   },
                   {
-                    "kind": "inventoryBelow",
-                    "item": "all_in_aloe",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "magic_jellybean",
-                    "qty": 6
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "plantboy_advance",
-                    "qty": 1
-                  }
-                ]
-              },
-              {
-                "to": "hub",
-                "when": [
-                  {
-                    "kind": "group",
-                    "match": "any",
-                    "of": [
-                      {
-                        "kind": "inventoryAtLeast",
-                        "item": "chocoberry",
-                        "qty": 7
-                      },
-                      {
-                        "kind": "group",
-                        "match": "all",
-                        "of": [
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "glasscorn",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "phantomleaf",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "timestalk",
-                            "qty": 2
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "kind": "group",
-                    "match": "any",
-                    "of": [
-                      {
-                        "kind": "inventoryAtLeast",
-                        "item": "cindershade",
-                        "qty": 4
-                      },
-                      {
-                        "kind": "group",
-                        "match": "all",
-                        "of": [
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "all_in_aloe",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "devourer",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "phantomleaf",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "timestalk",
-                            "qty": 2
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "kind": "group",
-                    "match": "any",
-                    "of": [
-                      {
-                        "kind": "inventoryAtLeast",
-                        "item": "coalroot",
-                        "qty": 12
-                      },
-                      {
-                        "kind": "group",
-                        "match": "all",
-                        "of": [
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "devourer",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "glasscorn",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "phantomleaf",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "timestalk",
-                            "qty": 2
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "creambloom",
-                    "qty": 10
-                  },
-                  {
-                    "kind": "group",
-                    "match": "any",
-                    "of": [
-                      {
-                        "kind": "inventoryAtLeast",
-                        "item": "duskbloom",
-                        "qty": 12
-                      },
-                      {
-                        "kind": "group",
-                        "match": "all",
-                        "of": [
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "all_in_aloe",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "devourer",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "phantomleaf",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "timestalk",
-                            "qty": 2
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "thornshade",
-                    "qty": 6
-                  },
-                  {
                     "kind": "group",
                     "match": "any",
                     "of": [
@@ -16424,17 +17631,17 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "chorus_fruit",
-                    "qty": 5
+                    "qty": 7
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "shellfruit",
-                    "qty": 4
+                    "qty": 6
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "stoplight_petal",
-                    "qty": 4
+                    "qty": 5
                   }
                 ]
               },
@@ -16774,7 +17981,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "shellfruit",
-                        "qty": 4
+                        "qty": 6
                       },
                       {
                         "kind": "group",
@@ -16969,7 +18176,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "chorus_fruit",
-                        "qty": 5
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -17158,6 +18365,179 @@
                     "qty": 6
                   },
                   {
+                    "kind": "inventoryBelow",
+                    "item": "all_in_aloe",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "magic_jellybean",
+                    "qty": 6
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "plantboy_advance",
+                    "qty": 1
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "cindershade",
+                        "qty": 4
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "coalroot",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 10
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thornshade",
+                    "qty": 6
+                  },
+                  {
                     "kind": "group",
                     "match": "all",
                     "of": [
@@ -17182,6 +18562,249 @@
                     "kind": "inventoryAtLeast",
                     "item": "cheesebite",
                     "qty": 8
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "cindershade",
+                        "qty": 4
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "coalroot",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 10
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thornshade",
+                    "qty": 6
+                  },
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "blastberry",
+                        "qty": 5
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "turtlellini",
+                        "qty": 6
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
               },
@@ -17616,6 +19239,190 @@
                     "of": [
                       {
                         "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "cindershade",
+                        "qty": 4
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "coalroot",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 10
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thornshade",
+                    "qty": 6
+                  },
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
                         "item": "magic_jellybean",
                         "qty": 6
                       },
@@ -17867,7 +19674,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 9
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -17877,7 +19684,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 14
                   }
                 ]
               },
@@ -18277,95 +20084,6 @@
                     ]
                   },
                   {
-                    "kind": "inventoryBelow",
-                    "item": "all_in_aloe",
-                    "qty": 2
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "magic_jellybean",
-                    "qty": 6
-                  },
-                  {
-                    "kind": "inventoryAtLeast",
-                    "item": "plantboy_advance",
-                    "qty": 1
-                  }
-                ]
-              },
-              {
-                "to": "hub",
-                "when": [
-                  {
-                    "kind": "group",
-                    "match": "any",
-                    "of": [
-                      {
-                        "kind": "inventoryAtLeast",
-                        "item": "duskbloom",
-                        "qty": 12
-                      },
-                      {
-                        "kind": "group",
-                        "match": "all",
-                        "of": [
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "all_in_aloe",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "devourer",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "phantomleaf",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "timestalk",
-                            "qty": 2
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "kind": "group",
-                    "match": "any",
-                    "of": [
-                      {
-                        "kind": "inventoryAtLeast",
-                        "item": "chocoberry",
-                        "qty": 7
-                      },
-                      {
-                        "kind": "group",
-                        "match": "all",
-                        "of": [
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "glasscorn",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "phantomleaf",
-                            "qty": 2
-                          },
-                          {
-                            "kind": "inventoryAtLeast",
-                            "item": "timestalk",
-                            "qty": 2
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
                     "kind": "group",
                     "match": "any",
                     "of": [
@@ -18384,17 +20102,17 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "chorus_fruit",
-                    "qty": 5
+                    "qty": 7
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "shellfruit",
-                    "qty": 4
+                    "qty": 6
                   },
                   {
                     "kind": "inventoryAtLeast",
                     "item": "stoplight_petal",
-                    "qty": 4
+                    "qty": 5
                   }
                 ]
               },
@@ -18566,7 +20284,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "shellfruit",
-                        "qty": 4
+                        "qty": 6
                       },
                       {
                         "kind": "group",
@@ -18677,7 +20395,7 @@
                       {
                         "kind": "inventoryBelow",
                         "item": "chorus_fruit",
-                        "qty": 5
+                        "qty": 7
                       },
                       {
                         "kind": "group",
@@ -18782,6 +20500,95 @@
                     ]
                   },
                   {
+                    "kind": "inventoryBelow",
+                    "item": "all_in_aloe",
+                    "qty": 2
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "magic_jellybean",
+                    "qty": 6
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "plantboy_advance",
+                    "qty": 1
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
                     "kind": "group",
                     "match": "all",
                     "of": [
@@ -18806,6 +20613,165 @@
                     "kind": "inventoryAtLeast",
                     "item": "cheesebite",
                     "qty": 8
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "blastberry",
+                        "qty": 5
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "turtlellini",
+                        "qty": 6
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
               },
@@ -19072,6 +21038,106 @@
                     "of": [
                       {
                         "kind": "inventoryBelow",
+                        "item": "cheesebite",
+                        "qty": 8
+                      },
+                      {
+                        "kind": "inventoryBelow",
+                        "item": "glasscorn",
+                        "qty": 2
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "fermento",
+                    "qty": 5
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 8
+                  }
+                ]
+              },
+              {
+                "to": "hub",
+                "when": [
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "duskbloom",
+                        "qty": 12
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "all_in_aloe",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "devourer",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "inventoryAtLeast",
+                        "item": "chocoberry",
+                        "qty": 7
+                      },
+                      {
+                        "kind": "group",
+                        "match": "all",
+                        "of": [
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "glasscorn",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "phantomleaf",
+                            "qty": 2
+                          },
+                          {
+                            "kind": "inventoryAtLeast",
+                            "item": "timestalk",
+                            "qty": 2
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "group",
+                    "match": "all",
+                    "of": [
+                      {
+                        "kind": "inventoryBelow",
                         "item": "magic_jellybean",
                         "qty": 6
                       },
@@ -19239,7 +21305,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 9
+                    "qty": 12
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -19249,7 +21315,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 9
+                    "qty": 14
                   }
                 ]
               },
@@ -19434,7 +21500,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "scourroot",
-                    "qty": 24
+                    "qty": 27
                   },
                   {
                     "kind": "inventoryAtLeast",
@@ -19444,7 +21510,7 @@
                   {
                     "kind": "inventoryAtLeast",
                     "item": "veilshroom",
-                    "qty": 21
+                    "qty": 30
                   },
                   {
                     "kind": "inventoryAtLeast",
