@@ -74,6 +74,16 @@ export async function drive(engine: Engine, state: SimulationState, ticks: numbe
       events = kept;
     }
 
+    // A script error or pause() stops the run here.
+    if (current.scripts?.halt && current.scripts.halt.cycle === current.cycle - 1) {
+      truncated = done < ticks;
+      break;
+    }
+    if (r.cyclesRun === 0) {
+      truncated = true;
+      break;
+    }
+
     // Aim each slice at the frame budget.
     const perCycle = elapsed / Math.max(1, r.cyclesRun);
     chunk = Math.max(1, Math.min(1000, Math.floor(SLICE_BUDGET_MS / Math.max(perCycle, 0.01))));

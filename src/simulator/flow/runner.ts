@@ -2,7 +2,7 @@ import type { CycleCtx, TickScratch } from "../sim/context";
 import { applyStepLayout } from "../sim/placement";
 import type { FlowRunnerState, PlotState, ScenarioPlot, TickEvent } from "../sim/state";
 import { bump } from "../sim/summary";
-import { collectedOf, conditionsHold } from "./triggers";
+import { collectedOf, conditionsHold, type TriggerView } from "./triggers";
 
 // One runner per plot; plots are coupled only through the shared inventory.
 
@@ -49,6 +49,9 @@ export function transition(
   runner.pendingTransition = false;
   delete runner.pendingTarget;
   runner.finished = false;
+  // A script's layout override (plot.setLayout) lasts until the next step change.
+  const scriptPlot = ctx.state.scripts?.plots[String(plot.id)];
+  if (scriptPlot?.layout) delete scriptPlot.layout;
   const target = toIndex >= 0 && toIndex < steps.length ? toIndex : (runner.stepIndex + 1) % steps.length;
   const skipped = skipThrough(plot, def, runner, ctx, target);
   const to = steps[runner.stepIndex];
@@ -117,10 +120,10 @@ function skipThrough(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState
  * finished and the later exits are still checked. Unknown step ids are skipped
  * (validation reports them). `onEntry`: only the exits flagged `checkOnEntry`.
  */
-function dueTarget(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState, ctx: CycleCtx, onEntry = false): number | null {
+export function dueTarget(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState, ctx: CycleCtx, onEntry = false): number | null {
   const { steps } = def.flow;
   const step = steps[runner.stepIndex];
-  const view = {
+  const view: TriggerView = {
     plot,
     runner,
     inventory: ctx.state.inventory,
@@ -128,6 +131,8 @@ function dueTarget(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState, 
     collected: (item: string) => collectedOf(ctx.state, item),
     layout: ctx.layoutFor(plot.id), // the step at runner.stepIndex (also during an on-arrival check)
   };
+  const scripts = ctx.scripts;
+  if (scripts) view.script = (expr) => scripts.evaluateCondition(plot.id, expr, view);
   const isLast = runner.stepIndex === steps.length - 1;
 
   for (const exit of step.exits) {
@@ -162,6 +167,9 @@ export function endStepOrHold(
   let to: number;
   if (runner.pendingTransition) {
     to = runner.pendingTarget ?? (runner.stepIndex + 1) % def.flow.steps.length;
+  } else if (ctx.state.scripts?.plots[String(plot.id)]?.hold) {
+    // plot.hold(): a script keeps the built-in exits from firing.
+    return false;
   } else {
     const due = dueTarget(plot, def, runner, ctx);
     if (due === null) return false;

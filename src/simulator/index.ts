@@ -70,3 +70,12 @@ export {
 } from "./growth/aloe";
 export { cycleSeconds, effectiveUniqueCrops } from "./growth/clock";
 export type * from "./sim/state";
+// Scripting (src/simulator/script): language checks and the API reference. Running scripts
+// happens inside run(); there is no separate entry point.
+export { checkScriptExpression, diagnoseScript, type ScriptDiagnostic } from "./script/check";
+export { API, HOOKS, HOOK_NAMES, SCRIPT_PHASES, type ApiDoc, type ApiSection, type HookDoc } from "./script/docs";
+export { conditionsUseScript, scenarioUsesScripts } from "./script/overrides";
+export { GLOBAL_SCRIPT, plotScriptKey } from "./script/types";
+export type { ScriptDef, ScriptHalt, ScriptLogLine, ScriptMetric, ScriptPlotState, ScriptsState } from "./script/types";
+export { SCRIPT_EXAMPLES, type ScriptExample } from "./script/examples";
+export { inspectScriptVariables, type InspectedVariable } from "./script/inspect";

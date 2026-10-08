@@ -2,6 +2,7 @@ import { mergePolicies } from "../flow/policies";
 import { countStepEvent } from "../flow/runner";
 import { npcPriceSource } from "../economy/prices";
 import { cyclesUntilNextActive } from "../growth/activity";
+import type { ScriptRuntime } from "../script/runtime";
 import type { CycleCtx, Env } from "./context";
 import type { PlotId, ScenarioPlot, SimulationState, TickEvent, TimedEvent } from "./state";
 
@@ -10,7 +11,8 @@ export function makeCycleCtx(
   env: Env,
   state: SimulationState,
   opts: { cycle: number; active: boolean; cycleSeconds: number; firesAt: number; uniqueCropCount: number },
-  sink: TimedEvent[]
+  sink: TimedEvent[],
+  scripts: ScriptRuntime | null = null
 ): CycleCtx {
   const { settings } = state.scenario;
   const defs = new Map<PlotId, ScenarioPlot>(state.scenario.plots.map((p) => [p.id, p]));
@@ -25,6 +27,8 @@ export function makeCycleCtx(
     const { def, runner } = flowOf(id);
     return def.flow.steps[runner.stepIndex];
   };
+  // Script overrides (state.scripts.plots): absent without scripts.
+  const scriptPlot = (id: PlotId) => state.scripts?.plots[String(id)];
 
   const ctx: CycleCtx = {
     env,
@@ -37,17 +41,19 @@ export function makeCycleCtx(
     cycleSeconds: opts.cycleSeconds,
     firesAt: opts.firesAt,
     uniqueCropCount: opts.uniqueCropCount,
+    scripts,
     emit(plotId: PlotId, event: TickEvent) {
       sink.push({ ...event, cycle: opts.cycle, plotId });
       const runner = runnerOf(plotId);
       if (runner) countStepEvent(runner, event);
+      scripts?.onEvent(plotId, event);
     },
     policiesFor(plotId) {
       const { def } = flowOf(plotId);
-      return mergePolicies(settings.policies, def.policies, stepOf(plotId).policies);
+      return mergePolicies(settings.policies, def.policies, stepOf(plotId).policies, scriptPlot(plotId)?.policies);
     },
     layoutFor(plotId) {
-      return env.resolveLayout(stepOf(plotId).layout);
+      return env.resolveLayout(scriptPlot(plotId)?.layout ?? stepOf(plotId).layout);
     },
     stepFor(plotId) {
       return stepOf(plotId);

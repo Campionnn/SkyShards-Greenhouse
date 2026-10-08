@@ -16,6 +16,8 @@ export interface TriggerView {
   collected?: (item: string) => number;
   /** The step's resolved layout (`layoutShort`). Missing: `layoutShort` never holds. */
   layout?: ResolvedLayout;
+  /** Evaluates a `script` condition (the scenario's script runtime). Missing: script conditions never hold. */
+  script?: (expr: string) => boolean;
 }
 
 /**
@@ -100,6 +102,8 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
       return (v.runner.spawnedInStep[t.mutationId] ?? 0) >= t.count;
     case "stepVisits":
       return stepVisits(v.runner, t.sinceStep) >= Math.max(1, t.count);
+    case "script":
+      return v.script ? v.script(t.expr) : false;
   }
 }
 
@@ -192,5 +196,9 @@ export function describeTrigger(t: Trigger, stepName: StepNamer = (id) => id, it
       return `${t.count} x ${itemName(t.mutationId)} spawned`;
     case "stepVisits":
       return `entered this step ${t.count}+ times${t.sinceStep !== undefined ? ` since ${stepName(t.sinceStep)}` : ""}`;
+    case "script": {
+      const e = t.expr.trim().replace(/\s+/g, " ");
+      return `script: ${e.length > 80 ? `${e.slice(0, 80)}...` : e || "(empty)"}`;
+    }
   }
 }

@@ -6,6 +6,7 @@ import { harvestPlant } from "./harvest";
 import { closePlotDebts, credit, spend } from "./inventory";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isFootprintFree, isHarvestable, newPlant, removePlant } from "./plants";
 import type { PlantState, PlotState } from "./state";
+import { isProtected } from "../script/overrides";
 
 /** Player removal: harvest if harvestable, clear a Dead Plant (item back to inventory), else break it as a loss. */
 export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch, why: string): void {
@@ -109,8 +110,10 @@ export function applyStepLayout(
 /** Clear unwanted Dead Plants, remove spawns blocking layout cells (not layout inputs), re-place what's missing. */
 export function maintainLayout(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch): void {
   const desiredAt = new Map(layout.plants.map((d) => [cellIndex(d.row, d.col), d]));
+  // Plants a script protected (`plant.protect()`) are left alone; no scripts, none.
+  const kept = (p: PlantState) => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
   for (const p of [...plot.plants]) {
-    if (!p.isDeadPlant) continue;
+    if (!p.isDeadPlant || kept(p)) continue;
     const d = desiredAt.get(cellIndex(p.row, p.col));
     if (d && matches(p, d)) continue; // layout places a dead plant here
     removeByPlayer(plot, p, ctx, scratch, "cleared");
@@ -120,7 +123,7 @@ export function maintainLayout(plot: PlotState, layout: ResolvedLayout, ctx: Cyc
   for (const d of layout.plants) {
     for (const idx of footprint(d.row, d.col, d.size)) {
       const q = occ[idx];
-      if (!q || matches(q, d) || q.origin !== "spawned" || !plot.plants.includes(q)) continue;
+      if (!q || matches(q, d) || q.origin !== "spawned" || !plot.plants.includes(q) || kept(q)) continue;
       if (layoutInputAt(q, layout, ctx.config)) continue;
       removeByPlayer(plot, q, ctx, scratch, "blocking layout");
     }

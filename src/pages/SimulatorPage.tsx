@@ -10,6 +10,9 @@ import { buttonClass } from "../components/simulator/styles";
 import { FlowEditor } from "../components/simulator/FlowEditor";
 import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
 import { addPlot, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
+import { ScriptEditor } from "../components/simulator/script/ScriptEditor";
+import { ScriptHaltBanner, ScriptPanel } from "../components/simulator/script/ScriptPanel";
+import type { ScriptTarget } from "../components/simulator/script/scriptEdit";
 import { useSimulation } from "../hooks/useSimulation";
 import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, migrateScenario, scenarioFromShareCodes, type Scenario } from "../simulator";
 import { extractLayoutCode, LocalStorageManager, readIncomingLayout, SOURCE_LABEL, type IncomingLayout } from "../utilities";
@@ -66,6 +69,8 @@ export const SimulatorPage: React.FC = () => {
   const [picking, setPicking] = useState(false);
   /** Sanity Check inspector: hovering an empty cell or slot shows which mutations could spawn there. */
   const [sanityCheckOn, setSanityCheckOn] = useState(false);
+  /** Script editor overlay: which script is open. */
+  const [scripting, setScripting] = useState<ScriptTarget | null>(null);
   const settled = useDebounced(scenario, 300);
   const { view, run, step, stepBack, undo, stop, reset, addItems } = useSimulation(settled);
 
@@ -121,13 +126,13 @@ export const SimulatorPage: React.FC = () => {
 
   // The flow editor is a full-screen overlay; lock the page behind it.
   useEffect(() => {
-    if (editingPlot === null) return;
+    if (editingPlot === null && scripting === null) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [editingPlot]);
+  }, [editingPlot, scripting]);
 
   const snapshot = view.snapshot;
   const state = snapshot?.state;
@@ -177,6 +182,15 @@ export const SimulatorPage: React.FC = () => {
         seed={scenario.settings.seed}
         onSeedChange={(seed) => setScenario((sc) => ({ ...sc, settings: { ...sc.settings, seed } }))}
       />
+      {state?.scripts?.halt && (
+        <ScriptHaltBanner
+          halt={state.scripts.halt}
+          onEdit={() => {
+            const key = state.scripts!.halt!.script;
+            setScripting(key === "global" ? "controller" : Number(key.replace("plot:", "")));
+          }}
+        />
+      )}
 
       <div className="space-y-4 min-w-0">
           {state ? (
@@ -232,6 +246,8 @@ export const SimulatorPage: React.FC = () => {
             </>
           )}
 
+          <ScriptPanel scenario={scenario} state={state ?? null} onEdit={setScripting} />
+
           {state && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
               <EventLog log={view.log} plotIds={plotIds} />
@@ -264,6 +280,23 @@ export const SimulatorPage: React.FC = () => {
                 initialStep={editing!.step}
                 onChange={setScenario}
                 onClose={() => setEditingPlot(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scripting !== null && (scripting === "controller" || scenario.plots.some((p) => p.id === scripting)) && (
+        <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true" aria-label="Script editor">
+          <div className="container mx-auto max-w-screen-2xl px-2 sm:px-4 py-6">
+            <div className="bg-slate-900 rounded-lg shadow-2xl">
+              <ScriptEditor
+                scenario={scenario}
+                target={scripting}
+                onTargetChange={setScripting}
+                onChange={setScenario}
+                onClose={() => setScripting(null)}
+                halt={state?.scripts?.halt ?? null}
               />
             </div>
           </div>

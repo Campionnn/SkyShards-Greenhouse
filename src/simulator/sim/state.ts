@@ -3,6 +3,7 @@ import type { EffectId, ItemId, KindId, MutationId, Size } from "../data/types";
 import type { Flow, Policies, PolicyOverrides } from "../flow/types";
 import type { ArmorSet } from "../economy/rareCrops";
 import type { RngState } from "../rng";
+import type { ScriptDef, ScriptsState } from "../script/types";
 
 // SimulationState is plain data (no Map, Set, class or closure) so it survives
 // structuredClone, postMessage and JSON, and run() stays splittable.
@@ -191,6 +192,8 @@ export interface ScenarioPlot {
   id: PlotId;
   flow: Flow;
   policies?: PolicyOverrides;
+  /** This plot's script (src/simulator/script). Missing = none. */
+  script?: ScriptDef;
 }
 
 /** The whole input. The cycle count is an argument to run(), not part of the scenario. */
@@ -198,6 +201,8 @@ export interface Scenario {
   plots: ScenarioPlot[];
   startingInventory: Record<ItemId, number>;
   settings: Settings;
+  /** The controller script: sees and acts on every plot. Missing = none. */
+  script?: ScriptDef;
 }
 
 export interface LedgerRow {
@@ -299,6 +304,11 @@ export interface SimulationState {
   uniqueCropsStanding: number;
   lastCycleSeconds: number;
   lastCycleActive: boolean;
+  /**
+   * Script variables, overrides, logs and metrics. Present only when the scenario uses
+   * scripts (`scenarioUsesScripts`), so scenarios without scripts are byte-identical to before.
+   */
+  scripts?: ScriptsState;
 }
 
 // ---- Events: the trace every number can be explained from ----
@@ -349,6 +359,8 @@ export interface RunOptions {
   /** Minimum wall-clock gap between progress callbacks. */
   progressIntervalMs?: number;
   signal?: AbortSignal;
+  /** Don't stop at a script's pause() (replays). Script errors always stop. */
+  ignorePauses?: boolean;
 }
 
 export interface BatchResult {

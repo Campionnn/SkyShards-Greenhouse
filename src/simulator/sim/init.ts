@@ -3,7 +3,9 @@ import { newRunner } from "../flow/runner";
 import { ScenarioError, validateScenario } from "../flow/validate";
 import { seedRng } from "../rng";
 import { countUniqueCropGroups, cycleSeconds, effectiveUniqueCrops } from "../growth/clock";
-import { newScratch, type Env } from "./context";
+import { scenarioUsesScripts } from "../script/overrides";
+import { emptyScriptsState, ScriptRuntime } from "../script/runtime";
+import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { convertAloeFragments, ledgerRow } from "./inventory";
 import { applyStepLayout } from "./placement";
@@ -62,22 +64,37 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
   };
   for (const item of Object.keys(state.inventory)) ledgerRow(state, item);
   convertAloeFragments(state);
+  // Only scenarios that use scripts carry script state, so the rest are unchanged.
+  if (scenarioUsesScripts(input)) state.scripts = emptyScriptsState(input.settings.seed);
 
   const events: TimedEvent[] = [];
+  const scripts = state.scripts ? ScriptRuntime.create(state, env) : null;
   const ctx = makeCycleCtx(
     env,
     state,
     { cycle: 0, active: true, cycleSeconds: state.lastCycleSeconds, firesAt: 0, uniqueCropCount: 0 },
-    events
+    events,
+    scripts
   );
+  const scratches = new Map<number, TickScratch>();
   for (const id of input.settings.config.plotOrder) {
     const plot = state.plots.find((p) => p.id === id);
     if (!plot) continue;
-    applyStepLayout(plot, ctx.layoutFor(id), ctx, newScratch(), true, "setup");
+    const scratch = newScratch();
+    scratches.set(id, scratch);
+    applyStepLayout(plot, ctx.layoutFor(id), ctx, scratch, true, "setup");
   }
 
   state.uniqueCropsStanding = uniqueCropsAcross(state, env);
   state.uniqueCropCount = effectiveUniqueCrops(state.uniqueCropsStanding, input.settings.playerStats.floraShard);
   state.lastCycleSeconds = cycleSeconds(input.settings.playerStats, state.uniqueCropCount);
+
+  if (scripts) {
+    // Top-level code, then onStart, with the starting layouts built (the player is online).
+    scripts.setCycle(ctx, scratches);
+    scripts.runTopLevel();
+    scripts.callHook("onStart");
+    scripts.save();
+  }
   return { state, events };
 }

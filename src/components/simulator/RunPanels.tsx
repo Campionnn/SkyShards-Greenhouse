@@ -93,6 +93,9 @@ export const RunControls: React.FC<{
       : undone.kind === "run"
         ? `Undid ${undone.cycles === 1 ? "a step" : `a run of ${undone.cycles} cycles`}; back at cycle ${cycle}.`
         : `Undid an inventory change; back at cycle ${cycle}.`;
+  } else if (ready && summary && view.lastCall && view.snapshot?.state.scripts?.halt) {
+    const halt = view.snapshot.state.scripts.halt;
+    status = `Ran ${view.lastCall.cyclesRun} cycle${view.lastCall.cyclesRun === 1 ? "" : "s"}; ${halt.kind === "pause" ? "a script paused the run" : "a script error stopped the run"} at cycle ${halt.cycle}.`;
   } else if (ready && summary) {
     status = view.lastCall
       ? `${view.lastCall.truncated ? "Stopped after" : "Ran"} ${view.lastCall.cyclesRun} cycle${view.lastCall.cyclesRun === 1 ? "" : "s"} on ${plotCount} plot(s). Rivals: ${summary.rivals.spawned} spawned, ${summary.rivals.cleared} cleared.`

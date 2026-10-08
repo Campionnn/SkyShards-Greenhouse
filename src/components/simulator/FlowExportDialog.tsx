@@ -85,7 +85,7 @@ export const FlowExportPanel: React.FC<ExportProps> = ({ onClose, onExport }) =>
           <input type="checkbox" checked disabled className="mt-0.5 accent-emerald-500" />
           <span className="min-w-0">
             <span className="block text-xs font-medium text-emerald-200">Flows and layouts <span className="font-normal text-emerald-400/70">· Always included</span></span>
-            <span className="block mt-1 text-[11px] leading-relaxed text-slate-400">All plots, steps, layouts, exits, loops, checked targets and plot/step policy overrides.</span>
+            <span className="block mt-1 text-[11px] leading-relaxed text-slate-400">All plots, steps, layouts, exits, loops, checked targets, plot/step policy overrides, and the plot and controller scripts.</span>
           </span>
         </label>
         <fieldset className="space-y-1">

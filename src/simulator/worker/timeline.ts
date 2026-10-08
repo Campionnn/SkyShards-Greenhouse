@@ -115,9 +115,12 @@ export function createTimeline(engine: Engine, initial: SimulationState, opts: T
     }
     let s = start;
     const gap = cycle - s.cycle;
-    if (gap > DENSE_REPLAY) s = engine.run(s, gap - DENSE_REPLAY, { retainEvents: "none" }).state;
+    // ignorePauses: a script's pause() must not cut a replay short (it gives the same states).
+    if (gap > DENSE_REPLAY) s = engine.run(s, gap - DENSE_REPLAY, { retainEvents: "none", ignorePauses: true }).state;
     while (s.cycle < cycle) {
-      s = engine.run(s, 1, { retainEvents: "none" }).state;
+      const next = engine.run(s, 1, { retainEvents: "none", ignorePauses: true }).state;
+      if (next.cycle === s.cycle) break; // a script error stops time (never past where the session got to)
+      s = next;
       recent.set(s.cycle, s);
     }
     return s;

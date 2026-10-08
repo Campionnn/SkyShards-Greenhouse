@@ -65,7 +65,13 @@ export type Trigger =
    * The plot has entered the current step at least `count` times (this visit
    * included) since it last entered step `sinceStep`, or since the run start.
    */
-  | { kind: "stepVisits"; count: number; sinceStep?: string };
+  | { kind: "stepVisits"; count: number; sinceStep?: string }
+  /**
+   * A script expression (script/ language), e.g. `plot.count("rose") >= 4 && shared.ready`.
+   * Evaluated in the plot's script scope (its variables and functions) when the plot has
+   * one. Read-only: actions are refused. A script error halts the run.
+   */
+  | { kind: "script"; expr: string };
 
 export type TriggerKind = Trigger["kind"];
 

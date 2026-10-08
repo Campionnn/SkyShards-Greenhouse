@@ -7,6 +7,7 @@ import type { Scenario } from "../sim/state";
 import { resolveLayout } from "./layout";
 import { describeTrigger } from "./triggers";
 import type { Condition, Trigger } from "./types";
+import { checkScript, checkScriptExpression } from "../script/check";
 
 export interface ScenarioIssue {
   level: "error" | "warning";
@@ -73,8 +74,11 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
     err("Schedule", `"Every N cycles" must be at least 1.`);
   }
 
+  if (scenario.script) checkScript(scenario.script.source, scenario.script.enabled, "Controller script", "controller", issues);
+
   scenario.plots.forEach((plot) => {
     const base = `Plot ${plot.id}`;
+    if (plot.script) checkScript(plot.script.source, plot.script.enabled, `${base}${SEP}Script`, "plot", issues);
     const { steps } = plot.flow;
     if (steps.length === 0) {
       err(base, "This plot's flow has no steps. Add at least one step.");
@@ -144,6 +148,11 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
       return;
     }
     const path = `${where} "${describeTrigger(c, stepName, nameOf)}"`;
+    if (c.kind === "script") {
+      const problem = checkScriptExpression(c.expr);
+      if (problem) err(path, problem);
+      return;
+    }
     if (c.kind === "stepVisits") {
       if (!(c.count >= 1)) err(path, "The number of times must be at least 1.");
       if (c.sinceStep !== undefined && !known(c.sinceStep)) {
@@ -154,7 +163,7 @@ export function validateScenario(scenario: Scenario, data: GameData): ScenarioIs
     checkTrigger(c, path, kinds, slotCount);
   }
 
-  function checkTrigger(t: Exclude<Trigger, { kind: "stepVisits" }>, path: string, kinds: Set<string>, slotCount: number) {
+  function checkTrigger(t: Exclude<Trigger, { kind: "stepVisits" | "script" }>, path: string, kinds: Set<string>, slotCount: number) {
     switch (t.kind) {
       case "cycles":
         if (!(t.n >= 1)) err(path, "The number of cycles must be at least 1.");

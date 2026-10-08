@@ -13,7 +13,7 @@ describe("flow export options", () => {
     expect(checkboxes[0]).toContain('disabled=""');
     for (const checkbox of checkboxes.slice(1)) expect(checkbox).not.toContain('checked=""');
     expect(html).toContain("Always included");
-    expect(html).toContain("All plots, steps, layouts, exits, loops, checked targets and plot/step policy overrides.");
+    expect(html).toContain("All plots, steps, layouts, exits, loops, checked targets, plot/step policy overrides, and the plot and controller scripts.");
   });
 
   it("explains each section, preserves omitted settings, and offers explicit download or cancel", () => {

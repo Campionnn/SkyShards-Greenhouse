@@ -3,6 +3,7 @@ import type { SimConfig } from "../config";
 import type { GameData, KindId, Size } from "../data/types";
 import type { PriceSource } from "../economy/prices";
 import type { FlowStep, Policies, StepLayout } from "../flow/types";
+import type { ScriptRuntime } from "../script/runtime";
 import type { FlowRunnerState, PlayerStats, PlotId, PlotState, ScenarioPlot, SimulationState, SlotLabel, TickEvent } from "./state";
 
 /** A step layout resolved against game data: sizes filled in, origin decided. */
@@ -57,6 +58,8 @@ export interface CycleCtx {
   flowFor(plotId: PlotId): { def: ScenarioPlot; runner: FlowRunnerState };
   /** Cycles until the player is next active (>= 1, or Infinity). */
   cyclesUntilNextActive(): number;
+  /** The scenario's scripts (src/simulator/script), or null when it has none. */
+  scripts: ScriptRuntime | null;
 }
 
 /** One named step of `TICK_PHASES` (sim/tick.ts) or, on active cycles, `PLAYER_PHASES` (sim/player.ts). */

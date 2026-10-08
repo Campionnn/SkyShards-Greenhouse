@@ -14,6 +14,7 @@ import {
   type LayoutSpec,
   type Scenario,
   type ScenarioPlot,
+  type ScriptDef,
   type Condition,
   type ConditionGroup,
   type ConditionMatch,
@@ -205,10 +206,13 @@ export interface FlowsFile {
   plots: ScenarioPlot[];
   startingInventory?: Scenario["startingInventory"];
   settings?: ExportedSettings;
+  /** The controller script. Travels with the flows, like plot scripts (`ScenarioPlot.script`). */
+  script?: Scenario["script"];
 }
 
 export function exportFlows(sc: Scenario, options: Partial<FlowExportOptions> = {}): FlowsFile {
   const file: FlowsFile = { kind: FLOWS_FILE_KIND, version: 1, plots: sc.plots };
+  if (sc.script?.source.trim()) file.script = sc.script;
   const settings: ExportedSettings = {};
   if (options.startingInventory) file.startingInventory = sc.startingInventory;
   if (options.playerSettings) {
@@ -353,13 +357,32 @@ export function importFlows(sc: Scenario, text: string): Scenario {
       if (!s || typeof s.id !== "string" || !s.layout || !Array.isArray(s.exits)) throw new Error(`${where}, step ${j + 1}: needs an id, a layout and an exits list.`);
     });
   });
-  const clean = (plots as ScenarioPlot[]).map((p) => ({
+  const clean = (plots as ScenarioPlot[]).map(({ script: rawScript, ...p }) => ({
     ...p,
+    ...withScript(readScript(rawScript, `Plot ${p.id} script`)),
     flow: { steps: p.flow.steps, loop: !!p.flow.loop, startIndex: Math.min(Math.max(0, Math.floor(Number(p.flow.startIndex) || 0)), p.flow.steps.length - 1) },
   }));
   const next = isRecord(file) && file.kind === FLOWS_FILE_KIND && file.version === 2 ? importOptionalSections(sc, file) : sc;
-  return { ...next, plots: structuredClone(clean).sort((a, b) => a.id - b.id) };
+  const out: Scenario = { ...next, plots: structuredClone(clean).sort((a, b) => a.id - b.id) };
+  // The controller script travels with the flows: a flows file without one clears it.
+  if (isRecord(file) && file.kind === FLOWS_FILE_KIND) {
+    const script = readScript(file.script, "Controller script");
+    if (script) out.script = script;
+    else delete out.script;
+  }
+  return out;
 }
+
+/** A script from an imported file, checked for shape (its code is checked when the scenario runs). */
+function readScript(raw: unknown, where: string): ScriptDef | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isRecord(raw) || typeof raw.source !== "string") throw new Error(`${where}: expected { source: "..." }.`);
+  if ("enabled" in raw && typeof raw.enabled !== "boolean") throw new Error(`${where}: enabled must be true or false.`);
+  if (!raw.source.trim()) return undefined;
+  return raw.enabled === false ? { source: raw.source, enabled: false } : { source: raw.source };
+}
+
+const withScript = (s: ScriptDef | undefined): { script?: ScriptDef } => (s ? { script: s } : {});
 
 export function removePlot(sc: Scenario, plotId: number): Scenario {
   return { ...sc, plots: sc.plots.filter((p) => p.id !== plotId) };
@@ -396,6 +419,8 @@ export function defaultTrigger(kind: TriggerKind): Trigger {
       return { kind, count: 0 };
     case "stepVisits":
       return { kind, count: 3 };
+    case "script":
+      return { kind, expr: 'plot.count("chorus_fruit") >= 4' };
   }
 }
 
@@ -456,6 +481,7 @@ export const TRIGGER_KINDS: { value: TriggerKind; label: string }[] = [
   { value: "allFullyGrown", label: "everything fully grown" },
   { value: "noneFullyGrown", label: "nothing fully grown" },
   { value: "stepVisits", label: "times this step entered >=" },
+  { value: "script", label: "script expression" },
 ];
 
 // ---- Layout <-> designer placements ----------------------------------------

@@ -155,7 +155,9 @@ export const ScenarioPanel: React.FC<{
               <div className="text-xs text-slate-200">Plot {p.id}</div>
               <div className="text-[11px] text-slate-500 truncate">
                 {p.flow.steps.length} step{p.flow.steps.length > 1 ? "s" : ""}
-                {p.flow.loop ? ", looping" : ""} · {layoutSummary(p.flow.steps[p.flow.startIndex]?.layout ?? { code: "" })}
+                {p.flow.loop ? ", looping" : ""}
+                {p.script?.source.trim() ? (p.script.enabled === false ? ", script off" : ", scripted") : ""} ·{" "}
+                {layoutSummary(p.flow.steps[p.flow.startIndex]?.layout ?? { code: "" })}
               </div>
             </div>
             <button className={buttonClass.icon} onClick={() => onEditFlow(p.id)} title="Edit flow">

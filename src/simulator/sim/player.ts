@@ -9,6 +9,10 @@ import { harvestPlant } from "./harvest";
 import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
 import { layoutInputAt, maintainLayout, removeByPlayer } from "./placement";
 import type { PlantState, PlotState } from "./state";
+import { isProtected, phaseDisabled } from "../script/overrides";
+
+/** A script protected this plant from the built-in phases (`plant.protect()`). No scripts: never. */
+const guarded = (plot: PlotState, p: PlantState, ctx: CycleCtx): boolean => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
 
 /** Timer runs out before the next session and its minimum is met (`wouldDecayWithin`). Never online again: any timer counts. */
 function decaysBeforeNextSession(plot: PlotState, p: PlantState, ctx: CycleCtx): boolean {
@@ -69,7 +73,7 @@ function harvestSpawns(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
   if (policies.spawnedHarvest === "never") return;
   const layout = ctx.layoutFor(plot.id);
   for (const p of [...plot.plants]) {
-    if (p.origin !== "spawned" || !plot.plants.includes(p)) continue;
+    if (p.origin !== "spawned" || !plot.plants.includes(p) || guarded(plot, p, ctx)) continue;
     if (policies.layoutInputSpawns === "keep" && layoutInputAt(p, layout, ctx.config)) {
       if (isHarvestable(p) && isFullyGrown(p) && decaysBeforeNextSession(plot, p, ctx)) harvestPlant(plot, p, ctx, scratch);
       continue;
@@ -90,7 +94,7 @@ function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
   const upkeep = ctx.policiesFor(plot.id).baseCropUpkeep;
   if (upkeep === "leaveUntilDecay") return;
   for (const p of [...plot.plants]) {
-    if (p.origin !== "planted" || !isHarvestable(p) || !plot.plants.includes(p)) continue;
+    if (p.origin !== "planted" || !isHarvestable(p) || !plot.plants.includes(p) || guarded(plot, p, ctx)) continue;
     if (upkeep === "harvestBeforeDecay" && !decaysBeforeNextSession(plot, p, ctx)) continue;
     const { kindId, row, col } = p;
     harvestPlant(plot, p, ctx, scratch);
@@ -127,7 +131,7 @@ function clearTargetBlockers(plot: PlotState, ctx: CycleCtx, scratch: TickScratc
     if (!footprintFits(slot.row, slot.col, slot.size)) continue;
     for (const idx of footprint(slot.row, slot.col, slot.size)) {
       const q = occ[idx];
-      if (!q || q.origin !== "spawned" || q.isDeadPlant || isRoot(q) || q.kindId === slot.mutationId || !plot.plants.includes(q)) continue;
+      if (!q || q.origin !== "spawned" || q.isDeadPlant || isRoot(q) || q.kindId === slot.mutationId || !plot.plants.includes(q) || guarded(plot, q, ctx)) continue;
       removeByPlayer(plot, q, ctx, scratch, "blocking target");
     }
   }
@@ -193,7 +197,29 @@ export const PLAYER_PHASES: readonly Phase[] = [
   { id: "fixGround", summary: "Swap wrong ground blocks under empty target cells back to what the target needs (fixGround).", run: fixGround },
 ];
 
-/** Internal: only sim/run.ts calls this, on active cycles. */
+/**
+ * Internal: only sim/run.ts calls this, on active cycles. With scripts: the plot script's
+ * `onSession` runs first and `afterSession` last; phases a script disabled are skipped; queued
+ * script events are delivered after each phase.
+ */
 export function runPlayerSession(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
-  for (const phase of PLAYER_PHASES) phase.run(plot, ctx, scratch);
+  const scripts = ctx.scripts;
+  if (!scripts) {
+    for (const phase of PLAYER_PHASES) phase.run(plot, ctx, scratch);
+    return;
+  }
+  scripts.callHook("onSession", [], plot.id);
+  for (const phase of PLAYER_PHASES) {
+    if (phaseDisabled(ctx.state, plot.id, phase.id)) continue;
+    phase.run(plot, ctx, scratch);
+    scripts.flush();
+  }
+  scripts.callHook("afterSession", [], plot.id);
+}
+
+/** Run one session phase on demand (a script's `plot.runPhase(id)`). Ignores the disabled list. */
+export function runSessionPhase(plot: PlotState, ctx: CycleCtx, scratch: TickScratch, phaseId: string): void {
+  const phase = PLAYER_PHASES.find((p) => p.id === phaseId);
+  if (!phase) throw new Error(`Unknown session phase "${phaseId}"`);
+  phase.run(plot, ctx, scratch);
 }

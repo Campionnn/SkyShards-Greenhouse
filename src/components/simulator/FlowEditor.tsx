@@ -14,6 +14,7 @@ import type {
   StepLayout,
   Trigger,
 } from "../../simulator";
+import { checkScriptExpression } from "../../simulator";
 import type { LayoutTransform } from "../../utilities";
 import {
   CropSelectionPalette,
@@ -80,7 +81,7 @@ const StepLayoutEditor: React.FC<{ layout: StepLayout; onChange: (layout: StepLa
         >
           <Copy className="w-3.5 h-3.5" /> Copy code
         </button>
-        <a className={buttonClass.neutral} href={`/designer?layout=${code}`} target="_blank" rel="noopener noreferrer" title="Open in the Designer (new tab)">
+        <a className={buttonClass.neutral} href={`/designer?layout=${encodeURIComponent(code)}`} target="_blank" rel="noopener noreferrer" title="Open in the Designer (new tab)">
           <ExternalLink className="w-3.5 h-3.5" /> Designer
         </a>
       </div>
@@ -369,11 +370,30 @@ const TriggerRow: React.FC<{ trigger: Trigger; steps: StepOption[]; onChange: (t
         </select>
       </>
     )}
+    {trigger.kind === "script" && <ScriptConditionInput expr={trigger.expr} onChange={(expr) => onChange({ ...trigger, expr })} />}
     <button className={buttonClass.icon} onClick={onRemove} title="Remove condition">
       <X className="w-3.5 h-3.5" />
     </button>
   </div>
 );
+
+/** A one-line script expression with a live syntax check. Runs in the plot script's scope. */
+const ScriptConditionInput: React.FC<{ expr: string; onChange: (expr: string) => void }> = ({ expr, onChange }) => {
+  const problem = checkScriptExpression(expr);
+  return (
+    <div className="flex flex-col gap-0.5 flex-1 min-w-[240px]">
+      <input
+        className={`${inputClass} font-mono w-full ${problem ? "border-red-500/60" : ""}`}
+        value={expr}
+        spellCheck={false}
+        placeholder='plot.count("chorus_fruit") >= 4 && shared.ready'
+        title="A script expression. It sees the plot script's variables and functions, plot, shared, inventory and the rest of the script API. It may only read."
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {problem && <span className="text-[11px] text-red-300">{problem}</span>}
+    </div>
+  );
+};
 
 /** Select value for "the following step" (no `next`). Not a valid step id, since ids are never empty. */
 const NEXT_DEFAULT = "";
