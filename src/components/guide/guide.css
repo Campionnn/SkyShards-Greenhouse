@@ -1,0 +1,79 @@
+/* Rose Dragon Guide: interaction details Tailwind classes don't cover. */
+
+.guide-root button,
+.guide-root summary,
+.guide-root input,
+.guide-root select {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 16px inputs so iOS doesn't zoom the page on focus. */
+.guide-root input,
+.guide-root select {
+  font-size: 16px;
+}
+
+.guide-press {
+  transition: transform 120ms ease-out, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+.guide-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .guide-press:hover:not(:disabled) {
+    filter: brightness(1.12);
+  }
+}
+
+/* Native dialog: full-height sheet on phones, centred card on wider screens. */
+.guide-dialog {
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  max-width: min(960px, calc(100vw - 24px));
+  width: 100%;
+  max-height: calc(100dvh - 24px);
+}
+.guide-dialog::backdrop {
+  background: rgba(2, 6, 23, 0.72);
+}
+.guide-dialog[open] {
+  animation: guide-dialog-in 160ms ease-out;
+}
+@media (max-width: 639px) {
+  .guide-dialog {
+    max-width: 100vw;
+    max-height: 100dvh;
+    height: 100dvh;
+    margin: 0;
+  }
+}
+@keyframes guide-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.guide-safe-bottom {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-press,
+  .guide-dialog[open] {
+    transition: none;
+    animation: none;
+  }
+  .guide-press:active:not(:disabled) {
+    transform: none;
+  }
+}

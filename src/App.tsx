@@ -9,6 +9,7 @@ import { CropMutationInfoModal } from "./components/calculator/CropMutationInfoM
 const CalculatorPage = lazy(() => import("./pages/CalculatorPage").then((module) => ({ default: module.CalculatorPage })));
 const DesignerPage = lazy(() => import("./pages/DesignerPage").then((module) => ({ default: module.DesignerPage })));
 const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((module) => ({ default: module.SimulatorPage })));
+const GuidePage = lazy(() => import("./pages/GuidePage").then((module) => ({ default: module.GuidePage })));
 const AboutPage = lazy(() => import("./pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const ContactPage = lazy(() => import("./pages/ContactPage").then((module) => ({ default: module.ContactPage })));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
@@ -86,14 +87,21 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: "guide",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <GuidePage />
+          </Suspense>
+        ),
+      },
+      {
         path: "wiki",
         element: (
           <Suspense fallback={<LoadingSpinner />}>
             <WikiPage />
           </Suspense>
         ),
-      },
-      {
+      },      {
         path: "wiki/:slug",
         element: (
           <Suspense fallback={<LoadingSpinner />}>

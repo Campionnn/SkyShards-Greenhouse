@@ -17,8 +17,24 @@ const STORAGE_KEYS = {
   MUTATION_TARGETS: "skyshards-mutation-targets",
   EFFECT_WEIGHTS: "skyshards-effect-weights",
   SIMULATOR_SCENARIO: "skyshards-simulator-scenario",
+  GUIDE_STATE: "skyshards-guide-state",
   LAST_SOLVER_LAYOUT: "skyshards-last-solver-layout",
 } as const;
+
+/**
+ * The Guide keeps the player's greenhouse (inventory, each plot's farm and facts, settings, script
+ * memory) so a revisit picks up where they left off. It is validated against the flow on load
+ * (`restoreState` in src/guide/checkin.ts); anything without `version: 2` is discarded.
+ */
+export interface StoredGuideState {
+  version: 2;
+  inventory: Record<string, number>;
+  plots: Record<number, { farm: string; facts?: unknown; acted?: boolean }>;
+  settings: Scenario["settings"];
+  memory: { builtOnce: Record<string, number> };
+  /** Forecast precision the player last chose. */
+  precision?: "quick" | "normal" | "thorough";
+}
 
 interface GridConfigData {
   unlockedCells: string[]; // "row,col" keys
@@ -242,6 +258,22 @@ export class LocalStorageManager {
 
   static clearSimulatorScenario(): void {
     this.remove(STORAGE_KEYS.SIMULATOR_SCENARIO);
+  }
+
+  /** The Guide's greenhouse and settings (`skyshards-guide-state`). */
+  static saveGuideState(state: StoredGuideState): boolean {
+    return this.save(STORAGE_KEYS.GUIDE_STATE, state);
+  }
+
+  /** Only shape-checked here; the Guide validates it against the flow before use. Old shapes are dropped. */
+  static loadGuideState(): StoredGuideState | null {
+    const data = this.load<StoredGuideState>(STORAGE_KEYS.GUIDE_STATE);
+    if (!data || typeof data !== "object" || data.version !== 2) return null;
+    return data;
+  }
+
+  static clearGuideState(): void {
+    this.remove(STORAGE_KEYS.GUIDE_STATE);
   }
 
   /** Last finished Calculator result, offered by the Simulator's layout picker. */

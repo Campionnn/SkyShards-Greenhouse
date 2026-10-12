@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Calculator, Palette, FlaskConical, BookOpen, Menu, X, ExternalLink } from "lucide-react";
+import { Calculator, Palette, FlaskConical, BookOpen, Menu, X, ExternalLink, Compass } from "lucide-react";
 
 export const Navigation: React.FC = () => {
   const location = useLocation();
@@ -10,6 +10,7 @@ export const Navigation: React.FC = () => {
     { path: "/", label: "Calculator", icon: Calculator },
     { path: "/designer", label: "Designer", icon: Palette },
     { path: "/simulator", label: "Simulator", icon: FlaskConical },
+    { path: "/guide", label: "Guide", icon: Compass },
     { path: "/wiki", label: "Wiki", icon: BookOpen },
   ];
 
@@ -18,11 +19,14 @@ export const Navigation: React.FC = () => {
     path === "/" ? location.pathname === "/" : location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   const colorClassesFor = (path: string, isActive: boolean) => {
-    const tone = path === "/designer" ? "blue" : path === "/simulator" ? "amber" : path === "/wiki" ? "teal" : "emerald";
+    const tone = path === "/designer" ? "blue" : path === "/simulator" ? "amber" : path === "/guide" ? "violet" : path === "/wiki" ? "teal" : "emerald";
     const classes = {
       blue: isActive
         ? "bg-blue-500/30 text-blue-300 border border-blue-500/40 ring-1 ring-offset-0 ring-blue-400"
         : "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/20 hover:border-blue-500/30",
+      violet: isActive
+        ? "bg-violet-500/30 text-violet-300 border border-violet-500/40 ring-1 ring-offset-0 ring-violet-400"
+        : "bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 border border-violet-500/20 hover:border-violet-500/30",
       amber: isActive
         ? "bg-amber-500/30 text-amber-300 border border-amber-500/40 ring-1 ring-offset-0 ring-amber-400"
         : "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/20 hover:border-amber-500/30",
