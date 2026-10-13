@@ -52,28 +52,29 @@ export const GridManager: React.FC<GridManagerProps> = ({
   
   return (
     <div 
-      className={`inline-block select-none ${className}`}
+      className={`select-none ${size === "md" ? "w-full max-w-[418px]" : "inline-block"} ${className}`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
     >
-      <div className="flex flex-col gap-0.5">
-        {rows.map(row => (
-          <div key={row} className="flex gap-0.5">
-            {cols.map(col => (
-              <GridCell
-                key={`${row}-${col}`}
-                row={row}
-                col={col}
-                isInteractive={isInteractive}
-                showCoordinates={showCoordinates}
-                size={size}
-                isDragging={isDragging}
-                paintModeRef={paintModeRef}
-                hasDraggedRef={hasDraggedRef}
-              />
-            ))}
-          </div>
-        ))}
+      <div
+        className="grid gap-0.5"
+        style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0, 1fr))` }}
+      >
+        {rows.map(row =>
+          cols.map(col => (
+            <GridCell
+              key={`${row}-${col}`}
+              row={row}
+              col={col}
+              isInteractive={isInteractive}
+              showCoordinates={showCoordinates}
+              size={size}
+              isDragging={isDragging}
+              paintModeRef={paintModeRef}
+              hasDraggedRef={hasDraggedRef}
+            />
+          ))
+        )}
       </div>
     </div>
   );

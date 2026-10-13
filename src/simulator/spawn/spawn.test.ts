@@ -240,7 +240,7 @@ describe("Bioanalysis accessory (mutation chance bonus)", () => {
     expect(artifact).toBeGreaterThan(base);
     expect(artifact / base).toBeGreaterThan(1.05); // ~1.15, a generous band for one seed
     expect(artifact / base).toBeLessThan(1.3);
-  });
+  }, 30_000); // 2 x 3000 cycles: ~2 s alone, more under a parallel full-suite run
 });
 
 describe("candidate mutations", () => {

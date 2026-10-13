@@ -296,9 +296,14 @@ describe("simulator panels render", () => {
     };
     expect(at({ kind: "everyN", n: 4, offset: 0 })).toContain("harvested at <span class=\"text-emerald-300\">stage 12</span>");
     const windows = at({ kind: "windows", windows: [{ from: 8, to: 14 }] });
-    expect(windows).toContain("08:00-10:00 (2 sessions)");
-    expect(windows).toContain("12:00");
-    expect(windows).toContain("10 cycles");
+    // 2h cycles, online 08:00-14:00: sessions at 08 and 10 are next online in 1 cycle, the 12:00 one in
+    // 10 cycles (20h). One row per harvest stage, highest first.
+    const rows = [...windows.matchAll(/<tr><td[^>]*>stage (\d+)\+<\/td><td>(.*?)<\/td><\/tr>/g)].map((m) => [Number(m[1]), m[2].replace(/<[^>]+>/g, "")]);
+    expect(rows).toEqual([
+      [14, "1 cycle"],
+      [rows[1]?.[0], "10 cycles (20h 0m)"],
+    ]);
+    expect(rows[1][0]).toBeLessThan(14);
     expect(at({ kind: "everyN", n: 1, offset: 0 }, { aloeAutoHarvest: false, aloeHarvestStage: 11 })).toContain("always harvested at stage 11");
   });
   it("the legend omits freezing and does not promise eligibility before evaluation", () => {

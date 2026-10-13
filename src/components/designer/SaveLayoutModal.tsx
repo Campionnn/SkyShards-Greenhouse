@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
-import { X, Save } from "lucide-react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { X, Save, AlertTriangle } from "lucide-react";
 import { useDesigner, useGreenhouseData } from "../../context";
-import type { DesignerPlacement } from "../../context/DesignerContext";
+import { summarizeTargets } from "../../utilities";
 import { Portal } from "../ui";
+import { LayoutPreview } from "./LoadLayoutModal";
 
 interface SaveLayoutModalProps {
   isOpen: boolean;
@@ -11,216 +12,197 @@ interface SaveLayoutModalProps {
   existingLayouts: Array<{ id: string; name: string }>;
 }
 
-export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  onSave,
-  existingLayouts
-}) => {
-  const { inputPlacements, targetPlacements } = useDesigner();
-  const { getMutationDef } = useGreenhouseData();
-  const [name, setName] = useState("");
+const MAX_NAME = 50;
+
+export const SaveLayoutModal: React.FC<SaveLayoutModalProps> = (props) => {
+  if (!props.isOpen) return null;
+  // Mounted fresh on each open, so the name and errors reset.
+  return <SaveLayoutDialog {...props} />;
+};
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+const SaveLayoutDialog: React.FC<SaveLayoutModalProps> = ({ onClose, onSave, existingLayouts }) => {
+  const { inputPlacements, targetPlacements, groundTiles } = useDesigner();
+  const { getCropDef, getMutationDef } = useGreenhouseData();
+  const nameOf = useCallback(
+    (id: string) => getMutationDef(id)?.name || getCropDef(id)?.name || id.replace(/_/g, " "),
+    [getCropDef, getMutationDef]
+  );
+
+  // Suggest a name from the targets, so saving is one keypress away.
+  const [name, setName] = useState(() => summarizeTargets(targetPlacements, nameOf)?.slice(0, MAX_NAME) ?? "");
   const [error, setError] = useState("");
-  const [showOverwriteWarning, setShowOverwriteWarning] = useState(false);
-  const [existingLayoutId, setExistingLayoutId] = useState<string | null>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isOpen]);
-
-  // Reset the form each time the modal opens.
-  useEffect(() => {
-    if (isOpen) {
-      setName("");
-      setError("");
-      setShowOverwriteWarning(false);
-      setExistingLayoutId(null);
-    }
-  }, [isOpen]);
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
 
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-
+    const handleEscape = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = "";
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = previous;
     };
-  }, [isOpen]);
+  }, [onClose]);
 
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-      onClose();
-    }
-  };
+  const trimmed = name.trim();
+  const existing = useMemo(() => existingLayouts.find((l) => l.name === trimmed) ?? null, [existingLayouts, trimmed]);
+
+  // Target mutations with counts, most common first.
+  const targetCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of targetPlacements) counts.set(p.cropId, (counts.get(p.cropId) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || nameOf(a[0]).localeCompare(nameOf(b[0])));
+  }, [targetPlacements, nameOf]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError("Please enter a layout name");
+    if (!trimmed) {
+      setError("Give the layout a name");
+      inputRef.current?.focus();
       return;
     }
-    
-    if (trimmedName.length > 50) {
-      setError("Layout name must be 50 characters or less");
-      return;
-    }
-    
-    const existing = existingLayouts.find(l => l.name === trimmedName);
-    if (existing && !showOverwriteWarning) {
-      setExistingLayoutId(existing.id);
-      setShowOverwriteWarning(true);
-      setError(`A layout named "${trimmedName}" already exists. Click Save again to overwrite it.`);
-      return;
-    }
-    
-    onSave(trimmedName, existingLayoutId || undefined);
+    onSave(trimmed, existing?.id);
   };
 
-  const handleNameChange = (newName: string) => {
-    setName(newName);
-    setError("");
-    setShowOverwriteWarning(false);
-    setExistingLayoutId(null);
-  };
-
-  // Target counts per mutation, for the summary.
-  const getTargetMutationsSummary = () => {
-    const mutationMap = new Map<string, DesignerPlacement>();
-    
-    targetPlacements.forEach(placement => {
-      if (!mutationMap.has(placement.cropId)) {
-        mutationMap.set(placement.cropId, placement);
-      }
-    });
-    
-    return Array.from(mutationMap.values());
-  };
-
-  const targetMutations = getTargetMutationsSummary();
-
-  if (!isOpen) return null;
+  const preview = useMemo(() => ({ inputs: inputPlacements, targets: targetPlacements }), [inputPlacements, targetPlacements]);
 
   return (
     <Portal>
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm overflow-y-auto"
-      onClick={handleBackdropClick}
-    >
       <div
-        ref={modalRef}
-        className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-md my-auto"
+        className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
+        onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       >
-        <div className="bg-slate-900 border-b border-slate-700 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between rounded-t-xl">
-          <h2 className="text-base sm:text-lg font-semibold text-slate-100">Save Layout</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-slate-200"
-            aria-label="Close modal"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-3 sm:p-6">
-          <div className="mb-6">
-            <label htmlFor="layout-name" className="block text-sm font-medium text-slate-300 mb-2">
-              Layout Name
-            </label>
-            <input
-              ref={inputRef}
-              id="layout-name"
-              type="text"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              placeholder="e.g., My Perfect Garden"
-              className="w-full px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50"
-              maxLength={50}
-            />
-            {error && (
-              <p className={`mt-1.5 text-xs ${showOverwriteWarning ? 'text-yellow-400' : 'text-red-400'}`}>{error}</p>
-            )}
-          </div>
-
-          <div className="mb-6 p-4 bg-slate-800/40 border border-slate-600/30 rounded-lg">
-            <h3 className="text-sm font-medium text-slate-200 mb-3">Layout Summary</h3>
-            <div className="space-y-2 text-sm text-slate-300">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">•</span>
-                <span>
-                  <span className="font-medium text-purple-400">{targetPlacements.length}</span>
-                  {' '}target {targetPlacements.length === 1 ? 'mutation' : 'mutations'}
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">•</span>
-                <span>
-                  <span className="font-medium text-emerald-400">{inputPlacements.length}</span>
-                  {' '}input {inputPlacements.length === 1 ? 'crop' : 'crops'}
-                </span>
-              </div>
-
-              {targetMutations.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-600/30">
-                  <div className="text-xs text-slate-400 mb-2">Target Mutations:</div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {targetMutations.map(mutation => {
-                      const mutationDef = getMutationDef(mutation.cropId);
-                      return (
-                        <div key={mutation.cropId} className="text-xs text-slate-300 pl-4">
-                          - {mutation.cropName}
-                          {mutationDef && (
-                            <span className="text-slate-500 ml-1">
-                              ({targetPlacements.filter(p => p.cropId === mutation.cropId).length})
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex gap-3">
+        <form
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="save-layout-title"
+          onSubmit={handleSubmit}
+          className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-lg max-h-[92vh] my-auto overflow-hidden flex flex-col"
+        >
+          <div className="border-b border-slate-700/70 px-4 py-3 flex items-center justify-between flex-shrink-0">
+            <h2 id="save-layout-title" className="text-sm font-medium text-slate-100">
+              Save this layout
+            </h2>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 bg-slate-700/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-slate-600/60 transition-colors"
+              className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700/60 transition-colors cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto scrollbar-dark p-4 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-center sm:items-start">
+              <LayoutPreview layout={preview} cellSize={12} />
+
+              <div className="min-w-0 flex-1 w-full space-y-3">
+                <div>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <label htmlFor="layout-name" className="text-xs font-medium text-slate-300">
+                      Name
+                    </label>
+                    <span className={`text-[11px] tabular-nums ${name.length >= MAX_NAME ? "text-amber-400" : "text-slate-500"}`}>
+                      {name.length}/{MAX_NAME}
+                    </span>
+                  </div>
+                  <input
+                    ref={inputRef}
+                    id="layout-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setError("");
+                    }}
+                    placeholder="e.g. Chloronite farm"
+                    maxLength={MAX_NAME}
+                    autoComplete="off"
+                    aria-invalid={!!error}
+                    aria-describedby="layout-name-hint"
+                    className={`w-full px-2.5 py-1.5 bg-slate-900/60 border rounded-md text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-colors ${
+                      error
+                        ? "border-red-500/60"
+                        : existing
+                          ? "border-amber-500/50 focus:border-amber-500/70"
+                          : "border-slate-600/40 focus:border-emerald-500/60"
+                    }`}
+                  />
+                  <div id="layout-name-hint" className="min-h-[1.25rem] mt-1">
+                    {error ? (
+                      <p className="text-xs text-red-400">{error}</p>
+                    ) : existing ? (
+                      <p className="text-xs text-amber-300/90 flex items-start gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 mt-px flex-shrink-0" />
+                        <span>Replaces the saved layout with this name.</span>
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                    {plural(targetPlacements.length, "target")}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                    {plural(inputPlacements.length, "input")}
+                  </span>
+                  {groundTiles.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                      {plural(groundTiles.length, "ground tile")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {targetCounts.length > 0 && (
+              <div className="rounded-lg border border-slate-600/30 bg-slate-800/40 p-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-2">Target mutations</div>
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 max-h-32 overflow-y-auto scrollbar-dark">
+                  {targetCounts.map(([id, count]) => (
+                    <li key={id} className="flex items-center justify-between gap-2 text-xs min-w-0">
+                      <span className="text-slate-200 truncate">{nameOf(id)}</span>
+                      <span className="text-slate-500 tabular-nums flex-shrink-0">x{count}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-700/70 px-4 py-3 flex flex-wrap items-center justify-end gap-2 flex-shrink-0">
+            <div className="mr-auto text-[11px] text-slate-500">Saved in this browser. Open it later from Load.</div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-md text-xs font-medium bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 border border-slate-600/30 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-emerald-500/80 rounded-lg text-sm text-white hover:bg-emerald-500 transition-colors flex items-center justify-center gap-2"
+              disabled={!trimmed}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 ${
+                existing
+                  ? "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30"
+                  : "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30"
+              }`}
             >
-              <Save className="w-4 h-4" />
-              Save Layout
+              <Save className="w-3.5 h-3.5" />
+              {existing ? "Overwrite layout" : "Save layout"}
             </button>
           </div>
         </form>
       </div>
-    </div>
     </Portal>
   );
 };

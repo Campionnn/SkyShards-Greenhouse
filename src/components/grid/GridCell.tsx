@@ -45,7 +45,7 @@ export const GridCell: React.FC<GridCellProps> = ({
   
   const sizeClasses = {
     sm: "w-6 h-6 text-[8px]",
-    md: "w-10 h-10 text-xs",
+    md: "w-full aspect-square min-w-0 text-xs",
     lg: "w-12 h-12 text-sm",
   };
   

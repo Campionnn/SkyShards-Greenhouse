@@ -267,7 +267,7 @@ describe("the reference scenario: 1 plot of Layout A feeding 2 plots of Layout B
     expect(r.summary.coinsRealised).toBeGreaterThan(0);
     const report = engine.analyse(r.state);
     expect(report.items.find((i) => i.item === "magic_jellybean")?.permanent).toBe(true);
-  });
+  }, 30_000); // ~2 s alone, more under a parallel full-suite run
 });
 
 describe("destruction", () => {

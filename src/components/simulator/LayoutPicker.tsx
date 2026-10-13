@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Calculator, ClipboardPaste, FolderOpen, Layers, Palette, X } from "lucide-react";
+import { Layers, X } from "lucide-react";
 import type { Scenario } from "../../simulator";
 import {
   decodeDesign,
@@ -7,12 +7,11 @@ import {
   extractLayoutCode,
   loadLayouts,
   LocalStorageManager,
-  SOURCE_LABEL,
   summarizeTargets,
   type HandoffSource,
   type IncomingLayout,
 } from "../../utilities";
-import { LayoutPreview } from "../designer";
+import { LayoutPreview, LayoutSourceBadge } from "../designer";
 import { Portal } from "../ui";
 import { nameOf } from "./format";
 import { layoutDestinations, type LayoutDestination } from "./scenarioEdit";
@@ -29,13 +28,6 @@ interface LayoutSource extends IncomingLayout {
   detail: string;
   preview: Preview;
 }
-
-const SOURCE_ICON: Record<HandoffSource, React.ReactNode> = {
-  calculator: <Calculator className="w-3.5 h-3.5 text-emerald-400" />,
-  designer: <Palette className="w-3.5 h-3.5 text-blue-400" />,
-  saved: <FolderOpen className="w-3.5 h-3.5 text-slate-400" />,
-  link: <ClipboardPaste className="w-3.5 h-3.5 text-amber-400" />,
-};
 
 const counts = (p: Preview) => `${p.targets.length} target${p.targets.length === 1 ? "" : "s"} · ${p.inputs.length} plant${p.inputs.length === 1 ? "" : "s"}`;
 
@@ -92,10 +84,7 @@ const SourceCard: React.FC<{ source: LayoutSource; selected: boolean; onSelect: 
   >
     <LayoutPreview layout={source.preview} cellSize={large ? 16 : 8} />
     <div className="min-w-0 flex-1">
-      <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-        {SOURCE_ICON[source.from]}
-        {SOURCE_LABEL[source.from]}
-      </div>
+      <LayoutSourceBadge from={source.from} />
       <div className="text-sm text-slate-100 break-words">{source.title}</div>
       {source.detail !== source.title && <div className="text-xs text-slate-400 break-words">{source.detail}</div>}
       {large && counts(source.preview) !== source.detail && <div className="text-[11px] text-slate-500 mt-0.5">{counts(source.preview)}</div>}

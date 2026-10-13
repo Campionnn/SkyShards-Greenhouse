@@ -1,13 +1,13 @@
-import React, { useCallback, useState, useEffect, type RefObject } from "react";
+import React, { useCallback, useState, type RefObject } from "react";
 import { useNavigate } from "react-router-dom";
-import { Save, FolderOpen, Share2, Clipboard, X, Image, Film, Download, ClipboardCopy, Loader2, FlaskConical } from "lucide-react";
+import { Save, FolderOpen, Share2, X, Image, Film, Download, ClipboardCopy, Loader2, FlaskConical } from "lucide-react";
 import { LayoutClearControls, LayoutTransformControls } from "./LayoutTools";
 
 const SHARE_BASE_URL = "https://api.skyshards.com/share";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDesigner, useGreenhouseData } from "../../context";
 import { useToast } from "../ui/toastContext";
-import { encodeDesign, decodeDesign, extractLayoutCode, makeIncomingLayout, simulatorHandoffState } from "../../utilities";
+import { encodeDesign, makeIncomingLayout, simulatorHandoffState } from "../../utilities";
 import { 
   loadLayouts, 
   saveLayouts,
@@ -26,9 +26,8 @@ import {
 } from "../../utilities/gridExport";
 import type { SavedLayout } from "../../types/layout";
 import type { DesignerGridHandle } from "./DesignerGrid";
-import { Portal } from "../ui";
 import { SaveLayoutModal } from "./SaveLayoutModal";
-import { LoadLayoutModal } from "./LoadLayoutModal";
+import { LoadLayoutModal, type LoadableLayout } from "./LoadLayoutModal";
 
 interface DesignerActionsProps {
   className?: string;
@@ -49,6 +48,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     targetPlacements,
     groundTiles,
     loadFromSolverResult,
+    undo,
   } = useDesigner();
   const { getCropDef, getMutationDef } = useGreenhouseData();
   const { toast } = useToast();
@@ -64,12 +64,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   const [currentExportBlob, setCurrentExportBlob] = useState<Blob | null>(null);
   const [hasExportedOnce, setHasExportedOnce] = useState(false);
   
-  useEffect(() => {
-    if (isLoadModalOpen) {
-      setSavedLayouts(loadLayouts());
-    }
-  }, [isLoadModalOpen]);
-  
   const resetExportState = useCallback(() => {
     setExportStep("choose-format");
     setExportFormat(null);
@@ -81,6 +75,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     if (inputPlacements.length === 0 && targetPlacements.length === 0 && groundTiles.length === 0) {
       return; // the button is disabled in this state
     }
+    setSavedLayouts(loadLayouts()); // for the overwrite check
     setIsSaveModalOpen(true);
   }, [inputPlacements.length, targetPlacements.length, groundTiles.length]);
   
@@ -148,22 +143,13 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     }
   }, [inputPlacements, targetPlacements, groundTiles, toast]);
   
+  // Opens even with nothing saved: it also offers the last Calculator result and a paste box.
   const handleOpenLoad = useCallback(() => {
-    const layouts = loadLayouts();
-    if (layouts.length === 0) {
-      toast({
-        title: "No saved layouts",
-        description: "Save a layout first before loading",
-        variant: "warning",
-        duration: 3000,
-      });
-      return;
-    }
-    setSavedLayouts(layouts);
+    setSavedLayouts(loadLayouts());
     setIsLoadModalOpen(true);
-  }, [toast]);
+  }, []);
   
-  const handleLoadLayout = useCallback((layout: SavedLayout) => {
+  const handleLoadLayout = useCallback((layout: LoadableLayout, name: string) => {
     const crops = layout.inputs.map(p => {
       const cropDef = getCropDef(p.cropId);
       const mutationDef = getMutationDef(p.cropId);
@@ -188,16 +174,19 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       };
     });
     
-    loadFromSolverResult(crops, mutations, layout.groundTiles ?? []);
+    const hadLayout = inputPlacements.length + targetPlacements.length + groundTiles.length > 0;
+    loadFromSolverResult(crops, mutations, layout.groundTiles);
     setIsLoadModalOpen(false);
     
     toast({
-      title: "Layout loaded",
-      description: `"${layout.name}" has been loaded`,
+      title: hadLayout ? "Layout replaced" : "Layout loaded",
+      description: name,
       variant: "success",
-      duration: 3000,
+      duration: hadLayout ? 5000 : 3000,
+      // Loading is one undo step, so Undo brings the previous layout back.
+      action: hadLayout ? { label: "Undo", onClick: () => { undo(); } } : undefined,
     });
-  }, [loadFromSolverResult, getCropDef, getMutationDef, toast]);
+  }, [loadFromSolverResult, getCropDef, getMutationDef, toast, undo, inputPlacements.length, targetPlacements.length, groundTiles.length]);
   
   const handleDeleteLayout = useCallback((layoutId: string) => {
     const success = deleteLayout(layoutId);
@@ -235,9 +224,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       });
     }
   }, [toast]);
-  
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importText, setImportText] = useState("");
   
   // Copies a share link to the clipboard.
   const handleExportCode = useCallback(() => {
@@ -278,71 +264,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     navigate("/simulator", { state: simulatorHandoffState(layout) });
   }, [inputPlacements, targetPlacements, groundTiles, getCropDef, getMutationDef, navigate]);
 
-  const handleOpenImport = useCallback(() => {
-    setImportText("");
-    setIsImportModalOpen(true);
-  }, []);
-  
-  // Imports from a share URL, designer URL or raw layout code.
-  const handleImportFromText = useCallback(() => {
-    if (!importText.trim()) {
-      toast({
-        title: "No code provided",
-        description: "Paste a design code or share link to import",
-        variant: "warning",
-        duration: 3000,
-      });
-      return;
-    }
-    
-    try {
-      const layoutCode = extractLayoutCode(importText);
-      const { inputs, targets, groundTiles: importedGround } = decodeDesign(layoutCode);
-      
-      const crops = inputs.map(p => {
-        const cropDef = getCropDef(p.cropId);
-        const mutationDef = getMutationDef(p.cropId);
-        const displayName = cropDef?.name || mutationDef?.name || p.cropId.replace(/_/g, " ");
-        return {
-          id: p.cropId,
-          name: displayName,
-          position: p.position,
-          size: cropDef?.size || mutationDef?.size || 1,
-        };
-      });
-      
-      const mutations = targets.map(p => {
-        const mutationDef = getMutationDef(p.cropId);
-        const cropDef = getCropDef(p.cropId);
-        const displayName = mutationDef?.name || cropDef?.name || p.cropId.replace(/_/g, " ");
-        return {
-          id: p.cropId,
-          name: displayName,
-          position: p.position,
-          size: mutationDef?.size || cropDef?.size || 1,
-        };
-      });
-      
-      loadFromSolverResult(crops, mutations, importedGround);
-      setIsImportModalOpen(false);
-      setImportText("");
-      
-      toast({
-        title: "Design imported",
-        description: `Loaded ${inputs.length} inputs and ${targets.length} targets`,
-        variant: "success",
-        duration: 3000,
-      });
-    } catch (err) {
-      toast({
-        title: "Import failed",
-        description: err instanceof Error ? err.message : "Invalid design code",
-        variant: "error",
-        duration: 5000,
-      });
-    }
-  }, [importText, loadFromSolverResult, getCropDef, getMutationDef, toast]);
-  
   const getExportOptions = useCallback((): ExportOptions => {
     const inputCrops = aggregateCropInfo(inputPlacements);
     const targetCrops = aggregateCropInfo(targetPlacements);
@@ -490,6 +411,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         <button
           onClick={handleOpenLoad}
           className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700/60 hover:border-slate-500/50 transition-colors"
+          title="From your saved layouts, the last Calculator result, or paste a share link"
         >
           <FolderOpen className="w-4 h-4" />
           Load
@@ -505,17 +427,9 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         </button>
         
         <button
-          onClick={handleOpenImport}
-          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-slate-700/60 hover:border-slate-500/50 transition-colors"
-        >
-          <Clipboard className="w-4 h-4" />
-          Paste Link
-        </button>
-
-        <button
           onClick={handleSimulate}
           disabled={totalPlacements === 0}
-          className="col-span-2 flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500/20 border border-amber-500/30 rounded-lg text-sm text-amber-300 hover:bg-amber-500/30 hover:border-amber-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500/20 border border-amber-500/30 rounded-lg text-sm text-amber-300 hover:bg-amber-500/30 hover:border-amber-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           title="Run this layout in the Simulator"
         >
           <FlaskConical className="w-4 h-4" />
@@ -631,51 +545,6 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         </div>
       </div>
       
-      {/* Import Modal */}
-      {isImportModalOpen && (
-        <Portal>
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto" onClick={() => setIsImportModalOpen(false)}>
-          <div 
-            className="bg-slate-800 border border-slate-600 rounded-lg p-4 w-full max-w-md my-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-slate-200">Import Design</h3>
-              <button
-                onClick={() => setIsImportModalOpen(false)}
-                className="text-slate-400 hover:text-slate-200 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            
-            <textarea
-              value={importText}
-              onChange={(e) => setImportText(e.target.value)}
-              placeholder="Paste a share link or design code here..."
-              className="w-full h-24 px-3 py-2 bg-slate-900/60 border border-slate-600/50 rounded-lg text-sm text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:border-slate-500"
-            />
-            
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={() => setIsImportModalOpen(false)}
-                className="flex-1 px-3 py-2 bg-slate-700/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-slate-600/60 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleImportFromText}
-                disabled={!importText.trim()}
-                className="flex-1 px-3 py-2 bg-emerald-500/80 rounded-lg text-sm text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                Import
-              </button>
-            </div>
-          </div>
-        </div>
-        </Portal>
-      )}
-      
       {/* Transform: nudge / rotate / mirror the whole layout */}
       <div className="space-y-2">
         <div className="text-xs text-slate-400 uppercase tracking-wider">Transform</div>
@@ -704,6 +573,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
         onDelete={handleDeleteLayout}
         onRename={handleRenameLayout}
         layouts={savedLayouts}
+        replacing={totalPlacements > 0}
       />
     </div>
   );

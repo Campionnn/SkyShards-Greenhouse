@@ -7,3 +7,5 @@ export { LayoutCropSummary } from "./LayoutCropSummary";
 export { LayoutClearControls, LayoutHistoryControls, LayoutTransformControls } from "./LayoutTools";
 export { SaveLayoutModal } from "./SaveLayoutModal";
 export { LoadLayoutModal, LayoutPreview } from "./LoadLayoutModal";
+export type { LoadableLayout } from "./LoadLayoutModal";
+export { LayoutSourceBadge } from "./LayoutSourceBadge";
