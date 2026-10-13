@@ -58,6 +58,6 @@ export {
   type Confirmation,
   type GuideState,
 } from "./checkin";
-export { DEFAULT_CHECK_EVERY, activityFor, hoursPerCycle, hoursToCycles } from "./schedule";
+export { DEFAULT_CHECK_EVERY, GUIDE_DEFAULT_STATS, activityFor, guideDefaultSettings, hoursPerCycle, hoursToCycles } from "./schedule";
 export type * from "./types";
 

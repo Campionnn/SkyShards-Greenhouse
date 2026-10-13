@@ -4,9 +4,10 @@ import { hourOfDay } from "./clock";
 
 /**
  * All-in Aloe (wiki All-in_Aloe/Table). Harvestable at any stage; the stage
- * sets the fragment multiplier (9 fragments = 1 All-in Aloe), the crop bundle
- * is fixed. Growing out of stage s rolls stage s's reset chance (back to stage
- * 1), so 4 -> 5 is the first risky step (3%). With that reading the wiki's
+ * sets the multiplier for both the fragments (9 fragments = 1 All-in Aloe) and
+ * the crop bundle (data.json drops are the x1 amount). Growing out of stage s
+ * rolls stage s's reset chance (back to stage 1), so 4 -> 5 is the first risky
+ * step (3%). With that reading the wiki's
  * "Expected Drops" column holds and stage 14 maximises expected drops (9.37)
  * when the player checks every cycle. Never decays.
  */

@@ -426,29 +426,46 @@ export const SettingsPanel: React.FC<{
   );
 };
 
-const clockText = (hour: number) => {
-  const m = Math.round(hour * 60) % (24 * 60);
-  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-};
 const gapText = (gap: number) => (Number.isFinite(gap) ? `${gap} cycle${gap === 1 ? "" : "s"}` : "never");
 
-/** Consecutive sessions with the same gap and stage, shown as one row. */
-interface SessionRun {
-  first: AloeSession;
-  last: AloeSession;
-  count: number;
+/** How many days of online sessions the "Times of day" preview looks at. Cycles drift against the clock, so one day isn't representative. */
+const PREVIEW_DAYS = 7;
+
+/** All sessions that harvest at the same stage, with the range of "next online in" gaps that lead to it. */
+interface StageRow {
+  stage: number;
+  minGap: number;
+  maxGap: number;
 }
 
-function groupSessions(sessions: AloeSession[]): SessionRun[] {
-  const runs: SessionRun[] = [];
+/** One row per harvest stage, highest stage (shortest gap) first. */
+function rowsByStage(sessions: AloeSession[]): StageRow[] {
+  const byStage = new Map<number, StageRow>();
   for (const s of sessions) {
-    const prev = runs[runs.length - 1];
-    if (prev && prev.last.gapCycles === s.gapCycles && prev.last.stage === s.stage && s.cycle === prev.last.cycle + prev.last.gapCycles) {
-      prev.last = s;
-      prev.count += 1;
-    } else runs.push({ first: s, last: s, count: 1 });
+    const row = byStage.get(s.stage);
+    if (!row) byStage.set(s.stage, { stage: s.stage, minGap: s.gapCycles, maxGap: s.gapCycles });
+    else {
+      row.minGap = Math.min(row.minGap, s.gapCycles);
+      row.maxGap = Math.max(row.maxGap, s.gapCycles);
+    }
   }
-  return runs;
+  return [...byStage.values()].sort((a, b) => b.stage - a.stage);
+}
+
+/** "1 cycle", "8 cycles (20h)", "8-9 cycles (20h-22h 30m)". */
+function gapRangeText(row: StageRow, seconds: number): React.ReactNode {
+  if (!Number.isFinite(row.minGap)) return "never";
+  const cycles = row.minGap === row.maxGap ? gapText(row.minGap) : `${row.minGap}-${Number.isFinite(row.maxGap) ? row.maxGap : "∞"} cycles`;
+  if (row.maxGap <= 1) return cycles;
+  const time =
+    row.minGap === row.maxGap || !Number.isFinite(row.maxGap)
+      ? formatDuration(row.minGap * seconds)
+      : `${formatDuration(row.minGap * seconds)}-${formatDuration(row.maxGap * seconds)}`;
+  return (
+    <>
+      {cycles} <span className="text-slate-500">({time})</span>
+    </>
+  );
 }
 
 /**
@@ -463,7 +480,10 @@ export const AloeHarvestPreview: React.FC<{ settings: Scenario["settings"]; live
   const respawn = weight / Math.max(SPAWN_POOL_FLOOR, weight);
   const seconds = liveCycleSeconds ?? cycleSeconds(playerStats, effectiveUniqueCrops(0, playerStats.floraShard));
   const { activity } = settings;
-  const sessions = useMemo(() => (activity.kind === "windows" ? aloeHarvestSchedule(settings, seconds, respawn) : []), [settings, activity.kind, seconds, respawn]);
+  const sessions = useMemo(
+    () => (activity.kind === "windows" ? aloeHarvestSchedule(settings, seconds, respawn, PREVIEW_DAYS * 86400) : []),
+    [settings, activity.kind, seconds, respawn]
+  );
   const online = settings.playerActions !== false && (activity.kind === "everyN" || activity.windows.length > 0);
 
   let body: React.ReactNode;
@@ -472,7 +492,7 @@ export const AloeHarvestPreview: React.FC<{ settings: Scenario["settings"]; live
   } else if (!online) {
     body = <p>Never online, so All-in Aloe is never harvested.</p>;
   } else if (activity.kind === "windows" && sessions.length === 0) {
-    body = <p>No cycle ends inside your online times on the first day (cycles are {formatDuration(seconds)} long), so nothing is harvested then.</p>;
+    body = <p>No cycle ends inside your online times in the first week (cycles are {formatDuration(seconds)} long), so nothing is harvested then.</p>;
   } else if (activity.kind === "everyN") {
     const n = Math.max(1, Math.floor(activity.n));
     body = (
@@ -482,30 +502,25 @@ export const AloeHarvestPreview: React.FC<{ settings: Scenario["settings"]; live
     );
   } else {
     body = (
-      <table className="w-full text-[11px]">
-        <thead>
-          <tr className="text-slate-500 text-left">
-            <th className="font-normal">Online at</th>
-            <th className="font-normal">Next online in</th>
-            <th className="font-normal text-right">Harvest at</th>
-          </tr>
-        </thead>
-        <tbody>
-          {groupSessions(sessions).map((r) => (
-            <tr key={r.first.cycle}>
-              <td>
-                {clockText(r.first.hour)}
-                {r.count > 1 && `-${clockText(r.last.hour)} (${r.count} sessions)`}
-              </td>
-              <td>
-                {gapText(r.first.gapCycles)}
-                {Number.isFinite(r.first.gapCycles) && r.first.gapCycles > 1 && <span className="text-slate-500"> ({formatDuration(r.first.gapCycles * seconds)})</span>}
-              </td>
-              <td className="text-right text-emerald-300">stage {r.first.stage}+</td>
+      <>
+        <p>Each time you're online, the harvest stage depends on how long until you're next online:</p>
+        <table className="text-[11px]">
+          <thead>
+            <tr className="text-slate-500 text-left">
+              <th className="font-normal pr-3">Harvest at</th>
+              <th className="font-normal">Next online in</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rowsByStage(sessions).map((r) => (
+              <tr key={r.stage}>
+                <td className="pr-3 text-emerald-300 whitespace-nowrap">stage {r.stage}+</td>
+                <td>{gapRangeText(r, seconds)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </>
     );
   }
 
@@ -524,10 +539,13 @@ export const AloeHarvestPreview: React.FC<{ settings: Scenario["settings"]; live
       {config.aloeAutoHarvest && online && (
         <>
           <p className="text-slate-500">
-            Cycle length {formatDuration(seconds)}
-            {liveCycleSeconds === undefined ? " (from your stats)" : " (current run)"}
-            {activity.kind === "windows" && ", first day of the run"}.
+            Cycle length {formatDuration(seconds)} {liveCycleSeconds === undefined ? "(from your stats)" : "(current run)"}.
           </p>
+          {activity.kind === "windows" && (
+            <p className="text-slate-500">
+              Cycles don't line up with the clock, so the exact times you check drift from day to day. This covers every check in the first {PREVIEW_DAYS} days.
+            </p>
+          )}
         </>
       )}
     </div>

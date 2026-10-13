@@ -357,7 +357,7 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
         {p.kindId === "all_in_aloe" && p.origin === "spawned" && (
           <>
             <Row label="Harvest now">
-              {aloeRow(p.stage).multiplier} fragments before yield (every 9 become 1 All-in Aloe)
+              x{aloeRow(p.stage).multiplier}: {aloeRow(p.stage).multiplier} fragments (every 9 become 1 All-in Aloe) and crop bundle, before yield
             </Row>
             {p.stage < p.growthStages && (
               <Row label="Next stage">{Math.round(aloeRow(p.stage).resetChance * 100)}% chance to reset to 1</Row>

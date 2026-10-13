@@ -17,6 +17,7 @@ import {
   scriptKnobs,
   farmTips,
   goalOwned,
+  guideDefaultSettings,
   hoursPerCycle,
   hoursToCycles,
   setFacts,
@@ -348,5 +349,27 @@ describe("playtest fixes", () => {
 
   it("starts a new player with nothing owned", () => {
     expect(initialState(flow, defaultSettings()).inventory).toEqual({});
+  });
+
+  it("starts a new player on the Guide's mid-game stats, and keeps a returning player's own", () => {
+    const fresh = initialState(flow, guideDefaultSettings());
+    expect(fresh.settings.playerStats).toMatchObject({
+      floraShard: 0,
+      cropGrowth: 100,
+      growthUpgradeTier: 4,
+      plantYieldUpgrade: 0.1,
+      mutationChanceBonus: 0,
+      miningFortune: 1000,
+      farmingFortune: 1500,
+      evergreenChip: 0.2,
+    });
+    // The Simulator keeps its own defaults.
+    expect(defaultSettings().playerStats.floraShard).toBe(10);
+    // A saved player's stats win over the new defaults; a stat missing from an old save is filled in.
+    const own = { ...fresh.settings.playerStats, farmingFortune: 2500 } as Partial<typeof fresh.settings.playerStats>;
+    delete own.miningFortune;
+    const restored = restoreState(JSON.parse(JSON.stringify({ version: 3, ...fresh, settings: { ...fresh.settings, playerStats: own } })), flow, catalog, guideDefaultSettings())!;
+    expect(restored.settings.playerStats.farmingFortune).toBe(2500);
+    expect(restored.settings.playerStats.miningFortune).toBe(1000);
   });
 });

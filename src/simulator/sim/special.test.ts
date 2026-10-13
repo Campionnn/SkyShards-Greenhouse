@@ -126,7 +126,8 @@ describe("All-in Aloe", () => {
       if (!h) continue;
       expect(h.drops.all_in_aloe).toBe(1); // 9x at stage 9 = 9 fragments = 1 aloe
       expect(h.drops[ALOE_FRAGMENT]).toBeUndefined();
-      expect(h.drops.wheat).toBeGreaterThan(0);
+      // The crop bundle is scaled by the stage multiplier too: 9 x 140 at baseline stats.
+      expect(h.drops).toMatchObject({ wheat: 9 * 140, sunflower: 9 * 140, moonflower: 9 * 140 });
       return;
     }
     throw new Error("no seed without a reset");
@@ -198,6 +199,7 @@ describe("All-in Aloe", () => {
     const r = engine.run(s, 1);
     const h = ofKind(r.events, "harvested")[0];
     expect(h?.kindId).toBe("all_in_aloe");
+    expect(h?.drops.wheat).toBeUndefined(); // x0 below stage 4: no crop bundle either
     expect(r.summary.destroyed.all_in_aloe).toBeUndefined();
   });
 });

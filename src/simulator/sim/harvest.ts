@@ -39,7 +39,10 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const def = isMutation ? data.mutations[p.kindId] : data.crops[p.kindId];
   // Jellybean: data.json bundle is the stage-12 (x1) amount; the stage multiplier scales bundle and item count.
   const jellyMult = p.kindId === JELLYBEAN && p.origin === "spawned" ? jellybeanMultiplier(p.stage) : 1;
-  const baseDrops = jellyMult === 1 ? def.drops : scaleDrops(def.drops, jellyMult);
+  // All-in Aloe: data.json bundle is the x1 amount; the stage multiplier scales it like the fragments (0 below stage 4).
+  const aloeMult = p.kindId === "all_in_aloe" && p.origin === "spawned" ? aloeRow(p.stage).multiplier : 1;
+  const bundleMult = jellyMult * aloeMult;
+  const baseDrops = bundleMult === 1 ? def.drops : scaleDrops(def.drops, bundleMult);
   const drops = harvestYield(baseDrops, farmingFortuneMultiplier(ctx.stats.farmingFortune), sum, ctx.stats.evergreenChip);
 
   // Mutation item count = base count (1, or Chloronite/Jellybean/Aloe specifics)

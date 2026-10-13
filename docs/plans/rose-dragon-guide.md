@@ -165,9 +165,14 @@ The same numbers with and without the carried `builtOnce` memory.
   reported" is always `undefined`, never an empty claim.
 - **Check-in interval.** `checkEvery` is in real hours. `schedule.ts` converts it to the
   simulator's `everyN` cycles with the player's real cycle length: `cycleSeconds` for their stats,
-  8 typical unique crop groups standing plus Flora. With default stats a cycle is about 1.75 h, so
-  "every 24 hours" is every 14 cycles, about one visit a day in the forecast. (The first version
-  divided by the 4-hour baseline, so "every 4 hours" simulated a visit every 1.75 h.)
+  8 typical unique crop groups standing plus Flora. With the Guide's default stats a cycle is about
+  2.4 h, so the default "every 8 hours" is every 3 cycles. (The first version divided by the 4-hour
+  baseline, so "every 4 hours" simulated a visit much more often than that.)
+- **Default stats.** A new player (and Start over) gets `GUIDE_DEFAULT_STATS` (`schedule.ts`): a
+  mid-game player, not the Simulator's maxed defaults. Flora 0, Crop Growth 100, Growth Speed
+  upgrade tier 4, Plant Yield 0.10, Bioanalysis 0, Mining Fortune 1000, Farming Fortune 1500,
+  Evergreen Chip 0.20. A saved player keeps their own stats; a stat missing from an old save is
+  filled from these.
 - **Number fields** keep what is typed and commit on blur or Enter, so typing "24" can't pass
   through "2 → 4 h → 44", and a lone "-" can't zero an item.
 - **Persistence.** `skyshards-guide-state` stores `{ version: 3, inventory, plots, settings,

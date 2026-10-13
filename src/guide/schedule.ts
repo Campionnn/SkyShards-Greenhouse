@@ -8,7 +8,30 @@
  */
 import { UNIQUE_CROP_CAP } from "../simulator/config";
 import { cycleSeconds, effectiveUniqueCrops } from "../simulator/growth/clock";
+import { defaultSettings } from "../simulator/scenario";
 import type { PlayerStats, Settings } from "../simulator/sim/state";
+
+/**
+ * The stats a new Guide player starts with: a mid-game player working towards the Rose Dragon, not
+ * the Simulator's maxed-out defaults. Only the stats the "How you play" dialog shows are set here;
+ * the rest (speed attribute, overbloom, armor) stay the Simulator's.
+ */
+export const GUIDE_DEFAULT_STATS = {
+  floraShard: 0,
+  cropGrowth: 100,
+  growthUpgradeTier: 4,
+  plantYieldUpgrade: 0.1,
+  mutationChanceBonus: 0,
+  miningFortune: 1000,
+  farmingFortune: 1500,
+  evergreenChip: 0.2,
+} satisfies Partial<PlayerStats>;
+
+/** Simulator settings with the Guide's default player stats. */
+export function guideDefaultSettings(): Settings {
+  const base = defaultSettings();
+  return { ...base, playerStats: { ...base.playerStats, ...GUIDE_DEFAULT_STATS } };
+}
 
 /**
  * Unique crop groups assumed standing for the conversion. The Rose Dragon farms keep most base crop

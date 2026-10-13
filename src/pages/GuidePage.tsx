@@ -10,7 +10,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Backpack, Compass, Loader2, PartyPopper, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
 import { InfoHint } from "../components/ui/InfoHint";
-import { defaultSettings } from "../simulator";
 import { LocalStorageManager, type StoredGuideState } from "../utilities/localStorageManager";
 import {
   STORAGE_VERSION,
@@ -22,6 +21,7 @@ import {
   decideLogin,
   farmOf,
   goalOwned,
+  guideDefaultSettings,
   initialState,
   itemName,
   loadShippedFlow,
@@ -79,8 +79,8 @@ interface Loaded {
 
 function load(flow: FlowsFile, catalog: Catalog): { state: GuideState; precision: Precision; fresh: boolean } {
   const saved = LocalStorageManager.loadGuideState();
-  const restored = restoreState(saved, flow, catalog, defaultSettings());
-  return { state: restored ?? initialState(flow, defaultSettings()), precision: saved?.precision ?? "quick", fresh: !restored };
+  const restored = restoreState(saved, flow, catalog, guideDefaultSettings());
+  return { state: restored ?? initialState(flow, guideDefaultSettings()), precision: saved?.precision ?? "quick", fresh: !restored };
 }
 
 const toStored = (state: GuideState, precision: Precision): StoredGuideState => ({ version: STORAGE_VERSION, ...state, precision });
@@ -423,7 +423,7 @@ export const GuidePage: React.FC = () => {
         onPrecision={setPrecision}
         onReset={() => {
           LocalStorageManager.clearGuideState();
-          setState(initialState(flow, defaultSettings()));
+          setState(initialState(flow, guideDefaultSettings()));
           setOpen(null);
         }}
         onClose={() => setOpen(null)}
