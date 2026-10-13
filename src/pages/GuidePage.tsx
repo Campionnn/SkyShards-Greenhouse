@@ -8,9 +8,11 @@
  * ordinary harvests are entered by the player.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Backpack, Compass, Loader2, PartyPopper, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Backpack, Compass, FlaskConical, Loader2, PartyPopper, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
 import { InfoHint } from "../components/ui/InfoHint";
 import { LocalStorageManager, type StoredGuideState } from "../utilities/localStorageManager";
+import type { SimulatorScenarioHandoff } from "../utilities/layoutHandoff";
 import {
   STORAGE_VERSION,
   allActed,
@@ -31,6 +33,7 @@ import {
   setFacts,
   setFarm,
   setItem,
+  simulatorScenario,
   skipPlot,
   startNewCheckIn,
   summarise,
@@ -91,6 +94,7 @@ export const GuidePage: React.FC = () => {
   const [state, setState] = useState<GuideState | null>(null);
   const [precision, setPrecision] = useState<Precision>("quick");
   const [open, setOpen] = useState<Open>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
@@ -248,6 +252,18 @@ export const GuidePage: React.FC = () => {
         <button
           type="button"
           className={`${buttonClass.neutral} ml-auto`}
+          onClick={() =>
+            navigate("/simulator", {
+              state: { incomingScenario: { scenario: simulatorScenario(flow, toInput(state)), name: "the Rose Dragon flow" } } satisfies SimulatorScenarioHandoff,
+            })
+          }
+          title="Load all three plots' flows and scripts into the Simulator, starting from your farms and what you own now"
+        >
+          <FlaskConical className="h-3.5 w-3.5" /> <span>Simulator</span>
+        </button>
+        <button
+          type="button"
+          className={buttonClass.neutral}
           onClick={() => setOpen({ kind: "settings" })}
           aria-label="How you play: schedule and stats"
           title="When you're online, your stats and the forecast precision"

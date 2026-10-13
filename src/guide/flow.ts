@@ -56,6 +56,25 @@ export function parseFlows(text: string): FlowsFile {
   return file;
 }
 
+/**
+ * The whole flow as a Simulator scenario, starting where the player is now: each plot on the farm
+ * they reported, their inventory as the starting stock and their schedule and stats. Scripts stay
+ * attached, so the Simulator runs the same decisions the Guide shows.
+ */
+export function simulatorScenario(flow: FlowsFile, input: { inventory: Record<string, number>; plots: Record<PlotId, { farm: string } | undefined>; settings: Scenario["settings"] }): Scenario {
+  const plots = structuredClone(flow.plots);
+  for (const plot of plots) {
+    const farm = input.plots[plot.id]?.farm ?? HUB;
+    const index = plot.flow.steps.findIndex((s) => s.id === farm);
+    plot.flow.startIndex = index < 0 ? 0 : index;
+  }
+  const startingInventory: Record<string, number> = {};
+  for (const [item, amount] of Object.entries(input.inventory)) if (Number.isFinite(amount) && amount > 0) startingInventory[item] = Math.floor(amount);
+  const scenario: Scenario = { plots, startingInventory, settings: structuredClone(input.settings) };
+  if (flow.script?.source.trim()) scenario.script = structuredClone(flow.script);
+  return scenario;
+}
+
 /** Fetch the shipped flow from the app's public directory. */
 export async function loadShippedFlow(fetchImpl: typeof fetch = fetch): Promise<FlowsFile> {
   const response = await fetchImpl(SHIPPED_FLOW_URL);
@@ -81,6 +100,8 @@ export interface Farm {
   /** The label's note after the name ("keep inputs while growing", "no Dead Plants or Fermento"), if any. */
   detail: string;
   layout: ResolvedLayout;
+  /** The step's share code, for opening it in the Designer (absent for inline layout specs). */
+  code?: string;
   /** Paid items placed from the inventory, most first. */
   cost: ItemCount[];
   /** Free base crops (and fire) planted or placed for free. */
@@ -172,6 +193,7 @@ export function buildCatalog(flow: FlowsFile, resolve: Resolver): Catalog {
         label: step.label ?? step.id,
         detail: labelDetail(step.id, step.label),
         layout,
+        ...("code" in step.layout ? { code: step.layout.code } : {}),
         cost: counts(paid),
         free: counts(free),
         products: counts(layout.slots.map((s) => s.mutationId)),

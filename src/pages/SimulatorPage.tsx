@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { FlaskConical, ScanSearch } from "lucide-react";
 import { InfoHint, SegmentedControl, useToast } from "../components/ui";
@@ -15,7 +15,7 @@ import { ScriptHaltBanner, ScriptPanel } from "../components/simulator/script/Sc
 import type { ScriptTarget } from "../components/simulator/script/scriptEdit";
 import { useSimulation } from "../hooks/useSimulation";
 import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, migrateScenario, scenarioFromShareCodes, type Scenario } from "../simulator";
-import { extractLayoutCode, LocalStorageManager, readIncomingLayout, SOURCE_LABEL, type IncomingLayout } from "../utilities";
+import { extractLayoutCode, LocalStorageManager, readIncomingLayout, readIncomingScenario, SOURCE_LABEL, type IncomingLayout } from "../utilities";
 
 /** Migrates a saved scenario and fills missing settings from the defaults. */
 function withDefaults(saved: Scenario): Scenario {
@@ -78,13 +78,44 @@ export const SimulatorPage: React.FC = () => {
     LocalStorageManager.saveSimulatorScenario(settled);
   }, [settled]);
 
+  /** The router state already loaded, so a re-run effect (StrictMode) doesn't load it twice. */
+  const handledState = useRef<unknown>(null);
   // Clear the handoff from the history entry so a reload or Back doesn't offer it again.
   useEffect(() => {
+    const whole = readIncomingScenario(location.state);
+    if (whole) {
+      if (handledState.current === location.state) return;
+      handledState.current = location.state;
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+      let next: Scenario;
+      try {
+        next = withDefaults(whole.scenario as Scenario);
+      } catch (error) {
+        toast({ title: "Could not load the flow", description: error instanceof Error ? error.message : String(error), variant: "error" });
+        return;
+      }
+      let before: Scenario | null = null;
+      setScenario((sc) => {
+        before = sc;
+        return next;
+      });
+      setEditing(null);
+      setFocus(ALL);
+      toast({
+        id: "simulator-scenario-loaded",
+        title: `Loaded ${whole.name}`,
+        description: `${next.plots.length} plot${next.plots.length === 1 ? "" : "s"}, starting from where you are now.`,
+        variant: "success",
+        duration: 6000,
+        action: { label: "Undo", onClick: () => before && setScenario(before) },
+      });
+      return;
+    }
     const fresh = readIncomingLayout(location.state);
     if (!fresh) return;
     setIncoming(fresh);
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-  }, [location.state, location.pathname, location.search, navigate]);
+  }, [location.state, location.pathname, location.search, navigate, toast]);
 
   const place = (layout: IncomingLayout, dest: LayoutDestination) => {
     const before = scenario;

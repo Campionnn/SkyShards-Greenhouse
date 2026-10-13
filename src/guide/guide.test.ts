@@ -21,6 +21,7 @@ import {
   hoursPerCycle,
   hoursToCycles,
   setFacts,
+  simulatorScenario,
   skipPlot,
   withSettings,
   zombudYield,
@@ -53,6 +54,24 @@ describe("parseFlows", () => {
     expect(() => parseFlows("{}")).toThrow(/no plots/);
     expect(() => parseFlows(JSON.stringify({ plots: [{ id: 1, flow: { steps: [{ id: "hub" }] } }] }))).toThrow(/no script/);
     expect(() => parseFlows(JSON.stringify({ plots: [{ id: 1, script: { source: "x" }, flow: { steps: [{ id: "hub" }] } }] }))).toThrow(/"done"/);
+  });
+});
+
+describe("simulatorScenario", () => {
+  it("hands the Simulator every plot's flow and script, starting from the player's farms and stock", () => {
+    const farm = catalog.farms[2].find((f) => f.kind === "farm")!.id;
+    const state = setFarm(start({ dead_plant: 10, fermento: 0 }), 2, farm);
+    const sc = simulatorScenario(flow, toInput(state));
+    expect(sc.plots.map((p) => p.id)).toEqual([1, 2, 3]);
+    expect(sc.plots.every((p) => p.script?.source)).toBe(true);
+    expect(sc.plots[1].flow.steps[sc.plots[1].flow.startIndex ?? 0].id).toBe(farm);
+    expect(sc.plots[0].flow.steps[sc.plots[0].flow.startIndex ?? 0].id).toBe("hub");
+    expect(sc.startingInventory).toEqual({ dead_plant: 10 });
+    expect(sc.plots[1]).not.toBe(flow.plots[1]); // a copy: the shipped flow is untouched
+  });
+
+  it("gives every farm a share code for the Designer", () => {
+    expect(catalog.farms[1].filter((f) => f.kind === "farm").every((f) => !!f.code)).toBe(true);
   });
 });
 

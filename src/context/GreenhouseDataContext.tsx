@@ -24,6 +24,8 @@ interface GreenhouseDataContextType {
   effectWeights: Record<string, number>;
   setEffectWeight: (effectId: string, value: number) => void;
   resetEffectWeights: () => void;
+  // True when effectWeights match DEFAULT_EFFECT_WEIGHTS (0 and missing are equal).
+  effectWeightsAreDefault: boolean;
   // Maximizing gloomgourd alone optimises raw spawn rate, so weights are
   // dropped for that solve unless the user keeps them.
   weightsOverridden: boolean;
@@ -182,6 +184,14 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     LocalStorageManager.saveEffectWeights(DEFAULT_EFFECT_WEIGHTS);
   }, []);
 
+  const effectWeightsAreDefault = useMemo(() => {
+    const ids = new Set([...Object.keys(effectWeights), ...Object.keys(DEFAULT_EFFECT_WEIGHTS)]);
+    for (const id of ids) {
+      if ((effectWeights[id] ?? 0) !== (DEFAULT_EFFECT_WEIGHTS[id] ?? 0)) return false;
+    }
+    return true;
+  }, [effectWeights]);
+
   // A lone maximize-gloomgourd target solves for spawn rate unless keepWeights is set.
   const [keepWeights, setKeepWeights] = useState(false);
   const canOverrideWeights = useMemo(
@@ -219,6 +229,7 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     effectWeights,
     setEffectWeight,
     resetEffectWeights,
+    effectWeightsAreDefault,
     weightsOverridden,
     canOverrideWeights,
     setKeepWeights,

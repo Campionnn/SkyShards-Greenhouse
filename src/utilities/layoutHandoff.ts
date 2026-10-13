@@ -38,6 +38,19 @@ export function simulatorHandoffState(incomingLayout: IncomingLayout): Simulator
   return { incomingLayout };
 }
 
+/** Router state for handing a whole scenario (every plot's flow) to the Simulator. */
+export interface SimulatorScenarioHandoff<S = unknown> {
+  incomingScenario: { scenario: S; name: string };
+}
+
+/** Pull a handed-over scenario out of an unknown router state (shape is checked by the Simulator). */
+export function readIncomingScenario(state: unknown): { scenario: unknown; name: string } | null {
+  if (!state || typeof state !== "object") return null;
+  const inc = (state as Partial<SimulatorScenarioHandoff>).incomingScenario;
+  if (!inc || typeof inc !== "object" || !inc.scenario || typeof inc.scenario !== "object") return null;
+  return { scenario: inc.scenario, name: typeof inc.name === "string" && inc.name ? inc.name : "Scenario" };
+}
+
 /** Pull a well-formed incoming layout out of an unknown router state. */
 export function readIncomingLayout(state: unknown): IncomingLayout | null {
   if (!state || typeof state !== "object") return null;

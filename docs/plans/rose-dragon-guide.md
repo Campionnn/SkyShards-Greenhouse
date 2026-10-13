@@ -18,8 +18,11 @@ A three-plot dashboard, readable at a glance and stacked on phones.
 
 1. **Header.** The Simulator's header row: icon, "Rose Dragon Guide", an info hint with the three
    steps (harvest and update stock, do the plots left to right, open the plan) and how the cards
-   are worked out, and a settings button that shows the schedule in real hours ("Online every 8
-   hours").
+   are worked out, a **Simulator** button and a settings button that shows the schedule in real
+   hours ("Online every 8 hours"). **Simulator** hands the whole flow (all three plots, their steps
+   and scripts) to `/simulator` in router state (`incomingScenario`, built by `simulatorScenario`),
+   starting each plot on the farm the player is on, with their inventory as the starting stock and
+   their schedule and stats. It replaces the Simulator's scenario, with an Undo toast.
 2. **What you own.** One panel that changes with the player, so there are never two buttons doing
    the same thing:
    - **Nothing entered yet:** the panel itself is the prompt ("Start by entering what you own", why
@@ -62,7 +65,9 @@ A three-plot dashboard, readable at a glance and stacked on phones.
      the inventory marked by a thin gold edge and a gold corner, so the crop stays visible. Hovering
      a cell (tapping on touch) shows a card with its name, rarity, position and what to do with it
      ("Place this from your inventory", "Target cell: … spawns here", its requirements). Below it:
-     "Grows: …" and "Now on Empty farmland · Not right?", which opens the farm gallery.
+     "Grows: …" and "Now on Empty farmland · Not right?", which opens the farm gallery. A
+     **Designer** link next to the farm name opens that layout in the Designer in a new tab
+     (`/designer?layout=<code>`, from `Farm.code`).
    - **Steps:**
      - clear the old farm;
      - harvest now: what the script harvests, plus targets the player marked fully grown;

@@ -26,6 +26,7 @@ export {
   itemName,
   loadShippedFlow,
   parseFlows,
+  simulatorScenario,
   type Catalog,
   type Farm,
   type FlowsFile,

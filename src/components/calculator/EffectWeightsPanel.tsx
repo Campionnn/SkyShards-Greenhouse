@@ -34,8 +34,15 @@ function parseWeight(raw: string): number | null {
  * updates once the text parses and is tidied on blur. Arrow keys step 0.1 (Shift: 1).
  */
 export const EffectWeightsPanel: React.FC = () => {
-  const { effectWeights, setEffectWeight, resetEffectWeights, weightsOverridden, canOverrideWeights, setKeepWeights } =
-    useGreenhouseData();
+  const {
+    effectWeights,
+    setEffectWeight,
+    resetEffectWeights,
+    effectWeightsAreDefault,
+    weightsOverridden,
+    canOverrideWeights,
+    setKeepWeights,
+  } = useGreenhouseData();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [collapsed, setCollapsed] = useState(() => Object.values(effectWeights).every((v) => v === 0));
 
@@ -98,11 +105,11 @@ export const EffectWeightsPanel: React.FC = () => {
               {activeCount} active
             </span>
           )}
-          {activeCount > 0 && (
+          {!effectWeightsAreDefault && (
             <button
               onClick={handleReset}
               className="p-1 hover:bg-slate-600/50 rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-              title="Reset all effect weights to 0"
+              title="Reset effect weights to defaults"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>

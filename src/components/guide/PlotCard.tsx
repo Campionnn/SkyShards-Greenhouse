@@ -4,7 +4,7 @@
  * it should go (as a real picture), what that costs and what to do while there.
  */
 import React, { useState } from "react";
-import { ArrowRight, Check, ChevronRight, MapPin, Minus, Package, Plus, SkipForward, Undo2 } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, ExternalLink, MapPin, Minus, Package, Plus, SkipForward, Undo2 } from "lucide-react";
 import type { GameData } from "../../simulator/data/types";
 import {
   GENERAL_TIPS,
@@ -197,6 +197,17 @@ export const PlotCard: React.FC<PlotCardProps> = ({
             <span className="font-medium text-slate-100">{target.name}</span>
             {target.detail && <span className="text-xs text-slate-500">· {target.detail}</span>}
           </p>
+          {target.code && target.kind === "farm" && (
+            <a
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-slate-400 transition-colors hover:bg-slate-700/60 hover:text-slate-200"
+              href={`/designer?layout=${encodeURIComponent(target.code)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Open ${target.name} in the Designer (new tab). It replaces the layout you have there.`}
+            >
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Designer
+            </a>
+          )}
         </div>
         <FarmPicture layout={target.layout} nameOf={name} data={data} maxCell={34} highlight={outcome.placedCells.filter((c) => c.paid)} facts={moving ? undefined : plot.facts} />
         {target.products.length > 0 && (
