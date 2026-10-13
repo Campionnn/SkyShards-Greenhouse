@@ -1,4 +1,5 @@
 import { MAX_WATER } from "../config";
+import { ensureEffects } from "../effects/adapter";
 import { endStepOrHold } from "../flow/runner";
 import { aloeHarvestStageFor } from "../growth/aloe";
 import { respawnChance } from "../spawn/respawn";
@@ -57,6 +58,7 @@ function clearRoots(plot: PlotState, ctx: CycleCtx): void {
 function aloeDue(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): boolean {
   if (!ctx.config.aloeAutoHarvest) return isFullyGrown(p);
   const gapCycles = ctx.cyclesUntilNextActive();
+  ensureEffects(plot, scratch); // Godseed eligibility after this session's earlier actions
   const q = respawnChance(plot, p, p.kindId, ctx.env.data, scratch.effects, ctx.stats.mutationChanceBonus);
   const stage = aloeHarvestStageFor(gapCycles, q);
   p.gate.aloeHarvest = { stage, gapCycles: Number.isFinite(gapCycles) ? gapCycles : -1, respawnChance: q };
@@ -212,17 +214,27 @@ export const PLAYER_PHASES: readonly Phase[] = [
  */
 export function runPlayerSession(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const scripts = ctx.scripts;
+  // Every harvest, break, placement, step change or watering can change what plants give each
+  // other. `held` is brought up to date after each phase and hook (a no-op when the plot is
+  // unchanged); readers in between (harvest, Aloe's respawn chance, scripts) refresh on demand.
   if (!scripts) {
-    for (const phase of PLAYER_PHASES) phase.run(plot, ctx, scratch);
+    for (const phase of PLAYER_PHASES) {
+      phase.run(plot, ctx, scratch);
+      ensureEffects(plot, scratch);
+    }
     return;
   }
   scripts.callHook("onSession", [], plot.id);
+  ensureEffects(plot, scratch);
   for (const phase of PLAYER_PHASES) {
     if (phaseDisabled(ctx.state, plot.id, phase.id)) continue;
     phase.run(plot, ctx, scratch);
+    ensureEffects(plot, scratch);
     scripts.flush();
+    ensureEffects(plot, scratch);
   }
   scripts.callHook("afterSession", [], plot.id);
+  ensureEffects(plot, scratch);
 }
 
 /** Run one session phase on demand (a script's `plot.runPhase(id)`). Ignores the disabled list. */

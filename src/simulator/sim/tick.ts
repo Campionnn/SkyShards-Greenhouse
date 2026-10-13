@@ -1,4 +1,4 @@
-import { effectiveList, recomputeEffects } from "../effects/adapter";
+import { effectiveList, recomputeEffects, refreshEffects } from "../effects/adapter";
 import type { FlowStep } from "../flow/types";
 import { cellIndex, cellKey, footprint, footprintFits, ringCells, TOTAL_CELLS } from "../grid/cells";
 import { DECAY_EXTENSION_HOURS, SPAWN_POOL_FLOOR } from "../config";
@@ -51,7 +51,7 @@ export const TICK_PHASES: readonly Phase[] = [
     id: "effects",
     summary: "Recompute held effects for every plant (4-way propagation).",
     run: (plot, _ctx, scratch) => {
-      scratch.effects = recomputeEffects(plot);
+      refreshEffects(plot, scratch);
     },
   },
   { id: "growth", summary: "Advance one growth stage unless gated or dried out; latch effects when fully grown.", run: phaseGrowth },
@@ -433,7 +433,7 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
 
   // Always refresh effects, even with no spawn: the player session reads `held` for unlatched
   // harvests (All-in Aloe before its harvest stage). 0-stage spawns latch against this set.
-  scratch.effects = recomputeEffects(plot);
+  refreshEffects(plot, scratch);
   for (const p of grownOnSpawn) latchIfReady(p, plot, ctx);
 }
 

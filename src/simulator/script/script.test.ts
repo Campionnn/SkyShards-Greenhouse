@@ -116,6 +116,44 @@ describe("scripts: actions", () => {
     expect(r.events.some((e) => e.kind === "destroyed" && e.kindId === "chloronite")).toBe(true);
   });
 
+  describe("effects follow the player's actions within a session", () => {
+    // An All-in Aloe past its harvest mark; the script changes its neighbours, then breaks it.
+    const aloeHarvest = (source: string, setup?: (s: SimulationState) => void) => {
+      for (let seed = 1; seed < 60; seed++) {
+        const sc = scenario([flow([step("a", layout())])], { seed });
+        sc.plots[0].script = { source };
+        const s = start(sc);
+        inject(s, 1, "all_in_aloe", 5, 5, "spawned", { stage: 14 });
+        setup?.(s);
+        const r = engine.run(s, 1);
+        if (r.events.some((e) => e.kind === "reset")) continue;
+        const h = r.events.find((e) => e.kind === "harvested" && e.kindId === "all_in_aloe");
+        if (h?.kind === "harvested") return { drops: h.drops, state: r.state };
+      }
+      throw new Error("no seed without a reset");
+    };
+
+    it("a crop placed and broken before the aloe still buffs it", () => {
+      const plain = aloeHarvest(`function onSession() { plot.at(5, 5).break() }`);
+      const buffed = aloeHarvest(`function onSession() { plot.place("nether_wart", 5, 6); plot.at(5, 5).break(); plot.breakAt(5, 6) }`);
+      expect(buffed.drops.wheat).toBeGreaterThan(plain.drops.wheat);
+    });
+
+    it("watering a dried-out neighbour lets its effects reach the aloe at once", () => {
+      const dryWart = (s: SimulationState) => void inject(s, 1, "nether_wart", 5, 6, "planted", { water: -1000 });
+      const dry = aloeHarvest(`plot.disable("water"); function onSession() { plot.at(5, 5).break() }`, dryWart);
+      const watered = aloeHarvest(`plot.disable("water"); function onSession() { plot.at(5, 6).waterIt(); plot.at(5, 5).break() }`, dryWart);
+      expect(watered.drops.wheat).toBeGreaterThan(dry.drops.wheat);
+    });
+
+    it("plant.effects reads the plot as the player left it", () => {
+      const r = aloeHarvest(`let before = null; let after = null; function onSession() { const a = plot.at(5, 5); before = a.effects; plot.place("nether_wart", 5, 6); after = a.effects; a.break() }`);
+      const v = vars(r.state);
+      expect(v["plot:1.before"]).not.toContain("improved_harvest_boost");
+      expect(v["plot:1.after"]).toContain("improved_harvest_boost");
+    });
+  });
+
   it("actions do nothing while the player is offline", () => {
     const s = start(withScripts(`let r = null; function onTick() { r = plot.breakAt(4, 4) }`, { activity: NEVER_ACTIVE }));
     const out = engine.run(s, 1).state;

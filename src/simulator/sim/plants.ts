@@ -203,6 +203,13 @@ export function isFootprintFree(occ: Occupancy, row: number, col: number, size: 
  */
 export const isDry = (p: PlantState): boolean => !p.isDeadPlant && p.water <= HALT_WATER;
 
+/**
+ * Whether harvest yield uses the effects latched at full growth. All-in Aloe keeps growing to stage
+ * 27 (its "fully grown" stage is only the harvest point), so it yields with the effects it holds
+ * when harvested.
+ */
+export const yieldEffectsLocked = (p: PlantState): boolean => p.kindId !== "all_in_aloe";
+
 export const isFullyGrown = (p: PlantState): boolean => !p.isDeadPlant && p.stage >= p.readyStage && p.lockedEffects !== null;
 
 /**

@@ -1,5 +1,5 @@
 import { HARVEST_BOUNTY_ROLLS } from "../config";
-import { effectiveList } from "../effects/adapter";
+import { effectiveList, ensureEffects } from "../effects/adapter";
 import { bountyFromRoll, ETHEREAL_VINE_BY_RARITY } from "../economy/bounty";
 import { valueOf } from "../economy/prices";
 import { armorRareCrops, GREENHOUSE_RARE_CROP_CHANCE, overbloomMultiplier, rollRareCount } from "../economy/rareCrops";
@@ -10,7 +10,7 @@ import { uniqueCropYieldBonus } from "../growth/clock";
 import type { CycleCtx, TickScratch } from "./context";
 import { explode, isPrimedBlastberry } from "./explosion";
 import { convertAloeFragments, credit } from "./inventory";
-import { JELLYBEAN, removePlant } from "./plants";
+import { JELLYBEAN, removePlant, yieldEffectsLocked } from "./plants";
 import { bump, perPlot } from "./summary";
 import { ZOMBUD, zombudHarvest } from "./zombud";
 import type { PlantState, PlotState } from "./state";
@@ -34,7 +34,10 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const rng = ctx.state.rng;
   const isMutation = !!data.mutations[p.kindId];
 
-  const effective = new Set(p.lockedEffects ?? effectiveList(p.held));
+  const locked = yieldEffectsLocked(p) ? p.lockedEffects : null;
+  // Unlocked: the effects it holds right now, after whatever the player did earlier this session.
+  if (!locked) ensureEffects(plot, scratch);
+  const effective = new Set(locked ?? effectiveList(p.held));
   const sum = greenhouseYieldSum(effective, ctx.stats.plantYieldUpgrade, uniqueCropYieldBonus(ctx.uniqueCropCount));
   const def = isMutation ? data.mutations[p.kindId] : data.crops[p.kindId];
   // Jellybean: data.json bundle is the stage-12 (x1) amount; the stage multiplier scales bundle and item count.
@@ -142,5 +145,4 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const primed = isPrimedBlastberry(p);
   removePlant(plot, p);
   if (primed) explode(plot, p, ctx); // drops are kept
-  void scratch;
 }

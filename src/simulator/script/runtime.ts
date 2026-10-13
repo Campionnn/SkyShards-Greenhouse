@@ -22,6 +22,7 @@ import { dueTarget, transition } from "../flow/runner";
 import { collectedOf, conditionHolds, stepVisits, type TriggerView } from "../flow/triggers";
 import type { Condition, PolicyOverrides, StepLayout } from "../flow/types";
 import { hourOfDay } from "../growth/clock";
+import { ensureEffects } from "../effects/adapter";
 import { intInclusive, nextFloat, seedRng } from "../rng";
 import { sanityCheck } from "../analysis/sanityCheck";
 import { newScratch, type CycleCtx, type Env, type TickScratch } from "../sim/context";
@@ -1251,6 +1252,7 @@ class PlantHost extends HostObject {
       case "mutatesRemaining":
         return p.mutatesRemaining;
       case "effects":
+        ensureEffects(rt.plotState(this.plotId)!, rt.scratchFor(this.plotId)); // after this session's actions
         return [...p.held];
       case "lockedEffects":
         return p.lockedEffects ? [...p.lockedEffects] : null;

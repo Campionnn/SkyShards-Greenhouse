@@ -27,11 +27,13 @@ export interface TickScratch {
   notFullyGrown: Set<number>;
   /** The effect simulation from the `effects` phase (Godseed eligibility at spawn). */
   effects: EffectSimulation | null;
+  /** Plot fingerprint (`effectsKey`) `effects` and every `held` were computed for; null = unknown. */
+  effectsKey: string | null;
   /** The player session moved this plot to a new step this cycle. */
   stepChanged: boolean;
 }
 
-export const newScratch = (): TickScratch => ({ notFullyGrown: new Set(), effects: null, stepChanged: false });
+export const newScratch = (): TickScratch => ({ notFullyGrown: new Set(), effects: null, effectsKey: null, stepChanged: false });
 
 /**
  * Per-cycle context. `state` is the run's working copy; a plot's phases touch
