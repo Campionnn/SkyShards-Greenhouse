@@ -24,14 +24,18 @@ const STORAGE_KEYS = {
 /**
  * The Guide keeps the player's greenhouse (inventory, each plot's farm and facts, settings, script
  * memory) so a revisit picks up where they left off. It is validated against the flow on load
- * (`restoreState` in src/guide/checkin.ts); anything without `version: 2` is discarded.
+ * (`restoreState` in src/guide/checkin.ts); versions before 2 are discarded, 2 is migrated.
  */
 export interface StoredGuideState {
-  version: 2;
+  version: 2 | 3;
   inventory: Record<string, number>;
-  plots: Record<number, { farm: string; facts?: unknown; acted?: boolean }>;
+  plots: Record<number, { farm: string; facts?: unknown; acted?: boolean; factsFromEarlier?: boolean }>;
   settings: Scenario["settings"];
   memory: { builtOnce: Record<string, number> };
+  /** Check-in interval in real hours; null = daily time windows. */
+  checkEvery?: number | null;
+  /** This visit's confirmations (exact stock changes), so Undo survives a reload. */
+  confirmations?: Record<number, { plotId: number; before: { farm: string }; delta: Record<string, number>; memory: { builtOnce: Record<string, number> } }>;
   /** Forecast precision the player last chose. */
   precision?: "quick" | "normal" | "thorough";
 }
@@ -268,7 +272,7 @@ export class LocalStorageManager {
   /** Only shape-checked here; the Guide validates it against the flow before use. Old shapes are dropped. */
   static loadGuideState(): StoredGuideState | null {
     const data = this.load<StoredGuideState>(STORAGE_KEYS.GUIDE_STATE);
-    if (!data || typeof data !== "object" || data.version !== 2) return null;
+    if (!data || typeof data !== "object" || (data.version !== 2 && data.version !== 3)) return null;
     return data;
   }
 

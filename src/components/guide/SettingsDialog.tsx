@@ -1,13 +1,14 @@
 /**
- * How you play: the check-in interval (in hours) plus the player numbers the forecast depends on.
- * The decisions themselves don't depend on these; only the forecast does.
+ * How you play: the check-in interval (in real hours) plus the player numbers the forecast depends
+ * on. The decisions themselves don't depend on these; only the forecast does.
  */
 import React from "react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { Settings } from "../../simulator/sim/state";
-import { HOURS_PER_CYCLE, PRECISION_SEEDS, hoursToCycles, scheduleHours } from "../../guide";
+import { PRECISION_SEEDS, hoursPerCycle, hoursToCycles } from "../../guide";
+import { SectionLabel, SegmentedControl } from "../ui/Panel";
 import { PRECISIONS, buttonClass, scheduleText, type Precision } from "./format";
-import { Dialog, NumberField } from "./primitives";
-
+import { ConfirmButton, Dialog, NumberField } from "./primitives";
 
 const STAT_FIELDS: { key: keyof Settings["playerStats"]; label: string; step?: number; max?: number }[] = [
   { key: "floraShard", label: "Flora shard (0–10)", max: 10 },
@@ -20,130 +21,116 @@ const STAT_FIELDS: { key: keyof Settings["playerStats"]; label: string; step?: n
   { key: "evergreenChip", label: "Evergreen Chip (0–0.60)", step: 0.05, max: 0.6 },
 ];
 
+type ScheduleKind = "hours" | "windows";
 
 export const SettingsDialog: React.FC<{
   open: boolean;
   settings: Settings;
+  checkEvery: number | null;
   precision: Precision;
-  onChange: (settings: Settings) => void;
+  onChange: (settings: Settings, checkEvery: number | null) => void;
   onPrecision: (precision: Precision) => void;
   onReset: () => void;
   onClose: () => void;
-}> = ({ open, settings, precision, onChange, onPrecision, onReset, onClose }) => {
+}> = ({ open, settings, checkEvery, precision, onChange, onPrecision, onReset, onClose }) => {
   const schedule = settings.activity;
-  const hours = scheduleHours(schedule);
-  const setStat = (key: keyof Settings["playerStats"], value: number) => onChange({ ...settings, playerStats: { ...settings.playerStats, [key]: value } });
-  const setWindows = (windows: { from: number; to: number }[]) => onChange({ ...settings, activity: { kind: "windows", windows } });
+  const cycleHours = hoursPerCycle(settings.playerStats);
+  const setStat = (key: keyof Settings["playerStats"], value: number) => onChange({ ...settings, playerStats: { ...settings.playerStats, [key]: value } }, checkEvery);
+  const setWindows = (windows: { from: number; to: number }[]) => onChange({ ...settings, activity: { kind: "windows", windows } }, null);
+  const cycles = checkEvery === null ? null : hoursToCycles(checkEvery, settings.playerStats);
+  const kind: ScheduleKind = checkEvery !== null ? "hours" : "windows";
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title="How you play"
+      size="md"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <button
-            type="button"
-            className={`${buttonClass.ghost} text-red-300`}
-            onClick={() => {
-              if (typeof window === "undefined" || window.confirm("Forget your inventory, plots and settings and start over?")) onReset();
-            }}
-          >
-            Start over
-          </button>
+          <ConfirmButton onConfirm={onReset} title="Forget your inventory, plots and settings and start over">
+            <RotateCcw className="h-4 w-4" /> Start over
+          </ConfirmButton>
           <button type="button" className={buttonClass.primary} onClick={onClose}>
             Done
           </button>
         </div>
       }
     >
-      <div className="space-y-5 text-sm">
-        <section className="space-y-2">
-          <label className="flex flex-wrap items-center gap-3 text-slate-200">
-            <span className="flex-1">
-              How often do you check your greenhouse?
-              <span className="block text-xs text-slate-500">One growth cycle is about {HOURS_PER_CYCLE} hours before speed bonuses. Only the forecast uses this.</span>
-            </span>
-            <span className="flex items-center gap-2 text-slate-400">
-              every
-              <NumberField
-                label="Hours between check-ins"
-                value={Math.round(hours)}
-                min={0}
-                onChange={(h) => {
-                  if (h > 0) onChange({ ...settings, activity: { kind: "everyN", n: hoursToCycles(h), offset: 0 } });
-                }}
-              />
-              hours
-            </span>
-          </label>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-            Schedule:
-            {(["everyN", "windows"] as const).map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                aria-pressed={schedule.kind === kind}
-                className={`guide-press rounded-md px-2 py-1 ${schedule.kind === kind ? "bg-violet-600/30 text-violet-100" : "bg-slate-800 text-slate-400"}`}
-                onClick={() =>
-                  onChange({ ...settings, activity: kind === "everyN" ? { kind, n: hoursToCycles(hours), offset: 0 } : { kind, windows: [{ from: 18, to: 23 }] } })
-                }
-              >
-                {kind === "everyN" ? "Every N hours" : "Times of day"}
-              </button>
-            ))}
-            <span className="text-slate-500">({scheduleText(schedule)})</span>
-          </div>
-          {schedule.kind === "windows" && (
+      <div className="space-y-5">
+        <section>
+          <SectionLabel>When you're online</SectionLabel>
+          <SegmentedControl<ScheduleKind>
+            size="xs"
+            className="mb-3"
+            value={kind}
+            onChange={(k) => (k === "hours" ? onChange(settings, checkEvery ?? 8) : onChange({ ...settings, activity: { kind: "windows", windows: [{ from: 18, to: 23 }] } }, null))}
+            options={[
+              { value: "hours", label: "Every few hours" },
+              { value: "windows", label: "At set times of day" },
+            ]}
+          />
+
+          {checkEvery !== null ? (
+            <div className="space-y-1.5">
+              <label className="flex items-center justify-between gap-3 text-xs text-slate-300">
+                <span className="min-w-0">How often you check your greenhouse</span>
+                <span className="flex shrink-0 items-center gap-1.5 text-slate-400">
+                  every
+                  <NumberField label="Hours between check-ins" value={checkEvery} min={0.5} max={168} step={1} onChange={(h) => onChange(settings, h)} className="w-16" />
+                  hours
+                </span>
+              </label>
+              <p className="text-[11px] text-slate-500">
+                With your stats one growth cycle takes about {cycleHours.toFixed(1)} hours, so this is a visit every {cycles} cycle{cycles === 1 ? "" : "s"}. Only the forecast
+                uses this.
+              </p>
+            </div>
+          ) : (
             <ul className="space-y-1.5">
-              {schedule.windows.map((w, i) => (
-                <li key={i} className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                  Online from
-                  <NumberField label={`Window ${i + 1} from`} value={w.from} max={24} step={0.5} onChange={(from) => setWindows(schedule.windows.map((x, j) => (j === i ? { ...x, from } : x)))} />
-                  to
-                  <NumberField label={`Window ${i + 1} to`} value={w.to} max={24} step={0.5} onChange={(to) => setWindows(schedule.windows.map((x, j) => (j === i ? { ...x, to } : x)))} />
-                  <button type="button" className={buttonClass.ghost} onClick={() => setWindows(schedule.windows.filter((_, j) => j !== i))} aria-label={`Remove window ${i + 1}`}>
-                    Remove
-                  </button>
-                </li>
-              ))}
+              {schedule.kind === "windows" &&
+                schedule.windows.map((w, i) => (
+                  <li key={i} className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                    Online from
+                    <NumberField label={`Window ${i + 1} from`} value={w.from} max={24} step={0.5} onChange={(from) => setWindows(schedule.windows.map((x, j) => (j === i ? { ...x, from } : x)))} className="w-16" />
+                    to
+                    <NumberField label={`Window ${i + 1} to`} value={w.to} max={24} step={0.5} onChange={(to) => setWindows(schedule.windows.map((x, j) => (j === i ? { ...x, to } : x)))} className="w-16" />
+                    <button type="button" className={`${buttonClass.ghost} ml-auto`} onClick={() => setWindows(schedule.windows.filter((_, j) => j !== i))} aria-label={`Remove window ${i + 1}`}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
               <li>
-                <button type="button" className={buttonClass.ghost} onClick={() => setWindows([...schedule.windows, { from: 12, to: 14 }])}>
-                  + Add a window
+                <button type="button" className={buttonClass.neutral} onClick={() => setWindows([...(schedule.kind === "windows" ? schedule.windows : []), { from: 12, to: 14 }])}>
+                  <Plus className="h-3.5 w-3.5" /> Add a window
                 </button>
               </li>
+              <li className="text-[11px] text-slate-500">Hours of the day, 0–24 ({scheduleText(checkEvery, schedule)}).</li>
             </ul>
           )}
         </section>
 
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Your stats</h3>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <SectionLabel>Your stats</SectionLabel>
+          <div className="space-y-1.5">
             {STAT_FIELDS.map((f) => (
-              <label key={f.key} className="flex items-center justify-between gap-2 rounded-md bg-slate-800/60 px-2 py-1.5 text-xs text-slate-300">
-                {f.label}
-                <NumberField label={f.label} value={Number(settings.playerStats[f.key]) || 0} step={f.step ?? 1} max={f.max} onChange={(v) => setStat(f.key, v)} />
+              <label key={f.key} className="flex items-center justify-between gap-3 text-xs text-slate-300">
+                <span className="min-w-0">{f.label}</span>
+                <NumberField label={f.label} value={Number(settings.playerStats[f.key]) || 0} step={f.step ?? 1} max={f.max} onChange={(v) => setStat(f.key, v)} className="w-24 shrink-0" />
               </label>
             ))}
           </div>
         </section>
 
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Forecast precision</h3>
-          <div className="inline-flex rounded-lg border border-slate-700 p-0.5" role="radiogroup" aria-label="Forecast precision">
-            {PRECISIONS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                role="radio"
-                aria-checked={precision === p}
-                onClick={() => onPrecision(p)}
-                className={`guide-press rounded-md px-3 py-1 text-xs capitalize ${precision === p ? "bg-slate-700 text-slate-100" : "text-slate-400"}`}
-              >
-                {p} · {PRECISION_SEEDS[p].length} runs
-              </button>
-            ))}
-          </div>
+          <SectionLabel>Forecast precision</SectionLabel>
+          <SegmentedControl<Precision>
+            size="xs"
+            value={precision}
+            onChange={onPrecision}
+            options={PRECISIONS.map((p) => ({ value: p, label: `${p[0].toUpperCase()}${p.slice(1)} · ${PRECISION_SEEDS[p].length} runs` }))}
+          />
+          <p className="mt-1.5 text-[11px] text-slate-500">More runs give steadier numbers but take longer.</p>
         </section>
       </div>
     </Dialog>

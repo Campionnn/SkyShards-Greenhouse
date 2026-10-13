@@ -30,7 +30,7 @@ export function verbOf(outcome: PlotOutcome): Verb {
 export function describeWhy(why: string, name: (id: string) => string): string {
   if (!why) return "";
   if (why === "goal complete" || why === "the step's own exit finished the flow") return "Every Rose Dragon legendary is already in your inventory.";
-  if (why === "idle") return "The plot was free, and this is the most useful farm your stock can pay for.";
+  if (why === "idle") return "The plot was free, and this is the most useful farm you can afford.";
   if (why === "shellfruit popped") return "The Shellfruit have been popped and harvested.";
   if (why === "refresh short") return "The farm needs rebuilding, but you don't have the inputs.";
   if (why === "waiting for the Blastberries to prime") return "The Blastberries aren't all primed yet, so the Shellfruit can't be popped this visit.";
@@ -66,6 +66,16 @@ export function describeWhy(why: string, name: (id: string) => string): string {
   }
 }
 
+/** Why an empty plot waits: Dead Plants / Fermento (and how many), or nothing affordable at all. */
+function waitingOn(outcome: PlotOutcome, name: (id: string) => string, data: GameData): string {
+  const block = outcome.supplyBlock;
+  if (block?.need.length) {
+    const need = block.need.map((b) => `${b.count} more ${itemName(data, b.item)}`).join(" and ");
+    return `It's only short on supplies: with ${need} this plot could start ${name(block.farm)}.`;
+  }
+  return "Nothing you can afford is worth starting on this plot yet.";
+}
+
 export function explain(outcome: PlotOutcome, catalog: Catalog, data: GameData): Explanation {
   const name = (id: string) => {
     try {
@@ -79,28 +89,45 @@ export function explain(outcome: PlotOutcome, catalog: Catalog, data: GameData):
   switch (verbOf(outcome)) {
     case "done":
       return { verb: "done", headline: "Done", reason: reason || "Every Rose Dragon legendary is owned." };
-    case "supplies":
+    case "supplies": {
+      const block = outcome.supplyBlock;
+      const need = block?.need.length ? block.need.map((b) => `${b.count} more ${itemName(data, b.item)}`).join(" and ") : "more Dead Plants or Fermento";
       return {
         verb: "supplies",
-        headline: "Buy Dead Plants / Fermento",
-        reason: "The next farm is only waiting on bought supplies. Buy some at the Bazaar, add them under What you own, and check this plot again.",
+        headline: `Needs ${need}`,
+        reason: block
+          ? `${name(block.farm)} is the next farm for this plot, and all it's missing is ${need}. Dead Plants and Fermento have to be farmed separately: farm them, add them under What you own, or skip this plot for now.`
+          : "The next farm is only short on Dead Plants or Fermento, which have to be farmed separately. Farm some and add them under What you own, or skip this plot for now.",
       };
+    }
     case "rebuild":
-      return { verb: "rebuild", headline: `Rebuild ${to}`, reason };
+      return {
+        verb: "rebuild",
+        headline: `Rebuild ${to}`,
+        reason: `${reason} Break any roots, harvest anything fully grown, then put back every placed input that is missing or damaged. The picture shows the full farm.`.trim(),
+      };
     case "clear":
       return {
         verb: "clear",
         headline: "Clear to empty farmland",
-        reason: `${reason} Nothing you can afford is worth starting yet. Empty farmland grows Lonelilies while it waits.`.trim(),
+        reason: `${reason} ${waitingOn(outcome, name, data)} Empty farmland grows Lonelilies while it waits.`.trim(),
       };
     case "wait":
       return {
         verb: "wait",
         headline: "Leave it empty for now",
-        reason: "Nothing you can afford is worth starting on this plot yet. Empty farmland grows Lonelilies while it waits.",
+        reason: `${waitingOn(outcome, name, data)} Empty farmland grows Lonelilies while it waits.`,
       };
-    case "switch":
-      return { verb: "switch", headline: `Switch to ${to}`, reason };
+    case "switch": {
+      if (outcome.to === "lonelily")
+        return {
+          verb: "switch",
+          headline: `Switch to ${to}`,
+          reason: "Lonelilies only spawn on farmland with nothing around them, and they cost nothing. Clear the plot, keep only the crops shown on the picture, and leave the rest empty. It is the most useful thing this plot can do with what you own right now.",
+        };
+      const free = outcome.spent.length === 0;
+      return { verb: "switch", headline: `Switch to ${to}`, reason: free && outcome.why === "idle" ? "The plot was free, and this farm costs nothing to build." : reason };
+    }
     default: {
       const waiting = outcome.waitFor.filter((w) => w.target > w.have);
       const until = waiting.length

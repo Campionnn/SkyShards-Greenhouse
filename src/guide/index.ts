@@ -12,7 +12,7 @@
 export { createGuideEnv, decideLogin, plotOrder, projectLogin, type GuideEnv, type LoginResult } from "./project";
 export {
   ALOE_FRAGMENT,
-  BOUGHT_SUPPLIES,
+  SUPPLY_ITEMS,
   DONE,
   GROUP_LABELS,
   HUB,
@@ -36,10 +36,14 @@ export { buildPlan, medoid, sequenceDistance, spread, summarise } from "./aggreg
 export { describeWhy, explain, verbOf, type Explanation, type Verb } from "./explain";
 export { GENERAL_TIPS, farmTips, scriptKnobs, type ScriptKnobs } from "./tips";
 export {
-  STARTER_SUPPLIES,
+  STORAGE_VERSION,
   allActed,
   confirmPlot,
-  confirmationOf,
+  goalOwned,
+  skipPlot,
+  withSettings,
+  zombudYield,
+  type ConfirmExtras,
   emptyFacts,
   hasFacts,
   initialState,
@@ -54,6 +58,6 @@ export {
   type Confirmation,
   type GuideState,
 } from "./checkin";
-export { HOURS_PER_CYCLE, cyclesFromSchedule, hoursToCycles, scheduleHours } from "./schedule";
+export { DEFAULT_CHECK_EVERY, activityFor, hoursPerCycle, hoursToCycles } from "./schedule";
 export type * from "./types";
 

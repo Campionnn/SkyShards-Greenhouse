@@ -8,58 +8,40 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* 16px inputs so iOS doesn't zoom the page on focus. */
-.guide-root input,
-.guide-root select {
-  font-size: 16px;
-}
-
-.guide-press {
-  transition: transform 120ms ease-out, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
-}
-.guide-press:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .guide-press:hover:not(:disabled) {
-    filter: brightness(1.12);
+/* 16px inputs on phones so iOS doesn't zoom the page on focus; the app's 12px elsewhere. */
+@media (max-width: 639px) {
+  .guide-root input,
+  .guide-root select {
+    font-size: 16px;
   }
 }
 
-/* Native dialog: full-height sheet on phones, centred card on wider screens. */
+/* Native dialog, styled like the app's other modals: a centred card with a blurred backdrop,
+   a full-height sheet on phones. */
 .guide-dialog {
   margin: auto;
   padding: 0;
   border: none;
   background: transparent;
   color: inherit;
-  max-width: min(960px, calc(100vw - 24px));
+  max-width: min(960px, calc(100vw - 32px));
   width: 100%;
-  max-height: calc(100dvh - 24px);
+  max-height: calc(100dvh - 32px);
+}
+.guide-dialog-md {
+  max-width: min(36rem, calc(100vw - 32px));
 }
 .guide-dialog::backdrop {
-  background: rgba(2, 6, 23, 0.72);
-}
-.guide-dialog[open] {
-  animation: guide-dialog-in 160ms ease-out;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
 }
 @media (max-width: 639px) {
-  .guide-dialog {
+  .guide-dialog,
+  .guide-dialog-md {
     max-width: 100vw;
     max-height: 100dvh;
     height: 100dvh;
     margin: 0;
-  }
-}
-@keyframes guide-dialog-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
   }
 }
 
@@ -67,13 +49,30 @@
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .guide-press,
-  .guide-dialog[open] {
-    transition: none;
-    animation: none;
+/* Forecast progress: a sweeping bar until the first run lands, then a filling bar. */
+@keyframes guide-sweep {
+  0% {
+    transform: translateX(-100%);
   }
-  .guide-press:active:not(:disabled) {
+  100% {
+    transform: translateX(250%);
+  }
+}
+.guide-sweep {
+  animation: guide-sweep 1.4s ease-in-out infinite;
+}
+.guide-fill {
+  transition: width 300ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-fill {
+    transition: none;
+  }
+  .guide-sweep {
+    animation: none;
     transform: none;
+    width: 100% !important;
+    opacity: 0.5;
   }
 }

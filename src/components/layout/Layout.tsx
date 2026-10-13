@@ -24,7 +24,7 @@ export const Layout: React.FC = () => {
           <p className="font-medium">Made by Campion</p>
           <p className="mt-1 text-slate-500">A SkyShards Project. Big thanks to MegaMew14 for the help!</p>
           <div className="h-px w-1/2 bg-slate-800/50 mx-auto my-3"></div>
-          <div className="flex justify-center items-center space-x-4">
+          <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1 px-4">
             <a
               href="https://skyshards.com"
               target="_blank"

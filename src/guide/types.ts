@@ -5,7 +5,7 @@
  * exact situation, by running each plot script's `onStart` hook in a zero-time projection. A real
  * login visits Plot 1, then 2, then 3 against one shared inventory, so the projection does the same:
  * each plot decides against the stock the plots before it left behind. Monte Carlo is used only for
- * the forecast (how long, what to buy, which farms come next).
+ * the forecast (how long, how many Dead Plants / Fermento, which farms come next).
  */
 import type { Settings } from "../simulator/sim/state";
 
@@ -36,8 +36,6 @@ export interface PlotFacts {
   missing: Cell[];
   /** Targets standing on their target cells. */
   standing: StandingPlant[];
-  /** Anchors of Blastberries that are primed. */
-  primed: Cell[];
   /** The Devourer farm was harvested or lost a plant since it was built. */
   devourerRefresh: boolean;
 }
@@ -54,6 +52,8 @@ export interface PlotInput {
   farm: string;
   facts?: PlotFacts;
   acted?: boolean;
+  /** The facts were reported at an earlier visit: still used, but the card asks to check them. */
+  factsFromEarlier?: boolean;
 }
 
 /** Script memory the Guide carries between check-ins (the flow's `shared.builtOnce`). */
@@ -86,7 +86,7 @@ export interface WaitFor {
 /**
  * What the script decided for a plot.
  * - enter: move to another farm (`to`). `to === "hub"` means clear to empty farmland and wait;
- *   `to === "supplies"` means the plot is blocked on bought supplies.
+ *   `to === "supplies"` means the plot is blocked on Dead Plants / Fermento.
  * - stay: keep the farm (re-placing what is missing when the stock covers it).
  * - refresh: rebuild the same farm (Devourer after a harvest or lost ring input).
  * - done: every goal item is owned.
@@ -110,17 +110,29 @@ export interface PlotOutcome {
   waitFor: WaitFor[];
   /** Paid inputs still missing after the session (the stock could not cover them). */
   short: ItemCount[];
+  /** Their anchors: the next check-in starts with these marked missing. */
+  shortCells: Cell[];
   /** Paid items placed this session, by item. Deterministic: this is what confirming subtracts. */
   spent: ItemCount[];
   /** Exact cells of everything placed this session (paid and free). */
   placedCells: PlacedCell[];
-  /** Spawned targets the script harvested this session (Jellybeans, Aloe, Shellfruit). */
+  /** Spawned targets the script harvested this session (Jellybeans, Aloe, Shellfruit), as plants. */
   harvested: ItemCount[];
+  /**
+   * Items those harvests are guaranteed to give that this same session placed again (e.g. popped
+   * Shellfruit placed straight into Phantomleaf + Timestalk). Confirming credits these before
+   * subtracting `spent`, so a placement paid for by this visit's own harvest isn't lost.
+   */
+  selfFunded: ItemCount[];
+  /** Fully grown targets the player reported, which should be harvested this visit. */
+  harvestReady: ItemCount[];
   /** Inventory before and after this plot's session, in the projected login. */
   inventoryBefore: Record<string, number>;
   inventoryAfter: Record<string, number>;
   /** `shared.builtOnce` after this plot's session (memory for the next check-in). */
   builtOnce: Record<string, number>;
+  /** When `to` is the supplies step or empty farmland: the farm more Dead Plants / Fermento would start, and how many more. */
+  supplyBlock?: { farm: string; need: ItemCount[] };
 }
 
 /** One farm visit in a simulated run. */
@@ -144,8 +156,10 @@ export interface RunTimeline {
   logins: number;
   done: boolean;
   debtEvents: number;
-  /** Stock of each bought supply the run needed to own from the start (owned minus its lowest point). */
+  /** Stock of each supply (Dead Plant, Fermento) the run needed from the start (owned minus its lowest point). */
   supplyNeed: Record<string, number>;
+  /** Seconds into the run when each supply first ran out (null: never). */
+  supplyShortAt: Record<string, number | null>;
 }
 
 export interface Spread {
@@ -154,14 +168,16 @@ export interface Spread {
   p90: number;
 }
 
-/** A row of the reconciled shopping list. */
-export interface ShoppingRow {
+/** A row of the reconciled supplies list. */
+export interface SupplyRow {
   item: string;
   /** Stock the forecast needed to own from the start (90th percentile of the runs). */
   needed: number;
   owned: number;
-  /** What to buy on top of what is owned (0 when covered). */
-  buy: number;
+  /** How many more to farm on top of what is owned (0 when covered). */
+  more: number;
+  /** Typical seconds until the owned stock runs out (null when it lasts). */
+  shortIn: number | null;
 }
 
 /** The aggregated forecast. */
@@ -171,7 +187,7 @@ export interface Forecast {
   /** Null when no run finished: a capped run is not a completion time. */
   seconds: Spread | null;
   logins: Spread | null;
-  shopping: ShoppingRow[];
+  supplies: SupplyRow[];
   medoidSeed: number;
 }
 

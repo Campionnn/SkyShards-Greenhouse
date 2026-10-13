@@ -5,7 +5,6 @@ import {
   ALOE_FRAGMENT,
   buildCatalog,
   confirmPlot,
-  confirmationOf,
   createGuideEnv,
   decideLogin,
   explain,
@@ -17,7 +16,13 @@ import {
   restoreState,
   scriptKnobs,
   farmTips,
+  goalOwned,
+  hoursPerCycle,
+  hoursToCycles,
   setFacts,
+  skipPlot,
+  withSettings,
+  zombudYield,
   setFarm,
   startNewCheckIn,
   toInput,
@@ -33,7 +38,8 @@ const flow: FlowsFile = parseFlows(readFileSync("public/greenhouse/flows/rose-dr
 const catalog = buildCatalog(flow, guideEnv.env.resolveLayout);
 const GOAL = { all_in_aloe: 2, devourer: 2, glasscorn: 2, phantomleaf: 2, timestalk: 2 };
 
-const start = (inventory?: Record<string, number>): GuideState => initialState(flow, defaultSettings(), inventory);
+const SUPPLIES = { dead_plant: 250, fermento: 50 };
+const start = (inventory: Record<string, number> = SUPPLIES): GuideState => initialState(flow, defaultSettings(), inventory);
 const withFarms = (state: GuideState, farms: Record<number, string>): GuideState => Object.entries(farms).reduce((s, [id, farm]) => setFarm(s, Number(id), farm), state);
 
 describe("parseFlows", () => {
@@ -134,7 +140,7 @@ describe("decideLogin", () => {
   it("re-places a reported missing input from stock, on the exact cell", () => {
     const farm = farmOf(catalog, 1, "commons");
     const deadPlant = farm.layout.plants.find((p) => p.kindId === "dead_plant")!;
-    const state = setFacts(withFarms(start(), { 1: "commons" }), 1, { missing: [deadPlant], standing: [], primed: [], devourerRefresh: false });
+    const state = setFacts(withFarms(start(), { 1: "commons" }), 1, { missing: [deadPlant], standing: [], devourerRefresh: false });
     const plot1 = decideLogin(flow, toInput(state), guideEnv)[0];
     expect(plot1.action).toBe("stay");
     expect(plot1.spent).toEqual([{ item: "dead_plant", count: 1 }]);
@@ -144,7 +150,7 @@ describe("decideLogin", () => {
   it("reports a missing input it can't afford instead of pretending the farm is complete", () => {
     const farm = farmOf(catalog, 1, "glasscorn");
     const missing = farm.layout.plants.filter((p) => p.kindId === "startlevine").slice(0, 2);
-    const state = setFacts(withFarms(start({ dead_plant: 250, fermento: 50, glasscorn: 1 }), { 1: "glasscorn" }), 1, { missing, standing: [], primed: [], devourerRefresh: false });
+    const state = setFacts(withFarms(start({ dead_plant: 250, fermento: 50, glasscorn: 1 }), { 1: "glasscorn" }), 1, { missing, standing: [], devourerRefresh: false });
     const plot1 = decideLogin(flow, toInput(state), guideEnv)[0];
     // With no Startlevine in stock, either the gap stays open or the plot moves on; it never pays for it.
     expect(plot1.spent.some((s) => s.item === "startlevine")).toBe(false);
@@ -178,12 +184,14 @@ describe("trust-and-correct check-ins", () => {
   it("confirming moves the plot and takes off what it placed, and undo puts it back", () => {
     const state = start();
     const [plot1] = decideLogin(flow, toInput(state), guideEnv);
-    const confirmation = confirmationOf(state, plot1);
     const after = confirmPlot(state, plot1);
-    expect(after.plots[1]).toEqual({ farm: "commons", acted: true });
+    expect(after.plots[1]).toMatchObject({ farm: "commons", acted: true });
     expect(after.inventory.dead_plant).toBe(243);
     expect(after.memory.builtOnce).toEqual(plot1.builtOnce);
-    const undone = undoPlot(after, confirmation);
+    expect(after.confirmations[1].delta).toEqual({ dead_plant: -7 });
+    // The undo record is plain data, so it survives a save and reload.
+    const reloaded = restoreState(JSON.parse(JSON.stringify({ version: 3, ...after })), flow, catalog, defaultSettings())!;
+    const undone = undoPlot(reloaded, 1);
     expect(undone.plots[1]).toEqual(state.plots[1]);
     expect(undone.inventory).toEqual(state.inventory);
   });
@@ -195,6 +203,7 @@ describe("trust-and-correct check-ins", () => {
     expect(Object.values(done.plots).every((p) => p.acted)).toBe(true);
     const next = startNewCheckIn(done);
     expect(next.plots).toEqual({ 1: { farm: "commons" }, 2: { farm: "lonelily" }, 3: { farm: "commons" } });
+    expect(next.confirmations).toEqual({});
   });
 
   it("validates items and farms in plain words", () => {
@@ -203,7 +212,7 @@ describe("trust-and-correct check-ins", () => {
   });
 
   it("restores a saved state and discards old shapes and farms the flow no longer has", () => {
-    const saved = { version: 2, ...withFarms(start({ dead_plant: 10 }), { 1: "commons" }) };
+    const saved = { version: 3, ...withFarms(start({ dead_plant: 10 }), { 1: "commons" }) };
     const restored = restoreState(JSON.parse(JSON.stringify(saved)), flow, catalog, defaultSettings());
     expect(restored?.plots[1].farm).toBe("commons");
     expect(restored?.inventory).toEqual({ dead_plant: 10 });
@@ -225,5 +234,119 @@ describe("tips", () => {
   it("never says ripe", () => {
     const all = farmTips(Object.keys(data.mutations), Object.keys(data.mutations), scriptKnobs(flow)).join(" ");
     expect(all).not.toMatch(/ripe/i);
+  });
+});
+
+describe("playtest fixes", () => {
+  it("assumes a Shellfruit farm's Blastberries primed by the next visit, so it pops instead of waiting forever", () => {
+    const state = withFarms(start({ ...SUPPLIES, turtlellini: 6, blastberry: 8 }), { 3: "shellfruit" });
+    const plot3 = decideLogin(flow, toInput(state), guideEnv).find((o) => o.plotId === 3)!;
+    expect(plot3.why).not.toBe("waiting for the Blastberries to prime");
+    expect(plot3.harvested).toEqual([{ item: "shellfruit", count: 6 }]);
+    expect(plot3.to).not.toBe("shellfruit");
+  });
+
+  it("credits placements paid for by the same visit's harvest, so stock isn't lost", () => {
+    // The playtest's late game: popped Shellfruit go straight into Phantomleaf + Timestalk.
+    const state = withFarms(start({ ...SUPPLIES, chorus_fruit: 15, stoplight_petal: 15, shellfruit: 0, all_in_aloe: 2, devourer: 2, glasscorn: 2 }), { 3: "shellfruit" });
+    const plot3 = decideLogin(flow, toInput(state), guideEnv).find((o) => o.plotId === 3)!;
+    expect(plot3.to).toBe("pt");
+    expect(plot3.spent).toContainEqual({ item: "shellfruit", count: 6 });
+    expect(plot3.selfFunded).toEqual([{ item: "shellfruit", count: 6 }]);
+    const after = confirmPlot(state, plot3);
+    expect(after.inventory.shellfruit ?? 0).toBe(0); // harvested 6, placed 6: the player adds only extras
+    expect(after.inventory.chorus_fruit).toBe(15 - 7);
+    expect(undoPlot(after, 3).inventory).toEqual(state.inventory);
+  });
+
+  it("converts the check-in interval with the player's real cycle length", () => {
+    const stats = defaultSettings().playerStats;
+    expect(hoursPerCycle(stats)).toBeLessThan(2); // default stats: ~1.75 h per cycle
+    expect(hoursToCycles(24, stats)).toBe(Math.round(24 / hoursPerCycle(stats)));
+    const slow = { ...stats, cropGrowth: 0, growthUpgradeTier: 0, floraShard: 0 };
+    expect(hoursPerCycle(slow)).toBeGreaterThan(hoursPerCycle(stats));
+    const daily = withSettings(start(), defaultSettings(), 24);
+    expect(daily.checkEvery).toBe(24);
+    expect(daily.settings.activity).toEqual({ kind: "everyN", n: hoursToCycles(24, daily.settings.playerStats), offset: 0 });
+  });
+
+  it("says exactly how many more supplies a blocked plot needs, and lets the player skip it", () => {
+    // The playtest's dead end: plenty of mutations, no Dead Plants or Fermento.
+    const inventory: Record<string, number> = {};
+    for (const id of catalog.items) inventory[id] = 200;
+    Object.assign(inventory, { dead_plant: 0, fermento: 0, all_in_aloe: 2, all_in_aloe_fragment: 0, devourer: 0, glasscorn: 2, phantomleaf: 2, timestalk: 2, zombud: 0 });
+    const state = start(inventory);
+    const plot2 = decideLogin(flow, toInput(state), guideEnv).find((o) => o.plotId === 2)!;
+    expect(plot2.to).toBe("supplies");
+    expect(plot2.supplyBlock).toEqual({ farm: "zombud", need: [{ item: "dead_plant", count: 8 }] });
+    expect(explain(plot2, catalog, data).headline).toBe("Needs 8 more Dead Plant");
+    expect(JSON.stringify(explain(plot2, catalog, data))).not.toMatch(/bazaar|buy|bought/i);
+    const skipped = skipPlot(state, 2);
+    expect(skipped.plots[2]).toMatchObject({ farm: "hub", acted: true });
+    expect(skipped.inventory).toEqual(state.inventory);
+    expect(undoPlot(skipped, 2).plots[2]).toEqual(state.plots[2]);
+  });
+
+  it("counts 9 fragments as one All-in Aloe toward the goal", () => {
+    expect(goalOwned(catalog, { ...GOAL, all_in_aloe: 0, [ALOE_FRAGMENT]: 18 })).toBe(5);
+    expect(goalOwned(catalog, { ...GOAL, all_in_aloe: 1, [ALOE_FRAGMENT]: 8 })).toBe(4);
+  });
+
+  it("books Zombud harvests from the card: Zombuds in, ring Dead Plants out", () => {
+    const perHarvest = zombudYield(catalog, 2, "zombud");
+    expect(perHarvest).toBe(4);
+    const state = withFarms(start({ ...SUPPLIES, cindershade: 10, fleshtrap: 4 }), { 2: "zombud" });
+    const plot2 = decideLogin(flow, toInput(state), guideEnv).find((o) => o.plotId === 2)!;
+    const after = confirmPlot(state, plot2, { zombudHarvests: 2, zombudPerHarvest: perHarvest });
+    const spentDead = plot2.spent.find((s) => s.item === "dead_plant")?.count ?? 0;
+    expect(after.inventory.zombud).toBe(8);
+    expect(after.inventory.dead_plant).toBe(250 - spentDead - 8);
+    expect(undoPlot(after, 2).inventory).toEqual(state.inventory);
+  });
+
+  it("keeps what is still true about a farm after a Keep, and marks what it couldn't afford", () => {
+    const farm = farmOf(catalog, 1, "glasscorn");
+    const slot = farm.layout.slots[0];
+    const missing = farm.layout.plants.filter((p) => p.kindId === "startlevine").slice(0, 1);
+    const state = setFacts(withFarms(start({ ...SUPPLIES, glasscorn: 1, chloronite: 2 }), { 1: "glasscorn" }), 1, {
+      missing,
+      standing: [{ row: slot.row, col: slot.col, kind: "glasscorn", stage: 3, fullyGrown: false }],
+      devourerRefresh: false,
+    });
+    const plot1 = decideLogin(flow, toInput(state), guideEnv)[0];
+    // With 0 Startlevine the gap can't be refilled. Either way, what is still true is kept.
+    const after = confirmPlot(state, plot1);
+    if (plot1.to === "glasscorn") {
+      expect(after.plots[1].facts?.missing).toEqual(plot1.shortCells);
+      expect(after.plots[1].facts?.standing).toHaveLength(1);
+      expect(startNewCheckIn(after).plots[1].factsFromEarlier).toBe(true);
+    } else {
+      // Moving to another farm clears the old farm's facts.
+      expect(after.plots[1].facts).toBeUndefined();
+    }
+  });
+
+  it("shows fully grown targets the player reported under Harvest now", () => {
+    const farm = farmOf(catalog, 2, "jelly");
+    const slot = farm.layout.slots[0];
+    const state = setFacts(withFarms(start({ ...SUPPLIES, duskbloom: 20 }), { 2: "jelly" }), 2, {
+      missing: [],
+      standing: [{ row: slot.row, col: slot.col, kind: "magic_jellybean", stage: 4, fullyGrown: true }],
+      devourerRefresh: false,
+    });
+    const plot2 = decideLogin(flow, toInput(state), guideEnv).find((o) => o.plotId === 2)!;
+    expect(plot2.to).toBe("jelly");
+    expect(plot2.harvestReady).toEqual([{ item: "magic_jellybean", count: 1 }]);
+  });
+
+  it("splits a step label into a name and a readable detail", () => {
+    expect(farmOf(catalog, 3, "shellfruit")).toMatchObject({ name: "Shellfruit", detail: "place them · blast Turtlellini" });
+    expect(farmOf(catalog, 2, "devourer").detail).toBe("keep inputs while growing");
+    expect(farmOf(catalog, 1, "commons").detail).toBe("");
+    expect(farmOf(catalog, 1, "commons-choconut").detail).toBe("no Dead Plants or Fermento");
+  });
+
+  it("starts a new player with nothing owned", () => {
+    expect(initialState(flow, defaultSettings()).inventory).toEqual({});
   });
 });

@@ -2,15 +2,26 @@
  * The Guide's persistent picture of the player's greenhouse, and how it changes.
  *
  * Trust-and-correct: when the player confirms a plot ("Done with Plot 1"), the Guide moves that plot
- * to its new farm and subtracts exactly what the projection placed from stock. It never adds
- * harvests: they are random, so the player enters them. A check-in lasts until every plot is
- * confirmed; then the next visit starts a new one.
+ * to its new farm and applies only the deterministic stock changes. It takes off what was placed,
+ * credits what the session's own harvest paid for, and books any Zombud harvests the player counted
+ * on the card. Ordinary harvests are random, so the player enters them. A check-in lasts until the
+ * player starts the next one; confirmations (with their undo) are part of the stored state.
  */
 import { kindDef } from "../simulator";
 import type { GameData } from "../simulator/data/types";
 import type { Settings } from "../simulator/sim/state";
-import { ALOE_FRAGMENT, HUB, type Catalog, type FlowsFile } from "./flow";
-import type { GuideInput, GuideMemory, PlotFacts, PlotId, PlotInput, PlotOutcome } from "./types";
+import { ALOE_FRAGMENT, HUB, farmOf, type Catalog, type FlowsFile } from "./flow";
+import { DEFAULT_CHECK_EVERY, activityFor } from "./schedule";
+import type { Cell, GuideInput, GuideMemory, ItemCount, PlotFacts, PlotId, PlotInput, PlotOutcome, StandingPlant } from "./types";
+
+/** An exact record of one confirmation, so Undo puts everything back, even after a reload. */
+export interface Confirmation {
+  plotId: PlotId;
+  before: PlotInput;
+  /** Stock change applied (item -> signed amount). Undo applies the opposite. */
+  delta: Record<string, number>;
+  memory: GuideMemory;
+}
 
 /** What the page stores and edits. */
 export interface GuideState {
@@ -18,80 +29,168 @@ export interface GuideState {
   plots: Record<PlotId, PlotInput>;
   settings: Settings;
   memory: GuideMemory;
+  /** "How often do you check your greenhouse?" in real hours; null = daily time windows. */
+  checkEvery: number | null;
+  /** This visit's confirmations, by plot. Cleared when the next check-in starts. */
+  confirmations: Record<PlotId, Confirmation>;
 }
 
-export const STARTER_SUPPLIES: Record<string, number> = { dead_plant: 250, fermento: 50 };
+export const STORAGE_VERSION = 3;
 
 export function emptyFacts(): PlotFacts {
-  return { missing: [], standing: [], primed: [], devourerRefresh: false };
+  return { missing: [], standing: [], devourerRefresh: false };
 }
 
 export function hasFacts(facts: PlotFacts | undefined): boolean {
-  return !!facts && (facts.missing.length > 0 || facts.standing.length > 0 || facts.primed.length > 0 || facts.devourerRefresh);
+  return !!facts && (facts.missing.length > 0 || facts.standing.length > 0 || facts.devourerRefresh);
 }
 
-/** Every plot on empty farmland with the given stock. */
-export function initialState(flow: FlowsFile, settings: Settings, inventory: Record<string, number> = STARTER_SUPPLIES): GuideState {
+/** Every plot on empty farmland and nothing owned: the page asks the player to enter their stock first. */
+export function initialState(flow: FlowsFile, settings: Settings, inventory: Record<string, number> = {}): GuideState {
   const plots: Record<PlotId, PlotInput> = {};
   for (const plot of flow.plots) plots[plot.id] = { farm: HUB };
-  return { inventory: { ...inventory }, plots, settings, memory: { builtOnce: {} } };
+  return {
+    inventory: Object.fromEntries(Object.entries(inventory).filter(([, n]) => Number.isFinite(n) && n > 0).map(([k, n]) => [k, Math.floor(n)])),
+    plots,
+    settings: { ...settings, activity: activityFor(DEFAULT_CHECK_EVERY, settings) },
+    memory: { builtOnce: {} },
+    checkEvery: DEFAULT_CHECK_EVERY,
+    confirmations: {},
+  };
 }
 
 export function toInput(state: GuideState): GuideInput {
   return { inventory: state.inventory, plots: state.plots, settings: state.settings, memory: state.memory };
 }
 
-/**
- * Confirm one plot: it is now on `outcome.to`, its facts are cleared (they described the old farm),
- * and the deterministic placement cost is taken from stock. Harvests are left to the player.
- */
-export function confirmPlot(state: GuideState, outcome: PlotOutcome): GuideState {
+/** Change settings and/or the check-in interval; the simulated schedule follows both. */
+export function withSettings(state: GuideState, settings: Settings, checkEvery: number | null = state.checkEvery): GuideState {
+  return { ...state, checkEvery, settings: { ...settings, activity: checkEvery === null ? settings.activity : activityFor(checkEvery, settings) } };
+}
+
+/** The goal items owned, counting every 9 All-in Aloe Fragments as one Aloe (the game converts them). */
+export function goalOwned(catalog: Catalog, inventory: Record<string, number>): number {
+  return catalog.goal.filter((g) => {
+    const extra = g.item === "all_in_aloe" ? Math.floor((inventory[ALOE_FRAGMENT] ?? 0) / 9) : 0;
+    return (inventory[g.item] ?? 0) + extra >= g.count;
+  }).length;
+}
+
+/** How many Zombuds one harvest on this farm makes: Dead Plants (or empty cells) in a Zombud cell's ring. */
+export function zombudYield(catalog: Catalog, plotId: PlotId, farmId: string): number {
+  const farm = farmOf(catalog, plotId, farmId);
+  const slots = farm.layout.slots.filter((s) => s.mutationId === "zombud");
+  if (!slots.length) return 0;
+  const counts = slots.map((s) => {
+    let n = 0;
+    for (let r = s.row - 1; r <= s.row + s.size; r++) {
+      for (let c = s.col - 1; c <= s.col + s.size; c++) {
+        if (r < 0 || c < 0 || r > 9 || c > 9 || (r >= s.row && r < s.row + s.size && c >= s.col && c < s.col + s.size)) continue;
+        const at = farm.layout.plants.find((p) => r >= p.row && r < p.row + p.size && c >= p.col && c < p.col + p.size);
+        if (!at || at.kindId === "dead_plant") n += 1;
+      }
+    }
+    return n;
+  });
+  return Math.round(counts.reduce((a, b) => a + b, 0) / counts.length);
+}
+
+/** Extra player input on confirm that the projection can't know. */
+export interface ConfirmExtras {
+  /** Zombud plants harvested on this plot this visit. */
+  zombudHarvests?: number;
+  /** Zombuds (and Dead Plants used) per harvest on this farm: `zombudYield`. */
+  zombudPerHarvest?: number;
+}
+
+function addDelta(delta: Record<string, number>, items: ItemCount[], sign: 1 | -1, scale = 1): void {
+  for (const { item, count } of items) delta[item] = (delta[item] ?? 0) + sign * count * scale;
+}
+
+/** What is still true about the plot after the session, for the next check-in. */
+function factsAfter(state: GuideState, outcome: PlotOutcome): PlotFacts | undefined {
+  const missing: Cell[] = outcome.shortCells;
+  // A farm that stays keeps its growing targets (their stage moves on, so the card asks to check).
+  // Fully grown ones are harvested now, and a changed farm cleared its target cells.
+  const previous = state.plots[outcome.plotId]?.facts;
+  const standing: StandingPlant[] = outcome.from === outcome.to ? (previous?.standing ?? []).filter((s) => !s.fullyGrown) : [];
+  const facts: PlotFacts = { missing, standing, devourerRefresh: false };
+  return hasFacts(facts) ? facts : undefined;
+}
+
+/** Confirm one plot. */
+export function confirmPlot(state: GuideState, outcome: PlotOutcome, extras: ConfirmExtras = {}): GuideState {
+  const delta: Record<string, number> = {};
+  addDelta(delta, outcome.selfFunded, 1);
+  addDelta(delta, outcome.spent, -1);
+  const harvests = Math.max(0, Math.floor(extras.zombudHarvests ?? 0));
+  const perHarvest = Math.max(0, Math.floor(extras.zombudPerHarvest ?? 0));
+  if (harvests > 0 && perHarvest > 0) {
+    // Each harvest turns the ring's Dead Plants into one Zombud each (not yield-scaled), and the
+    // layout then needs those Dead Plants placed again.
+    addDelta(delta, [{ item: "zombud", count: perHarvest }], 1, harvests);
+    addDelta(delta, [{ item: "dead_plant", count: perHarvest }], -1, harvests);
+  }
   const inventory = { ...state.inventory };
-  for (const { item, count } of outcome.spent) inventory[item] = Math.max(0, (inventory[item] ?? 0) - count);
-  const plots = { ...state.plots, [outcome.plotId]: { farm: outcome.to, acted: true } };
-  // The script's "built once" memory is only advanced by entries the player actually made.
+  for (const [item, change] of Object.entries(delta)) {
+    const had = inventory[item] ?? 0;
+    const next = Math.max(0, had + change);
+    delta[item] = next - had; // what was really applied, so Undo reverses exactly this
+    if (next > 0) inventory[item] = next;
+    else delete inventory[item];
+  }
+  const plot: PlotInput = { farm: outcome.to, acted: true, facts: factsAfter(state, outcome), factsFromEarlier: undefined };
+  // The script's "built once" memory only advances on entries the player actually made.
   const memory = outcome.action === "enter" ? { builtOnce: { ...outcome.builtOnce } } : state.memory;
-  return { ...state, inventory, plots, memory };
+  const confirmation: Confirmation = { plotId: outcome.plotId, before: state.plots[outcome.plotId], delta, memory: state.memory };
+  return { ...state, inventory, plots: { ...state.plots, [outcome.plotId]: plot }, memory, confirmations: { ...state.confirmations, [outcome.plotId]: confirmation } };
 }
 
-/** What `undoPlot` needs to put a confirmation back exactly. */
-export interface Confirmation {
-  plotId: PlotId;
-  before: PlotInput;
-  spent: PlotOutcome["spent"];
-  memory: GuideMemory;
+/** Skip a plot this visit (e.g. it is waiting for Dead Plants / Fermento the player hasn't farmed yet). */
+export function skipPlot(state: GuideState, plotId: PlotId): GuideState {
+  const before = state.plots[plotId];
+  const confirmation: Confirmation = { plotId, before, delta: {}, memory: state.memory };
+  return { ...state, plots: { ...state.plots, [plotId]: { ...before, acted: true } }, confirmations: { ...state.confirmations, [plotId]: confirmation } };
 }
 
-export function confirmationOf(state: GuideState, outcome: PlotOutcome): Confirmation {
-  return { plotId: outcome.plotId, before: state.plots[outcome.plotId], spent: outcome.spent, memory: state.memory };
-}
-
-/** Undo a confirmation: the plot goes back and what it spent is returned (later edits are kept). */
-export function undoPlot(state: GuideState, confirmation: Confirmation): GuideState {
+/** Undo a confirmation: the plot goes back and its stock change is reversed (later edits are kept). */
+export function undoPlot(state: GuideState, plotId: PlotId): GuideState {
+  const confirmation = state.confirmations[plotId];
+  if (!confirmation) return state;
   const inventory = { ...state.inventory };
-  for (const { item, count } of confirmation.spent) inventory[item] = (inventory[item] ?? 0) + count;
-  return { ...state, inventory, plots: { ...state.plots, [confirmation.plotId]: confirmation.before }, memory: confirmation.memory };
+  for (const [item, change] of Object.entries(confirmation.delta)) {
+    const next = (inventory[item] ?? 0) - change;
+    if (next > 0) inventory[item] = next;
+    else delete inventory[item];
+  }
+  const confirmations = { ...state.confirmations };
+  delete confirmations[plotId];
+  return { ...state, inventory, plots: { ...state.plots, [plotId]: confirmation.before }, memory: confirmation.memory, confirmations };
 }
 
 export function allActed(state: GuideState): boolean {
   return Object.values(state.plots).every((p) => p.acted);
 }
 
-/** "I'm back": forget which plots acted this login. Farms and facts stay. */
+/** "I'm back": a new visit. Farms stay; facts carried from last time are flagged to be checked. */
 export function startNewCheckIn(state: GuideState): GuideState {
   const plots: Record<PlotId, PlotInput> = {};
-  for (const [id, plot] of Object.entries(state.plots)) plots[Number(id)] = { farm: plot.farm, facts: plot.facts };
-  return { ...state, plots };
+  for (const [id, plot] of Object.entries(state.plots)) {
+    plots[Number(id)] = { farm: plot.farm, facts: plot.facts, factsFromEarlier: plot.facts ? true : undefined };
+  }
+  return { ...state, plots, confirmations: {} };
 }
 
 /** The player corrected where a plot is: new farm, unknown facts, not acted. */
 export function setFarm(state: GuideState, plotId: PlotId, farm: string): GuideState {
-  return { ...state, plots: { ...state.plots, [plotId]: { farm } } };
+  const confirmations = { ...state.confirmations };
+  delete confirmations[plotId];
+  return { ...state, plots: { ...state.plots, [plotId]: { farm } }, confirmations };
 }
 
 export function setFacts(state: GuideState, plotId: PlotId, facts: PlotFacts | undefined): GuideState {
   const plot = state.plots[plotId];
-  return { ...state, plots: { ...state.plots, [plotId]: { ...plot, facts: hasFacts(facts) ? facts : undefined } } };
+  return { ...state, plots: { ...state.plots, [plotId]: { ...plot, facts: hasFacts(facts) ? facts : undefined, factsFromEarlier: undefined } } };
 }
 
 export function setItem(state: GuideState, item: string, amount: number): GuideState {
@@ -116,11 +215,28 @@ export function validate(state: GuideState, catalog: Catalog, data: GameData): s
   return problems;
 }
 
+const isCell = (c: unknown): c is Cell => !!c && typeof c === "object" && Number.isInteger((c as Cell).row) && Number.isInteger((c as Cell).col);
+
+function cleanFacts(raw: unknown): PlotFacts | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Partial<PlotFacts>;
+  const facts: PlotFacts = {
+    missing: Array.isArray(r.missing) ? r.missing.filter(isCell).map((c) => ({ row: c.row, col: c.col })) : [],
+    standing: Array.isArray(r.standing)
+      ? r.standing
+          .filter((s): s is StandingPlant => isCell(s) && typeof (s as StandingPlant).kind === "string")
+          .map((s) => ({ row: s.row, col: s.col, kind: s.kind, stage: Number(s.stage) || 0, fullyGrown: s.fullyGrown === true }))
+      : [],
+    devourerRefresh: r.devourerRefresh === true,
+  };
+  return hasFacts(facts) ? facts : undefined;
+}
+
 /** Migrate whatever was stored to a usable state, dropping anything that no longer fits the flow. */
 export function restoreState(raw: unknown, flow: FlowsFile, catalog: Catalog, defaults: Settings): GuideState | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Partial<GuideState> & { version?: number };
-  if (r.version !== 2) return null; // the first Guide's check-in shape is not migrated
+  if (r.version !== 2 && r.version !== STORAGE_VERSION) return null; // the first Guide's shape is not migrated
   const base = initialState(flow, defaults, {});
   const inventory: Record<string, number> = {};
   for (const [item, amount] of Object.entries(r.inventory ?? {})) {
@@ -130,12 +246,17 @@ export function restoreState(raw: unknown, flow: FlowsFile, catalog: Catalog, de
   for (const id of catalog.plots) {
     const saved = r.plots?.[id];
     if (saved && typeof saved.farm === "string" && catalog.farms[id].some((f) => f.id === saved.farm)) {
-      plots[id] = { farm: saved.farm, facts: saved.facts, acted: saved.acted === true };
+      plots[id] = { farm: saved.farm, facts: cleanFacts(saved.facts), acted: saved.acted === true, factsFromEarlier: saved.factsFromEarlier === true || undefined };
     }
   }
-  const settings = r.settings
+  const settings: Settings = r.settings
     ? { ...defaults, ...r.settings, playerStats: { ...defaults.playerStats, ...r.settings.playerStats }, config: defaults.config, policies: defaults.policies }
     : defaults;
+  const checkEvery = r.version === STORAGE_VERSION ? (r.checkEvery === null ? null : typeof r.checkEvery === "number" && r.checkEvery > 0 ? r.checkEvery : DEFAULT_CHECK_EVERY) : DEFAULT_CHECK_EVERY;
   const builtOnce = r.memory?.builtOnce && typeof r.memory.builtOnce === "object" ? r.memory.builtOnce : {};
-  return { inventory, plots, settings, memory: { builtOnce } };
+  const confirmations: Record<PlotId, Confirmation> = {};
+  for (const [id, c] of Object.entries(r.confirmations ?? {})) {
+    if (c && plots[Number(id)]?.acted && c.before && typeof c.before.farm === "string" && c.delta && typeof c.delta === "object") confirmations[Number(id)] = c;
+  }
+  return withSettings({ inventory, plots, settings, memory: { builtOnce }, checkEvery, confirmations }, settings, checkEvery);
 }

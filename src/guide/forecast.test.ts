@@ -26,7 +26,7 @@ describe("runOne", () => {
     expect(again).toEqual(runs[0]);
   }, 60_000);
 
-  it("buys supplies when the flow asks for them and records how much was needed", () => {
+  it("tops supplies up when the flow runs out and records how much was needed", () => {
     const broke = toInput(initialState(flow, defaultSettings(), {}));
     const run = runOne(flow, broke, 1, guideEnv, 600);
     expect(run.debtEvents).toBe(0);
@@ -48,11 +48,11 @@ describe("runOne", () => {
 });
 
 describe("summarise and buildPlan", () => {
-  it("reconciles the shopping list against what is owned", () => {
+  it("reconciles the supplies list against what is owned", () => {
     const forecast = summarise(runs, { dead_plant: 10, fermento: 50 });
-    const deadPlant = forecast.shopping.find((r) => r.item === "dead_plant")!;
+    const deadPlant = forecast.supplies.find((r) => r.item === "dead_plant")!;
     expect(deadPlant.owned).toBe(10);
-    expect(deadPlant.buy).toBe(Math.max(0, deadPlant.needed - 10));
+    expect(deadPlant.more).toBe(Math.max(0, deadPlant.needed - 10));
     expect(forecast.completed).toBe(2);
     expect(forecast.seconds!.p10).toBeLessThanOrEqual(forecast.seconds!.median);
   });

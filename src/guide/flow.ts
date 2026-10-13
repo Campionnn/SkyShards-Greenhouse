@@ -16,12 +16,12 @@ import type { ItemCount, PlotId } from "./types";
 export const SHIPPED_FLOW_URL = "/greenhouse/flows/rose-dragon.flows.json";
 /** Empty farmland: the step every plot starts on and returns to while it waits. */
 export const HUB = "hub";
-/** Shown when a plot is blocked only on bought supplies. */
+/** Shown when a plot is blocked only on Dead Plants / Fermento. */
 export const SUPPLIES = "supplies";
 /** The final step. */
 export const DONE = "done";
-/** Items bought from the Bazaar rather than grown. */
-export const BOUGHT_SUPPLIES = ["dead_plant", "fermento"] as const;
+/** Dead Plants and Fermento: inputs the player farms separately, outside the mutation ladder. */
+export const SUPPLY_ITEMS = ["dead_plant", "fermento"] as const;
 /** Fragments are what an All-in Aloe harvest actually drops (9 become 1 Aloe). */
 export const ALOE_FRAGMENT = "all_in_aloe_fragment";
 
@@ -78,6 +78,8 @@ export interface Farm {
   name: string;
   /** The step's full label from the flows file. */
   label: string;
+  /** The label's note after the name ("keep inputs while growing", "no Dead Plants or Fermento"), if any. */
+  detail: string;
   layout: ResolvedLayout;
   /** Paid items placed from the inventory, most first. */
   cost: ItemCount[];
@@ -102,6 +104,18 @@ function shortName(id: string, label: string | undefined): string {
   const text = (label ?? id).trim();
   const cut = text.split(/[:(]/)[0].trim();
   return cut || text;
+}
+
+/** "Devourer: keep inputs while growing" -> "keep inputs while growing"; "X (no bought inputs)" -> "no Dead Plants or Fermento". */
+export function labelDetail(id: string, label: string | undefined): string {
+  if (!label || NAME_OVERRIDES[id]) return "";
+  const text = label.trim();
+  const name = text.split(/[:(]/)[0].trim();
+  const rest = text.slice(name.length).trim();
+  const parts = [...rest.matchAll(/\(([^)]*)\)/g)].map((m) => m[1].trim());
+  const tail = rest.replace(/\([^)]*\)/g, "").replace(/^[\s:]+/, "").trim();
+  // The flow's labels say "bought"; these inputs are farmed, not bought.
+  return [tail, ...parts].filter(Boolean).join(" · ").replace(/\bno bought inputs\b/, "no Dead Plants or Fermento");
 }
 
 function counts(entries: string[]): ItemCount[] {
@@ -142,7 +156,7 @@ export function goalItems(flow: FlowsFile): ItemCount[] {
 
 export function buildCatalog(flow: FlowsFile, resolve: Resolver): Catalog {
   const farms: Record<PlotId, Farm[]> = {};
-  const items = new Set<string>([...BOUGHT_SUPPLIES]);
+  const items = new Set<string>([...SUPPLY_ITEMS]);
   for (const plot of flow.plots) {
     farms[plot.id] = plot.flow.steps.map((step) => {
       const layout = resolve(step.layout);
@@ -156,6 +170,7 @@ export function buildCatalog(flow: FlowsFile, resolve: Resolver): Catalog {
         plotId: plot.id,
         name: shortName(step.id, step.label),
         label: step.label ?? step.id,
+        detail: labelDetail(step.id, step.label),
         layout,
         cost: counts(paid),
         free: counts(free),
@@ -174,7 +189,7 @@ export function buildCatalog(flow: FlowsFile, resolve: Resolver): Catalog {
 export type ItemGroup = "supplies" | "goal" | "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 export const GROUP_LABELS: Record<ItemGroup, string> = {
-  supplies: "Bought supplies",
+  supplies: "Dead Plants & Fermento",
   goal: "Goal (legendaries)",
   common: "Common",
   uncommon: "Uncommon",
@@ -186,7 +201,7 @@ export const GROUP_LABELS: Record<ItemGroup, string> = {
 export const GROUP_ORDER: ItemGroup[] = ["supplies", "goal", "common", "uncommon", "rare", "epic", "legendary"];
 
 export function itemGroup(data: GameData, catalog: Catalog, id: string): ItemGroup {
-  if ((BOUGHT_SUPPLIES as readonly string[]).includes(id)) return "supplies";
+  if ((SUPPLY_ITEMS as readonly string[]).includes(id)) return "supplies";
   if (id === ALOE_FRAGMENT || catalog.goal.some((g) => g.item === id)) return "goal";
   const rarity = data.mutations[id]?.rarity;
   if (rarity === "common" || rarity === "uncommon" || rarity === "rare" || rarity === "epic" || rarity === "legendary") return rarity;

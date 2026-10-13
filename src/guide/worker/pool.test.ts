@@ -7,7 +7,7 @@ import { inputKey, type GuideRequest, type GuideResponse } from "./protocol";
 
 // The pool's scheduling, streaming, cancellation and caching, with fake workers (no engine).
 
-const timeline = (seed: number): RunTimeline => ({ seed, visits: [], farms: {}, cycles: seed, elapsedSeconds: seed, logins: 1, done: true, debtEvents: 0, supplyNeed: {} });
+const timeline = (seed: number): RunTimeline => ({ seed, visits: [], farms: {}, cycles: seed, elapsedSeconds: seed, logins: 1, done: true, debtEvents: 0, supplyNeed: {}, supplyShortAt: {} });
 const flow = { plots: [] } as unknown as FlowsFile;
 const input = { inventory: { dead_plant: 1 }, plots: { 1: { farm: "hub" } }, settings: defaultSettings() };
 

@@ -5,15 +5,14 @@
  * seeds: first the login projection (the same one the cards show), then `engine.run` one cycle at a
  * time until every plot is Done or the cycle cap is hit.
  *
- * Bought supplies: the flow sends a plot to its "supplies" step when Dead Plants or Fermento are the
- * only thing stopping it, and that step tells the player to buy more. The forecast models exactly
- * that: when a plot sits on "supplies" it tops the stock up the way the step's label says, and
- * records how far the stock would have fallen without the top-ups. So the shopping list is
- * "what you would have to buy on top of what you own", and a run never stalls just for lack of a
- * Bazaar trip.
+ * Dead Plants and Fermento: the flow sends a plot to its "supplies" step when they are the only
+ * thing stopping it, and the player farms more of them separately. The forecast models that: when a
+ * plot sits on "supplies" it tops the stock up, and records how far the stock would have fallen
+ * without the top-ups. So the supplies list is "how many more you need on top of what you own", and
+ * a run never stalls just because the player had to go and farm some.
  */
 import type { SimulationState } from "../simulator/sim/state";
-import { BOUGHT_SUPPLIES, DONE, HUB, SUPPLIES, type FlowsFile } from "./flow";
+import { SUPPLY_ITEMS, DONE, HUB, SUPPLIES, type FlowsFile } from "./flow";
 import { projectLogin, type GuideEnv } from "./project";
 import type { GuideInput, PlotId, RunTimeline, Visit } from "./types";
 
@@ -47,10 +46,14 @@ export function runOne(flow: FlowsFile, input: GuideInput, seed: number, guideEn
   let logins = 1;
   const injected: Record<string, number> = {};
   const lowest: Record<string, number> = {};
+  const shortAt: Record<string, number | null> = {};
   const track = () => {
-    for (const item of BOUGHT_SUPPLIES) {
+    for (const item of SUPPLY_ITEMS) {
       const without = (state.inventory[item] ?? 0) - (injected[item] ?? 0);
       lowest[item] = Math.min(lowest[item] ?? Infinity, without);
+      // When the player's own stock would have gone below zero: when they need more on hand.
+      if (without < 0) shortAt[item] ??= state.elapsedSeconds;
+
     }
   };
   track();
@@ -93,7 +96,7 @@ export function runOne(flow: FlowsFile, input: GuideInput, seed: number, guideEn
   }
   const supplyNeed: Record<string, number> = {};
   // Needed from the start = what the player owned minus the lowest the stock would have fallen.
-  for (const item of BOUGHT_SUPPLIES) supplyNeed[item] = Math.max(0, Math.ceil((input.inventory[item] ?? 0) - (lowest[item] ?? 0)));
+  for (const item of SUPPLY_ITEMS) supplyNeed[item] = Math.max(0, Math.ceil((input.inventory[item] ?? 0) - (lowest[item] ?? 0)));
   return {
     seed,
     visits,
@@ -104,6 +107,7 @@ export function runOne(flow: FlowsFile, input: GuideInput, seed: number, guideEn
     done: state.flows.every((f) => f.finished),
     debtEvents: state.summary.debtEvents,
     supplyNeed,
+    supplyShortAt: Object.fromEntries(SUPPLY_ITEMS.map((item) => [item, shortAt[item] ?? null])),
   };
 }
 

@@ -32,7 +32,7 @@ import { newPlant } from "../simulator/sim/plants";
 import type { Scenario, SimulationState, TimedEvent } from "../simulator/sim/state";
 import { createEngine, type Engine } from "../simulator";
 import type { FlowsFile } from "./flow";
-import { HUB } from "./flow";
+import { SUPPLY_ITEMS, HUB, SUPPLIES } from "./flow";
 import type { Cell, GuideInput, ItemCount, PlacedCell, PlotAction, PlotOutcome, PlotId, WaitFor } from "./types";
 
 export interface GuideEnv {
@@ -85,6 +85,10 @@ const sameCell = (a: Cell, b: Cell) => a.row === b.row && a.col === b.col;
 function applyFacts(state: SimulationState, input: GuideInput, guideEnv: GuideEnv): void {
   const { data } = guideEnv.env;
   for (const plot of state.plots) {
+    // A placed Blastberry primes at the first tick after it is placed. A farm the player is
+    // reporting on was built at an earlier visit, so its Blastberries are primed by now. (The old
+    // "tap each primed Blastberry" fact left the Shellfruit farm stuck when nobody tapped.)
+    for (const plant of plot.plants) if (plant.kindId === "blastberry") plant.gate.primed = true;
     const facts = input.plots[plot.id]?.facts;
     if (!facts) continue;
     // 1. Paid inputs the player says are gone.
@@ -109,11 +113,7 @@ function applyFacts(state: SimulationState, input: GuideInput, guideEnv: GuideEn
       plant.lockedEffects = effectiveList(plant.held);
       plant.fullyGrownAtCycle = 0;
     }
-    // 4. Primed Blastberries decide whether the Shellfruit pop is available.
-    for (const plant of plot.plants) {
-      if (plant.kindId === "blastberry") plant.gate.primed = facts.primed.some((c) => sameCell(c, plant));
-    }
-    // 5. A Devourer farm harvested or decayed since it was built needs its refresh exit.
+    // 4. A Devourer farm harvested or decayed since it was built needs its refresh exit.
     if (facts.devourerRefresh) {
       const runner = state.flows.find((r) => r.plotId === plot.id);
       if (runner) runner.harvestedInStep = { ...(runner.harvestedInStep ?? {}), devourer: 1 };
@@ -167,7 +167,7 @@ function tally(ids: string[]): ItemCount[] {
 }
 
 /** Paid layout inputs not standing where the current layout puts them. */
-function shortOf(state: SimulationState, plotId: PlotId, guideEnv: GuideEnv): ItemCount[] {
+function shortOf(state: SimulationState, plotId: PlotId, guideEnv: GuideEnv): { short: ItemCount[]; cells: Cell[] } {
   const plot = state.plots.find((p) => p.id === plotId)!;
   const def = state.scenario.plots.find((p) => p.id === plotId)!;
   const runner = state.flows.find((r) => r.plotId === plotId)!;
@@ -175,7 +175,50 @@ function shortOf(state: SimulationState, plotId: PlotId, guideEnv: GuideEnv): It
   const missing = layout.plants.filter(
     (d) => d.origin === "placed" && !isFreePlacedItem(d.kindId) && !plot.plants.some((p) => p.kindId === d.kindId && sameCell(p, d))
   );
-  return tally(missing.map((d) => d.kindId));
+  return { short: tally(missing.map((d) => d.kindId)), cells: missing.map((d) => ({ row: d.row, col: d.col })) };
+}
+
+/** Reported fully grown targets still standing after the session: the player harvests these now. */
+function harvestReadyOf(state: SimulationState, plotId: PlotId, input: GuideInput): ItemCount[] {
+  const plot = state.plots.find((p) => p.id === plotId)!;
+  const ready = (input.plots[plotId]?.facts?.standing ?? []).filter(
+    (s) => s.fullyGrown && plot.plants.some((p) => p.kindId === s.kind && sameCell(p, s) && p.origin === "spawned")
+  );
+  return tally(ready.map((s) => s.kind));
+}
+
+/**
+ * Items a session both harvested and placed again. Each harvested plant gives at least one of its
+ * own item, so up to that many placements are paid by the harvest itself, not by the stock.
+ * Confirming credits these; the player then only adds the extra drops.
+ */
+function selfFundedOf(harvested: ItemCount[], spent: ItemCount[]): ItemCount[] {
+  const out: ItemCount[] = [];
+  for (const h of harvested) {
+    const funded = Math.min(h.count, spent.find((s) => s.item === h.item)?.count ?? 0);
+    if (funded > 0) out.push({ item: h.item, count: funded });
+  }
+  return out;
+}
+
+/**
+ * When the script parks a plot on the supplies step: the farm more Dead Plants / Fermento would start and the
+ * exact shortfall. Re-runs this plot's hook on a copy with plenty of supplies and diffs the stock.
+ */
+function supplyBlockOf(flow: FlowsFile, input: GuideInput, plotId: PlotId, before: Record<string, number>, farmsSoFar: Record<PlotId, string>, guideEnv: GuideEnv): PlotOutcome["supplyBlock"] {
+  const plenty: Record<string, number> = { ...before };
+  for (const item of SUPPLY_ITEMS) plenty[item] = (plenty[item] ?? 0) + 100_000;
+  // Only this plot decides; the others keep the farms they have at this point of the login.
+  const acted: GuideInput["plots"] = {};
+  for (const [id, p] of Object.entries(input.plots)) acted[Number(id)] = { ...p, farm: farmsSoFar[Number(id)] ?? p.farm, acted: Number(id) !== plotId };
+  const { outcomes } = projectLogin(flow, { ...input, inventory: plenty, plots: acted }, guideEnv, false);
+  const outcome = outcomes.find((o) => o.plotId === plotId);
+  if (!outcome || outcome.to === SUPPLIES || outcome.to === HUB) return undefined;
+  const need = outcome.spent
+    .filter((s) => (SUPPLY_ITEMS as readonly string[]).includes(s.item))
+    .map((s) => ({ item: s.item, count: Math.max(0, s.count - (before[s.item] ?? 0)) }))
+    .filter((s) => s.count > 0);
+  return { farm: outcome.to, need };
 }
 
 function actionOf(record: GuideRecord | null, from: string, to: string): PlotAction {
@@ -198,7 +241,7 @@ export interface LoginResult {
  * Project one login: every plot that has not acted yet is decided in login order, sharing stock.
  * Returns the state after the login (the forecast continues from it) and one outcome per decided plot.
  */
-export function projectLogin(flow: FlowsFile, input: GuideInput, guideEnv: GuideEnv): LoginResult {
+export function projectLogin(flow: FlowsFile, input: GuideInput, guideEnv: GuideEnv, explainSupplies = true): LoginResult {
   const { engine, env } = guideEnv;
   const { state } = engine.initState(scenarioFor(flow, input));
 
@@ -244,6 +287,11 @@ export function projectLogin(flow: FlowsFile, input: GuideInput, guideEnv: Guide
       .map((e) => e.kindId);
     const to = farmOf(state, plotId);
     const record = guideRecord(state, plotId);
+    const spentItems = tally(spent);
+    const harvestedItems = tally(harvested);
+    const { short, cells } = shortOf(state, plotId, guideEnv);
+    const farmsSoFar: Record<PlotId, string> = {};
+    for (const o of outcomes) farmsSoFar[o.plotId] = o.to;
     outcomes.push({
       plotId,
       from,
@@ -251,13 +299,17 @@ export function projectLogin(flow: FlowsFile, input: GuideInput, guideEnv: Guide
       action: actionOf(record, from, to),
       why: record?.why ?? "",
       waitFor: record?.waitFor ?? [],
-      short: shortOf(state, plotId, guideEnv),
-      spent: tally(spent),
+      short,
+      shortCells: cells,
+      spent: spentItems,
       placedCells: placed.map((e): PlacedCell => ({ row: e.row, col: e.col, kind: e.kindId, paid: e.origin === "placed" && !isFreePlacedItem(e.kindId) })),
-      harvested: tally(harvested),
+      harvested: harvestedItems,
+      selfFunded: selfFundedOf(harvestedItems, spentItems),
+      harvestReady: harvestReadyOf(state, plotId, input),
       inventoryBefore: before,
       inventoryAfter: { ...state.inventory },
       builtOnce: builtOnceOf(state),
+      supplyBlock: explainSupplies && (to === SUPPLIES || to === HUB) ? supplyBlockOf(flow, input, plotId, before, farmsSoFar, guideEnv) : undefined,
     });
   }
   runtime.save();
