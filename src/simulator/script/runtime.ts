@@ -22,7 +22,8 @@ import { dueTarget, transition } from "../flow/runner";
 import { collectedOf, conditionHolds, stepVisits, type TriggerView } from "../flow/triggers";
 import type { Condition, PolicyOverrides, StepLayout } from "../flow/types";
 import { hourOfDay } from "../growth/clock";
-import { ensureEffects } from "../effects/adapter";
+import { effectiveList, ensureEffects } from "../effects/adapter";
+import { effectsGivenBy } from "../../utilities/effectSimulation";
 import { intInclusive, nextFloat, seedRng } from "../rng";
 import { sanityCheck } from "../analysis/sanityCheck";
 import { newScratch, type CycleCtx, type Env, type TickScratch } from "../sim/context";
@@ -886,6 +887,20 @@ class PlotHost extends HostObject {
           const q = buildOccupancy(this.plot)[r * GRID_SIZE + c];
           return q ? rt.plantHost(this.id, q.id) : null;
         });
+      case "plant":
+        return fn(key, (a) => {
+          const id = toNum(a[0]);
+          const q = this.plot.plants.find((p) => p.id === id);
+          return q ? rt.plantHost(this.id, q.id) : null;
+        });
+      case "effectsAt":
+        return fn(key, (a, info) => {
+          const [r, c] = cellArg(info, a[0], a[1]);
+          const scratch = rt.scratchFor(this.id);
+          ensureEffects(this.plot, scratch);
+          const q = buildOccupancy(this.plot)[r * GRID_SIZE + c];
+          return effectiveList(q ? q.held : scratch.effects!.heldAt(r, c)); // q.held includes forced effects
+        });
       case "isEmpty":
         return fn(key, (a, info) => {
           const [r, c] = cellArg(info, a[0], a[1]);
@@ -1229,10 +1244,13 @@ function mergeOverrides(base: PolicyOverrides | undefined, patch: PolicyOverride
 // ---- plant ----
 
 const PLANT_KEYS = [
-  "id", "kind", "name", "row", "col", "size", "origin", "stage", "growthStages", "readyStage", "fullyGrown", "harvestable", "water", "dry",
-  "dead", "rival", "decaySeconds", "decayCycles", "timesMutated", "mutatesRemaining", "effects", "lockedEffects", "alive", "protected",
+  "id", "kind", "name", "row", "col", "size", "origin", "stage", "growthStages", "readyStage", "fullyGrown", "fullyGrownAtCycle", "harvestable",
+  "water", "dry", "dead", "root", "rival", "decaySeconds", "decayCycles", "timesMutated", "mutatesRemaining", "effects", "activeEffects", "gives",
+  "lockedEffects", "ground", "cells", "target", "asleep", "ratAlive", "charge", "hunger", "primed", "exploded", "alive", "protected",
 ];
-const PLANT_ACTIONS = ["break", "harvest", "destroy", "waterIt", "wake", "vacuum", "discharge", "feed", "protect", "willDecayWithin"];
+/** Keys copied by p.snapshot() (everything readable except host objects and functions). */
+const SNAPSHOT_KEYS = PLANT_KEYS.filter((k) => k !== "alive");
+const PLANT_ACTIONS = ["break", "harvest", "destroy", "waterIt", "wake", "vacuum", "discharge", "feed", "protect", "willDecayWithin", "hasEffect", "snapshot"];
 
 class PlantHost extends HostObject {
   private readonly rt: ScriptRuntime;
@@ -1319,8 +1337,40 @@ class PlantHost extends HostObject {
       case "effects":
         ensureEffects(rt.plotState(this.plotId)!, rt.scratchFor(this.plotId)); // after this session's actions
         return [...p.held];
+      case "activeEffects":
+        ensureEffects(rt.plotState(this.plotId)!, rt.scratchFor(this.plotId));
+        return effectiveList(p.held);
+      case "gives":
+        // A dried-out plant gives nothing until watered; Fire is inert.
+        return isDry(p) ? [] : effectsGivenBy(p.kindId);
+      case "hasEffect":
+        return fn(key, (a) => {
+          ensureEffects(rt.plotState(this.plotId)!, rt.scratchFor(this.plotId));
+          return effectiveList(p.held).includes(toStr(a[0]));
+        });
       case "lockedEffects":
         return p.lockedEffects ? [...p.lockedEffects] : null;
+      case "fullyGrownAtCycle":
+        return p.fullyGrownAtCycle;
+      case "ground": {
+        const plot = rt.plotState(this.plotId)!;
+        const k = cellKey(p.row, p.col);
+        return own(plot.groundOverrides, k) ?? own(plot.groundTiles, k) ?? "air";
+      }
+      case "cells": {
+        const out: number[][] = [];
+        for (let dr = 0; dr < p.size; dr++) for (let dc = 0; dc < p.size; dc++) out.push([p.row + dr, p.col + dc]);
+        return out;
+      }
+      case "exploded":
+        return p.gate.exploded ?? 0;
+      case "snapshot":
+        return fn(key, () => {
+          const o = newObject();
+          setOwn(o, "plot", this.plotId);
+          for (const k of SNAPSHOT_KEYS) setOwn(o, k, this.get(k));
+          return o;
+        });
       case "asleep":
         return !!p.gate.asleep;
       case "ratAlive":

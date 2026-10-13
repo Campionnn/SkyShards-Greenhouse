@@ -154,6 +154,49 @@ describe("scripts: actions", () => {
     });
   });
 
+  it("plants expose their properties, effects and a plain snapshot", () => {
+    const s = start(withScripts(`
+      let snap = null; let active = null; let gives = null; let cellFx = null; let byId = null; let cells = null; let ground = null; let has = null; let json = null;
+      function onTick() {
+        const w = plot.at(4, 4);
+        snap = w.snapshot();
+        gives = plot.at(4, 6).gives;
+        active = w.activeEffects;
+        has = w.hasEffect("harvest_boost");
+        cellFx = plot.effectsAt(5, 5);
+        byId = plot.plant(w.id) === w;
+        cells = w.cells;
+        ground = w.ground;
+        json = JSON.stringify(snap);
+      }`));
+    const v = vars(engine.run(s, 1).state);
+    const snap = v["plot:1.snap"] as Record<string, unknown>;
+    expect(snap).toMatchObject({ plot: 1, kind: "wheat", row: 4, col: 4, size: 1, origin: "planted" });
+    expect(typeof snap.water).toBe("number");
+    expect(Array.isArray(snap.effects)).toBe(true);
+    expect(v["plot:1.byId"]).toBe(true);
+    expect(v["plot:1.cells"]).toEqual([[4, 4]]);
+    expect(typeof v["plot:1.ground"]).toBe("string");
+    expect(Array.isArray(v["plot:1.gives"])).toBe(true);
+    expect(Array.isArray(v["plot:1.cellFx"])).toBe(true);
+    expect(typeof v["plot:1.has"]).toBe("boolean");
+    expect(JSON.parse(v["plot:1.json"] as string).kind).toBe("wheat");
+  });
+
+  it("activeEffects applies improved/immunity rules and effectsAt sees empty target cells", () => {
+    const sc = scenario([flow([step("a", layout([["nether_wart", 5, 6]]))])]);
+    sc.plots[0].script = { source: `let fx = null; let cell = null; function onTick() { const a = plot.at(5, 5); fx = [a.effects, a.activeEffects]; cell = plot.effectsAt(4, 6) }` };
+    const s = start(sc);
+    inject(s, 1, "all_in_aloe", 5, 5, "spawned", { stage: 2 });
+    const v = vars(engine.run(s, 1).state);
+    const [raw, active] = v["plot:1.fx"] as string[][];
+    expect(raw).toContain("improved_harvest_boost");
+    expect(active).toContain("improved_harvest_boost");
+    for (const e of active) expect(raw).toContain(e);
+    expect(active).not.toContain("harvest_boost");
+    expect((v["plot:1.cell"] as string[]).length).toBeGreaterThan(0);
+  });
+
   it("actions do nothing while the player is offline", () => {
     const s = start(withScripts(`let r = null; function onTick() { r = plot.breakAt(4, 4) }`, { activity: NEVER_ACTIVE }));
     const out = engine.run(s, 1).state;

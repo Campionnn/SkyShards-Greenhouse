@@ -104,7 +104,7 @@ describe("script sandbox", () => {
       `info("constructor")`, `price("__proto__")`, `collected("constructor")`, `inventory.get("constructor")`, `inventory.has("__proto__")`,
       `plot.place("toString", 0, 0)`, `plot.setPolicy({ constructor: "never" })`, `plot.check({ kind: "inventoryAtLeast", item: "constructor", qty: 0 })`,
       `plot.check({ kind: "group", match: "all", of: [{ kind: "fullyGrown", mutationId: "__proto__" }] })`, `metric("__proto__", 1)`,
-      `plot.spawnedInStep("constructor")`, `plot.setLayout({ plants: [{ kind: "constructor", row: 0, col: 0 }] })`, `plot.all("valueOf")`,
+      `plot.spawnedInStep("constructor")`, `plot.setLayout({ plants: [{ kind: "constructor", row: 0, col: 0 }] })`, `plot.all("valueOf")`, `plot.at(4, 4).hasEffect("constructor")`,
     ];
     const s = engineRun(`let out = []; function onSession() { if (cycle > 0) return; ${tries.map((t) => `try { out.push(str(${t})) } catch (e) { out.push(e.message) }`).join("\n")} }`, 1);
     const out = inspectScriptVariables(s).find((v) => v.name === "out")?.value as string[];

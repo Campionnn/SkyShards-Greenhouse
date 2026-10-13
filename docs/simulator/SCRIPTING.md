@@ -46,6 +46,22 @@ Top-level variables keep their values between cycles, and survive Back, Undo and
 
 All player actions (breaking, placing, watering, step changes) only happen when the player is online (`online` is true). Offline, actions do nothing and return `false`. `plot.goto(...)` offline waits for the next session, like a built-in exit. Reading the plots and changing variables always works.
 
+## Reading plants
+
+Every plant object (`plot.plants`, `plot.at(row, col)`, `plot.plant(id)`, `e.plant`) exposes its state live:
+
+```js
+for (const p of plot.plants) {
+  log(p.name, p.row, p.col, "stage", p.stage, "/", p.growthStages, "water", p.water, p.dry ? "(dry)" : "");
+  log("  receives", p.activeEffects, "gives", p.gives, "ground", p.ground, "decays in", p.decayCycles, "cycles");
+  if (p.hasEffect("improved_harvest_boost")) log("  boosted!");
+}
+log(plot.at(4, 4).snapshot());   // every property as a plain object
+log(plot.effectsAt(5, 5));       // what an empty target cell receives
+```
+
+`p.effects` is the raw set it receives; `p.activeEffects` is what counts in game (immunity strips negatives, improved hides base). `p.lockedEffects` is the set latched when it became fully grown (yield uses it). See the Reference tab for the full list.
+
 ## Built-in behaviour
 
 The built-in player keeps doing everything it normally does. Take it over piece by piece:
