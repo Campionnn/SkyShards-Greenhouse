@@ -2,6 +2,7 @@ import type { EffectSimulation } from "../../utilities/effectSimulation";
 import type { SimConfig } from "../config";
 import type { GameData, KindId, Size } from "../data/types";
 import type { PriceSource } from "../economy/prices";
+import type { ForcedEffects } from "../effects/adapter";
 import type { FlowStep, Policies, StepLayout } from "../flow/types";
 import type { ScriptRuntime } from "../script/runtime";
 import type { FlowRunnerState, PlayerStats, PlotId, PlotState, ScenarioPlot, SimulationState, SlotLabel, TickEvent } from "./state";
@@ -31,9 +32,17 @@ export interface TickScratch {
   effectsKey: string | null;
   /** The player session moved this plot to a new step this cycle. */
   stepChanged: boolean;
+  /** Debug forced effects (script/overrides.ts `forcedEffectsOf`): added to every matching plant's `held`. */
+  forcedEffects?: ForcedEffects;
 }
 
-export const newScratch = (): TickScratch => ({ notFullyGrown: new Set(), effects: null, effectsKey: null, stepChanged: false });
+export const newScratch = (forced?: ForcedEffects): TickScratch => ({
+  notFullyGrown: new Set(),
+  effects: null,
+  effectsKey: null,
+  stepChanged: false,
+  ...(forced && Object.keys(forced).length ? { forcedEffects: forced } : {}),
+});
 
 /**
  * Per-cycle context. `state` is the run's working copy; a plot's phases touch

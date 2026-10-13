@@ -10,6 +10,7 @@ import {
   mergePolicies,
   MAX_PLOTS,
   migrateScenario,
+  withForcedEffects,
   type FlowStep,
   type LayoutSpec,
   type Scenario,
@@ -318,6 +319,17 @@ function importOptionalSections(sc: Scenario, file: Record<string, unknown>): Sc
       throw new Error("Advanced settings: plotOrder must contain unique plot ids (1, 2 or 3).");
     }
     settings.config = { ...settings.config, ...structuredClone(config) };
+    const rawConfig = raw.config as Record<string, unknown>;
+    if ("forcedEffects" in rawConfig) {
+      const forced = sectionRecord(rawConfig.forcedEffects, "Advanced settings: forcedEffects");
+      for (const [kind, effects] of Object.entries(forced)) {
+        if (!data.mutations[kind] && !data.crops[kind]) throw new Error(`Advanced settings: forcedEffects has an unknown plant "${kind}".`);
+        if (!Array.isArray(effects) || effects.some((e) => typeof e !== "string" || !data.effects[e])) {
+          throw new Error(`Advanced settings: forcedEffects.${kind} must be a list of effect ids.`);
+        }
+      }
+      settings.config = withForcedEffects(settings.config, forced as Record<string, string[]>);
+    }
   }
   if ("seed" in raw) {
     if (!finiteNumber(raw.seed)) throw new Error("Random seed must be a number.");

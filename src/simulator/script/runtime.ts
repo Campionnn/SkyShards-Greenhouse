@@ -38,7 +38,7 @@ import type * as A from "./ast";
 import { EVENT_HOOKS, SCRIPT_PHASES } from "./docs";
 import { compile, compileExpression, Interpreter, ScriptError, Scope, type Program } from "./interpreter";
 import { ScriptSyntaxError } from "./lexer";
-import { enabledScripts } from "./overrides";
+import { enabledScripts, forcedEffectsOf } from "./overrides";
 import { Decoder, Encoder, PersistError } from "./persist";
 import { coreGlobals } from "./stdlib";
 import {
@@ -518,6 +518,47 @@ export class ScriptRuntime {
     set("CROPS", [...this.env.data.cropIds]);
     set("inventory", new InventoryHost(this));
 
+    // Debug: forced effects (config.forcedEffects), switchable from scripts.
+    const kindArg = (v: unknown, info: CallInfo, what: string): string => {
+      const id = toStr(v);
+      if (!own(this.env.data.crops, id) && !own(this.env.data.mutations, id)) info.fail(`${what}: "${id}" isn't a crop or mutation id`);
+      return id;
+    };
+    set("forceEffects", fn("forceEffects", (a, info) => {
+      this.notInCondition(info, "forceEffects()");
+      const kind = kindArg(a[0], info, "forceEffects");
+      const list = Array.isArray(a[1]) ? a[1] : a.slice(1);
+      info.charge(list.length);
+      const effects: string[] = [];
+      for (const e of list) {
+        const id = toStr(e);
+        if (!own(this.env.data.effects, id)) info.fail(`forceEffects: "${id}" isn't an effect id. Use one of: ${Object.keys(this.env.data.effects).join(", ")}`);
+        if (!effects.includes(id)) effects.push(id);
+      }
+      const next = { ...this.currentForced() };
+      if (effects.length) next[kind] = effects;
+      else delete next[kind];
+      this.setForced(next);
+      return true;
+    }));
+    set("unforceEffects", fn("unforceEffects", (a, info) => {
+      this.notInCondition(info, "unforceEffects()");
+      if (a.length === 0) {
+        this.setForced({});
+        return true;
+      }
+      const next = { ...this.currentForced() };
+      for (const v of a) delete next[kindArg(v, info, "unforceEffects")];
+      this.setForced(next);
+      return true;
+    }));
+    set("resetForcedEffects", fn("resetForcedEffects", (_a, info) => {
+      this.notInCondition(info, "resetForcedEffects()");
+      this.setForced(undefined);
+      return true;
+    }));
+    live("forcedEffects", () => fromData(this.currentForced()));
+
     live("online", () => this.ctx?.active ?? false);
     live("cycle", () => this.ctx?.cycle ?? this.state.cycle);
     live("cycleSeconds", () => this.ctx?.cycleSeconds ?? this.state.lastCycleSeconds);
@@ -610,9 +651,33 @@ export class ScriptRuntime {
     if (this.mode.condition) info.fail(`${what} can't be used in an exit condition: conditions only read`);
   }
 
+  /** The forced effects in force now (a copy; script override, else the scenario setting). */
+  private currentForced(): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(forcedEffectsOf(this.state) ?? {})) out[k] = [...v];
+    return out;
+  }
+
+  /**
+   * Replace the script override (undefined = back to the scenario setting) and apply it at once:
+   * every plot's `held` is recomputed on its next read, this session included.
+   */
+  private setForced(next: Record<string, string[]> | undefined): void {
+    if (next === undefined) delete this.scriptsState.forcedEffects;
+    else this.scriptsState.forcedEffects = next;
+    const forced = forcedEffectsOf(this.state);
+    for (const plot of this.state.plots) {
+      const s = this.scratchFor(plot.id);
+      if (forced) s.forcedEffects = forced;
+      else delete s.forcedEffects;
+      s.effects = null;
+      s.effectsKey = null;
+    }
+  }
+
   scratchFor(plotId: number): TickScratch {
     let s = this.scratches.get(plotId);
-    if (!s) this.scratches.set(plotId, (s = newScratch()));
+    if (!s) this.scratches.set(plotId, (s = newScratch(forcedEffectsOf(this.state))));
     return s;
   }
 

@@ -25,6 +25,15 @@ export function exitsHeld(state: SimulationState, plotId: number): boolean {
   return scriptPlot(state, plotId)?.hold === true;
 }
 
+/**
+ * Debug forced effects in force now: a script's override (`forceEffects`) if one is set,
+ * else the scenario's `config.forcedEffects`. Undefined = nothing forced.
+ */
+export function forcedEffectsOf(state: SimulationState): Readonly<Record<string, readonly string[]>> | undefined {
+  const forced = state.scripts?.forcedEffects ?? state.scenario.settings.config.forcedEffects;
+  return forced && Object.keys(forced).length ? forced : undefined;
+}
+
 const runs = (s: ScriptDef | undefined): boolean => !!s && s.enabled !== false && s.source.trim().length > 0;
 
 /** Does any exit condition (nested groups included) use a script expression? */

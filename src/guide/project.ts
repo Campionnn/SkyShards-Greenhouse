@@ -27,6 +27,7 @@ import { emptyScriptsState, ScriptRuntime } from "../simulator/script/runtime";
 import type { EncodedValue, HeapEntry } from "../simulator/script/types";
 import { makeCycleCtx } from "../simulator/sim/cycle";
 import { newScratch } from "../simulator/sim/context";
+import { forcedEffectsOf } from "../simulator/script/overrides";
 import { uniqueCropsAcross } from "../simulator/sim/init";
 import { newPlant } from "../simulator/sim/plants";
 import type { Scenario, SimulationState, TimedEvent } from "../simulator/sim/state";
@@ -105,7 +106,7 @@ function applyFacts(state: SimulationState, input: GuideInput, guideEnv: GuideEn
     plot.plants.sort((a, b) => a.row - b.row || a.col - b.col || a.id - b.id);
     // 3. Effects from the layout in front of the player: a fully grown plant latches what its
     //    current neighbours give it.
-    recomputeEffects(plot);
+    recomputeEffects(plot, input.settings.config.forcedEffects);
     for (const standing of facts.standing) {
       if (!standing.fullyGrown) continue;
       const plant = plot.plants.find((p) => sameCell(p, standing) && p.kindId === standing.kind);
@@ -267,7 +268,7 @@ export function projectLogin(flow: FlowsFile, input: GuideInput, guideEnv: Guide
     events,
     runtime
   );
-  runtime.setCycle(ctx, new Map(state.plots.map((p) => [p.id, newScratch()])));
+  runtime.setCycle(ctx, new Map(state.plots.map((p) => [p.id, newScratch(forcedEffectsOf(state))])));
   runtime.runTopLevel();
 
   const outcomes: PlotOutcome[] = [];

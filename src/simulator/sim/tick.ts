@@ -342,7 +342,7 @@ function recordWatch(plot: PlotState, ctx: CycleCtx, stepId: string, slot: SlotL
 function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { config } = ctx;
   const { data } = ctx.env;
-  const effects = scratch.effects ?? recomputeEffects(plot);
+  const effects = scratch.effects ?? recomputeEffects(plot, scratch.forcedEffects);
   const occ = buildOccupancy(plot);
   const candidates = candidateMutations(new Set(plot.plants.map((p) => p.kindId)), data);
 

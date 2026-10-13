@@ -1,6 +1,7 @@
 import { endStepOrHold } from "../flow/runner";
 import { isActive } from "../growth/activity";
 import { cycleSeconds, effectiveUniqueCrops } from "../growth/clock";
+import { forcedEffectsOf } from "../script/overrides";
 import { ScriptRuntime } from "../script/runtime";
 import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
@@ -76,7 +77,7 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     const plots: { plot: PlotState; scratch: TickScratch }[] = [];
     for (const id of order) {
       const plot = state.plots.find((p) => p.id === id);
-      if (plot) plots.push({ plot, scratch: newScratch() });
+      if (plot) plots.push({ plot, scratch: newScratch(forcedEffectsOf(state)) });
     }
     scripts?.setCycle(ctx, new Map(plots.map(({ plot, scratch }) => [plot.id, scratch])));
 

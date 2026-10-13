@@ -97,6 +97,18 @@ export const API: ApiSection[] = [
     ],
   },
   {
+    title: "Debug: forced effects",
+    prefix: "",
+    intro:
+      "For debugging and testing. Every plant of a kind always holds the forced effects on top of what its neighbours give it (held only, never given or relayed). They start as the Advanced setting; a script's changes apply to every plot at once and last until changed again. Not allowed in exit conditions.",
+    entries: [
+      { name: "forceEffects", signature: 'forceEffects(kind, effects)', description: 'Force effects on every plant of a kind, replacing what was forced on it: forceEffects("all_in_aloe", ["immunity", "improved_harvest_boost"]). An empty list turns it off for that kind.' },
+      { name: "unforceEffects", signature: "unforceEffects(...kinds)", description: "Stop forcing effects on these kinds; with no kinds, turn every forced effect off." },
+      { name: "resetForcedEffects", signature: "resetForcedEffects()", description: "Drop the script's changes: back to the forced effects in the Advanced settings." },
+      { name: "forcedEffects", signature: "forcedEffects", description: 'A copy of what is forced now: { all_in_aloe: ["immunity", ...] }.' },
+    ],
+  },
+  {
     title: "Game data",
     prefix: "",
     entries: [

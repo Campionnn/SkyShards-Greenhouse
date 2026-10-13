@@ -3,7 +3,7 @@ import { newRunner } from "../flow/runner";
 import { ScenarioError, validateScenario } from "../flow/validate";
 import { seedRng } from "../rng";
 import { countUniqueCropGroups, cycleSeconds, effectiveUniqueCrops } from "../growth/clock";
-import { scenarioUsesScripts } from "../script/overrides";
+import { forcedEffectsOf, scenarioUsesScripts } from "../script/overrides";
 import { emptyScriptsState, ScriptRuntime } from "../script/runtime";
 import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
@@ -80,7 +80,7 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
   for (const id of input.settings.config.plotOrder) {
     const plot = state.plots.find((p) => p.id === id);
     if (!plot) continue;
-    const scratch = newScratch();
+    const scratch = newScratch(forcedEffectsOf(state));
     scratches.set(id, scratch);
     applyStepLayout(plot, ctx.layoutFor(id), ctx, scratch, true, "setup");
   }

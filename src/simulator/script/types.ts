@@ -94,6 +94,11 @@ export interface ScriptsState {
   metrics: Record<string, ScriptMetric>;
   /** Set when a script errored or called pause(); the run stops after that cycle. Cleared by the next run. */
   halt: ScriptHalt | null;
+  /**
+   * Debug: forced effects a script set (`forceEffects`), replacing the scenario's
+   * `config.forcedEffects` for every plot while present ({} = all off). Absent = the scenario setting.
+   */
+  forcedEffects?: Record<string, string[]>;
 }
 
 export const MAX_LOG_LINES = 300;

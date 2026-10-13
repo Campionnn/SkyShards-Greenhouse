@@ -11,8 +11,12 @@ import type { TickScratch } from "../sim/context";
 // anyway (Godseed). A dry plant (`isDry`) receives but neither gives nor
 // relays, which is exactly the `isSlot` flag, so it is passed as `isSlot: true`.
 
-/** Recomputes every plant's raw `held` set from the plot. */
-export function recomputeEffects(plot: PlotState): EffectSimulation {
+/**
+ * Recomputes every plant's raw `held` set from the plot. `forced` (debug, config
+ * `forcedEffects`) adds effects to every plant of a kind on top of what it receives; forced
+ * effects are held only, never given or relayed to neighbours.
+ */
+export function recomputeEffects(plot: PlotState, forced?: ForcedEffects): EffectSimulation {
   const sim = simulateEffects(
     plot.plants.map((p) => ({
       id: p.kindId,
@@ -21,9 +25,15 @@ export function recomputeEffects(plot: PlotState): EffectSimulation {
       ...(isDry(p) ? { isSlot: true } : {}),
     }))
   );
-  for (const p of plot.plants) p.held = sortEffects(sim.heldAt(p.row, p.col));
+  for (const p of plot.plants) {
+    const extra = forced?.[p.kindId];
+    p.held = sortEffects(extra?.length ? [...sim.heldAt(p.row, p.col), ...extra] : sim.heldAt(p.row, p.col));
+  }
   return sim;
 }
+
+/** Debug override: kind id -> effects every plant of that kind always holds. */
+export type ForcedEffects = Readonly<Record<string, readonly EffectId[]>>;
 
 /**
  * What the effect simulation depends on: each plant's identity, kind, anchor and whether it is
@@ -37,7 +47,7 @@ export function effectsKey(plot: PlotState): string {
 
 /** Recompute every `held` set now and remember the plot it was computed for. */
 export function refreshEffects(plot: PlotState, scratch: TickScratch): EffectSimulation {
-  scratch.effects = recomputeEffects(plot);
+  scratch.effects = recomputeEffects(plot, scratch.forcedEffects);
   scratch.effectsKey = effectsKey(plot);
   return scratch.effects;
 }

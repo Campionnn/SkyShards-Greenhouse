@@ -1,4 +1,5 @@
 import { recomputeEffects } from "../effects/adapter";
+import { forcedEffectsOf } from "../script/overrides";
 import type { GameData, KindId, MutationDef, MutationId } from "../data/types";
 import { cellIndex, footprint, footprintFits, GRID_SIZE, inBounds, ringCells } from "../grid/cells";
 import { candidateMutations } from "../spawn/candidates";
@@ -151,7 +152,7 @@ export function sanityCheck(state: SimulationState, data: GameData, plotId: Plot
     removePlant(plot, standing);
   }
   const occ = buildOccupancy(plot);
-  const effects = recomputeEffects(plot);
+  const effects = recomputeEffects(plot, forcedEffectsOf(state));
 
   // Pool membership, as in phaseSpawn.
   const candidates = candidateMutations(new Set(plot.plants.map((p) => p.kindId)), data);

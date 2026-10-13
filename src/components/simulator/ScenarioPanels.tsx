@@ -11,7 +11,9 @@ import {
   defaultGameData,
   effectiveUniqueCrops,
   MAX_PLOTS,
+  normalizeForcedEffects,
   SPAWN_POOL_FLOOR,
+  withForcedEffects,
   UNMODELLED_RULES,
   type ActivitySchedule,
   type AloeSession,
@@ -23,7 +25,7 @@ import {
   type SimConfig,
 } from "../../simulator";
 import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui";
-import { CheckboxField, NumberField, NumberInput, SelectField } from "./controls";
+import { CheckboxField, IdSelect, NumberField, NumberInput, SelectField } from "./controls";
 import { formatDuration, nameOf } from "./format";
 import { PolicyDefaultsEditor } from "./FlowEditor";
 import { FlowExportDialog } from "./FlowExportDialog";
@@ -273,6 +275,64 @@ const STAT_FIELDS: { key: NumericStat; label: string; min: number; max: number; 
   },
 ];
 
+// ---- Debug: forced effects ---------------------------------------------------
+
+const GAME_DATA = defaultGameData();
+const FORCE_KINDS = [...GAME_DATA.mutationIds, ...GAME_DATA.cropIds];
+const FORCE_EFFECTS = Object.keys(GAME_DATA.effects);
+
+/** Debug override: pick a plant and the effects every plant of that kind always holds. */
+const ForcedEffectsEditor: React.FC<{
+  value: Record<string, string[]> | undefined;
+  onChange: (v: Record<string, string[]> | undefined) => void;
+}> = ({ value, onChange }) => {
+  const [kind, setKind] = useState(FORCE_KINDS.includes("all_in_aloe") ? "all_in_aloe" : FORCE_KINDS[0]);
+  const entries = Object.entries(value ?? {});
+  const set = (k: string, effects: string[]) => onChange(normalizeForcedEffects({ ...(value ?? {}), [k]: effects }));
+  const toggle = (k: string, e: string) => {
+    const cur = value?.[k] ?? [];
+    set(k, cur.includes(e) ? cur.filter((x) => x !== e) : [...cur, e]);
+  };
+  return (
+    <div>
+      <SectionLabel>
+        <span className={`flex items-center gap-1 ${value ? "text-amber-200" : ""}`}>
+          Debug: forced effects
+          <InfoHint title="Forced effects" width={280}>
+            For debugging and testing. Every plant of the chosen kind always holds the ticked effects, on top of whatever its neighbours give it. Forced
+            effects are held only: the plant does not give or relay them. They count for yield, latching at full growth, water retain/drain and Godseed
+            eligibility, like any held effect. Saved with the scenario's advanced settings.
+          </InfoHint>
+        </span>
+      </SectionLabel>
+      <div className="flex items-center gap-2 mb-1.5">
+        <IdSelect value={kind} onChange={setKind} ids={FORCE_KINDS} className="flex-1 min-w-0" />
+        <button className={buttonClass.neutral} onClick={() => set(kind, value?.[kind]?.length ? value[kind] : ["immunity"])} disabled={!!value?.[kind]?.length}>
+          <Plus className="w-3.5 h-3.5" /> Add
+        </button>
+      </div>
+      {entries.length === 0 && <div className="text-[11px] text-slate-500">None. Pick a plant and add it.</div>}
+      <div className="space-y-2">
+        {entries.map(([k, effects]) => (
+          <div key={k} className="rounded border border-amber-500/30 p-1.5">
+            <div className="flex items-center justify-between text-xs text-amber-200 mb-1">
+              <span>{nameOf(k)}</span>
+              <button className="text-slate-400 hover:text-red-300" title="Remove" onClick={() => set(k, [])}>
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+              {FORCE_EFFECTS.map((e) => (
+                <CheckboxField key={e} label={GAME_DATA.effects[e]?.name ?? e} checked={effects.includes(e)} onChange={() => toggle(k, e)} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const GROUP_LABEL: Record<ConfigGroup, string> = {
   verified: "Verified",
   unpublished: "Unpublished - reasoned defaults",
@@ -289,7 +349,7 @@ export const SettingsPanel: React.FC<{
   const { settings } = scenario;
   const setSettings = (patch: Partial<Scenario["settings"]>) => onChange({ ...scenario, settings: { ...settings, ...patch } });
   const setConfig = (patch: Partial<SimConfig>) => setSettings({ config: { ...settings.config, ...patch } });
-  const nonDefault = CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length;
+  const nonDefault = CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length + (settings.config.forcedEffects ? 1 : 0);
 
   return (
     <Panel title="Settings" icon={<Settings2 />}>
@@ -406,6 +466,10 @@ export const SettingsPanel: React.FC<{
               </div>
             </div>
           ))}
+          <ForcedEffectsEditor
+            value={settings.config.forcedEffects}
+            onChange={(forcedEffects) => setSettings({ config: withForcedEffects(settings.config, forcedEffects) })}
+          />
           <div>
             <SectionLabel>Not modelled</SectionLabel>
             <ul className="text-[11px] text-slate-500 space-y-0.5">
@@ -417,7 +481,7 @@ export const SettingsPanel: React.FC<{
               <li>Effect relay order is a community-verified model (21/23 recorded grids), not a published formula.</li>
             </ul>
           </div>
-          <button className={buttonClass.neutral} onClick={() => setConfig(structuredClone(DEFAULT_CONFIG))} disabled={!nonDefault}>
+          <button className={buttonClass.neutral} onClick={() => setSettings({ config: structuredClone(DEFAULT_CONFIG) })} disabled={!nonDefault}>
             <SlidersHorizontal className="w-3.5 h-3.5" /> Restore defaults
           </button>
         </div>

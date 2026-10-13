@@ -133,6 +133,36 @@ export interface SimConfig {
   allowMutationDebt: boolean;
   /** Plot iteration order; plots contend for shared inventory in this order. */
   plotOrder: number[];
+
+  // ---- Debug ----
+  /**
+   * Debug/testing override: kind id (mutation or crop) -> effect ids every plant of that kind
+   * always holds, on top of what its neighbours give it (e.g. `{ all_in_aloe: ["immunity",
+   * "improved_harvest_boost"] }`). Forced effects are held only: never given or relayed.
+   * They count everywhere held effects do (yield, latching, water retain/drain, Godseed).
+   * Absent or empty = off. Optional so scenarios without it are unchanged.
+   */
+  forcedEffects?: Record<string, string[]>;
+}
+
+/** A copy of `config` with `forcedEffects` set, or the key removed when nothing is forced. */
+export function withForcedEffects(config: SimConfig, forced: Record<string, readonly string[]> | undefined): SimConfig {
+  const out: SimConfig = { ...config };
+  delete out.forcedEffects;
+  const normalized = normalizeForcedEffects(forced);
+  if (normalized) out.forcedEffects = normalized;
+  return out;
+}
+
+/** Drops empty entries; returns undefined when nothing is forced. */
+export function normalizeForcedEffects(forced: Record<string, readonly string[]> | undefined): Record<string, string[]> | undefined {
+  if (!forced) return undefined;
+  const out: Record<string, string[]> = {};
+  for (const [kind, effects] of Object.entries(forced)) {
+    const list = [...new Set(effects)];
+    if (list.length) out[kind] = list;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -161,7 +191,7 @@ export const DEFAULT_CONFIG: SimConfig = {
 export type ConfigGroup = "verified" | "unpublished" | "model";
 
 type ScalarKey = {
-  [K in keyof SimConfig]: SimConfig[K] extends number | boolean | string ? K : never;
+  [K in keyof SimConfig]-?: SimConfig[K] extends number | boolean | string ? K : never;
 }[keyof SimConfig];
 
 export interface ConfigMeta {

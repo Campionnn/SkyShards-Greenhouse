@@ -10,11 +10,13 @@ export {
   isFreePlacedItem,
   MAX_WATER,
   MUTATION_CREDIT_ORDERS,
+  normalizeForcedEffects,
   ROOT_SPREAD_CHANCE,
   SPAWN_POOL_FLOOR,
   THUNDERLING_MAX_CHARGE,
   UNIQUE_CROP_CAP,
   withConfigDefaults,
+  withForcedEffects,
 } from "./config";
 export type { ConfigGroup, ConfigMeta, MutationCreditOrder, SimConfig } from "./config";
 export { defaultGameData } from "./data/default";

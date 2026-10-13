@@ -56,6 +56,19 @@ The built-in player keeps doing everything it normally does. Take it over piece 
 - `plant.protect()` makes the built-in harvest, upkeep and target clearing leave a plant alone.
 - `plot.setLayout(...)` uses another layout until the next step change.
 
+## Debug: forced effects
+
+For debugging and testing, scripts can make every plant of a kind always hold certain effects (held only, never given or relayed). It starts as the **Debug: forced effects** Advanced setting and applies to every plot:
+
+```js
+forceEffects("all_in_aloe", ["immunity", "improved_harvest_boost"]); // on (replaces what was forced on aloe)
+unforceEffects("all_in_aloe");  // off for aloe; unforceEffects() turns everything off
+resetForcedEffects();           // back to the Advanced setting
+log(forcedEffects);             // what is forced now
+```
+
+Changes apply straight away, even within the session, and last until changed again. They are settings, so they work offline too, but not in exit conditions.
+
 ## Exit conditions
 
 The flow editor has a **script expression** condition, for example `plot.count("chorus_fruit") >= 4 && shared.ready`. It sees the plot script's variables and functions, and may only read. Scripts can evaluate any flow-editor condition with `plot.check({ kind: "targetsFilled", count: 0 })`, and every condition also has a direct function (`plot.lowestStage(k)`, `plot.stepVisits()`, `plot.decayImminent(n)`...).
