@@ -195,6 +195,14 @@ export const PLAYER_PHASES: readonly Phase[] = [
     run: clearTargetBlockers,
   },
   { id: "fixGround", summary: "Swap wrong ground blocks under empty target cells back to what the target needs (fixGround).", run: fixGround },
+  {
+    id: "waterNew",
+    summary: "Water what this session planted or placed (a new step's layout, replanted base crops, re-placed plants) to max. Off when a script disabled `water`.",
+    run: (plot, ctx) => {
+      if (ctx.state.scripts && phaseDisabled(ctx.state, plot.id, "water")) return;
+      water(plot, ctx);
+    },
+  },
 ];
 
 /**

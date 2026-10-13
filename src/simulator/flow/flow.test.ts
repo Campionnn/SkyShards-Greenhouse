@@ -206,6 +206,15 @@ describe("per-plot flows", () => {
     expect(plantAt(r.state, 1, 1, 1)).toBeUndefined();
   });
 
+  it("a new step's base crops are watered in the session that planted them", () => {
+    const f = flow([step("a", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 1 }]), step("b", layout([["potato", 2, 2], ["carrot", 4, 4]]), [])], false);
+    // The step changes in cycle 0's session; check the crops before the next session could top them up.
+    const r = engine.run(start(scenario([f], {})), 1);
+    expect(ofKind(r.events, "stepChanged")).toHaveLength(1);
+    expect(plantAt(r.state, 1, 2, 2)).toMatchObject({ kindId: "potato", water: 100 });
+    expect(plantAt(r.state, 1, 4, 4)).toMatchObject({ kindId: "carrot", water: 100 });
+  });
+
   it("step policies override the plot and scenario defaults", () => {
     const f = flow([step("a", layout([["wheat", 0, 0]]), [], { policies: { baseCropUpkeep: "harvestWhenGrown" } })]);
     const r = engine.run(start(scenario([f], {})), 9);
