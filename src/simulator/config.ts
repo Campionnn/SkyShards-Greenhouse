@@ -131,6 +131,14 @@ export interface SimConfig {
    * need stock. Off: a shortfall leaves the cell empty and records debt.
    */
   allowMutationDebt: boolean;
+  /**
+   * Pre-fix behaviour: the greenhouse yield sum (Plant Yield upgrade, Unique
+   * Crop Bonus, Harvest Boost/Loss) also scales a harvested mutation's own item
+   * count and its Ethereal Vine count. The game update "Fixed Plant Yield bonuses
+   * incorrectly applying to mutation items and Ethereal Vine drops" removed this,
+   * so the default is off (crop bundles are still yield-scaled either way).
+   */
+  legacyMutationYield: boolean;
   /** Plot iteration order; plots contend for shared inventory in this order. */
   plotOrder: number[];
 
@@ -185,6 +193,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   keepIdenticalOnStepChange: true,
   spawnsFillLayoutInputs: true,
   allowMutationDebt: false,
+  legacyMutationYield: false,
   plotOrder: [1, 2, 3],
 };
 
@@ -224,6 +233,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "keepIdenticalOnStepChange", label: "Keep identical plants on step change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a step change untouched." },
   { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid flows work: grow Magic Jellybeans in one step, then use them as inputs in the next while they finish growing." },
   { key: "allowMutationDebt", label: "Allow mutation debt", group: "model", input: { type: "boolean" }, description: "The player places mutation items even when the inventory has none: the stock goes negative (shown in red in the Inventory) and later harvests pay it back. Useful to see what a flow produces before you have the items. Fermento and dead plants still need stock. Off: a missing item leaves the cell empty and is recorded as a shortfall." },
+  { key: "legacyMutationYield", label: "Legacy: yield scales mutation items", group: "model", input: { type: "boolean" }, description: "The behaviour before the game update that \"Fixed Plant Yield bonuses incorrectly applying to mutation items and Ethereal Vine drops\". On: the greenhouse yield sum (Plant Yield upgrade, Unique Crop Bonus, Harvest Boost/Loss) also scales a harvested mutation's own item count and its Ethereal Vine count (e.g. a Duskbloom at +30% yield drops 1, with a 30% chance of a 2nd). Off (current game): mutations drop their base count (1, or Chloronite's Mining Fortune ladder, the Jellybean / All-in Aloe stage multiplier) and Ethereal Vine drops as rolled. Crop bundles are yield-scaled either way." },
 ];
 
 export function withConfigDefaults(partial?: Partial<SimConfig>): SimConfig {

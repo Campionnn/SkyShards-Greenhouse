@@ -25,10 +25,10 @@ export const MoneyPanel: React.FC<{
     {
       label: "Rare crops",
       get: (s) => s.revenue.rareCrops ?? 0,
-      hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and mutations' own Ethereal Vine. Overbloom raises the chance for both. Harvest yield (Plant Yield upgrade, the Unique Crop Bonus, Harvest Boost/Loss) additionally scales only the Ethereal Vine count, not the armor drops. Wiki NPC prices (override in Advanced).",
+      hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and mutations' own Ethereal Vine. Overbloom raises the chance for both. Harvest yield does not scale either (the Advanced \"Legacy: yield scales mutation items\" setting brings back the old yield-scaled Ethereal Vine count). Wiki NPC prices (override in Advanced).",
     },
     { label: "Harvest Bounty", get: (s) => s.revenue.rareDrops, hint: "Bonus Drops rolls (not boosted by Overbloom). Wiki NPC prices; chips and Iridium are not NPC-sellable." },
-    { label: "Mutation items", get: (s) => s.revenue.mutationItems, hint: "NPC-only: mutation items are Bazaar-only, so they count as 0 coins. They go to inventory as planting stock. The count itself scales with the greenhouse yield sum (Plant Yield upgrade + unique-crop bonus + Harvest Boost/Loss), not Farming Fortune or Evergreen." },
+    { label: "Mutation items", get: (s) => s.revenue.mutationItems, hint: "NPC-only: mutation items are Bazaar-only, so they count as 0 coins. They go to inventory as planting stock. The count is the mutation's base count (1, or Chloronite / Jellybean / All-in Aloe specifics): harvest yield, Farming Fortune and Evergreen don't scale it. The Advanced \"Legacy: yield scales mutation items\" setting brings back the old yield-scaled count." },
     { label: "Revenue", get: (s) => s.coinsRealised, strong: true },
     { label: "Replacements", get: (s) => -s.costs.replacements, negative: true, hint: "NPC value of items re-placed after decay. Mutation items count 0; fermento (250k) and dead plants (500) use their NPC price." },
     { label: "Supplies", get: (s) => -s.costs.supplies, negative: true, hint: "NPC value of items the layout needed but did not have (mutation items count 0; see Sustainability)." },

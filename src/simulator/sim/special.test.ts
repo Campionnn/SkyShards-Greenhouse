@@ -235,19 +235,34 @@ describe("Magic Jellybean", () => {
 });
 
 describe("harvest yield", () => {
-  const harvestAshwreath = (seed: number) => {
+  const harvestAshwreath = (seed: number, config: Partial<SimConfig> = {}) => {
     // No base crops standing: yield sum = 1 + 0.5 upgrade = 1.5. FF 0, Evergreen 0.6.
-    const s = start(scenario([flow([step("a", layout())])], { seed, stats: { plantYieldUpgrade: 0.5, evergreenChip: 0.6 } }));
+    const s = start(scenario([flow([step("a", layout())])], { seed, config, stats: { plantYieldUpgrade: 0.5, evergreenChip: 0.6 } }));
     inject(s, 1, "ashwreath", 5, 5, "spawned", { lockedEffects: [], fullyGrownAtCycle: 0 });
     return ofKind(engine.run(s, 1).events, "harvested").find((e) => e.kindId === "ashwreath")!;
   };
 
   it("Evergreen scales a mutation's crop bundle: 180 nether wart x 1.5 x 1.6 = 432", () => {
     expect(harvestAshwreath(1).drops.nether_wart).toBe(432);
+    expect(harvestAshwreath(1, { legacyMutationYield: true }).drops.nether_wart).toBe(432); // bundles scale either way
   });
 
-  it("yield 1.5 on Ashwreath: 1 item guaranteed, a 2nd about half the time", () => {
-    const counts = Array.from({ length: 400 }, (_, i) => harvestAshwreath(i + 1).drops.ashwreath);
+  it("yield 1.5 on Ashwreath (current game): always exactly 1 item, yield does not scale mutation items", () => {
+    const counts = Array.from({ length: 200 }, (_, i) => harvestAshwreath(i + 1).drops.ashwreath);
+    expect(counts.every((n) => n === 1)).toBe(true);
+  });
+
+  it("Duskbloom with +30% Plant Yield and Improved Harvest Boost (immunity) always drops exactly 1 Duskbloom", () => {
+    for (let seed = 1; seed <= 100; seed++) {
+      const s = start(scenario([flow([step("a", layout())])], { seed, stats: { plantYieldUpgrade: 0.3 } }));
+      inject(s, 1, "duskbloom", 5, 5, "spawned", { stage: 8, lockedEffects: ["improved_harvest_boost", "immunity"], fullyGrownAtCycle: 0 });
+      const h = ofKind(engine.run(s, 1).events, "harvested").find((e) => e.kindId === "duskbloom")!;
+      expect(h.drops.duskbloom).toBe(1);
+    }
+  });
+
+  it("legacyMutationYield: yield 1.5 on Ashwreath gives 1 item guaranteed, a 2nd about half the time", () => {
+    const counts = Array.from({ length: 400 }, (_, i) => harvestAshwreath(i + 1, { legacyMutationYield: true }).drops.ashwreath);
     expect(counts.every((n) => n === 1 || n === 2)).toBe(true);
     const twos = counts.filter((n) => n === 2).length / counts.length;
     expect(twos).toBeGreaterThan(0.4);

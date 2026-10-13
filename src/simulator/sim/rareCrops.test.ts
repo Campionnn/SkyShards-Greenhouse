@@ -66,10 +66,17 @@ describe("armor Rare Crops", () => {
     expect(helianthus).toBeLessThan(35);
   });
 
-  it("harvest yield scales ONLY the Ethereal Vine count: a guaranteed vine at yield 1.5 gives 1, or 2 about half the time", () => {
+  it("harvest yield does NOT scale the Ethereal Vine count (current game): a guaranteed vine at yield 1.5 always drops exactly 1", () => {
     // Common Ashwreath: Ethereal Vine 0.15 x Overbloom 600 (x7) = 105%, capped to a guaranteed vine by capRareCropChance.
-    const counts = Array.from({ length: 400 }, (_, i) =>
+    const counts = Array.from({ length: 200 }, (_, i) =>
       harvestOne(i + 1, { overbloom: 600, plantYieldUpgrade: 0.5 }, { capRareCropChance: true }).h.drops.ethereal_vine,
+    );
+    expect(counts.every((n) => n === 1)).toBe(true);
+  });
+
+  it("legacyMutationYield: harvest yield scales the Ethereal Vine count: a guaranteed vine at yield 1.5 gives 1, or 2 about half the time", () => {
+    const counts = Array.from({ length: 400 }, (_, i) =>
+      harvestOne(i + 1, { overbloom: 600, plantYieldUpgrade: 0.5 }, { capRareCropChance: true, legacyMutationYield: true }).h.drops.ethereal_vine,
     );
     expect(counts.every((n) => n === 1 || n === 2)).toBe(true);
     const twos = counts.filter((n) => n === 2).length / counts.length;

@@ -47,10 +47,14 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const bundleMult = jellyMult * aloeMult;
   const baseDrops = bundleMult === 1 ? def.drops : scaleDrops(def.drops, bundleMult);
   const drops = harvestYield(baseDrops, farmingFortuneMultiplier(ctx.stats.farmingFortune), sum, ctx.stats.evergreenChip);
+  // Patch fix: Plant Yield bonuses no longer apply to mutation items or Ethereal Vine.
+  // `legacyMutationYield` restores the old behaviour (yield sum scales them too).
+  const itemSum = ctx.config.legacyMutationYield ? sum : 1;
 
-  // Mutation item count = base count (1, or Chloronite/Jellybean/Aloe specifics)
-  // scaled by the greenhouse yield sum only (not Farming Fortune / Evergreen):
-  // whole part guaranteed, fraction rolled once for one more.
+  // Mutation item count = base count (1, or Chloronite/Jellybean/Aloe specifics),
+  // never Farming Fortune / Evergreen. Only the legacy setting scales it by the
+  // greenhouse yield sum. Whole part guaranteed, fraction rolled once for one more
+  // (no roll when the count is whole).
   let mutationItems = 0;
   // Zombud / Timestalk: the crop bundle drops once; the fight gives only the items below.
   if (p.kindId === ZOMBUD && p.origin === "spawned") {
@@ -64,7 +68,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
     mutationItems = 1;
   } else if (p.kindId === "all_in_aloe" && p.origin === "spawned") {
     const baseFragments = aloeRow(p.stage).multiplier;
-    const { whole, frac } = yieldScaledCount(baseFragments, sum);
+    const { whole, frac } = yieldScaledCount(baseFragments, itemSum);
     const totalFragments = whole + (frac > 1e-9 && chance(rng, frac) ? 1 : 0);
     const aloes = Math.floor(totalFragments / FRAGMENTS_PER_ALOE);
     const fragments = totalFragments % FRAGMENTS_PER_ALOE;
@@ -75,7 +79,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
     let base = 1;
     if (p.kindId === JELLYBEAN) base = jellyMult;
     if (p.kindId === "chloronite") base = chloroniteDropCount(ctx.stats.miningFortune);
-    const { whole, frac } = yieldScaledCount(base, sum);
+    const { whole, frac } = yieldScaledCount(base, itemSum);
     const items = whole + (frac > 1e-9 && chance(rng, frac) ? 1 : 0);
     if (items > 0) drops[p.kindId] = (drops[p.kindId] ?? 0) + items;
     mutationItems = items;
@@ -90,8 +94,8 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
     }
   }
   // Rare crops: Ethereal Vine (spawned mutations), then armor-set drops, one roll
-  // each, chance boosted by Overbloom. Only Ethereal Vine is then yield-scaled
-  // like a mutation item; armor drops are used as rolled. Roll order matters for RNG.
+  // each, chance boosted by Overbloom. Used as rolled; only the legacy setting
+  // yield-scales the Ethereal Vine count like a mutation item. Roll order matters for RNG.
   const rareCrops: Record<string, number> = {};
   const bloom = overbloomMultiplier(ctx.stats.overbloom);
   const cap = ctx.config.capRareCropChance;
@@ -102,11 +106,11 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
       bump(rareCrops, item, dropped);
       return;
     }
-    const { whole, frac } = yieldScaledCount(dropped, sum);
+    const { whole, frac } = yieldScaledCount(dropped, itemSum);
     const n = whole + (frac > 1e-9 && chance(rng, frac) ? 1 : 0);
     if (n > 0) bump(rareCrops, item, n);
   };
-  if (isMutation && p.origin === "spawned") rollRare("ethereal_vine", ETHEREAL_VINE_BY_RARITY[data.mutations[p.kindId].rarity], true);
+  if (isMutation && p.origin === "spawned") rollRare("ethereal_vine", ETHEREAL_VINE_BY_RARITY[data.mutations[p.kindId].rarity], !!ctx.config.legacyMutationYield);
   for (const item of armorRareCrops(ctx.stats.armorSet, ctx.config.armorRareCropBug)) rollRare(item, GREENHOUSE_RARE_CROP_CHANCE[item], false);
   for (const [item, qty] of Object.entries(rareDrops)) drops[item] = (drops[item] ?? 0) + qty;
   for (const [item, qty] of Object.entries(rareCrops)) drops[item] = (drops[item] ?? 0) + qty;

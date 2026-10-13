@@ -32,7 +32,8 @@ export function harvestYield(baseDrops: Record<string, number>, ffMultiplier: nu
 
 /**
  * Scales a mutation's own item count (Ashwreath, Chloronite, Jellybean, Aloe)
- * by the yield sum: floor guaranteed, fraction is the chance of one more.
+ * by `yieldSum`: floor guaranteed, fraction is the chance of one more. The
+ * harvest passes 1 (current game) or the yield sum (`legacyMutationYield`).
  * Farming Fortune and Evergreen apply only to crop bundles (`harvestYield`).
  */
 export function yieldScaledCount(base: number, yieldSum: number): { whole: number; frac: number } {
