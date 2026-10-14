@@ -7,7 +7,6 @@ import {
   sanityCheck,
   THUNDERLING_MAX_CHARGE,
   type FlowRunnerState,
-  type PlantState,
   type PlotState,
   type SanityCheckResult,
   type ScenarioPlot,
@@ -16,6 +15,7 @@ import {
   type TimedEvent,
   type WatchStatus,
 } from "../../simulator";
+import { GRID_SIZE } from "../../constants";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { getCellPixelPosition, getGridDimensions } from "../../utilities";
 import { CropImage } from "../shared";
@@ -81,7 +81,9 @@ export const PlotView: React.FC<PlotViewProps> = ({
   sanityState,
 }) => {
   const fitRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<TooltipTarget | null>(null);
+  // The hovered cell, not the hovered thing: the card is re-derived from the current plot on every
+  // render, so it follows the snapshot live (e.g. holding → to step) without the mouse moving.
+  const [hoverCell, setHoverCell] = useState<{ row: number; col: number } | null>(null);
   const { cellSize, gap } = useFitCellSize(fitRef, { max: maxCell, min: 16, reserve: COMPASS_RESERVE });
   const { width, height } = getGridDimensions(cellSize, gap);
   const marks = useMemo(() => marksFrom(events), [events]);
@@ -103,33 +105,10 @@ export const PlotView: React.FC<PlotViewProps> = ({
     return result;
   };
 
-  /** Sets state only when the hovered thing or checked cell changed (memoised check results compare by identity). */
-  const hoverIf = (next: TooltipTarget) =>
-    setHover((prev) => {
-      if (prev && prev.kind === "plant" && next.kind === "plant" && prev.plant === next.plant && prev.check === next.check) return prev;
-      if (prev && prev.kind === "slot" && next.kind === "slot" && prev.slot === next.slot && prev.check === next.check) return prev;
-      return next;
-    });
-  /** Cell under the mouse within a size x size element (a multi-cell element is one hover target). */
-  const cellUnder = (e: React.MouseEvent<HTMLDivElement>, row: number, col: number, size: number) => {
-    if (size === 1) return { row, col };
-    const { dr, dc } = hoveredCellOffset(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), size, cellSize, gap);
-    return { row: row + dr, col: col + dc };
-  };
-  const hoverPlant = (e: React.MouseEvent<HTMLDivElement>, p: PlantState, watchStatus: WatchStatus | undefined) => {
-    const cell = cellUnder(e, p.row, p.col, p.size);
-    hoverIf({ kind: "plant", plant: p, watchStatus, check: checkAt(cell.row, cell.col) });
-  };
-  const hoverSlot = (e: React.MouseEvent<HTMLDivElement>, s: PlotState["slots"][number], key: string, isWatched: boolean) => {
-    const cell = cellUnder(e, s.row, s.col, s.size);
-    hoverIf({
-      kind: "slot",
-      slot: s,
-      ineligibleCycles: plot.slotIneligibleCycles[key] ?? 0,
-      watched: isWatched,
-      watchStatus: plot.watchStatus?.[key],
-      check: checkAt(cell.row, cell.col),
-    });
+  /** Tracks the cell under the mouse (scale-aware); state changes only when the cell does. */
+  const trackHover = (e: React.MouseEvent<HTMLDivElement>) => {
+    const { dr: row, dc: col } = hoveredCellOffset(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), GRID_SIZE, cellSize, gap);
+    setHoverCell((prev) => (prev && prev.row === row && prev.col === col ? prev : { row, col }));
   };
 
   const step = def && runner ? def.flow.steps[runner.stepIndex] : undefined;
@@ -154,6 +133,43 @@ export const PlotView: React.FC<PlotViewProps> = ({
     })
     .filter((m) => !occupied.has(`${m.row},${m.col}`));
   const missingKeys = new Set(missing.map((m) => `${m.row},${m.col}`));
+
+  /**
+   * What the hovered cell shows right now, topmost first (the same stacking as the rendering below:
+   * missing-item ghosts over plants over slot ghosts over bare ground). Derived from this render's
+   * plot, so the card stays live while the snapshot changes under a still mouse.
+   */
+  const hoverTargetAt = (row: number, col: number): TooltipTarget | null => {
+    const covers = (a: { row: number; col: number }, size: number) => row >= a.row && row < a.row + size && col >= a.col && col < a.col + size;
+    const check = checkAt(row, col);
+    for (let i = missing.length - 1; i >= 0; i--) {
+      const m = missing[i];
+      if (covers(m, sizeOf(m.item))) return { kind: "missing", item: m.item, row: m.row, col: m.col };
+    }
+    for (let i = plot.plants.length - 1; i >= 0; i--) {
+      const p = plot.plants[i];
+      if (!covers(p, p.size)) continue;
+      const anchor = `${p.row},${p.col}`;
+      const watchStatus: WatchStatus | undefined = watchedKeys.has(anchor) ? plot.watchStatus?.[anchor] : undefined;
+      return { kind: "plant", plant: p, watchStatus, ...(check ? { check } : {}) };
+    }
+    for (let i = plot.slots.length - 1; i >= 0; i--) {
+      const s = plot.slots[i];
+      const key = `${s.row},${s.col}`;
+      if (occupied.has(key) || !covers(s, s.size)) continue;
+      return {
+        kind: "slot",
+        slot: s,
+        ineligibleCycles: plot.slotIneligibleCycles[key] ?? 0,
+        watched: watchedKeys.has(key),
+        watchStatus: plot.watchStatus?.[key],
+        ...(check ? { check } : {}),
+      };
+    }
+    // Bare ground gets a card only with the Sanity Check on; otherwise its native title explains it.
+    return check ? { kind: "check", row, col, result: check } : null;
+  };
+  const hover = hoverCell ? hoverTargetAt(hoverCell.row, hoverCell.col) : null;
 
   /** The icons drawn on the hovered element, mirroring the rendering below, so the card explains them without the legend. */
   const markersFor = (t: TooltipTarget): GridMarker[] => {
@@ -219,7 +235,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
 
       <div ref={fitRef} className="w-full">
         <CompassFrame className="mx-auto">
-        <div className="relative select-none" style={{ width, height }}>
+        <div className="relative select-none" style={{ width, height }} onMouseMove={trackHover} onMouseLeave={() => setHoverCell(null)}>
           {Array.from({ length: 100 }, (_, i) => {
             const r = Math.floor(i / 10);
             const c = i % 10;
@@ -235,12 +251,6 @@ export const PlotView: React.FC<PlotViewProps> = ({
                 className={`absolute rounded border ${ground ? "border-emerald-700/20" : "border-slate-700/20"}`}
                 style={{ top, left, width: cellSize, height: cellSize, ...(ground ? { backgroundImage: `url(${getGroundImagePath(ground)})`, backgroundSize: `${cellSize}px ${cellSize}px` } : {}) }}
                 title={cellMark ? `${groundText}\n${MARK_STYLE[cellMark.mark].glyph} ${MARK_STYLE[cellMark.mark].label} (last cycle)` : groundText}
-                {...(sanityState
-                  ? {
-                      onMouseEnter: () => setHover({ kind: "check", row: r, col: c, result: checkAt(r, c)! }),
-                      onMouseLeave: () => setHover(null),
-                    }
-                  : {})}
               />
             );
           })}
@@ -267,23 +277,6 @@ export const PlotView: React.FC<PlotViewProps> = ({
                         : "border-slate-500/60 bg-slate-500/5"
                 }`}
                 style={{ top, left, width: size, height: size }}
-                {...(sanityState
-                  ? {
-                      // One element covers the footprint: check the cell under the cursor, not the anchor.
-                      onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => hoverSlot(e, s, key, isWatched),
-                      onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => hoverSlot(e, s, key, isWatched),
-                    }
-                  : {
-                      onMouseEnter: () =>
-                        setHover({
-                          kind: "slot",
-                          slot: s,
-                          ineligibleCycles: plot.slotIneligibleCycles[key] ?? 0,
-                          watched: isWatched,
-                          watchStatus: plot.watchStatus?.[key],
-                        }),
-                    })}
-                onMouseLeave={() => setHover(null)}
               >
                 {/* Flex, not block: avoids a line-height strut pushing the inline-flex image off-centre. */}
                 <div className={`flex items-center justify-center ${isWatched ? "opacity-45 grayscale-[40%]" : "opacity-25 grayscale"}`}>
@@ -311,13 +304,6 @@ export const PlotView: React.FC<PlotViewProps> = ({
               <div
                 key={p.id}
                 className="absolute rounded overflow-hidden flex items-center justify-center cursor-default"
-                {...(sanityState
-                  ? {
-                      onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => hoverPlant(e, p, watchStatus),
-                      onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => hoverPlant(e, p, watchStatus),
-                    }
-                  : { onMouseEnter: () => setHover({ kind: "plant", plant: p, watchStatus }) })}
-                onMouseLeave={() => setHover(null)}
                 style={{
                   top,
                   left,
@@ -360,8 +346,6 @@ export const PlotView: React.FC<PlotViewProps> = ({
                 key={`missing-${m.row}-${m.col}`}
                 className="absolute rounded border-2 border-dashed border-red-500/70 bg-red-500/10 flex items-center justify-center"
                 style={{ top, left, width: size, height: size }}
-                onMouseEnter={() => setHover({ kind: "missing", item: m.item, row: m.row, col: m.col })}
-                onMouseLeave={() => setHover(null)}
               >
                 <div className="opacity-35">
                   <CropImage cropId={m.item} cropName={nameOf(m.item)} width={size * 0.7} height={size * 0.7} showFallback={false} />
