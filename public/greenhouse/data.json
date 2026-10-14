@@ -233,7 +233,8 @@
       "drops": {
         "wild_rose": 200
       },
-      "sell_price": 4
+      "sell_price": 4,
+      "notes": "Can only be planted at Garden Level 12."
     },
     "fire": {
       "name": "Fire",
@@ -730,7 +731,7 @@
         "xp_loss"
       ],
       "harvest_info": "When using a shared setup, DO NOT harvest until all surrounding mutation spots have been filled.",
-      "growing_info": "When harvesting, it is wise to place Turtlellini in the surrounding 3x3 to save your blastberry and get your Shellfruit at the same time. When replaced, it takes 1 stage to prime for explosion. When it decays, Blastberry will explode.",
+      "growing_info": "Since Blastberry explodes on harvest when primed, it is wise to also plant Turtlellini around your naturally grown Blastberry to use each explosion as efficiently as possible. When replaced, it takes 1 stage to prime for explosion. When it decays, Blastberry will explode.",
       "requires_watering": true,
       "drops": {
         "cocoa_beans": 800,
@@ -762,7 +763,7 @@
       "negative_buffs": [
         "harvest_loss"
       ],
-      "growing_info": "Rats will spawn at Stages 4 and 7 to try and \"eat\" the mutation, however they just pause its progress until they are killed via a Vacuum.",
+      "growing_info": "Rats spawn on Stages 4 and 7, halting mutation growth, and need to be dealt with like a normal Pest.",
       "requires_watering": true,
       "drops": {
         "brown_mushroom": 253,
@@ -794,7 +795,18 @@
         "immunity"
       ],
       "negative_buffs": [],
-      "harvest_info": "At harvest, you will want to have your highest Mining Fortune setup equipped to mine the Chloronite. Currently, the amount of Chloronite dropped seems to be: (Mining Fortune - 100)/500. This is not confirmed",
+      "harvest_info": "At harvest, you will want to have your highest Mining Fortune setup equipped to mine the Chloronite to obtain more mutation drops. How many Chloronite you get is determined by the table below. Fortune between two tiers gives a chance at the next amount (e.g. 1,500 Mining Fortune gives 3 Chloronite and a 50% chance of a 4th).",
+      "harvest_table": {
+        "title": "Drops by Mining Fortune",
+        "columns": ["Mining Fortune", "Chloronite Drops"],
+        "rows": [
+          ["0–99", "~0–1"],
+          ["100–499", "~1–2"],
+          ["500–999", "~2–3"],
+          ["1,000–1,999", "~3–4"],
+          ["2,000+", "4"]
+        ]
+      },
       "requires_watering": true,
       "drops": {
         "brown_mushroom": 128,
@@ -861,8 +873,8 @@
         "bonus_drops"
       ],
       "negative_buffs": [],
-      "harvest_info": "Must harvest with full Bonus Meter",
-      "growing_info": "Feed with Enchanted Raw Meat until Fleshtrap has hit 100% Bonus, then keep it full with unenchanted Meat until it is time to harvest.",
+      "harvest_info": "Gives +1 Fleshtrap drop at Full Bonus Meter.",
+      "growing_info": "Feed with Enchanted Raw Meat until Fleshtrap has hit 100% Bonus. After 100% Bonus is reached, keep it full with unenchanted meat (i.e. Raw Beef) until it is time to harvest.",
       "requires_watering": true,
       "drops": {
         "pumpkin": 289,
@@ -1003,7 +1015,7 @@
         "water_retain"
       ],
       "negative_buffs": [],
-      "growing_info": "Keep waterable plants within a 3x3 to allow for Soggybud to grow.",
+      "growing_info": "Soaks up water from nearby waterable crops/mutations, allowing for Soggybud to grow. Fills 2.5 water per nearby crop, approximately up to 10 per stage.",
       "requires_watering": true,
       "drops": {
         "melon": 1920
@@ -1034,7 +1046,7 @@
       "negative_buffs": [
         "harvest_loss"
       ],
-      "growing_info": "When growing, the plant will teleport around the plot and override any EMPTY land it finds changing it to End Stone and also will leave the spawning location open again. When multiple Chorus Fruit teleport, it is possible for them to teleport to the same spot and delete one another with the higher growth stage plant taking priority.",
+      "growing_info": "When growing, the plant will teleport around the plot and override any space it finds, changing it to End Stone (including air), and also will leave the spawning location open again. When the amount of growing Chorus Fruits outnumbers the amount of open spots for teleporting, non-Chorus Fruit crops/mutations are at risk of being voided, such as the Magic Jellybean and Chloronite used in the setup (even if they are growing crops). When multiple Chorus Fruit teleport, it is possible for them to teleport to the same spot and delete one another with the higher growth stage plant taking priority.",
       "requires_watering": false,
       "drops": {
         "potato": 1050,
@@ -1065,7 +1077,7 @@
         "harvest_boost"
       ],
       "negative_buffs": [],
-      "harvest_info": "You will play a game of Snake that can be found in Abiphones and you must collect 8 Apples. If you fail, it stays at the same stage and you can try again.",
+      "harvest_info": "You will play a game of Snake (exactly the same as what is found in Abiphones) and you must collect 8 Apples. If you fail, it stays at max stage and you can immediately try again.",
       "requires_watering": false,
       "drops": {
         "moonflower": 4600,
@@ -1218,8 +1230,8 @@
         "effect_spread"
       ],
       "negative_buffs": [],
-      "harvest_info": "Release the Charge before harvest (Precautionary)",
-      "growing_info": "Release the Charge built up over time (will fill up your Thunder in a Bottle items) and before harvest. If it builds up 16,000 charge, it halts (stops growing) until discharged.",
+      "harvest_info": "Make sure to release the charge before harvesting to not waste any.",
+      "growing_info": "While growing Thunderling, it is required you release the built up charge (fills your Thunder in a Bottle items) at least once every 8 stages (~16,000 charge) for the mutation to continue growing. Additionally, a Thunderling should produce a base of 28,000 charge per fully grown mutation.",
       "requires_watering": false,
       "drops": {
         "cactus": 1650,
@@ -1284,7 +1296,7 @@
         "bonus_drops"
       ],
       "negative_buffs": [],
-      "harvest_info": "When harvested, all Dead Plants within the 3x3 turn into Zombud Mobs (20 HP, hit-based) and must be killed for the mutation and Bestiary credit. Useful tools for killing: Fire Freeze Staff, Gyrokinetic Wand",
+      "harvest_info": "When harvested, all Dead Plants within the 3x3 turn into Zombud Mobs (5 HP, hit-based) and must be killed for the mutation, shard, and Bestiary credit. Useful tools for killing: Fire Freeze Staff, Gyrokinetic Wand, Huntaxes, Blackholes.",
       "growing_info": "If kicked from Garden/you leave Garden before killing the Zombuds, they will despawn. In shared setups make sure you replant extra dead plants to get the max yield from each mutation. If the mutation decays, the Zombuds will spawn right as it decays if you have Dead Plants in place.",
       "requires_watering": false,
       "drops": {
@@ -1315,8 +1327,37 @@
         "harvest_boost"
       ],
       "negative_buffs": [],
-      "harvest_info": "Harvestable at any stage after Stage 3. To utilize Harvest Yield Buff, you must not harvest at 1x or 9x reward stages.",
-      "growing_info": "The ideal maximum stage to harvest for best yield is Stage 14 before the odds of resetting outweigh the benefits to rolling the dice.",
+      "harvest_info": "Harvestable for actual drops at Stage 4 and beyond. The stage it is harvested at sets a drop multiplier for its All-in Aloe Fragments and crop drops, and every 9 fragments are given as 1 All-in Aloe instead. Each time it grows into a new stage, it rolls the reset chance of the stage it is leaving and may go back to Stage 1. Higher stages give far bigger drops but are much less likely to be reached; Stage 14 gives the most drops on average.",
+      "harvest_table": {
+        "title": "Drops and reset chance by stage",
+        "columns": ["Stage", "Drop Multiplier", "Reset Chance", "Expected Drops"],
+        "rows": [
+          ["4", "1x", "3%", "1.00"],
+          ["5", "2x", "6%", "1.94"],
+          ["6", "3x", "9%", "2.74"],
+          ["7", "4x", "12%", "3.32"],
+          ["8", "6x", "15%", "4.38"],
+          ["9", "9x", "18%", "5.59"],
+          ["10", "13x", "21%", "6.62"],
+          ["11", "20x", "24%", "8.04"],
+          ["12", "28x", "27%", "8.56"],
+          ["13", "41x", "30%", "9.15"],
+          ["14", "60x", "33%", "9.37"],
+          ["15", "86x", "36%", "9.00"],
+          ["16", "125x", "39%", "8.37"],
+          ["17", "182x", "42%", "7.43"],
+          ["18", "263x", "45%", "6.23"],
+          ["19", "382x", "48%", "4.98"],
+          ["20", "554x", "51%", "3.75"],
+          ["21", "803x", "54%", "2.67"],
+          ["22", "1164x", "57%", "1.78"],
+          ["23", "1688x", "60%", "1.11"],
+          ["24", "2448x", "63%", "0.64"],
+          ["25", "3549x", "66%", "0.34"],
+          ["26", "5146x", "69%", "0.17"],
+          ["27", "7462x", "72%", "0.08"]
+        ]
+      },
       "requires_watering": false,
       "drops": {
         "moonflower": 140,
@@ -1350,8 +1391,7 @@
       "negative_buffs": [
         "water_drain"
       ],
-      "harvest_info": "Don't harvest the roots (Precautionary)",
-      "growing_info": "If you remove the farmland surrounding the Devourer setup, the roots it will try to spread will not be able to make it outside of the contained area. Also it appears that keeping the Devourer well watered may reduce the amount of damage/spread it has, allowing you to possibly reuse parts of the setup on a second spawn.",
+      "growing_info": "If you remove the farmland surrounding the Devourer setup, the roots it will try to spread will not be able to make it outside of the contained area. Break the roots as you see them as well.",
       "requires_watering": true,
       "drops": {
         "brown_mushroom": 1805,

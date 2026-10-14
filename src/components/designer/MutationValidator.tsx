@@ -121,7 +121,7 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
             <div className="ml-7 space-y-2">
               <p className="text-xs text-slate-400">
                 The 3x3 spot must receive every effect below from neighbouring crops
-                (side neighbours, or relayed by a Wild Rose):
+                (side neighbours, or relayed by Effect Spread crops/mutations):
               </p>
               {hoveredValidation.effectRequirements.some(r => !r.satisfied) && (
                 <>

@@ -2,12 +2,14 @@ import React, { useMemo } from "react";
 import {
   AlertTriangle,
   Box,
+  ChevronRight,
   ClockArrowDown,
   ClockArrowUp,
   Droplets,
   Flame,
   GitFork,
   Hourglass,
+  Info,
   Network,
   PackageOpen,
   Scissors,
@@ -220,7 +222,7 @@ export const ItemDetails: React.FC<ItemDetailsProps> = ({ id, data, usedIn, vari
           <ToneCard tone="amber" icon={<WandSparkles className="w-4 h-4 text-amber-400" />} title="Special Condition">
             <p className="text-sm text-amber-300/90">
               {special === "all_positive_crop_effects"
-                ? `Spawns in any empty ${size}x${size} area that receives every one of its positive effects from neighbouring crops (directly from a side neighbour, or relayed by a Wild Rose): ${positiveBuffs.map(formatName).join(", ")}. No crop requirements.`
+                ? `Spawns in any empty ${size}x${size} area that receives every one of its positive effects from neighbouring crops (directly from side neighbours, or relayed by Effect Spread crops/mutations): ${positiveBuffs.map(formatName).join(", ")}. No crop requirements.`
                 : getRecipeSource(data, id).note}
             </p>
           </ToneCard>
@@ -235,6 +237,42 @@ export const ItemDetails: React.FC<ItemDetailsProps> = ({ id, data, usedIn, vari
         {mutation?.harvest_info && (
           <ToneCard tone="purple" icon={<Scissors className="w-4 h-4 text-purple-400" />} title="Harvest Info">
             <p className="text-sm text-purple-300/90 leading-relaxed">{mutation.harvest_info}</p>
+            {mutation.harvest_table && (
+              <details className="group mt-3">
+                <summary className="flex items-center gap-1 cursor-pointer select-none list-none text-sm font-medium text-purple-200 hover:text-purple-100 [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="w-4 h-4 transition-transform group-open:rotate-90" />
+                  {mutation.harvest_table.title ?? "Table"}
+                </summary>
+                <table className="mt-2 w-full text-sm border-collapse">
+                  <thead>
+                    <tr>
+                      {mutation.harvest_table.columns.map((column) => (
+                        <th key={column} className="text-left font-medium text-purple-200 border-b border-purple-500/30 pb-1">
+                          {column}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mutation.harvest_table.rows.map((row, rowIndex) => (
+                      <tr key={rowIndex}>
+                        {row.map((cell, cellIndex) => (
+                          <td key={cellIndex} className="py-1 text-purple-300/90 border-b border-purple-500/10">
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            )}
+          </ToneCard>
+        )}
+
+        {crop?.notes && (
+          <ToneCard tone="blue" icon={<Info className="w-4 h-4 text-blue-400" />} title="Notes">
+            <p className="text-sm text-blue-300/90 leading-relaxed">{crop.notes}</p>
           </ToneCard>
         )}
 

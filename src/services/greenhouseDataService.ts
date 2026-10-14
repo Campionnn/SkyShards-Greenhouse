@@ -18,6 +18,16 @@ export interface CropDataJSON {
   positive_buffs: string[];
   negative_buffs: string[];
   drops: Record<string, number>;
+  /** Free-text note shown on the item page (e.g. unlock requirements). */
+  notes?: string;
+}
+
+/** A small table shown under an info section (e.g. Chloronite drops by Mining Fortune). */
+export interface InfoTableJSON {
+  /** Label on the collapsed toggle. */
+  title?: string;
+  columns: string[];
+  rows: string[][];
 }
 
 export interface MutationRequirementJSON {
@@ -41,6 +51,7 @@ export interface MutationDataJSON {
   drops: Record<string, number>;
   requires_watering: boolean;
   harvest_info?: string;
+  harvest_table?: InfoTableJSON;
   growing_info?: string;
 }
 

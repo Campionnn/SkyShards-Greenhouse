@@ -15,7 +15,7 @@ export interface RecipeSource {
 const SPECIAL_RECIPES: Record<string, RecipeSource> = {
   requires_zero_adjacent: {
     ingredients: [],
-    note: "Spawns on its own in a spot with no crops in any of the 8 surrounding cells.",
+    note: "Spawns with no adjacent crops.",
   },
   all_positive_crop_effects: {
     ingredients: [],

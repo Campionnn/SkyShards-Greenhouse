@@ -19,7 +19,10 @@ export const cropSchema = z.object({
   negative_buffs: effectList,
   drops,
   sell_price: z.number().nonnegative(),
+  notes: z.string().optional(),
 });
+
+const infoTable = z.object({ title: z.string().optional(), columns: z.array(z.string()), rows: z.array(z.array(z.string())) });
 
 export const mutationSchema = z.object({
   name: z.string(),
@@ -37,6 +40,7 @@ export const mutationSchema = z.object({
   spawn_weight: z.number().nonnegative(),
   special: z.string().optional(),
   harvest_info: z.string().optional(),
+  harvest_table: infoTable.optional(),
   growing_info: z.string().optional(),
 });
 
