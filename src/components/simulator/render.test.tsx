@@ -381,6 +381,15 @@ describe("simulator panels render", () => {
     expect(html).not.toContain("<details open");
   });
 
+  it("timeline shows each step's days and share of the whole run", () => {
+    const html = wrap(<FlowTimeline flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} elapsedSeconds={state.elapsedSeconds} />).replace(/<!-- -->/g, "");
+    expect(state.elapsedSeconds).toBeGreaterThan(0);
+    expect(html).toContain('aria-label="Plot 1 time per step"');
+    expect(html).toMatch(/\d+(\.\d)?%/);
+    expect(html).toContain("of run");
+    expect(html).not.toContain("NaN");
+  });
+
   it("timeline renders initial and newly entered zero-cycle visits safely", () => {
     const initial = startOf(sc);
     const html = wrap(<FlowTimeline flows={initial.flows} defs={sc.plots} cycle={0} />).replace(/<!-- -->/g, "");

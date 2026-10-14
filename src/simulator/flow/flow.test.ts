@@ -105,6 +105,22 @@ describe("per-plot flows", () => {
     expect(history(r.state, 2)[1]).toEqual(["s2", 4]);
   });
 
+  it("history records the simulated seconds at each step change's cycle", () => {
+    let s = start(scenario([twoStep(2)], {}));
+    const secondsAt = [s.elapsedSeconds];
+    for (let i = 0; i < 8; i++) {
+      s = engine.run(s, 1).state;
+      secondsAt.push(s.elapsedSeconds);
+    }
+    const h = s.flows[0].history;
+    expect(h.length).toBeGreaterThan(2);
+    for (const entry of h) {
+      expect(entry.startSeconds).toBe(secondsAt[entry.startCycle]);
+      expect(entry.endSeconds).toBe(entry.endCycle === null ? null : secondsAt[entry.endCycle]);
+    }
+    expect(secondsAt[8]).toBeGreaterThan(0);
+  });
+
   it("startIndex offsets a plot without changing its steps", () => {
     const f = twoStep(3);
     const s = start(scenario([f, { ...f, startIndex: 1 }], {}));

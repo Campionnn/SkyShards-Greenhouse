@@ -6,7 +6,7 @@ import { collectedOf, conditionsHold, type TriggerView } from "./triggers";
 
 // One runner per plot; plots are coupled only through the shared inventory.
 
-export function newRunner(plot: ScenarioPlot, cycle: number): FlowRunnerState {
+export function newRunner(plot: ScenarioPlot, cycle: number, seconds = 0): FlowRunnerState {
   const n = plot.flow.steps.length;
   const start = Math.min(Math.max(0, Math.floor(plot.flow.startIndex)), n - 1);
   return {
@@ -18,7 +18,7 @@ export function newRunner(plot: ScenarioPlot, cycle: number): FlowRunnerState {
     harvestedInStep: {},
     pendingTransition: false,
     finished: false,
-    history: [{ stepId: plot.flow.steps[start].id, stepIndex: start, startCycle: cycle, endCycle: null }],
+    history: [{ stepId: plot.flow.steps[start].id, stepIndex: start, startCycle: cycle, endCycle: null, startSeconds: seconds, endSeconds: null }],
   };
 }
 
@@ -44,7 +44,12 @@ export function transition(
   const steps = def.flow.steps;
   const from = steps[runner.stepIndex];
   const last = runner.history[runner.history.length - 1];
-  if (last && last.endCycle === null) last.endCycle = ctx.cycle;
+  // Seconds at the start of this cycle, matching startCycle/endCycle (the clock advances after the session).
+  const seconds = ctx.state.elapsedSeconds;
+  if (last && last.endCycle === null) {
+    last.endCycle = ctx.cycle;
+    last.endSeconds = seconds;
+  }
 
   runner.pendingTransition = false;
   delete runner.pendingTarget;
@@ -55,7 +60,7 @@ export function transition(
   const target = toIndex >= 0 && toIndex < steps.length ? toIndex : (runner.stepIndex + 1) % steps.length;
   const skipped = skipThrough(plot, def, runner, ctx, target);
   const to = steps[runner.stepIndex];
-  runner.history.push({ stepId: to.id, stepIndex: runner.stepIndex, startCycle: ctx.cycle, endCycle: null });
+  runner.history.push({ stepId: to.id, stepIndex: runner.stepIndex, startCycle: ctx.cycle, endCycle: null, startSeconds: seconds, endSeconds: null });
 
   ctx.emit(plot.id, {
     kind: "stepChanged",
@@ -97,7 +102,8 @@ function skipThrough(plot: PlotState, def: ScenarioPlot, runner: FlowRunnerState
     const step = steps[idx];
     if (!step.exits.some((e) => e.checkOnEntry) || seen.has(idx)) return skipped;
     seen.add(idx);
-    const entry = { stepId: step.id, stepIndex: idx, startCycle: ctx.cycle, endCycle: ctx.cycle, skipped: true };
+    const seconds = ctx.state.elapsedSeconds;
+    const entry = { stepId: step.id, stepIndex: idx, startCycle: ctx.cycle, endCycle: ctx.cycle, startSeconds: seconds, endSeconds: seconds, skipped: true };
     runner.history.push(entry);
     resetStepCounters(runner);
     runner.finished = false;

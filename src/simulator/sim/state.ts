@@ -142,8 +142,20 @@ export interface FlowRunnerState {
   pendingTarget?: number;
   /** A non-looping flow that reached its last step's exit: the plot holds that step. */
   finished: boolean;
-  /** `skipped`: passed through without being built (`checkExitsOnEntry`); startCycle === endCycle. */
-  history: { stepId: string; stepIndex: number; startCycle: number; endCycle: number | null; skipped?: boolean }[];
+  /**
+   * `skipped`: passed through without being built (`checkExitsOnEntry`); startCycle === endCycle.
+   * `startSeconds` / `endSeconds`: simulated seconds at the start of `startCycle` / `endCycle`
+   * (cycle length varies, so cycles alone can't give real time). Missing in older states.
+   */
+  history: {
+    stepId: string;
+    stepIndex: number;
+    startCycle: number;
+    endCycle: number | null;
+    startSeconds?: number;
+    endSeconds?: number | null;
+    skipped?: boolean;
+  }[];
 }
 
 export interface PlayerStats {
