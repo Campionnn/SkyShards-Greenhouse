@@ -435,7 +435,6 @@ export const SettingsPanel: React.FC<{
                       {m.label}
                       <InfoHint title={m.label} width={260}>
                         {m.description}
-                        {m.ref && <span className="block text-slate-500 mt-1">OPEN_QUESTIONS {m.ref}</span>}
                       </InfoHint>
                     </span>
                   );

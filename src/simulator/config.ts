@@ -2,8 +2,7 @@
  * All tunable and unpublished simulator values. Stored in the scenario
  * (scenario.settings.config) so a run is reproducible from its input.
  * CONFIG_META drives the Advanced panel, grouped by source quality:
- * verified, unpublished (reasoned defaults), model switches. `ref` values
- * are entries in SkyShards-API/docs/greenhouse/OPEN_QUESTIONS.md.
+ * verified, unpublished (reasoned defaults), model switches.
  */
 
 // ---- Fixed values (no longer settings) ----
@@ -83,7 +82,7 @@ export interface SimConfig {
   waterLossMax: number;
 
   // ---- Unpublished: reasoned defaults ----
-  /** Chance a stage is skipped while water < 0 (Q9). */
+  /** Chance a stage is skipped while water < 0. */
   negativeWaterSkipChance: number;
   chorusTeleportTargets: ChorusTeleport;
   /**
@@ -208,8 +207,6 @@ export interface ConfigMeta {
   label: string;
   group: ConfigGroup;
   description: string;
-  /** OPEN_QUESTIONS.md entry, if any. */
-  ref?: string;
   input: { type: "number"; min?: number; max?: number; step?: number } | { type: "boolean" } | { type: "select"; options: string[] };
 }
 
@@ -217,10 +214,10 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "waterLossMin", label: "Water loss min", group: "verified", input: { type: "number", min: 0 }, description: "Minimum water a crop that needs watering loses per cycle while not fully grown (whether or not it grew that cycle), before retain/drain. Fully grown and dried-out plants lose none. The default was 2 (per stage grown) before the 0.27.2 rules; a scenario saved then keeps its value until you restore defaults." },
   { key: "waterLossMax", label: "Water loss max", group: "verified", input: { type: "number", min: 0 }, description: "Maximum water a crop that needs watering loses per cycle while not fully grown (whether or not it grew that cycle), before retain/drain. Fully grown and dried-out plants lose none. The default was 3 (per stage grown) before the 0.27.2 rules; a scenario saved then keeps its value until you restore defaults." },
 
-  { key: "negativeWaterSkipChance", label: "Negative-water skip chance", group: "unpublished", ref: "Q9", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Chance a stage is skipped while water is below 0 (before it reaches the halt level)." },
+  { key: "negativeWaterSkipChance", label: "Negative-water skip chance", group: "unpublished", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Chance a stage is skipped while water is below 0 (before it reaches the halt level)." },
   { key: "soggybudWaterPerNeighbour", label: "Soggybud water per neighbour", group: "unpublished", input: { type: "number", min: 0 }, description: "Water a Soggybud takes each tick from each neighbouring crop that has water (never from another Soggybud)." },
   { key: "soggybudWaterPerStage", label: "Soggybud water per stage", group: "unpublished", input: { type: "number", min: 1 }, description: "Soggybud's growth stage is floor(water / this)." },
-  { key: "chorusTeleportTargets", label: "Chorus teleport targets", group: "unpublished", ref: "Q11", input: { type: "select", options: ["emptyOnly", "anyCell"] }, description: "Either way it can land on AIR, which becomes End Stone. anyCell also lets it land on (and destroy) a plant." },
+  { key: "chorusTeleportTargets", label: "Chorus teleport targets", group: "unpublished", input: { type: "select", options: ["emptyOnly", "anyCell"] }, description: "Either way it can land on AIR, which becomes End Stone. anyCell also lets it land on (and destroy) a plant." },
   { key: "chorusOverflow", label: "Chorus Overflow", group: "unpublished", input: { type: "boolean" }, description: "Observed in game (emptyOnly only): all growing Chorus Fruit teleport at the same time, each to a different cell that was empty at the start of the tick (cells being left that tick don't count). When there are more growing Chorus Fruit than empty cells, each extra one lands on a random occupied cell and destroys what's there: an input, a base crop or another Chorus Fruit (the higher stage wins). Off: they teleport one at a time and can reuse a cell another one just left, so they never overflow unless the plot is full." },
   { key: "fleshtrapHungerPerStage", label: "Fleshtrap hunger per stage", group: "unpublished", input: { type: "number", min: 0 }, description: "Hunger used per stage grown." },
   { key: "fleshtrapFeedHunger", label: "Fleshtrap feed amount", group: "unpublished", input: { type: "number", min: 0 }, description: "Hunger added per feeding (enchanted cooked meat = 6)." },
