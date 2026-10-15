@@ -5,6 +5,7 @@ import {
   describeCondition,
   describeConditions,
   describeTrigger,
+  isFreePlacedItem,
   isHarvestableCrop,
   npcPriceSource,
   RARE_CROP_ITEMS,
@@ -181,14 +182,16 @@ export function describeEvent(e: TimedEvent): string {
 export function allItemIds(): string[] {
   // All-in Aloe Fragments are not offered: they only ever turn into All-in Aloe (9 at a time).
   const extra = [...RARE_CROP_ITEMS, ...RARE_DROP_ITEMS].filter((i) => !data.crops[i] && !data.mutations[i]);
-  return [...data.cropIds, ...MUTATION_IDS_BY_RARITY, "seeds", ...new Set(extra)];
+  // Fire is free to place (FREE_PLACED_ITEMS), so it is never stocked or waited on.
+  const cropIds = data.cropIds.filter((id) => !isFreePlacedItem(id));
+  return [...cropIds, ...MUTATION_IDS_BY_RARITY, "seeds", ...new Set(extra)];
 }
 
 export type ItemCategory = "mutation" | "crop" | "rareCrop" | "other";
 
 /**
  * Inventory group: mutations; base crops and seeds; Rare Crops (armor bonus drops and Ethereal
- * Vine, Overbloom-boosted); other (Harvest Bounty drops, Dead Plants, fire, fragments).
+ * Vine, Overbloom-boosted); other (Harvest Bounty drops, Dead Plants, fragments).
  */
 export function itemCategory(id: string): ItemCategory {
   if (data.mutations[id]) return "mutation";

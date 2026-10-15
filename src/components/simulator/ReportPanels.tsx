@@ -619,7 +619,7 @@ export const InventoryPanel: React.FC<{
             {busy
               ? "Stop the run to change the inventory."
               : atStart
-                ? "This is what you start with. It is saved with the scenario and used again on every Reset. Placing the starting layouts is free; this stock pays for mutation items, fire, fermento and dead plants placed later (re-placing after decay, or a later step)."
+                ? "This is what you start with. It is saved with the scenario and used again on every Reset. Placing the starting layouts is free; this stock pays for mutation items, fermento and dead plants placed later (re-placing after decay, or a later step)."
                 : "The run has started: changes apply to it from now on (not revenue, not produced). Reset goes back to the starting inventory."}
           </p>
         </div>
