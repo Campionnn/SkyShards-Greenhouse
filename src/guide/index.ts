@@ -14,7 +14,10 @@ export {
   ALOE_FRAGMENT,
   SUPPLY_ITEMS,
   DONE,
+  FLOW_VARIANTS,
+  FLOW_VARIANT_ORDER,
   GROUP_LABELS,
+  isFlowVariant,
   HUB,
   SHIPPED_FLOW_URL,
   SUPPLIES,
@@ -30,6 +33,7 @@ export {
   type Catalog,
   type Farm,
   type FlowsFile,
+  type FlowVariant,
   type ItemGroup,
 } from "./flow";
 export { DEFAULT_MAX_CYCLES, PRECISION_SEEDS, SUPPLY_TOP_UP, runForecast, runOne } from "./forecast";

@@ -18,6 +18,8 @@ const STORAGE_KEYS = {
   EFFECT_WEIGHTS: "skyshards-effect-weights",
   SIMULATOR_SCENARIO: "skyshards-simulator-scenario",
   GUIDE_STATE: "skyshards-guide-state",
+  GUIDE_STATE_2PLOTS: "skyshards-guide-state-2plots",
+  GUIDE_VARIANT: "skyshards-guide-variant",
   LAST_SOLVER_LAYOUT: "skyshards-last-solver-layout",
 } as const;
 
@@ -39,6 +41,10 @@ export interface StoredGuideState {
   /** Forecast precision the player last chose. */
   precision?: "quick" | "normal" | "thorough";
 }
+
+/** The Guide's flow version: all three plots, or only Plots 1 and 2. */
+export type GuideVariant = "three" | "two";
+const guideKey = (variant: GuideVariant) => (variant === "two" ? STORAGE_KEYS.GUIDE_STATE_2PLOTS : STORAGE_KEYS.GUIDE_STATE);
 
 interface GridConfigData {
   unlockedCells: string[]; // "row,col" keys
@@ -264,20 +270,32 @@ export class LocalStorageManager {
     this.remove(STORAGE_KEYS.SIMULATOR_SCENARIO);
   }
 
-  /** The Guide's greenhouse and settings (`skyshards-guide-state`). */
-  static saveGuideState(state: StoredGuideState): boolean {
-    return this.save(STORAGE_KEYS.GUIDE_STATE, state);
+  /**
+   * The Guide's greenhouse and settings, one per flow version: `skyshards-guide-state` for the
+   * three-plot flow, `skyshards-guide-state-2plots` for the two-plot one (their plots and farms differ).
+   */
+  static saveGuideState(state: StoredGuideState, variant: GuideVariant = "three"): boolean {
+    return this.save(guideKey(variant), state);
   }
 
   /** Only shape-checked here; the Guide validates it against the flow before use. Old shapes are dropped. */
-  static loadGuideState(): StoredGuideState | null {
-    const data = this.load<StoredGuideState>(STORAGE_KEYS.GUIDE_STATE);
+  static loadGuideState(variant: GuideVariant = "three"): StoredGuideState | null {
+    const data = this.load<StoredGuideState>(guideKey(variant));
     if (!data || typeof data !== "object" || (data.version !== 2 && data.version !== 3)) return null;
     return data;
   }
 
-  static clearGuideState(): void {
-    this.remove(STORAGE_KEYS.GUIDE_STATE);
+  static clearGuideState(variant: GuideVariant = "three"): void {
+    this.remove(guideKey(variant));
+  }
+
+  /** Which flow version the Guide shows (`skyshards-guide-variant`); three plots unless chosen. */
+  static saveGuideVariant(variant: GuideVariant): boolean {
+    return this.save(STORAGE_KEYS.GUIDE_VARIANT, variant);
+  }
+
+  static loadGuideVariant(): GuideVariant {
+    return this.load<string>(STORAGE_KEYS.GUIDE_VARIANT) === "two" ? "two" : "three";
   }
 
   /** Last finished Calculator result, offered by the Simulator's layout picker. */

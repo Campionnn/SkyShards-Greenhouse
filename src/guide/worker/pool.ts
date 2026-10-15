@@ -94,13 +94,15 @@ export class GuidePool {
   /** Run every seed. Resolves with the runs in seed order; rejects with ForecastCancelled when superseded. */
   forecast(request: ForecastRequest): Promise<RunTimeline[]> {
     this.cancel();
+    // Cached runs belong to one flow (the Guide can switch between the 3- and 2-plot flows).
+    if (this.flow !== null && this.flow !== request.flow) this.cache.clear();
     const key = inputKey(request.input, request.seeds);
     const cached = this.cache.get(key);
+    this.ensure(request.flow);
     if (cached) {
       request.onProgress?.({ done: cached.length, total: cached.length, timelines: cached });
       return Promise.resolve(cached);
     }
-    this.ensure(request.flow);
     const generation = ++this.generation;
     return new Promise<RunTimeline[]>((resolve, reject) => {
       this.active = {

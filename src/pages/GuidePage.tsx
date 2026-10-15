@@ -1,9 +1,10 @@
 /**
- * The Rose Dragon Guide (`/guide`): a three-plot dashboard.
+ * The Rose Dragon Guide (`/guide`): a dashboard for the three-plot flow, or the two-plot flow for
+ * players with only Plots 1 and 2 (switch in the header; each version keeps its own saved state).
  *
  * Top: what you own and the forecast strip. Middle: one card per plot showing where it is, where it
  * should go (as the real layout), what to place and what to do there, with a per-plot "done"
- * button. The cards are one login, worked out Plot 1 -> 2 -> 3 against shared stock, so following
+ * button. The cards are one login, worked out Plot 1 -> 2 (-> 3) against shared stock, so following
  * them in order never double-spends. Confirming a plot applies only the deterministic stock changes;
  * ordinary harvests are entered by the player.
  */
@@ -11,6 +12,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { Backpack, Compass, FlaskConical, Loader2, PartyPopper, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
 import { InfoHint } from "../components/ui/InfoHint";
+import { SegmentedControl } from "../components/ui/Panel";
 import { LocalStorageManager, type StoredGuideState } from "../utilities/localStorageManager";
 import type { SimulatorScenarioHandoff } from "../utilities/layoutHandoff";
 import {
@@ -28,6 +30,8 @@ import {
   itemName,
   loadShippedFlow,
   emptyFacts,
+  FLOW_VARIANTS,
+  FLOW_VARIANT_ORDER,
   restoreState,
   scriptKnobs,
   setFacts,
@@ -45,6 +49,7 @@ import {
   PRECISION_SEEDS,
   type Catalog,
   type FlowsFile,
+  type FlowVariant,
   type Forecast,
   type GuideState,
   type Plan,
@@ -80,15 +85,47 @@ interface Loaded {
   catalog: Catalog;
 }
 
-function load(flow: FlowsFile, catalog: Catalog): { state: GuideState; precision: Precision; fresh: boolean } {
-  const saved = LocalStorageManager.loadGuideState();
+function load(flow: FlowsFile, catalog: Catalog, variant: FlowVariant): { state: GuideState; precision: Precision; fresh: boolean } {
+  const saved = LocalStorageManager.loadGuideState(variant);
   const restored = restoreState(saved, flow, catalog, guideDefaultSettings());
   return { state: restored ?? initialState(flow, guideDefaultSettings()), precision: saved?.precision ?? "quick", fresh: !restored };
 }
 
 const toStored = (state: GuideState, precision: Precision): StoredGuideState => ({ version: STORAGE_VERSION, ...state, precision });
 
+/** "Plot 1, then 2, then 3" / "Plot 1, then 2". */
+const loginOrder = (plots: number[]) => `Plot ${plots[0]}${plots.slice(1).map((id) => `, then ${id}`).join("")}`;
+const COUNT_WORDS: Record<number, string> = { 1: "one", 2: "two", 3: "three" };
+
+/** Which flow the Guide follows: every plot unlocked, or only Plots 1 and 2. Each keeps its own saved progress. */
+const VariantSwitch: React.FC<{ value: FlowVariant; onChange: (variant: FlowVariant) => void }> = ({ value, onChange }) => (
+  <SegmentedControl<FlowVariant>
+    size="xs"
+    nowrap
+    value={value}
+    onChange={onChange}
+    options={FLOW_VARIANT_ORDER.map((v) => ({
+      value: v,
+      label: FLOW_VARIANTS[v].label,
+      title:
+        v === "two"
+          ? "Only Plots 1 and 2 unlocked: the same farms, with Plot 3's work done on Plot 1. Your progress here is saved separately."
+          : "All three plots unlocked. Your progress here is saved separately.",
+    }))}
+  />
+);
+
+/** The Guide: the chosen flow version's dashboard, remounted from scratch when the version changes. */
 export const GuidePage: React.FC = () => {
+  const [variant, setVariant] = useState<FlowVariant>(() => LocalStorageManager.loadGuideVariant());
+  const choose = useCallback((next: FlowVariant) => {
+    LocalStorageManager.saveGuideVariant(next);
+    setVariant(next);
+  }, []);
+  return <GuideBoard key={variant} variant={variant} onVariant={choose} />;
+};
+
+const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVariant) => void }> = ({ variant, onVariant }) => {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [state, setState] = useState<GuideState | null>(null);
@@ -98,11 +135,11 @@ export const GuidePage: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    loadShippedFlow()
+    loadShippedFlow(variant)
       .then((flow) => {
         if (cancelled) return;
         const catalog = buildCatalog(flow, guideEnv.env.resolveLayout);
-        const restored = load(flow, catalog);
+        const restored = load(flow, catalog, variant);
         setLoaded({ flow, catalog });
         setState(restored.state);
         setPrecision(restored.precision);
@@ -111,21 +148,24 @@ export const GuidePage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [variant]);
 
-  // Persist: debounced while typing, and flushed when the page is hidden or closed.
+  // Persist: debounced while typing, and flushed when the page is hidden, closed or switched to the other flow.
   const latest = useRef<{ state: GuideState; precision: Precision } | null>(null);
   useEffect(() => {
     if (!state) return;
     latest.current = { state, precision };
-    const timer = setTimeout(() => LocalStorageManager.saveGuideState(toStored(state, precision)), 300);
+    const timer = setTimeout(() => LocalStorageManager.saveGuideState(toStored(state, precision), variant), 300);
     return () => clearTimeout(timer);
-  }, [state, precision]);
+  }, [state, precision, variant]);
   useEffect(() => {
-    const flush = () => latest.current && LocalStorageManager.saveGuideState(toStored(latest.current.state, latest.current.precision));
+    const flush = () => latest.current && LocalStorageManager.saveGuideState(toStored(latest.current.state, latest.current.precision), variant);
     window.addEventListener("pagehide", flush);
-    return () => window.removeEventListener("pagehide", flush);
-  }, []);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, [variant]);
 
   const settled = useDebounced(state, 250);
   const flow = loaded?.flow;
@@ -199,17 +239,20 @@ export const GuidePage: React.FC = () => {
       setState((s) => {
         if (!s) return s;
         const next = fn(s);
-        LocalStorageManager.saveGuideState(toStored(next, precision));
+        LocalStorageManager.saveGuideState(toStored(next, precision), variant);
         return next;
       }),
-    [precision]
+    [precision, variant]
   );
   const update = useCallback((fn: (s: GuideState) => GuideState) => setState((s) => (s ? fn(s) : s)), []);
 
   if (loadError) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-10">
+      <div className="mx-auto max-w-3xl space-y-3 px-4 py-10">
         <p className="rounded-lg border border-red-700 bg-red-950/40 p-4 text-sm text-red-200">{loadError}</p>
+        <div className="flex justify-center">
+          <VariantSwitch value={variant} onChange={onVariant} />
+        </div>
       </div>
     );
   }
@@ -220,6 +263,8 @@ export const GuidePage: React.FC = () => {
       </div>
     );
   }
+  const plotCount = catalog.plots.length;
+  const plotsWord = COUNT_WORDS[plotCount] ?? String(plotCount);
 
   // The cards use the settled state's decisions; a plot confirmed since then shows as done at once.
   const knobs = scriptKnobs(flow);
@@ -243,21 +288,28 @@ export const GuidePage: React.FC = () => {
             <li>Open the plan to see what comes next.</li>
           </ol>
           <p>
-            The cards are the shipped Rose Dragon flow's own decisions for exactly what you entered, worked out in login order (Plot 1, then 2, then 3) so they never
+            The cards are the shipped Rose Dragon flow's own decisions for exactly what you entered, worked out in login order ({loginOrder(catalog.plots)}) so they never
             spend the same stock twice. Confirming a plot takes off what it placed; harvests are random, so you add those. Hover or tap any cell of a farm to see what it
             is.
           </p>
+          <p>
+            Only have Plots 1 and 2? Switch to <strong>2 plots</strong>: the same farms, with Plot 3's work done on Plot 1. Each version keeps its own inventory and
+            progress.
+          </p>
         </InfoHint>
+        <VariantSwitch value={variant} onChange={onVariant} />
         <span className="hidden text-xs text-slate-500 md:inline">Harvest, update what you own, then do the plots left to right.</span>
         <button
           type="button"
           className={`${buttonClass.neutral} ml-auto`}
           onClick={() =>
             navigate("/simulator", {
-              state: { incomingScenario: { scenario: simulatorScenario(flow, toInput(state)), name: "the Rose Dragon flow" } } satisfies SimulatorScenarioHandoff,
+              state: {
+                incomingScenario: { scenario: simulatorScenario(flow, toInput(state)), name: plotCount === 2 ? "the two-plot Rose Dragon flow" : "the Rose Dragon flow" },
+              } satisfies SimulatorScenarioHandoff,
             })
           }
-          title="Load all three plots' flows and scripts into the Simulator, starting from your farms and what you own now"
+          title={`Load all ${plotsWord} plots' flows and scripts into the Simulator, starting from your farms and what you own now`}
         >
           <FlaskConical className="h-3.5 w-3.5" /> <span>Simulator</span>
         </button>
@@ -360,7 +412,7 @@ export const GuidePage: React.FC = () => {
       {!done && allActed(state) && (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
           <div>
-            <p className="text-sm font-medium text-emerald-200">All three plots are done for this visit.</p>
+            <p className="text-sm font-medium text-emerald-200">All {plotsWord} plots are done for this visit.</p>
             <p className="text-xs text-slate-400">Next time you're online, harvest, then start the next check-in and add what you got.</p>
           </div>
           <button
@@ -377,7 +429,7 @@ export const GuidePage: React.FC = () => {
       )}
 
       {!done && (
-        <div className={`grid min-w-0 gap-3 lg:grid-cols-3 ${stale ? "opacity-80 transition-opacity motion-reduce:transition-none" : ""}`}>
+        <div className={`grid min-w-0 gap-3 ${plotCount === 2 ? "lg:grid-cols-2" : "lg:grid-cols-3"} ${stale ? "opacity-80 transition-opacity motion-reduce:transition-none" : ""}`}>
           {catalog.plots.map((plotId) => {
             const plot = state.plots[plotId];
             const outcome = outcomeFor(plotId);
@@ -438,7 +490,8 @@ export const GuidePage: React.FC = () => {
         onChange={(settings, checkEvery) => commit((s) => withSettings(s, settings, checkEvery))}
         onPrecision={setPrecision}
         onReset={() => {
-          LocalStorageManager.clearGuideState();
+          LocalStorageManager.clearGuideState(variant);
+          latest.current = null;
           setState(initialState(flow, guideDefaultSettings()));
           setOpen(null);
         }}

@@ -72,6 +72,16 @@ describe("GuidePool", () => {
     expect(FakeWorker.all[0].posted.length).toBe(sent);
   });
 
+  it("never serves another flow's cached runs, and sends workers the new flow", async () => {
+    const pool = make(1);
+    await pool.forecast({ flow, input, seeds: [1] });
+    const other = { plots: [{ id: 1 }] } as unknown as FlowsFile;
+    const sent = FakeWorker.all[0].posted.length;
+    await pool.forecast({ flow: other, input, seeds: [1] });
+    const posted = FakeWorker.all[0].posted.slice(sent);
+    expect(posted.map((r) => r.type)).toEqual(["flow", "seed"]);
+  });
+
   it("cancels a superseded forecast and replaces busy workers", async () => {
     const pool = make(2);
     const first = pool.forecast({ flow, input, seeds: [1, 2, 3, 4] });
