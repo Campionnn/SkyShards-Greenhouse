@@ -1015,7 +1015,7 @@
         "water_retain"
       ],
       "negative_buffs": [],
-      "growing_info": "Soaks up water from nearby waterable crops/mutations, allowing for Soggybud to grow. Fills 2.5 water per nearby crop, approximately up to 10 per stage.",
+      "growing_info": "Soaks up water from nearby waterable crops/mutations, allowing for Soggybud to grow. Fills 1.4 water per nearby crop, approximately up to 10 per stage.",
       "requires_watering": true,
       "drops": {
         "melon": 1920
@@ -1046,7 +1046,7 @@
       "negative_buffs": [
         "harvest_loss"
       ],
-      "growing_info": "When growing, the plant will teleport around the plot and override any space it finds, changing it to End Stone (including air), and also will leave the spawning location open again. When the amount of growing Chorus Fruits outnumbers the amount of open spots for teleporting, non-Chorus Fruit crops/mutations are at risk of being voided, such as the Magic Jellybean and Chloronite used in the setup (even if they are growing crops). When multiple Chorus Fruit teleport, it is possible for them to teleport to the same spot and delete one another with the higher growth stage plant taking priority.",
+      "growing_info": "When growing, the plant will teleport around the plot and override any empty space it finds, changing it to End Stone (including air), and also will leave the spawning location open again. When the amount of growing Chorus Fruits outnumbers the amount of open spots for teleporting, the Chorus Fruit can also override and delete other crops/mutations, not only other Chorus Fruit, such as the Magic Jellybean and Chloronite used in the setup (even if they are growing crops). When multiple Chorus Fruit teleport, it is possible for them to teleport to the same spot and delete one another with the higher growth stage plant taking priority.",
       "requires_watering": false,
       "drops": {
         "potato": 1050,

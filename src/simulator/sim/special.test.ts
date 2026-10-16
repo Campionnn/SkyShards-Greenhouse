@@ -22,11 +22,13 @@ describe("Soggybud", () => {
     expect(plantAt(s, 1, 5, 5)).toMatchObject({ water: 0, stage: 1 }); // every spawn enters at stage 1
 
     const one = engine.run(s, 1).state;
-    expect(plantAt(one, 1, 5, 5)).toMatchObject({ water: 4, stage: 1 }); // 2 from each of 2 wheat; never below its spawn stage
+    expect(plantAt(one, 1, 5, 5)!.water).toBeCloseTo(2.8); // 1.4 from each of 2 wheat
+    expect(plantAt(one, 1, 5, 5)!.stage).toBe(1); // never below its spawn stage
     expect(plantAt(one, 1, 5, 4)!.water).toBeLessThanOrEqual(98);
 
     const five = engine.run(s, 5).state;
-    expect(plantAt(five, 1, 5, 5)).toMatchObject({ water: 20, stage: 2 });
+    expect(plantAt(five, 1, 5, 5)!.water).toBeCloseTo(14);
+    expect(plantAt(five, 1, 5, 5)!.stage).toBe(1);
 
     // Wheat watered and not decaying; the Soggybud's timer is stretched to 30 days so only water limits growth.
     const slow = engineWith({ noBaseCropDecay: true, decayDays: { soggybud: 30 } });
@@ -34,16 +36,17 @@ describe("Soggybud", () => {
     inject(grown, 1, "soggybud", 5, 5, "spawned", {}, slow);
     inject(grown, 1, "wheat", 5, 4, "planted", { water: 100 }, slow);
     inject(grown, 1, "wheat", 5, 6, "planted", { water: 100 }, slow);
-    // 2 wheat x 2 water = 4 per tick: stage 10 (100 water) on the 25th tick, then the player harvests it.
-    const before = slow.run(grown, 24).state;
-    expect(plantAt(before, 1, 5, 5)).toMatchObject({ water: 96, stage: 9 });
+    // 2 wheat x 1.4 water = 2.8 per tick: stage 10 (100 water) on the 36th tick, then the player harvests it.
+    const before = slow.run(grown, 35).state;
+    expect(plantAt(before, 1, 5, 5)!.water).toBeCloseTo(98);
+    expect(plantAt(before, 1, 5, 5)!.stage).toBe(9);
     const done = slow.run(before, 1);
     expect(ofKind(done.events, "fullyGrown").some((e) => e.kindId === "soggybud")).toBe(true);
     expect(ofKind(done.events, "harvested").some((e) => e.kindId === "soggybud")).toBe(true);
   });
 
   it("with only 2 neighbours its 3-day timer runs out before it finishes growing", () => {
-    // 4 water a tick means 25 ticks to mature; the 3-day timer runs out after ~18-19 cycles.
+    // 2.8 water a tick means 36 ticks to mature; the 3-day timer runs out after ~18-19 cycles.
     // Timer-only, so its unmet minimum (8) doesn't extend it.
     const s = blank(NEVER_ACTIVE, {}, TIMER_ONLY);
     inject(s, 1, "soggybud", 5, 5, "spawned", {}, TIMER_ONLY);

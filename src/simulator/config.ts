@@ -179,7 +179,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   negativeWaterSkipChance: 0.5,
   chorusTeleportTargets: "emptyOnly",
   chorusOverflow: true,
-  soggybudWaterPerNeighbour: 2,
+  soggybudWaterPerNeighbour: 1.4,
   soggybudWaterPerStage: 10,
   capRareCropChance: false,
   fleshtrapHungerPerStage: 1,
