@@ -236,11 +236,16 @@ export function simulateEffects(
   }
 
   // 2. Plants holding effect_spread relay everything else they hold until nothing changes.
-  const relays = plants.filter((p) => !p.isSlot && p.has.has(RELAY_EFFECT));
-  const heldCount = () => plants.reduce((n, p) => n + p.has.size, 0);
-  for (let before = -1; before !== heldCount(); ) {
-    before = heldCount();
-    for (const plant of relays) give(plant, new Set([...plant.has].filter((e) => e !== RELAY_EFFECT)));
+  // Worklist: a relay takes another turn only when a neighbouring relay just gave it something new.
+  // (A Set visits entries added while iterating, so re-queued relays are picked up.)
+  const relays = new Set(plants.filter((p) => !p.isSlot && p.has.has(RELAY_EFFECT)));
+  const queue = new Set(relays);
+  for (const plant of queue) {
+    queue.delete(plant);
+    const near = neighbours(plant).plants.filter((q) => relays.has(q));
+    const sizes = near.map((q) => q.has.size);
+    give(plant, new Set([...plant.has].filter((e) => e !== RELAY_EFFECT)));
+    near.forEach((q, i) => q.has.size !== sizes[i] && queue.add(q));
   }
 
   const heldAt = (row: number, col: number): Set<string> => {
