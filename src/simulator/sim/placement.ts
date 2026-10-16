@@ -6,6 +6,7 @@ import { harvestPlant } from "./harvest";
 import { closePlotDebts, credit, spend } from "./inventory";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isFootprintFree, isHarvestable, newPlant, removePlant } from "./plants";
 import type { PlantState, PlotState } from "./state";
+import { bump } from "./summary";
 import { isProtected } from "../script/overrides";
 
 /** Player removal: harvest if harvestable, clear a Dead Plant (item back to inventory), else break it as a loss. */
@@ -51,6 +52,9 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
       if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
     } else if (replacement) {
       ctx.state.summary.replacements += 1;
+    } else if (mode === "setup" && d.origin === "placed" && !isFreePlacedItem(d.kindId) && ctx.state.summary.market) {
+      // Normal profile: setup stays free, but count what building it would cost (sim/market.ts).
+      bump(ctx.state.summary.market.built, d.kindId);
     }
     const p = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, d.origin, ctx.cycle);
     insertPlant(plot, p);

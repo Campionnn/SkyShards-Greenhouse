@@ -39,12 +39,17 @@ const MarkerItem: React.FC<{ marker: GridMarker }> = ({ marker }) => (
   </span>
 );
 
+/** Marks only a normal (Bazaar) profile can produce. */
+const NORMAL_ONLY_MARKS: readonly Mark[] = ["bought"];
+
 /** Legend for the grid marks (events of the last simulated cycle) and the other grid indicators. */
-export const PlotMarkLegend: React.FC = () => (
+export const PlotMarkLegend: React.FC<{ normalProfile?: boolean }> = ({ normalProfile = false }) => (
   <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
-    {(Object.keys(MARK_STYLE) as Mark[]).map((m) => (
-      <MarkerItem key={m} marker={{ mark: m }} />
-    ))}
+    {(Object.keys(MARK_STYLE) as Mark[])
+      .filter((m) => normalProfile || !NORMAL_ONLY_MARKS.includes(m))
+      .map((m) => (
+        <MarkerItem key={m} marker={{ mark: m }} />
+      ))}
     {(Object.keys(INDICATOR_LABEL) as Indicator[]).map((i) => (
       <MarkerItem key={i} marker={{ indicator: i }} />
     ))}

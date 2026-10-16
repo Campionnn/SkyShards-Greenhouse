@@ -44,6 +44,25 @@ export { DEFAULT_PLAYER_STATS, defaultSettings, scenarioFromShareCodes, staticFl
 export { migrateScenario } from "./migrate";
 export { ETHEREAL_VINE_BY_RARITY, HARVEST_BOUNTY, RARE_DROP_ITEMS } from "./economy/bounty";
 export { defaultNpcPrice, npcPriceSource, WIKI_NPC_PRICES, type PriceSource } from "./economy/prices";
+// Normal profiles: the Bazaar. The engine counts quantities; these price them (never inside a run).
+export {
+  BAZAAR_PRODUCTS,
+  bazaarBuyPrice,
+  bazaarSellPrice,
+  COMPACTED_CROPS,
+  DEFAULT_BAZAAR_PRICING,
+  isBazaarItem,
+  parseBazaar,
+  withOverrides,
+  type BazaarOverride,
+  type BazaarPricing,
+  type BazaarQuote,
+  type BazaarSnapshot,
+  type BuySide,
+  type SellSide,
+} from "./economy/bazaar";
+export { marketCategory, unitPrices, valueMarket, valueRun, type MarketCategory, type MarketValuation, type PriceSourceKind, type UnitPrices } from "./economy/valuation";
+export { reservePlan, type ReservePlan } from "./sim/market";
 export { jellybeanMultiplier } from "./economy/yield";
 export {
   ARMOR_SET_DROPS,

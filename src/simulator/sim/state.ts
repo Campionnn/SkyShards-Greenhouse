@@ -198,7 +198,22 @@ export interface Settings {
   playerActions?: boolean;
   policies: Policies;
   config: SimConfig;
+  /**
+   * Profile type. Missing or "ironman" = no Bazaar (the default; byte-identical to before).
+   * "normal": a placement short of stock buys the shortfall, and surplus mutation items above
+   * the reserve (`sellReserve`, sim/market.ts) are sold after every online session. The engine only
+   * counts quantities (`RunSummary.market`); the page prices them. The Simulator page fills this
+   * from the site-wide profile mode in localStorage rather than saving it with the scenario.
+   */
+  profile?: ProfileMode;
+  /**
+   * Normal profile: per-item reserve overrides (mutation items kept in stock instead of sold).
+   * Items not listed use the automatic reserve. Ignored in ironman.
+   */
+  reserve?: Record<ItemId, number>;
 }
+
+export type ProfileMode = "ironman" | "normal";
 
 export interface ScenarioPlot {
   id: PlotId;
@@ -290,6 +305,24 @@ export interface RunSummary {
   /** Watched target cells, all plots and steps together (cell-cycles). */
   uptime: UptimeCounts;
   perPlot: Record<string, PerPlotSummary>;
+  /** Normal profile only (missing in ironman): Bazaar quantities the page prices (economy/market.ts `valueRun`). */
+  market?: MarketSummary;
+}
+
+/**
+ * Normal profile quantities, by item. Spent placing = `RunSummary.placedItems` (bought units included).
+ * Profit at one sell price s and buy price b per item: Σ (produced − placed) × s − bought × (b − s);
+ * when the surplus is sold doesn't change it, `sold` only splits it into realised and held.
+ */
+export interface MarketSummary {
+  /** Every unit credited to the inventory: harvest drops, cleared Dead Plants, converted aloes. */
+  produced: Record<ItemId, number>;
+  /** Units bought because a placement was short of stock. */
+  bought: Record<ItemId, number>;
+  /** Mutation items sold above the reserve after an online session. */
+  sold: Record<ItemId, number>;
+  /** Items the free setup session placed: what building the starting layouts costs. */
+  built: Record<ItemId, number>;
 }
 
 export interface SimulationState {
@@ -354,6 +387,8 @@ export type TickEvent =
   | { kind: "debt"; item: ItemId; row: number; col: number; needed: number; available: number }
   /** `allowMutationDebt`: placed a mutation item without stock; `stock` is the (negative) stock after. */
   | { kind: "borrowed"; item: ItemId; row: number; col: number; qty: number; stock: number }
+  /** Normal profile: a placement short of stock bought the missing units from the Bazaar. */
+  | { kind: "bought"; item: ItemId; row: number; col: number; qty: number }
   /** `skipped`: steps passed through on the way (`checkExitsOnEntry`), in order. */
   | { kind: "stepChanged"; fromStep: string; toStep: string; stepIndex: number; skipped?: string[] }
   | { kind: "playerSession" };

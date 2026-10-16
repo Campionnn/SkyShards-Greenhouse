@@ -3,7 +3,9 @@
 import type { SelectedMutation } from "../types/greenhouse";
 import type { LockedPlacement } from "../types/greenhouse";
 import type { DesignerPlacement } from "../context";
-import type { Scenario } from "../simulator";
+import type { ProfileMode, Scenario } from "../simulator";
+// Direct path: just the small Bazaar module, not the whole simulator.
+import { DEFAULT_BAZAAR_PRICING, type BazaarOverride, type BazaarPricing, type BazaarQuote } from "../simulator/economy/bazaar";
 import type { GroundTile } from "./designEncoding";
 import type { StoredSolverLayout } from "./layoutHandoff";
 
@@ -21,6 +23,10 @@ const STORAGE_KEYS = {
   GUIDE_STATE_2PLOTS: "skyshards-guide-state-2plots",
   GUIDE_VARIANT: "skyshards-guide-variant",
   LAST_SOLVER_LAYOUT: "skyshards-last-solver-layout",
+  PROFILE_MODE: "skyshards-profile-mode",
+  BAZAAR_PRICES: "skyshards-bazaar-prices",
+  BAZAAR_PRICING: "skyshards-bazaar-pricing",
+  BAZAAR_OVERRIDES: "skyshards-bazaar-overrides",
 } as const;
 
 /**
@@ -41,6 +47,18 @@ export interface StoredGuideState {
   /** Forecast precision the player last chose. */
   precision?: "quick" | "normal" | "thorough";
 }
+
+/** Cached Bazaar prices: when they were fetched (ms), the API's own timestamp, and quotes by simulator item id. */
+export interface StoredBazaarPrices {
+  /** How the quotes were derived (`BAZAAR_PRICES_VERSION`); older caches are dropped and refetched. */
+  version?: number;
+  fetchedAt: number;
+  lastUpdated: number;
+  quotes: Record<string, BazaarQuote>;
+}
+
+/** 2: base crops priced from their double-compacted product, per crop. */
+export const BAZAAR_PRICES_VERSION = 2;
 
 /** The Guide's flow version: all three plots, or only Plots 1 and 2. */
 export type GuideVariant = "three" | "two";
@@ -311,6 +329,67 @@ export class LocalStorageManager {
 
   static clearLastSolverLayout(): void {
     this.remove(STORAGE_KEYS.LAST_SOLVER_LAYOUT);
+  }
+
+  /**
+   * Site-wide profile mode (`skyshards-profile-mode`): "ironman" (no Bazaar, the default) or
+   * "normal" (buys and sells on the Bazaar). Any page can read it; the Simulator applies it.
+   */
+  static saveProfileMode(mode: ProfileMode): boolean {
+    return this.save(STORAGE_KEYS.PROFILE_MODE, mode);
+  }
+
+  static loadProfileMode(): ProfileMode {
+    return this.load<string>(STORAGE_KEYS.PROFILE_MODE) === "normal" ? "normal" : "ironman";
+  }
+
+  /** The last Bazaar prices fetched (greenhouse items only), shown while a fresh fetch runs or fails. */
+  static saveBazaarPrices(snapshot: StoredBazaarPrices): boolean {
+    return this.save(STORAGE_KEYS.BAZAAR_PRICES, snapshot);
+  }
+
+  static loadBazaarPrices(): StoredBazaarPrices | null {
+    const data = this.load<StoredBazaarPrices>(STORAGE_KEYS.BAZAAR_PRICES);
+    if (!data || typeof data !== "object" || typeof data.fetchedAt !== "number" || !data.quotes || typeof data.quotes !== "object") return null;
+    // Prices cached by an older version (quick_status prices, raw-crop prices) are dropped and refetched.
+    if (data.version !== BAZAAR_PRICES_VERSION) return null;
+    return data;
+  }
+
+  /** Buy / sell side and sales tax for Bazaar prices. */
+  static saveBazaarPricing(pricing: BazaarPricing): boolean {
+    return this.save(STORAGE_KEYS.BAZAAR_PRICING, pricing);
+  }
+
+  static loadBazaarPricing(): BazaarPricing {
+    const data = this.load<Partial<BazaarPricing>>(STORAGE_KEYS.BAZAAR_PRICING);
+    const tax = Number(data?.taxPercent);
+    return {
+      buy: data?.buy === "order" ? "order" : DEFAULT_BAZAAR_PRICING.buy,
+      sell: data?.sell === "instant" ? "instant" : DEFAULT_BAZAAR_PRICING.sell,
+      taxPercent: Number.isFinite(tax) && tax >= 0 && tax <= 100 ? tax : DEFAULT_BAZAAR_PRICING.taxPercent,
+    };
+  }
+
+  /** Manual Bazaar prices per item (`skyshards-bazaar-overrides`), replacing a manipulated live price. */
+  static saveBazaarOverrides(overrides: Record<string, BazaarOverride>): boolean {
+    return this.save(STORAGE_KEYS.BAZAAR_OVERRIDES, overrides);
+  }
+
+  static loadBazaarOverrides(): Record<string, BazaarOverride> {
+    const data = this.load<Record<string, unknown>>(STORAGE_KEYS.BAZAAR_OVERRIDES);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+    const ok = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
+    const out: Record<string, BazaarOverride> = {};
+    for (const [id, raw] of Object.entries(data)) {
+      if (!raw || typeof raw !== "object") continue;
+      const r = raw as Record<string, unknown>;
+      const o: BazaarOverride = {};
+      if (ok(r.lowestSellOffer)) o.lowestSellOffer = r.lowestSellOffer;
+      if (ok(r.highestBuyOrder)) o.highestBuyOrder = r.highestBuyOrder;
+      if (Object.keys(o).length) out[id] = o;
+    }
+    return out;
   }
 
   /** Clears every key except the simulator scenario. */

@@ -6,6 +6,7 @@ import { ScriptRuntime } from "../script/runtime";
 import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { uniqueCropsAcross } from "./init";
+import { reservePlan, sellSurplus } from "./market";
 import { runPlayerSession } from "./player";
 import { finalizeSummary } from "./summary";
 import { tickPlot } from "./tick";
@@ -25,7 +26,8 @@ const now = () => globalThis.performance?.now() ?? 0;
  *   4. scripts: onTick; active: the controller's onSession
  *   5. active: every plot's PLAYER_PHASES, in plotOrder; inactive: exit
  *      triggers checked only, a due step change waits for the next session
- *   6. scripts: active: the controller's afterSession; onCycleEnd; variables saved
+ *   6. scripts: active: the controller's afterSession; normal profile, active: sell surplus
+ *      mutation items (sim/market.ts); scripts: onCycleEnd; variables saved
  *   7. advance the clock
  *
  * Scripts (state.scripts, only when the scenario has any): a script error or pause()
@@ -51,6 +53,8 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
   // Scripts: rebuilt from state on every call, so splitting a run changes nothing.
   // A pause is cleared as the next cycle starts; an error stays and stops every run.
   const scripts = state.scripts ? ScriptRuntime.create(state, env) : null;
+  // Normal profile: what the player keeps instead of selling (pure function of the scenario).
+  const reserve = state.summary.market ? reservePlan(state.scenario, env.data, env.resolveLayout).reserve : null;
   if (state.scripts?.halt?.kind === "error") {
     return { state, events, eventCounts, cyclesRun, truncated: total > 0, summary: state.summary };
   }
@@ -104,9 +108,10 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
       }
     }
 
-    // 6. Scripts close the cycle.
+    // 6. Scripts close the cycle. Normal profile: the player sells surplus mutation items before logging off.
+    if (scripts && active) scripts.callHook("afterSession", [], "controller");
+    if (active && reserve) sellSurplus(state, env.data, reserve);
     if (scripts) {
-      if (active) scripts.callHook("afterSession", [], "controller");
       scripts.callHook("onCycleEnd");
       scripts.save();
     }

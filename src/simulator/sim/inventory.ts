@@ -1,6 +1,7 @@
 import type { PriceSource } from "../economy/prices";
 import type { ItemId } from "../data/types";
 import { ALOE_FRAGMENT, FRAGMENTS_PER_ALOE } from "../growth/aloe";
+import { canBuy, countProduced } from "./market";
 import { bump } from "./summary";
 import type { LedgerRow, PlotId, SimulationState, TickEvent } from "./state";
 
@@ -37,6 +38,7 @@ export function credit(state: SimulationState, item: ItemId, qty: number): void 
   const row = ledgerRow(state, item);
   state.inventory[item] = (state.inventory[item] ?? 0) + qty;
   row.produced += qty;
+  countProduced(state, item, qty);
 }
 
 export interface SpendRequest {
@@ -58,6 +60,8 @@ export interface SpendRequest {
  * Required spend. Without `req.allowDebt` inventory never goes negative: an
  * uncovered spend fails and records debt once per (plot, cell, item) episode.
  * With it, the spend always succeeds and the uncovered units are borrowed.
+ * Normal profile (sim/market.ts): a Bazaar item short of stock buys the shortfall
+ * first (`summary.market.bought`, a `bought` event), so it never goes short or borrows.
  */
 export function spend(
   state: SimulationState,
@@ -68,8 +72,16 @@ export function spend(
   emit: (plotId: PlotId, e: TickEvent) => void
 ): boolean {
   const row = ledgerRow(state, item);
-  const available = state.inventory[item] ?? 0;
+  let available = state.inventory[item] ?? 0;
   const episode = `${req.plotId}:${req.row},${req.col}:${item}`;
+
+  if (available < qty && canBuy(state, item)) {
+    const buy = qty - Math.max(0, available);
+    available = Math.max(0, available) + buy;
+    state.inventory[item] = available;
+    bump(state.summary.market!.bought, item, buy);
+    emit(req.plotId, { kind: "bought", item, row: req.row, col: req.col, qty: buy });
+  }
 
   if (available >= qty || req.allowDebt) {
     const borrowed = Math.min(qty, qty - available);

@@ -31,6 +31,7 @@ import { wouldDecayWithin } from "../sim/decay";
 import { destroyPlant } from "../sim/explosion";
 import { harvestPlant } from "../sim/harvest";
 import { spend } from "../sim/inventory";
+import { canBuy } from "../sim/market";
 import { applyStepLayout, removeByPlayer } from "../sim/placement";
 import { runSessionPhase } from "../sim/player";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isDry, isFootprintFree, isFullyGrown, isHarvestable, isRoot, newPlant } from "../sim/plants";
@@ -692,6 +693,7 @@ export class ScriptRuntime {
       cycleSeconds: ctx.cycleSeconds,
       collected: (item) => collectedOf(this.state, item),
       layout: ctx.layoutFor(plotId),
+      ...(this.state.summary.market ? { buyable: (item: string) => canBuy(this.state, item) } : {}),
     };
   }
 

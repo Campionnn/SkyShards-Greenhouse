@@ -1,4 +1,5 @@
 import type { CycleCtx, TickScratch } from "../sim/context";
+import { canBuy } from "../sim/market";
 import { applyStepLayout } from "../sim/placement";
 import type { FlowRunnerState, PlotState, ScenarioPlot, TickEvent } from "../sim/state";
 import { bump } from "../sim/summary";
@@ -136,6 +137,7 @@ export function dueTarget(plot: PlotState, def: ScenarioPlot, runner: FlowRunner
     cycleSeconds: ctx.cycleSeconds,
     collected: (item: string) => collectedOf(ctx.state, item),
     layout: ctx.layoutFor(plot.id), // the step at runner.stepIndex (also during an on-arrival check)
+    ...(ctx.state.summary.market ? { buyable: (item: string) => canBuy(ctx.state, item) } : {}),
   };
   const scripts = ctx.scripts;
   if (scripts) view.script = (expr) => scripts.evaluateCondition(plot.id, expr, view);

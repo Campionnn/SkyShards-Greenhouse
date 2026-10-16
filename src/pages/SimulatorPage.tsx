@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { FlaskConical, ScanSearch } from "lucide-react";
+import { FlaskConical, ScanSearch, Shield, Store } from "lucide-react";
 import { InfoHint, SegmentedControl, useToast } from "../components/ui";
 import { LayoutPickerDialog } from "../components/simulator/LayoutPicker";
-import { InventoryPanel, MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
+import { MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
 import { EventLog, RunControls, FlowTimeline } from "../components/simulator/RunPanels";
 import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
 import { buttonClass } from "../components/simulator/styles";
@@ -13,8 +13,13 @@ import { addPlot, isBlankScenario, placeLayout, type LayoutDestination } from ".
 import { ScriptEditor } from "../components/simulator/script/ScriptEditor";
 import { ScriptHaltBanner, ScriptPanel } from "../components/simulator/script/ScriptPanel";
 import type { ScriptTarget } from "../components/simulator/script/scriptEdit";
+import { BazaarMoneyPanel } from "../components/simulator/BazaarPanels";
+import { InventoryTable } from "../components/simulator/InventoryTable";
+import { bazaarProfit } from "../components/simulator/bazaarFormat";
 import { useSimulation } from "../hooks/useSimulation";
-import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, migrateScenario, scenarioFromShareCodes, type Scenario } from "../simulator";
+import { useBazaarPrices } from "../hooks/useBazaarPrices";
+import { useProfileMode } from "../hooks/useProfileMode";
+import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, migrateScenario, scenarioFromShareCodes, type ProfileMode, type RunSummary, type Scenario } from "../simulator";
 import { extractLayoutCode, LocalStorageManager, readIncomingLayout, readIncomingScenario, SOURCE_LABEL, type IncomingLayout } from "../utilities";
 
 /** Migrates a saved scenario and fills missing settings from the defaults. */
@@ -54,6 +59,28 @@ function useDebounced<T>(value: T, ms: number): T {
 
 const ALL = "all";
 
+/**
+ * The scenario the engine runs: the profile mode is a site-wide setting, not part of the saved
+ * scenario, so it is applied here. Ironman drops the key, keeping old runs byte-identical.
+ */
+function withProfile(sc: Scenario, profile: ProfileMode): Scenario {
+  const { profile: _saved, ...settings } = sc.settings;
+  void _saved;
+  return profile === "normal" ? { ...sc, settings: { ...settings, profile } } : { ...sc, settings };
+}
+
+/** The current time, refreshed every `ms` (null: never). */
+function useNow(ms: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (ms === null) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
+}
+
 export const SimulatorPage: React.FC = () => {
   const [params] = useSearchParams();
   const location = useLocation();
@@ -71,8 +98,21 @@ export const SimulatorPage: React.FC = () => {
   const [sanityCheckOn, setSanityCheckOn] = useState(false);
   /** Script editor overlay: which script is open. */
   const [scripting, setScripting] = useState<ScriptTarget | null>(null);
+  // Ironman / normal profile: a site-wide setting (localStorage), applied to the scenario the engine runs.
+  const [profile, setProfile] = useProfileMode();
+  const bazaar = useBazaarPrices(profile === "normal");
+  /** Re-renders the price age once a minute. */
+  const now = useNow(profile === "normal" ? 60_000 : null);
   const settled = useDebounced(scenario, 300);
-  const { view, run, step, stepBack, undo, stop, reset, addItems } = useSimulation(settled);
+  const engineScenario = useMemo(() => withProfile(settled, profile), [settled, profile]);
+  const { view, run, step, stepBack, undo, stop, reset, addItems } = useSimulation(engineScenario);
+  /** Live Bazaar quotes with the user's manual prices on top. */
+  const quotes = bazaar.quotes;
+  /** Normal profile: the run bar's profit at Bazaar prices. */
+  const priceSummary = useMemo(
+    () => (profile === "normal" ? (s: RunSummary) => bazaarProfit(s, quotes, bazaar.pricing) : undefined),
+    [profile, quotes, bazaar.pricing]
+  );
 
   useEffect(() => {
     LocalStorageManager.saveSimulatorScenario(settled);
@@ -184,21 +224,23 @@ export const SimulatorPage: React.FC = () => {
           answer has to be simulated.
         </InfoHint>
         <span className="text-xs text-slate-500 hidden md:inline">Evaluates one scenario. Step and Run use the same engine.</span>
-        {state && (
-          <div className="flex items-center gap-2 ml-auto">
-            {sanityCheckOn && <span className="text-xs text-slate-500 hidden sm:inline">Hover an empty cell or target slot.</span>}
-            <button
-              type="button"
-              className={`${sanityCheckOn ? buttonClass.primary : buttonClass.neutral} flex-shrink-0`}
-              aria-pressed={sanityCheckOn}
-              onClick={() => setSanityCheckOn((on) => !on)}
-              title="Hover an empty cell or target slot to see which mutations could spawn there now, and why the others can't"
-            >
-              <ScanSearch className="w-3 h-3" />
-              Sanity Check
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2 ml-auto">
+          <SegmentedControl
+            size="xs"
+            nowrap
+            value={profile}
+            onChange={setProfile}
+            options={[
+              { value: "ironman", label: "Ironman", icon: <Shield />, title: "No Bazaar: every item comes from your own harvests" },
+              { value: "normal", label: "Normal profile", icon: <Store />, tone: "blue", title: "Buys what a layout is short of and sells surplus mutations on the Bazaar" },
+            ]}
+          />
+          <InfoHint title="Profile mode" width={300}>
+            Ironman (the default) has no Bazaar: placements come from your own harvests, and a missing item leaves its cell empty. Normal profile buys
+            whatever a placement is short of and sells surplus mutation items after every online session, priced live from the Hypixel Bazaar. Your
+            choice is remembered in this browser for the whole site.
+          </InfoHint>
+        </div>
       </div>
 
       <RunControls
@@ -212,6 +254,7 @@ export const SimulatorPage: React.FC = () => {
         onReset={reset}
         seed={scenario.settings.seed}
         onSeedChange={(seed) => setScenario((sc) => ({ ...sc, settings: { ...sc.settings, seed } }))}
+        priceSummary={priceSummary}
       />
       {state?.scripts?.halt && (
         <ScriptHaltBanner
@@ -226,15 +269,30 @@ export const SimulatorPage: React.FC = () => {
       <div className="space-y-4 min-w-0">
           {state ? (
             <div className="space-y-3">
-              {plotIds.length > 1 && (
-                <SegmentedControl
-                  size="xs"
-                  className="max-w-md"
-                  value={focused === null ? ALL : String(focused)}
-                  onChange={setFocus}
-                  options={[{ value: ALL, label: "All plots" }, ...plotIds.map((id) => ({ value: String(id), label: `Plot ${id}` }))]}
-                />
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {plotIds.length > 1 && (
+                  <SegmentedControl
+                    size="xs"
+                    className="max-w-md flex-1 min-w-[16rem]"
+                    value={focused === null ? ALL : String(focused)}
+                    onChange={setFocus}
+                    options={[{ value: ALL, label: "All plots" }, ...plotIds.map((id) => ({ value: String(id), label: `Plot ${id}` }))]}
+                  />
+                )}
+                <div className="flex items-center gap-2 ml-auto">
+                  {sanityCheckOn && <span className="text-xs text-slate-500 hidden sm:inline">Hover an empty cell or target slot.</span>}
+                  <button
+                    type="button"
+                    className={`${sanityCheckOn ? buttonClass.primary : buttonClass.neutral} flex-shrink-0`}
+                    aria-pressed={sanityCheckOn}
+                    onClick={() => setSanityCheckOn((on) => !on)}
+                    title="Hover an empty cell or target slot to see which mutations could spawn there now, and why the others can't"
+                  >
+                    <ScanSearch className="w-3 h-3" />
+                    Sanity Check
+                  </button>
+                </div>
+              </div>
               <div className={`grid gap-3 ${cols}`}>
                 {shownPlots.map((plot) => (
                   <div key={plot.id} className={focused !== null ? "max-w-[720px] w-full mx-auto" : ""}>
@@ -253,7 +311,7 @@ export const SimulatorPage: React.FC = () => {
                   </div>
                 ))}
               </div>
-              <PlotMarkLegend />
+              <PlotMarkLegend normalProfile={!!state.summary.market} />
             </div>
           ) : (
             <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-6 text-xs text-slate-400">
@@ -264,11 +322,27 @@ export const SimulatorPage: React.FC = () => {
           {snapshot && state && (
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                <MoneyPanel summary={state.summary} previous={view.previousSummary} cycleSeconds={state.lastCycleSeconds} />
+                {state.summary.market ? (
+                  <BazaarMoneyPanel
+                    summary={state.summary}
+                    previous={view.previousSummary}
+                    quotes={quotes}
+                    pricing={bazaar.pricing}
+                    cycleSeconds={state.lastCycleSeconds}
+                  />
+                ) : (
+                  <MoneyPanel summary={state.summary} previous={view.previousSummary} cycleSeconds={state.lastCycleSeconds} />
+                )}
                 <SustainabilityPanel report={snapshot.report} summary={state.summary} />
               </div>
-              <InventoryPanel
+              {/* One inventory table for both profiles; normal adds the Bazaar to it. */}
+              <InventoryTable
                 state={state}
+                bazaar={
+                  state.summary.market
+                    ? { scenario, view: bazaar, now, onReserveChange: (reserve) => setScenario((sc) => ({ ...sc, settings: { ...sc.settings, reserve } })) }
+                    : undefined
+                }
                 onAddItems={addItems}
                 busy={view.status === "running"}
                 startingInventory={scenario.startingInventory}

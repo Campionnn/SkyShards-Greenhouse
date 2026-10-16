@@ -16,6 +16,8 @@ export interface TriggerView {
   collected?: (item: string) => number;
   /** The step's resolved layout (`layoutShort`). Missing: `layoutShort` never holds. */
   layout?: ResolvedLayout;
+  /** Normal profile: items the player buys when short (sim/market.ts), so they never make a layout short. */
+  buyable?: (item: string) => boolean;
   /** Evaluates a `script` condition (the scenario's script runtime). Missing: script conditions never hold. */
   script?: (expr: string) => boolean;
 }
@@ -62,7 +64,7 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
       return (v.collected ? v.collected(t.item) : v.inventory[t.item] ?? 0) >= t.qty;
     case "layoutShort":
       if (!v.layout) return false;
-      return Object.entries(layoutMissing(v.plot, v.layout)).some(([item, n]) => (v.inventory[item] ?? 0) < n);
+      return Object.entries(layoutMissing(v.plot, v.layout)).some(([item, n]) => (v.inventory[item] ?? 0) < n && !v.buyable?.(item));
     case "allFullyGrown": {
       const plants = growable(v.plot);
       return plants.length > 0 && plants.every(isFullyGrown);

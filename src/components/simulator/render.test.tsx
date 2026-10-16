@@ -4,19 +4,22 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { GreenhouseDataProvider, InfoModalProvider } from "../../context";
 import type { SimulationView } from "../../hooks/useSimulation";
-import { defaultGameData, sanityCheck } from "../../simulator";
+import { defaultGameData, sanityCheck, withOverrides } from "../../simulator";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { engine, flow, inject, LAYOUT_A_CODE, LAYOUT_B_CODE, layout, scenario, singlePlot, start as startOf, step } from "../../simulator/testHelpers";
 import { ToastProvider } from "../ui";
 import { PlotMarkLegend, PlotView } from "./PlotView";
 import { LayoutPickerPanel } from "./LayoutPicker";
-import { InventoryPanel, MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
+import { MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
+import { InventoryTable } from "./InventoryTable";
 import { FlowEditor, WatchPicker } from "./FlowEditor";
 import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
 import { AloeHarvestPreview, ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 import { SimTooltip } from "./SimTooltip";
 import { closestBlocked, hoveredCellOffset } from "./sanityFormat";
-import { describeEvent, plantIconOf } from "./format";
+import { describeEvent, formatCoins, formatCount, nameOf, plantIconOf } from "./format";
+import { BazaarMoneyPanel, BazaarPricePanel } from "./BazaarPanels";
+import { bazaarProfit, priceAge } from "./bazaarFormat";
 
 // Server-render every simulator panel against a real simulation, to catch
 // render-time errors (no browser needed).
@@ -63,7 +66,7 @@ describe("simulator panels render", () => {
     const data = defaultGameData();
     const inventory = Object.fromEntries([...data.mutationIds, "wheat", "fermento", "dead_plant"].map((id) => [id, 10]));
     const inventoryState = startOf(singlePlot(layout(), { inventory }));
-    const html = wrap(<InventoryPanel state={inventoryState} />);
+    const html = wrap(<InventoryTable state={inventoryState} />);
 
     for (const id of data.mutationIds) {
       const mutation = data.mutations[id];
@@ -334,15 +337,164 @@ describe("simulator panels render", () => {
       <>
         <MoneyPanel summary={state.summary} previous={before.summary} />
         <SustainabilityPanel report={view.snapshot!.report} summary={state.summary} />
-        <InventoryPanel state={state} />
-        <InventoryPanel state={view.snapshot!.state} onAddItems={() => {}} startingInventory={{ chloronite: 3 }} onStartingInventoryChange={() => {}} />
-        <InventoryPanel state={start.state} onAddItems={() => {}} startingInventory={{ chloronite: 3 }} onStartingInventoryChange={() => {}} />
+        <InventoryTable state={state} />
+        <InventoryTable state={view.snapshot!.state} onAddItems={() => {}} startingInventory={{ chloronite: 3 }} onStartingInventoryChange={() => {}} />
+        <InventoryTable state={start.state} onAddItems={() => {}} startingInventory={{ chloronite: 3 }} onStartingInventoryChange={() => {}} />
       </>
     );
     expect(html).toContain("Profit");
     expect(html).toContain("Started with");
     expect(html).toContain("This is what you start with");
     expect(html).toContain("Sustainab");
+  });
+
+  it("ironman inventory: one row per item, made from the ledger in Total, net and NPC values, no Bazaar", () => {
+    const html = wrap(<InventoryTable state={state} onAddItems={() => {}} startingInventory={{}} onStartingInventoryChange={() => {}} />).replace(/<!-- -->/g, "");
+    expect(html).toContain(">Inventory</h3>");
+    expect(html).not.toMatch(/Bazaar|Instant buy|reserve|Edit prices/);
+    expect(html).toContain("Mutations net");
+    expect(html).toContain("Shortfalls");
+    expect(html).toContain(">net</span>");
+    expect(html).toContain(">NPC</span>");
+    const table = html.slice(html.indexOf('data-testid="inventory-items"'));
+    // Every item at most once, and Total shows what the run made (not only what is held). The most
+    // valuable crop is in its section's first 5 rows.
+    const made = Object.entries(state.ledger).filter(([, row]) => row.produced > 0);
+    expect(made.length).toBeGreaterThan(0);
+    for (const [id] of made) expect(table.split(`>${nameOf(id)}</span>`).length - 1).toBeLessThanOrEqual(1);
+    const npc = (id: string) => defaultGameData().crops[id]?.sellPrice ?? 0;
+    const [topCrop, topRow] = made.filter(([id]) => npc(id) > 0).sort((a, b) => b[1].produced * npc(b[0]) - a[1].produced * npc(a[0]))[0];
+    expect(table).toContain(`>${nameOf(topCrop)}</span>`);
+    expect(table).toContain(formatCount(topRow.produced));
+    // Mutations have no NPC price: their section says so instead of "made worth 0".
+    if (made.some(([id]) => defaultGameData().mutations[id])) expect(table).toContain("no NPC price");
+  });
+
+  it("inventory sections over 5 rows scroll (every row rendered, columns kept by a subgrid); problems sort first", () => {
+    const data = defaultGameData();
+    // 8 mutations held, 2 base crops: Mutations scrolls, Crops does not.
+    const muts = data.mutationIds.slice(0, 8);
+    const inventory = Object.fromEntries([...muts.map((id) => [id, 3]), ["wheat", 4], ["carrot", 2]]);
+    const s = startOf(singlePlot(layout(), { inventory }));
+    // One mutation went into debt: it must be listed first, visible without scrolling.
+    const debtor = muts[7];
+    s.inventory[debtor] = -2;
+    const html = wrap(<InventoryTable state={s} />).replace(/<!-- -->/g, "");
+    const section = (key: string) => {
+      const start = html.indexOf(`data-section="${key}"`);
+      const tag = html.lastIndexOf("<div", start);
+      return { tag: html.slice(tag, html.indexOf(">", start) + 1), body: html.slice(start, html.indexOf('data-section="', start + 20) >>> 0 || undefined) };
+    };
+    const mut = section("mutation");
+    for (const id of muts) expect(mut.body).toContain(`>${nameOf(id)}</span>`); // all rendered, none hidden
+    expect(mut.body.indexOf(`>${nameOf(debtor)}</span>`)).toBe(Math.min(...muts.map((id) => mut.body.indexOf(`>${nameOf(id)}</span>`))));
+    expect(mut.tag).toContain("overflow-y-auto");
+    expect(mut.tag).toContain("grid-cols-subgrid");
+    expect(mut.tag).toContain("max-height:10.5rem");
+    expect(html).toContain("8 · scroll for more");
+    const crop = section("crop");
+    expect(crop.tag).not.toContain("overflow-y-auto"); // only 2: no scroll box
+    expect(html).not.toMatch(/Show \d+ more|Show fewer/);
+  });
+
+  it("normal profile: Bazaar money, prices, reserve and the run bar profit render from counts and quotes", () => {
+    const normalSc = { ...sc, settings: { ...sc.settings, profile: "normal" as const } };
+    const s0 = engine.initState(normalSc).state;
+    const r = engine.run(s0, 60);
+    expect(r.summary.market).toBeDefined();
+    const quotes = Object.fromEntries(
+      [...Object.keys(r.summary.market!.produced), ...Object.keys(r.summary.market!.built), "chloronite", "magic_jellybean"].map((id) => [
+        id,
+        { lowestSellOffer: 1000, highestBuyOrder: 800 },
+      ])
+    );
+    const pricing = { buy: "instant" as const, sell: "order" as const, taxPercent: 1 };
+    const overrides = { chloronite: { highestBuyOrder: 50 } };
+    const bazaar = {
+      prices: { fetchedAt: 0, lastUpdated: 0, quotes },
+      quotes: withOverrides(quotes, overrides),
+      loading: false,
+      error: null,
+      refresh: () => {},
+      pricing,
+      setPricing: () => {},
+      overrides,
+      setOverrides: () => {},
+    };
+    const html = wrap(
+      <>
+        <BazaarMoneyPanel summary={r.summary} previous={s0.summary} quotes={quotes} pricing={pricing} cycleSeconds={r.state.lastCycleSeconds} />
+        <InventoryTable state={r.state} bazaar={{ scenario: normalSc, view: bazaar, now: 90_000, onReserveChange: () => {} }} onAddItems={() => {}} />
+        <PlotMarkLegend normalProfile />
+      </>
+    ).replace(/<!-- -->/g, "");
+    expect(html).toContain("Money (Bazaar)");
+    expect(html).toContain("Stock used");
+    expect(html).toContain("Cost to build (one-off)");
+    expect(html).toContain("Mutations sold so far");
+    expect(html).toContain("Inventory &amp; Bazaar");
+    expect(html).toContain("Instant buy");
+    expect(html).toContain("Sell order");
+    expect(html).toContain("Prices 1m ago");
+    expect(html).toContain("Edit prices (1 set)");
+    // The Profit card shows the Money panel's profit (same valuation, overrides applied).
+    const cardProfit = bazaarProfit(r.summary, bazaar.quotes, pricing)!.profit;
+    expect(html).toMatch(new RegExp(`>Profit</div><div class="[^"]*">${formatCoins(cardProfit).replace(".", "\\.")}<`));
+    expect(html).toContain("Reserve of Chloronite");
+    // Base crops show the double-compacted item's price (both sides), not one crop's.
+    const wheatHtml = wrap(
+      <InventoryTable
+        state={startOf(singlePlot(layout(), { inventory: { wheat: 100 } }))}
+        bazaar={{
+          scenario: normalSc,
+          view: { ...bazaar, quotes: { wheat: { lowestSellOffer: 200_000 / 25_600, highestBuyOrder: 190_000 / 25_600 } }, overrides: {} },
+          now: 90_000,
+          onReserveChange: () => {},
+        }}
+      />
+    ).replace(/<!-- -->/g, "");
+    expect(wheatHtml).toContain("per Enchanted Hay Bale");
+    expect(wheatHtml).toContain(`>${formatCoins(200_000 * 0.99)}</span>`); // sell order, after tax, per Hay Bale
+    expect(wheatHtml).toContain(`>${formatCoins(200_000)}</span>`); // instant buy, per Hay Bale
+    expect(wheatHtml).toContain("One crop: 7.73 / 7.81");
+    expect(html).toContain("bought on the Bazaar");
+    expect(html).not.toContain("NaN");
+    // One table: every item appears exactly once (no separate inventory and Bazaar lists).
+    const table = html.slice(html.indexOf('data-testid="inventory-items"'));
+    for (const name of ["Chloronite", "Wheat"]) expect(table.split(`>${name}</span>`).length - 1).toBeLessThanOrEqual(1);
+    // Made in Total matches the ledger (not 0 while Per day shows a number).
+    const madeWheat = r.state.ledger.wheat?.produced ?? 0;
+    if (madeWheat > 0) expect(table).toContain(formatCount(madeWheat));
+    // The price editor lists live prices as placeholders and your price in the box.
+    const editor = wrap(<BazaarPricePanel bazaar={bazaar} focusItem="chloronite" itemIds={["chloronite", "wheat"]} onClose={() => {}} />).replace(/<!-- -->/g, "");
+    expect(editor).toContain("Bazaar prices");
+    expect(editor).toContain('value="50"');
+    expect(editor).toContain("live 1.0k");
+    expect(editor).toContain("Clear all (1)");
+    // Without prices yet: no crash, a waiting line.
+    expect(wrap(<BazaarMoneyPanel summary={r.summary} previous={null} quotes={null} pricing={pricing} />)).toContain("Waiting for Bazaar prices");
+    // Ironman: no Bazaar panel content and no Bazaar mark in the legend.
+    expect(renderToString(<BazaarMoneyPanel summary={state.summary} previous={null} quotes={quotes} pricing={pricing} />)).toBe("");
+    expect(renderToString(<PlotMarkLegend />)).not.toContain("Bazaar");
+    // The run bar shows the Bazaar profit when a pricer is given.
+    const v = bazaarProfit(r.summary, quotes, pricing)!;
+    const bar = wrap(
+      <RunControls
+        view={{ ...view, snapshot: { state: r.state, report: engine.analyse(r.state) } }}
+        plotCount={2}
+        onRun={() => {}}
+        onStep={() => {}}
+        onStepBack={() => {}}
+        onUndo={() => {}}
+        onStop={() => {}}
+        onReset={() => {}}
+        seed={1}
+        onSeedChange={() => {}}
+        priceSummary={(s) => bazaarProfit(s, quotes, pricing)}
+      />
+    ).replace(/<!-- -->/g, "");
+    expect(bar).toContain(formatCoins(v.profit));
+    expect(priceAge(0, 30_000)).toBe("just now");
   });
 
   it("run controls, log and timeline", () => {

@@ -8,6 +8,7 @@ import { emptyScriptsState, ScriptRuntime } from "../script/runtime";
 import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { convertAloeFragments, ledgerRow } from "./inventory";
+import { emptyMarket } from "./market";
 import { applyStepLayout } from "./placement";
 import { isDry } from "./plants";
 import { zeroSummary } from "./summary";
@@ -64,6 +65,8 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
   };
   for (const item of Object.keys(state.inventory)) ledgerRow(state, item);
   convertAloeFragments(state);
+  // Normal profile: Bazaar counts (sim/market.ts), from after the starting stock. Ironman states never get the key.
+  if (input.settings.profile === "normal") state.summary.market = emptyMarket();
   // Only scenarios that use scripts carry script state, so the rest are unchanged.
   if (scenarioUsesScripts(input)) state.scripts = emptyScriptsState(input.settings.seed);
 

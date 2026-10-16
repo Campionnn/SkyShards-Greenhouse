@@ -155,6 +155,8 @@ export function describeEvent(e: TimedEvent): string {
       return `Short of ${nameOf(e.item)}${at}: needed ${e.needed}, had ${e.available}`;
     case "borrowed":
       return `Placed ${nameOf(e.item)}${at} on mutation debt: borrowed ${formatCount(e.qty)}, stock now ${formatCount(e.stock)}`;
+    case "bought":
+      return `Bought ${formatCount(e.qty)} ${nameOf(e.item)} on the Bazaar to place${at}`;
     case "stepChanged":
       return `Step "${e.fromStep}" -> "${e.toStep}"${e.skipped?.length ? ` (skipped ${e.skipped.map((s) => `"${s}"`).join(", ")}: exits already met)` : ""}`;
     case "fullyGrown":

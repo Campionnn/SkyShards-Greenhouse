@@ -28,7 +28,12 @@ export const RunControls: React.FC<{
   onReset: () => void;
   seed: number;
   onSeedChange: (seed: number) => void;
-}> = ({ view, plotCount, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange }) => {
+  /**
+   * Normal profile: price a summary at Bazaar prices (profit, /day). Missing, or null for a
+   * summary: the summary's own NPC figures.
+   */
+  priceSummary?: (s: RunSummary) => { profit: number; perDay: number } | null;
+}> = ({ view, plotCount, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange, priceSummary }) => {
   const [n, setN] = useState(200);
   const running = view.status === "running";
   const ready = view.status === "ready";
@@ -80,6 +85,9 @@ export const RunControls: React.FC<{
   }, []);
   // While a run is in flight, show the worker's running totals.
   const summary = (running && view.progress?.summary) || view.snapshot?.state.summary;
+  const priced = summary ? priceSummary?.(summary) ?? null : null;
+  const profit = priced ? priced.profit : summary?.profit ?? 0;
+  const profitPerDay = priced ? priced.perDay : summary?.coinsPerDay ?? 0;
 
   let status = "Loading...";
   if (view.status === "error") status = "Scenario has errors - see the Scenario panel.";
@@ -190,11 +198,12 @@ export const RunControls: React.FC<{
         <p className="text-xs text-slate-400">{status}</p>
         {summary && view.snapshot && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-            <span className="text-slate-400">
-              Profit <span className="text-slate-100 font-medium">{formatCoins(summary.profit)}</span>
+            <span className="text-slate-400" title={priced ? "Bazaar prices (normal profile)" : "NPC prices"}>
+              Profit <span className="text-slate-100 font-medium">{formatCoins(profit)}</span>
             </span>
             <span className="text-slate-400">
-              <span className="text-emerald-300 font-medium">{formatCoins(summary.coinsPerDay)}</span>/day
+              <span className={`${profitPerDay < 0 ? "text-red-300" : "text-emerald-300"} font-medium`}>{formatCoins(profitPerDay)}</span>/day
+              {priced ? " profit" : ""}
             </span>
             <span className="text-slate-400">
               {summary.cyclesRun} cycles · {formatDuration(summary.elapsedSeconds)}
@@ -268,7 +277,7 @@ export const EventLog: React.FC<{ log: TimedEvent[]; plotIds: number[] }> = ({ l
             <div className="text-[11px] text-slate-500 uppercase tracking-wide">Cycle {cycle}</div>
             <ul className="text-xs text-slate-300 space-y-0.5">
               {events.map((e, i) => (
-                <li key={i} className={e.kind === "debt" ? "text-red-300" : e.kind === "spawned" ? "text-emerald-200" : undefined}>
+                <li key={i} className={e.kind === "debt" ? "text-red-300" : e.kind === "spawned" ? "text-emerald-200" : e.kind === "bought" ? "text-blue-200" : undefined}>
                   {describeEvent(e)}
                 </li>
               ))}
