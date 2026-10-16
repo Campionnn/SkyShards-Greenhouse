@@ -4,7 +4,7 @@ import { uptimeRatio, type RunSummary, type SpotReport, type SustainabilityRepor
 import { InfoHint, Panel, SectionLabel } from "../ui";
 import { CropImage } from "../shared";
 import { debtText, spotFailureText, formatCoins, formatCount, formatDuration, nameOf } from "./format";
-import { Stat } from "./controls";
+import { Leader, Stat } from "./controls";
 
 // ---- Money ----------------------------------------------------------------
 
@@ -54,6 +54,7 @@ export const MoneyPanel: React.FC<{
                     {r.hint}
                   </InfoHint>
                 )}
+                <Leader className="-mr-3" />
               </span>
               <span className="text-right text-slate-400">{formatCoins(delta)}</span>
               <span className={`text-right ${cls}`}>{formatCoins(total)}</span>

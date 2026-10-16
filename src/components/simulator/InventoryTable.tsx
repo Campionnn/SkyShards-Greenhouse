@@ -8,7 +8,7 @@ import { getRarityTextColor } from "../../utilities/rarity";
 import { BazaarPriceControls, BazaarPriceDialog } from "./BazaarPanels";
 import { applyItemDelta, buildItemRows, priceRun, type ItemRow } from "./bazaarFormat";
 import { allItemIds, formatCoins, formatCount, formatRate, nameOf, rarityOf, type ItemCategory } from "./format";
-import { NumberInput } from "./controls";
+import { Leader, NumberInput } from "./controls";
 import { ItemPicker } from "./ItemPicker";
 import { buttonClass, inputClass } from "./styles";
 
@@ -428,6 +428,7 @@ const ItemLine: React.FC<{
       <span className="flex items-center gap-1.5 min-w-0 py-0.5">
         <CropImage cropId={r.id} cropName={nameOf(r.id)} size="xs" showFallback />
         <span className={`${isMut ? getRarityTextColor(rarityOf(r.id) ?? "common") : "text-slate-300"} break-words min-w-0`}>{nameOf(r.id)}</span>
+        <Leader className="-mr-3" />
       </span>
       {perDay ? (
         <span />

@@ -7,7 +7,7 @@ import { CropImage } from "../shared";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { priceAge, priceRun, type Quotes } from "./bazaarFormat";
 import { formatCoins, formatCount, nameOf, rarityOf } from "./format";
-import { NumberInput, Stat } from "./controls";
+import { Leader, NumberInput, Stat } from "./controls";
 import { buttonClass, inputClass } from "./styles";
 
 // Normal-profile (Bazaar) panels. The engine counts what was produced, bought, sold and built
@@ -153,6 +153,7 @@ export const BazaarMoneyPanel: React.FC<{
                         {r.hint}
                       </InfoHint>
                     )}
+                    <Leader className="-mr-3" />
                   </span>
                   <span className="text-right text-slate-400">{formatCoins(delta)}</span>
                   <span className={`text-right ${cls}`}>{formatCoins(total)}</span>
@@ -320,6 +321,7 @@ export const BazaarPricePanel: React.FC<PriceEditorProps> = ({ bazaar, focusItem
                       </span>
                     )}
                   </span>
+                  <Leader className="-mr-3" />
                 </span>
                 <PriceInput value={shown(o?.lowestSellOffer) ?? undefined} live={shown(q?.lowestSellOffer) ?? null} onChange={(v) => set(id, "lowestSellOffer", stored(v))} label={`Instant buy price of ${label}`} />
                 <PriceInput value={shown(o?.highestBuyOrder) ?? undefined} live={shown(q?.highestBuyOrder) ?? null} onChange={(v) => set(id, "highestBuyOrder", stored(v))} label={`Instant sell price of ${label}`} />

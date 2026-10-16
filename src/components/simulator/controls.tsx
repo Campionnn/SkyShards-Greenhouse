@@ -148,14 +148,32 @@ export const IdSelect: React.FC<{ value: string; onChange: (v: string) => void; 
   </select>
 );
 
+/**
+ * A faint dotted leader that fills the rest of a row's label cell, so the eye can follow a name
+ * across to its numbers. Put it last inside a `flex items-center` label; it takes the leftover
+ * width, is vertically centred on the row, and disappears when the label fills the cell.
+ */
+export const Leader: React.FC<{ className?: string }> = ({ className = "" }) => (
+  <span
+    aria-hidden
+    className={`flex-1 min-w-3 h-px self-center ${className}`}
+    style={{
+      backgroundImage: "radial-gradient(circle at 0.5px 0.5px, rgb(100 116 139 / 0.4) 0.75px, transparent 0.75px)",
+      backgroundSize: "6px 1px",
+      backgroundRepeat: "repeat-x",
+    }}
+  />
+);
+
 export const Stat: React.FC<{ label: React.ReactNode; value: React.ReactNode; tone?: "good" | "bad" | "muted"; title?: string }> = ({
   label,
   value,
   tone,
   title,
 }) => (
-  <div className="flex items-center justify-between text-xs py-0.5" title={title}>
+  <div className="flex items-center gap-2 text-xs py-0.5" title={title}>
     <span className="text-slate-400">{label}</span>
+    <Leader />
     <span className={tone === "good" ? "text-emerald-300" : tone === "bad" ? "text-red-300" : tone === "muted" ? "text-slate-500" : "text-slate-200"}>
       {value}
     </span>
