@@ -477,7 +477,7 @@ export const SettingsPanel: React.FC<{
                   <span className="text-slate-400">{nameOf(k)}:</span> {why}
                 </li>
               ))}
-              <li>Effect relay order is a community-verified model (21/23 recorded grids), not a published formula.</li>
+              <li>Effect Spread (since the Oct 13 2026 fix) is modelled as relays sharing everything until nothing changes, in every direction; checked against recorded in-game grids, not a published formula.</li>
             </ul>
           </div>
           <button className={buttonClass.neutral} onClick={() => setSettings({ config: structuredClone(DEFAULT_CONFIG) })} disabled={!nonDefault}>

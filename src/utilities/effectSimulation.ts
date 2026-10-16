@@ -5,13 +5,18 @@
  * 1. Direct: every plant gives its listed buffs (positive and negative) to its
  *    four cardinal neighbours, simultaneously. No plant holds its own buffs.
  * 2. Relays: every plant that holds effect_spread (it neighbours something
- *    listing it, e.g. a wild rose) takes exactly one turn, giving everything it
- *    holds except effect_spread to its neighbours. Effects received after its
- *    turn are not passed on. A lone rose relays nothing; its neighbours do.
- * 3. Turn order is Java HashMap iteration: slot (13 * column + row) % table,
- *    ascending, ties by row then column. The table starts at 16 and doubles
- *    when the relay count exceeds 75% of it, so 13, 25, 49 and 97 relays each
- *    reorder every turn on the plot.
+ *    listing it, e.g. a wild rose) gives everything it holds except
+ *    effect_spread to its neighbours, and keeps doing so until nothing changes
+ *    (a fixpoint). So a connected group of relays shares everything any of
+ *    them received, in every direction, however long the chain. A lone rose
+ *    relays nothing; its neighbours do. effect_spread itself is never relayed,
+ *    so the set of relays is fixed by step 1.
+ *    This is the model since the Oct 13 2026 patch ("Fixed inconsistent Effect
+ *    Spread behavior"). Before it, each relay took a single turn in Java
+ *    HashMap order ((13 * column + row) % table, table 16 doubling past 75%
+ *    full) and only passed on what it held on its turn, so effects spread far
+ *    in some directions and barely in others. The new result is a superset of
+ *    the old one for every layout.
  * - Effects are a set. Immunity cancels negatives for its holder, which still
  *   relays them. improved_x hides x.
  * - A multi-cell plant is one entity: one effect set, one turn keyed at its
@@ -56,23 +61,6 @@ export const SPECIAL_EFFECT_SETS: Record<string, string[]> = Object.fromEntries(
 export interface PlantBuffs {
   intrinsic: Set<string>; // what it gives (positive + negative, effect_spread included)
   spreads: boolean;       // lists effect_spread: makes its NEIGHBOURS relays
-}
-
-// Relay turn order = Java HashMap iteration over positions.
-export const RELAY_HASH_COLUMN_FACTOR = 13;
-export const RELAY_TABLE_INITIAL = 16;
-export const RELAY_TABLE_LOAD_FACTOR = 0.75;
-
-/** HashMap capacity holding `count` relays: 16, doubled past 75% full. */
-export function relayTableSize(count: number): number {
-  let table = RELAY_TABLE_INITIAL;
-  while (count > RELAY_TABLE_LOAD_FACTOR * table) table *= 2;
-  return table;
-}
-
-/** A relay's hash slot for its turn (ties then go by row, then column). */
-export function relaySlot(position: [number, number], table: number): number {
-  return (RELAY_HASH_COLUMN_FACTOR * position[1] + position[0]) % table;
 }
 
 const buffCache = new Map<string, PlantBuffs | undefined>();
@@ -177,10 +165,8 @@ export interface EffectSimulation {
   isSpecialEligible(mutationId: string, position: [number, number], size: number): boolean;
   /** Which required effects a spot is missing (empty list = eligible). */
   missingSpecialEffects(mutationId: string, position: [number, number], size: number): string[];
-  /** Positions of the relays, in the order they took their turn. */
-  relayOrder: Array<[number, number]>;
-  /** HashMap table size that produced that order. */
-  relayTable: number;
+  /** Positions (top-left) of the plants that relay, sorted by row, then column. */
+  relays: Array<[number, number]>;
 }
 
 const CARDINAL: Array<[number, number]> = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -260,17 +246,31 @@ export function simulateEffects(
     give(plant, plant.buffs.intrinsic);
   }
 
-  // 2-3. One relay turn per plant holding effect_spread, in HashMap order.
-  const relays = plants.filter((p) => !p.isSlot && p.has.has(RELAY_EFFECT));
-  const relayTable = relayTableSize(relays.length);
-  relays.sort((a, b) =>
-    relaySlot(a.position, relayTable) - relaySlot(b.position, relayTable) ||
-    a.position[0] - b.position[0] ||
-    a.position[1] - b.position[1]
-  );
-  for (const plant of relays) {
+  // 2. Every plant holding effect_spread relays what it holds until nothing changes.
+  // Relaying never hands on effect_spread, so the relay set is fixed here.
+  const relays = plants
+    .filter((p) => !p.isSlot && p.has.has(RELAY_EFFECT))
+    .sort((a, b) => a.position[0] - b.position[0] || a.position[1] - b.position[1]);
+  const isRelay = new Set(relays);
+  const sent = new Map<SimPlant, number>(); // payload size each relay last gave
+  const queue: SimPlant[] = [...relays];
+  const queued = new Set(queue);
+  while (queue.length > 0) {
+    const plant = queue.shift()!;
+    queued.delete(plant);
     const payload = new Set([...plant.has].filter((e) => e !== RELAY_EFFECT));
-    if (payload.size > 0) give(plant, payload);
+    if (payload.size === 0 || payload.size === sent.get(plant)) continue;
+    sent.set(plant, payload.size);
+    const before = new Map<SimPlant, number>();
+    const { plants: near } = neighbours(plant);
+    for (const q of near) if (isRelay.has(q)) before.set(q, q.has.size);
+    give(plant, payload);
+    for (const [q, size] of before) {
+      if (q.has.size !== size && !queued.has(q)) {
+        queue.push(q);
+        queued.add(q);
+      }
+    }
   }
 
   const heldAt = (row: number, col: number): Set<string> => {
@@ -304,8 +304,7 @@ export function simulateEffects(
     isSpecialEligible: (mutationId, position, size) =>
       !!SPECIAL_EFFECT_SETS[mutationId] && missingSpecialEffects(mutationId, position, size).length === 0,
     missingSpecialEffects,
-    relayOrder: relays.map((p) => p.position),
-    relayTable,
+    relays: relays.map((p) => p.position),
   };
 }
 

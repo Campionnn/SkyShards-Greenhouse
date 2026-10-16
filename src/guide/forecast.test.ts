@@ -43,7 +43,10 @@ describe("runOne", () => {
   it("forecasts differently for a different schedule", () => {
     const daily = { ...SUPPLIED, settings: { ...SUPPLIED.settings, activity: { kind: "everyN" as const, n: 6, offset: 0 } } };
     const run = runOne(flow, daily, 1, guideEnv);
-    expect(run.logins).toBeLessThan(runs[0].logins);
+    // A sparser schedule logs in less often per cycle. (Not necessarily fewer logins in total: the
+    // run can take more cycles to finish.)
+    expect(run.logins / run.cycles).toBeLessThan(runs[0].logins / runs[0].cycles);
+    expect(run.cycles).not.toBe(runs[0].cycles);
   }, 60_000);
 });
 
