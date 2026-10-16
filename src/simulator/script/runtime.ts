@@ -1214,8 +1214,9 @@ const POLICY_CHOICES: Record<string, string[]> = {
   layoutInputSpawns: ["keep", "harvest"],
   baseCropUpkeep: ["leaveUntilDecay", "harvestWhenGrown", "harvestBeforeDecay"],
   watering: ["toMax", "never"],
+  placedUpkeep: ["leaveUntilDecay", "replaceBeforeDecay"],
 };
-const POLICY_FLAGS = ["replaceDecayed", "fixGround", "clearTargetBlockers"];
+const POLICY_FLAGS = ["replaceDecayed", "fixGround", "clearTargetBlockers", "onlyReplaceForEmptyTargets"];
 const GATE_FLAGS = ["wakeSnoozling", "vacuumRat", "dischargeThunderling", "noctilumeTime", "feedFleshtrap", "clearRoots"];
 
 function checkPolicyPatch(patch: Record<string, unknown>, info: CallInfo): void {

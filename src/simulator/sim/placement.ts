@@ -1,11 +1,13 @@
 import { isFreePlacedItem, type SimConfig } from "../config";
-import { cellIndex, footprint } from "../grid/cells";
+import type { GameData } from "../data/types";
+import { cellIndex, footprint, footprintFits, ringCells } from "../grid/cells";
 import type { CycleCtx, ResolvedLayout, TickScratch } from "./context";
-import { destroyPlant } from "./explosion";
+import { destroyPlant, isPrimedBlastberry } from "./explosion";
 import { harvestPlant } from "./harvest";
 import { closePlotDebts, credit, spend } from "./inventory";
-import { buildOccupancy, DEAD_PLANT, insertPlant, isFootprintFree, isHarvestable, newPlant, removePlant } from "./plants";
-import type { PlantState, PlotState } from "./state";
+import { canBuy } from "./market";
+import { buildOccupancy, DEAD_PLANT, insertPlant, isFootprintFree, isHarvestable, newPlant, removePlant, type Occupancy } from "./plants";
+import type { PlantState, PlotState, SlotLabel } from "./state";
 import { bump } from "./summary";
 import { isProtected } from "../script/overrides";
 
@@ -108,12 +110,83 @@ export function applyStepLayout(
   plot.slotIneligibleCycles = {};
   plot.watchStatus = {};
   closePlotDebts(ctx.state, plot.id);
-  placeLayoutPlants(plot, layout, ctx, mode);
+  // A later step (never setup) skips requirement inputs of targets already holding their mutation.
+  const onlyNeeded = mode === "step" && ctx.policiesFor(plot.id).onlyReplaceForEmptyTargets === true;
+  placeLayoutPlants(plot, onlyNeeded ? neededLayout(plot, layout, ctx.env.data) : layout, ctx, mode);
 }
 
-/** Clear unwanted Dead Plants, remove spawns blocking layout cells (not layout inputs), re-place what's missing. */
-export function maintainLayout(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch): void {
-  const desiredAt = new Map(layout.plants.map((d) => [cellIndex(d.row, d.col), d]));
+type LayoutPlant = ResolvedLayout["plants"][number];
+
+/** A slot holds its labelled mutation (growing or fully grown), anchored on it. Same test as `targetsFilled`. */
+function slotHoldsTarget(occ: Occupancy, s: SlotLabel): boolean {
+  const q = occ[cellIndex(s.row, s.col)];
+  return !!q && !q.isDeadPlant && q.kindId === s.mutationId && q.row === s.row && q.col === s.col;
+}
+
+/**
+ * `onlyReplaceForEmptyTargets`: is this layout plant worth (re-)placing now? A paid placed item
+ * (not base crops or free items like fire) that stands in the 8-way ring of one or more targets
+ * whose mutation requires its kind is only needed while at least one of those targets is empty
+ * (doesn't hold its mutation). Anything that feeds no target is always needed.
+ */
+export function layoutPlantNeeded(plot: PlotState, d: LayoutPlant, occ: Occupancy, data: GameData): boolean {
+  if (d.origin !== "placed" || isFreePlacedItem(d.kindId)) return true;
+  const cells = footprint(d.row, d.col, d.size);
+  let feeds = false;
+  for (const s of plot.slots) {
+    const m = data.mutations[s.mutationId];
+    if (!m || !footprintFits(s.row, s.col, s.size) || !m.requirements.some((r) => r.crop === d.kindId)) continue;
+    if (!ringCells(s.row, s.col, s.size).some((c) => cells.includes(c))) continue;
+    if (!slotHoldsTarget(occ, s)) return true;
+    feeds = true;
+  }
+  return !feeds;
+}
+
+/** The layout, minus the requirement inputs only full targets would use (`layoutPlantNeeded`). */
+export function neededLayout(plot: PlotState, layout: ResolvedLayout, data: GameData): ResolvedLayout {
+  const occ = buildOccupancy(plot);
+  return { ...layout, plants: layout.plants.filter((d) => layoutPlantNeeded(plot, d, occ, data)) };
+}
+
+/**
+ * `placedUpkeep: "replaceBeforeDecay"`: swap each paid placed layout item that `due` says would
+ * decay before the next session for a fresh one (new timer and minimum-mutation counters), so its
+ * neighbours never lose it. Only when the item is in stock (or buyable on a normal profile): an
+ * early swap never records debt or borrows; if it can't be covered the plant is left to decay and
+ * `maintain` handles it as usual. Counts as a replacement. No RNG.
+ */
+export function replacePlacedBeforeDecay(
+  plot: PlotState,
+  layout: ResolvedLayout,
+  ctx: CycleCtx,
+  due: (p: PlantState) => boolean
+): void {
+  const kept = (p: PlantState) => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
+  for (const d of layout.plants) {
+    if (d.origin !== "placed" || isFreePlacedItem(d.kindId)) continue;
+    const p = buildOccupancy(plot)[cellIndex(d.row, d.col)];
+    // A primed Blastberry would explode when broken: leave it to its own decay.
+    if (!p || !matches(p, d) || kept(p) || isPrimedBlastberry(p) || !due(p)) continue;
+    if ((ctx.state.inventory[d.kindId] ?? 0) < 1 && !canBuy(ctx.state, d.kindId)) continue;
+    const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `replace ${d.kindId} before decay`, replacement: true };
+    if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
+    removePlant(plot, p);
+    ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "replaced before decay" });
+    const fresh = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, "placed", ctx.cycle);
+    insertPlant(plot, fresh);
+    ctx.emit(plot.id, { kind: "placed", plantId: fresh.id, kindId: fresh.kindId, row: fresh.row, col: fresh.col, origin: "placed", replacement: true });
+  }
+}
+
+/**
+ * Clear unwanted Dead Plants, remove spawns blocking layout cells (not layout inputs), re-place what's missing.
+ * With `onlyReplaceForEmptyTargets`, requirement inputs whose targets are all full are neither
+ * re-placed nor cleared of blocking spawns (`neededLayout`).
+ */
+export function maintainLayout(plot: PlotState, fullLayout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch, onlyForEmptyTargets = false): void {
+  let layout = fullLayout;
+  const desiredAt = new Map(fullLayout.plants.map((d) => [cellIndex(d.row, d.col), d]));
   // Plants a script protected (`plant.protect()`) are left alone; no scripts, none.
   const kept = (p: PlantState) => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
   for (const p of [...plot.plants]) {
@@ -123,12 +196,14 @@ export function maintainLayout(plot: PlotState, layout: ResolvedLayout, ctx: Cyc
     removeByPlayer(plot, p, ctx, scratch, "cleared");
   }
 
+  // After the Dead Plant pass, so a target a mutation decayed out of counts as empty.
+  if (onlyForEmptyTargets) layout = neededLayout(plot, fullLayout, ctx.env.data);
   const occ = buildOccupancy(plot);
   for (const d of layout.plants) {
     for (const idx of footprint(d.row, d.col, d.size)) {
       const q = occ[idx];
       if (!q || matches(q, d) || q.origin !== "spawned" || !plot.plants.includes(q) || kept(q)) continue;
-      if (layoutInputAt(q, layout, ctx.config)) continue;
+      if (layoutInputAt(q, fullLayout, ctx.config)) continue;
       removeByPlayer(plot, q, ctx, scratch, "blocking layout");
     }
   }

@@ -8,7 +8,7 @@ import type { CycleCtx, Phase, TickScratch } from "./context";
 import { wouldDecayWithin } from "./decay";
 import { harvestPlant } from "./harvest";
 import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
-import { layoutInputAt, maintainLayout, removeByPlayer } from "./placement";
+import { layoutInputAt, maintainLayout, neededLayout, removeByPlayer, replacePlacedBeforeDecay } from "./placement";
 import type { PlantState, PlotState } from "./state";
 import { isProtected, phaseDisabled } from "../script/overrides";
 
@@ -115,8 +115,23 @@ function stepChange(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
 /** Clear Dead Plants, take spawns off layout cells and re-place what the layout is missing. */
 function maintain(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   if (scratch.stepChanged) return; // the step change already laid the layout out
-  if (!ctx.policiesFor(plot.id).replaceDecayed) return;
-  maintainLayout(plot, ctx.layoutFor(plot.id), ctx, scratch);
+  const policies = ctx.policiesFor(plot.id);
+  if (!policies.replaceDecayed) return;
+  maintainLayout(plot, ctx.layoutFor(plot.id), ctx, scratch, policies.onlyReplaceForEmptyTargets === true);
+}
+
+/**
+ * `placedUpkeep: "replaceBeforeDecay"`: swap placed layout items (mutations, not fire) that would
+ * decay before the next session for fresh ones from inventory. Runs after `maintain`, so it sees
+ * the current step's layout (also right after a step change, for plants kept with their timers).
+ * With `onlyReplaceForEmptyTargets`, requirement inputs whose targets are all full are left to decay.
+ */
+function tendPlacedItems(plot: PlotState, ctx: CycleCtx): void {
+  const policies = ctx.policiesFor(plot.id);
+  if (policies.placedUpkeep !== "replaceBeforeDecay") return;
+  let layout = ctx.layoutFor(plot.id);
+  if (policies.onlyReplaceForEmptyTargets === true) layout = neededLayout(plot, layout, ctx.env.data);
+  replacePlacedBeforeDecay(plot, layout, ctx, (p) => decaysBeforeNextSession(plot, p, ctx));
 }
 
 /**
@@ -190,7 +205,12 @@ export const PLAYER_PHASES: readonly Phase[] = [
       if (scratch.stepChanged) harvestSpawns(plot, ctx, scratch);
     },
   },
-  { id: "maintain", summary: "Clear Dead Plants and re-place missing layout plants (replaceDecayed).", run: maintain },
+  {
+    id: "maintain",
+    summary: "Clear Dead Plants and re-place missing layout plants (replaceDecayed; onlyReplaceForEmptyTargets skips inputs of full targets).",
+    run: maintain,
+  },
+  { id: "placedUpkeep", summary: "Replace placed layout items that would decay before the next session (placedUpkeep).", run: tendPlacedItems },
   {
     id: "clearTargets",
     summary: "Break natural spawns of another kind standing on target cells; harvest them if fully grown (clearTargetBlockers).",

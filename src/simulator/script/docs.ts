@@ -196,7 +196,7 @@ export const API: ApiSection[] = [
       { name: "breakAll", signature: "plot.breakAll(kind)", description: "Break every plant of that kind (harvested where possible). Returns how many.", action: true },
       { name: "water", signature: "plot.water()", description: "Water every plant to the max (not Soggybud).", action: true },
       { name: "setGround", signature: "plot.setGround(row, col, ground)", description: "Change the ground block at a cell (farmland, sand, soul_sand, mycelium, netherrack, end_stone).", action: true },
-      { name: "runPhase", signature: "plot.runPhase(id)", description: "Run one built-in session phase now: water, gates, roots, harvest, baseCrops, stepChange, maintain, clearTargets, fixGround.", action: true },
+      { name: "runPhase", signature: "plot.runPhase(id)", description: "Run one built-in session phase now: water, gates, roots, harvest, baseCrops, stepChange, maintain, placedUpkeep, clearTargets, fixGround.", action: true },
       { name: "disable", signature: "plot.disable(...phases)", description: "Switch built-in session phases off for this plot (they stay off until enabled). Do their job yourself, or call plot.runPhase(id) when you want it." },
       { name: "enable", signature: "plot.enable(...phases)", description: "Switch built-in phases back on (no arguments: all)." },
       { name: "setPolicy", signature: "plot.setPolicy(overrides)", description: "Override player policies on this plot: plot.setPolicy({ spawnedHarvest: \"never\" }). Kept until resetPolicies()." },
@@ -243,10 +243,10 @@ export const API: ApiSection[] = [
       { name: "destroy", signature: "p.destroy()", description: "Break it without drops.", action: true },
       { name: "waterIt", signature: "p.waterIt(amount?)", description: "Water it to the max (or add amount).", action: true },
       { name: "wake", signature: "p.wake() / p.vacuum() / p.discharge() / p.feed()", description: "Wake a Snoozling, vacuum a Cheesebite rat, discharge a Thunderling, feed a Fleshtrap.", action: true },
-      { name: "protect", signature: "p.protect(on = true)", description: "Built-in harvest, base-crop upkeep, target clearing and layout upkeep leave it alone (a step change still clears it)." },
+      { name: "protect", signature: "p.protect(on = true)", description: "Built-in harvest, base-crop upkeep, target clearing, layout upkeep and replacing before decay leave it alone (a step change still clears it)." },
     ],
   },
 ];
 
 /** Built-in session phases a script can disable or run. */
-export const SCRIPT_PHASES = ["water", "gates", "roots", "harvest", "baseCrops", "stepChange", "harvestAfterStepChange", "maintain", "clearTargets", "fixGround"] as const;
+export const SCRIPT_PHASES = ["water", "gates", "roots", "harvest", "baseCrops", "stepChange", "harvestAfterStepChange", "maintain", "placedUpkeep", "clearTargets", "fixGround"] as const;

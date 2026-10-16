@@ -301,6 +301,7 @@ function importOptionalSections(sc: Scenario, file: Record<string, unknown>): Sc
       layoutInputSpawns: ["keep", "harvest"],
       baseCropUpkeep: ["leaveUntilDecay", "harvestWhenGrown", "harvestBeforeDecay"],
       watering: ["toMax", "never"],
+      placedUpkeep: ["leaveUntilDecay", "replaceBeforeDecay"],
     };
     for (const [key, allowed] of Object.entries(choices)) {
       if (key in policies && !allowed.includes(policies[key] as string)) throw new Error(`Action defaults: invalid ${key}.`);

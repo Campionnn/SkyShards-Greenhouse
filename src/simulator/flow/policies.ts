@@ -9,6 +9,8 @@ export const DEFAULT_POLICIES: Policies = {
   replaceDecayed: true,
   fixGround: true,
   clearTargetBlockers: true,
+  placedUpkeep: "leaveUntilDecay",
+  onlyReplaceForEmptyTargets: false,
 };
 
 /** Scenario defaults, then plot overrides, then step overrides. */

@@ -611,7 +611,12 @@ function stepExitSummary(s: FlowStep, steps: FlowStep[]): string {
 
 const INHERIT = "inherit";
 
-const POLICY_FIELDS: { key: "spawnedHarvest" | "layoutInputSpawns" | "baseCropUpkeep" | "watering"; label: string; options: { value: string; label: string }[] }[] = [
+const POLICY_FIELDS: {
+  key: "spawnedHarvest" | "layoutInputSpawns" | "baseCropUpkeep" | "placedUpkeep" | "watering";
+  label: string;
+  title?: string;
+  options: { value: string; label: string }[];
+}[] = [
   {
     key: "spawnedHarvest",
     label: "Natural spawns",
@@ -639,6 +644,15 @@ const POLICY_FIELDS: { key: "spawnedHarvest" | "layoutInputSpawns" | "baseCropUp
     ],
   },
   {
+    key: "placedUpkeep",
+    label: "Placed mutations",
+    title: "Placed layout items (mutations, not fire). Replacing before decay swaps one that would decay before your next session for a fresh one from inventory, so its neighbours never lose it. Only when it is in stock: otherwise it decays and is re-placed as usual.",
+    options: [
+      { value: "leaveUntilDecay", label: "leave until decay" },
+      { value: "replaceBeforeDecay", label: "replace right before decay" },
+    ],
+  },
+  {
     key: "watering",
     label: "Watering",
     options: [
@@ -657,6 +671,9 @@ const GATE_FIELDS: { key: keyof Policies["gateInteractions"]; label: string }[] 
   { key: "clearRoots", label: "Break Devourer roots" },
 ];
 
+const ONLY_FOR_EMPTY_TARGETS_HELP =
+  "A placed mutation next to a target that needs it (e.g. the Zombud and Puffercloud around a Devourer) is only re-placed while at least one target it feeds is empty. While the targets hold their mutation, lost inputs are left missing (so Devourer roots don't keep eating replacements) and rebuilt once a target is free again. Inputs that feed no target are always re-placed.";
+
 /** Full policies (scenario defaults). */
 export const PolicyDefaultsEditor: React.FC<{ value: Policies; onChange: (p: Policies) => void }> = ({ value, onChange }) => (
   <div className="space-y-2">
@@ -665,7 +682,8 @@ export const PolicyDefaultsEditor: React.FC<{ value: Policies; onChange: (p: Pol
       <SelectField
         key={f.key}
         label={f.label}
-        value={value[f.key] as string}
+        title={f.title}
+        value={(value[f.key] as string | undefined) ?? f.options[0].value}
         options={f.options}
         onChange={(v) => onChange({ ...value, [f.key]: v } as Policies)}
       />
@@ -682,6 +700,12 @@ export const PolicyDefaultsEditor: React.FC<{ value: Policies; onChange: (p: Pol
       title="Break natural spawns of a different kind standing on a target cell (harvest them if fully grown), e.g. leftovers from the previous step."
       checked={value.clearTargetBlockers !== false}
       onChange={(v) => onChange({ ...value, clearTargetBlockers: v })}
+    />
+    <CheckboxField
+      label="Only re-place requirement inputs while a target they feed is empty"
+      title={ONLY_FOR_EMPTY_TARGETS_HELP}
+      checked={value.onlyReplaceForEmptyTargets === true}
+      onChange={(v) => onChange({ ...value, onlyReplaceForEmptyTargets: v })}
     />
     {GATE_FIELDS.map((g) => (
       <CheckboxField
@@ -704,6 +728,7 @@ const PolicyOverridesEditor: React.FC<{ value: PolicyOverrides | undefined; onCh
         <SelectField
           key={f.key}
           label={f.label}
+          title={f.title}
           value={(v[f.key] as string | undefined) ?? INHERIT}
           options={[{ value: INHERIT, label: "inherit" }, ...f.options]}
           onChange={(choice) => {
@@ -756,6 +781,22 @@ const PolicyOverridesEditor: React.FC<{ value: PolicyOverrides | undefined; onCh
           const next = { ...v };
           if (choice === INHERIT) delete next.clearTargetBlockers;
           else next.clearTargetBlockers = choice === "yes";
+          set(next);
+        }}
+      />
+      <SelectField
+        label="Re-place inputs only for empty targets"
+        title={ONLY_FOR_EMPTY_TARGETS_HELP}
+        value={v.onlyReplaceForEmptyTargets === undefined ? INHERIT : v.onlyReplaceForEmptyTargets ? "yes" : "no"}
+        options={[
+          { value: INHERIT, label: "inherit" },
+          { value: "yes", label: "yes" },
+          { value: "no", label: "no" },
+        ]}
+        onChange={(choice) => {
+          const next = { ...v };
+          if (choice === INHERIT) delete next.onlyReplaceForEmptyTargets;
+          else next.onlyReplaceForEmptyTargets = choice === "yes";
           set(next);
         }}
       />

@@ -118,6 +118,13 @@ export type SpawnedHarvestPolicy = "whenFullyGrown" | "beforeDecay" | "never";
  */
 export type LayoutInputSpawnPolicy = "keep" | "harvest";
 export type BaseCropUpkeepPolicy = "leaveUntilDecay" | "harvestWhenGrown" | "harvestBeforeDecay";
+/**
+ * Placed layout items (mutations, Dead Plants; never fire):
+ * - leaveUntilDecay: let them decay; `replaceDecayed` clears the Dead Plant and re-places them.
+ * - replaceBeforeDecay: swap one that would decay before the next session for a fresh one from
+ *   inventory, so its neighbours never lose it (like base crops' harvestBeforeDecay).
+ */
+export type PlacedUpkeepPolicy = "leaveUntilDecay" | "replaceBeforeDecay";
 export type WateringPolicy = "toMax" | "never";
 
 /** What the player does during an active session. Scenario default, then per plot, then per step. */
@@ -149,6 +156,15 @@ export interface Policies {
    * (harvested if fully grown), e.g. leftovers from the previous step. Missing = on.
    */
   clearTargetBlockers?: boolean;
+  /** Placed layout items: leave until they decay, or replace them right before. Missing = leaveUntilDecay. */
+  placedUpkeep?: PlacedUpkeepPolicy;
+  /**
+   * Only re-place a layout input that a neighbouring target needs for its spawn
+   * requirements while at least one target it feeds is empty (not holding its
+   * mutation). E.g. the Zombud/Puffercloud ring of a growing Devourer is left
+   * for its roots, then rebuilt once the Devourer is gone. Missing = off.
+   */
+  onlyReplaceForEmptyTargets?: boolean;
 }
 
 export type PolicyOverrides = Partial<Omit<Policies, "gateInteractions">> & {

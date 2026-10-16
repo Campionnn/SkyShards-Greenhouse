@@ -99,15 +99,18 @@ export function SelectField<T extends string>({
   onChange,
   options,
   className = "",
+  title,
 }: {
   label?: React.ReactNode;
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
   className?: string;
+  /** Hover help for the whole field. */
+  title?: string;
 }) {
   return (
-    <label className={`flex items-center justify-between gap-3 text-xs text-slate-300 ${className}`}>
+    <label className={`flex items-center justify-between gap-3 text-xs text-slate-300 ${className}`} title={title}>
       {label && <span className="min-w-0">{label}</span>}
       <select className={`${inputClass} w-48 max-w-[60%] flex-shrink-0`} value={value} onChange={(e) => onChange(e.target.value as T)}>
         {options.map((o) => (
