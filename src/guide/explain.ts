@@ -35,7 +35,7 @@ export function describeWhy(why: string, name: (id: string) => string): string {
   if (why === "refresh short") return "The farm needs rebuilding, but you don't have the inputs.";
   if (why === "waiting for the Blastberries to prime") return "The Blastberries aren't all primed yet, so the Shellfruit can't be popped this visit.";
   if (why.startsWith("finishing nearly grown targets")) return "Some targets are nearly fully grown, so it's worth letting them finish.";
-  const m = /^(working|keeping|satisfied|short|narrow|preempt|handover|special|left|refresh|rebuild) (.+?)( standing)?$/.exec(why);
+  const m = /^(working|keeping|satisfied|short|narrow|join|preempt|handover|special|left|refresh|rebuild) (.+?)( standing)?$/.exec(why);
   if (!m) return why;
   const farm = name(m[2]);
   switch (m[1]) {
@@ -49,6 +49,8 @@ export function describeWhy(why: string, name: (id: string) => string): string {
       return `${farm} is missing inputs that your stock can't replace.`;
     case "narrow":
       return `${farm} is short on inputs, so only the part still worth running is kept.`;
+    case "join":
+      return `${farm} keeps running, and the other farm that fits beside it can start too.`;
     case "preempt":
       return `${farm} costs nothing to leave, and a higher-priority farm can start now.`;
     case "handover":
