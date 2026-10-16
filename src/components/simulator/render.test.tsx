@@ -72,7 +72,8 @@ describe("simulator panels render", () => {
       const mutation = data.mutations[id];
       expect(html).toContain(`<span class="${getRarityTextColor(mutation.rarity ?? "common")} break-words min-w-0">${mutation.name}</span>`);
     }
-    for (const name of ["Wheat", "Fermento", "Dead Plant"]) {
+    // Fermento is a rare crop: that section starts collapsed, so it is not rendered.
+    for (const name of ["Wheat", "Dead Plant"]) {
       expect(html).toContain(`<span class="text-slate-300 break-words min-w-0">${name}</span>`);
     }
   });
@@ -375,8 +376,11 @@ describe("simulator panels render", () => {
     const [topCrop, topRow] = made.filter(([id]) => npc(id) > 0).sort((a, b) => b[1].produced * npc(b[0]) - a[1].produced * npc(a[0]))[0];
     expect(table).toContain(`>${nameOf(topCrop)}</span>`);
     expect(table).toContain(formatCount(topRow.produced));
-    // Mutations have no NPC price: their section says so instead of "made worth 0".
-    if (made.some(([id]) => defaultGameData().mutations[id])) expect(table).toContain("no NPC price");
+    // Mutations have no NPC price: their section says so instead of "made worth 0", unless Dead Plants
+    // (listed with the mutations, NPC-sellable) were made.
+    const mutationMade = made.some(([id]) => defaultGameData().mutations[id]);
+    if (mutationMade && !state.ledger.dead_plant?.produced) expect(table).toContain("no NPC price");
+    if (state.ledger.dead_plant?.produced) expect(table).toMatch(/Mutations<\/span>.*?made worth/);
   });
 
   it("inventory sections over 5 rows scroll (every row rendered, columns kept by a subgrid); problems sort first", () => {
@@ -404,6 +408,20 @@ describe("simulator panels render", () => {
     const crop = section("crop");
     expect(crop.tag).not.toContain("overflow-y-auto"); // only 2: no scroll box
     expect(html).not.toMatch(/Show \d+ more|Show fewer/);
+  });
+
+  it("inventory sections collapse: rare crops and other drops start collapsed; Dead Plants list under mutations", () => {
+    const data = defaultGameData();
+    const inventory = { [data.mutationIds[0]]: 2, wheat: 4, dead_plant: 3, fermento: 1, cropie: 1 };
+    const html = wrap(<InventoryTable state={startOf(singlePlot(layout(), { inventory }))} />).replace(/<!-- -->/g, "");
+    const mut = html.slice(html.indexOf('data-section="mutation"'), html.indexOf('data-section="crop"'));
+    expect(mut).toContain(">Dead Plant</span>");
+    expect(html).toMatch(/aria-expanded="true"[^>]*data-section-toggle="mutation"/);
+    expect(html).toMatch(/aria-expanded="true"[^>]*data-section-toggle="crop"/);
+    expect(html).toMatch(/aria-expanded="false"[^>]*data-section-toggle="rareCrop"/);
+    // Collapsed: the header (with its count) shows, the rows do not.
+    expect(html).not.toContain('data-section="rareCrop"');
+    expect(html).not.toContain(">Fermento</span>");
   });
 
   it("normal profile: Bazaar money, prices, reserve and the run bar profit render from counts and quotes", () => {

@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Minus, Package, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronRight, Minus, Package, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { COMPACTED_CROPS, defaultGameData, reservePlan, UNIQUE_CROP_CAP, type Scenario, type SimulationState } from "../../simulator";
 import type { BazaarPricesView } from "../../hooks/useBazaarPrices";
 import { InfoHint, Panel, SegmentedControl } from "../ui";
@@ -17,15 +17,21 @@ import { buttonClass, inputClass } from "./styles";
 const data = defaultGameData();
 
 const SECTIONS: { key: ItemCategory; title: string; hint: string }[] = [
-  { key: "mutation", title: "Mutations", hint: "Mutation items: planting stock for re-placing." },
+  { key: "mutation", title: "Mutations", hint: "Mutation items (planting stock for re-placing) and Dead Plants (from clearing decayed plants)." },
   { key: "crop", title: "Crops", hint: "Base-crop drops (including mutation bundles) and seeds." },
   {
     key: "rareCrop",
     title: "Rare crops",
     hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and a harvested mutation's own Ethereal Vine. Their chances are multiplied by (1 + Overbloom/100).",
   },
-  { key: "other", title: "Other drops", hint: "Harvest Bounty drops from plants holding Bonus Drops (not affected by Overbloom), cleared Dead Plants and anything else." },
+  { key: "other", title: "Other drops", hint: "Harvest Bounty drops from plants holding Bonus Drops (not affected by Overbloom) and anything else." },
 ];
+
+/** Sections that start collapsed. */
+const COLLAPSED_BY_DEFAULT: Partial<Record<ItemCategory, boolean>> = { rareCrop: true, other: true };
+
+/** The section a row is listed under: Dead Plants sit with the mutations (they are placed like them). */
+const sectionOf = (r: ItemRow): ItemCategory => (r.id === "dead_plant" ? "mutation" : r.category);
 
 /** Grid columns. Normal: item, held, made, used, bought, sold, price, reserve, worth, remove. Ironman: item, held, made, used, net, price, worth, remove. */
 const COLS_NORMAL = "grid-cols-[minmax(10rem,1.6fr)_repeat(5,minmax(4.25rem,auto))_minmax(7rem,auto)_minmax(4.75rem,auto)_minmax(5rem,auto)_1.25rem]";
@@ -65,6 +71,8 @@ export const InventoryTable: React.FC<{
   const [mode, setMode] = useState<"total" | "perDay">("total");
   /** The price editor: false = closed, null = open on no item, an id = open on that item. */
   const [editing, setEditing] = useState<string | null | false>(false);
+  const [collapsed, setCollapsed] = useState<Partial<Record<ItemCategory, boolean>>>(COLLAPSED_BY_DEFAULT);
+  const toggleSection = (key: ItemCategory) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
   const perDay = mode === "perDay";
   const days = state.elapsedSeconds / 86400;
   const scale = (n: number) => (perDay ? (days > 0 ? n / days : 0) : n);
@@ -107,7 +115,7 @@ export const InventoryTable: React.FC<{
   const grouped = useMemo(() => {
     const out = new Map<ItemCategory, ItemRow[]>(SECTIONS.map((s) => [s.key, []]));
     const sellOf = (r: ItemRow) => r.prices?.sell ?? 0;
-    for (const r of rows) out.get(r.category)!.push(r);
+    for (const r of rows) out.get(sectionOf(r))!.push(r);
     // Problems first, so the 5-row cut never hides them: a stock below 0 (mutation debt) or a net
     // loss (placed more than made). Then the most valuable, then the most made.
     const trouble = (r: ItemRow) => (r.held < 0 || r.made - r.used < 0 ? 1 : 0);
@@ -301,23 +309,36 @@ export const InventoryTable: React.FC<{
             const list = grouped.get(s.key)!;
             if (!list.length) return null;
             const worth = list.reduce((a, r) => a + r.made * (r.prices?.sell ?? 0), 0);
+            const isCollapsed = !!collapsed[s.key];
+            const sectionId = `inventory-section-${s.key}`;
             return (
               <React.Fragment key={s.key}>
                 <div className="col-span-full flex items-center gap-2 border-t border-slate-700/60 mt-1 pt-2 pb-1">
-                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{s.title}</span>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 -ml-1 px-1 rounded cursor-pointer text-slate-400 hover:text-slate-200 hover:bg-slate-700/40"
+                    onClick={() => toggleSection(s.key)}
+                    aria-expanded={!isCollapsed}
+                    aria-controls={sectionId}
+                    title={isCollapsed ? `Show ${s.title.toLowerCase()}` : `Hide ${s.title.toLowerCase()}`}
+                    data-section-toggle={s.key}
+                  >
+                    <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`} />
+                    <span className="text-[11px] font-medium uppercase tracking-wide">{s.title}</span>
+                  </button>
                   <InfoHint title={s.title} width={260}>
                     {s.key === "mutation"
                       ? normal
                         ? `${s.hint} Valued at their Bazaar sell price; whatever is above the reserve is sold after each online session.`
-                        : `${s.hint} Bazaar-only, so they are worth 0 at NPC.`
+                        : `${s.hint} Mutation items are Bazaar-only, so they are worth 0 at NPC.`
                       : `${s.hint} ${normal ? "Valued at the better of NPC and Bazaar." : "Valued at NPC price."}`}
                   </InfoHint>
                   <span className="text-[11px] text-slate-500">
                     {list.length}
-                    {list.length > ROWS_SHOWN ? " · scroll for more" : ""}
+                    {!isCollapsed && list.length > ROWS_SHOWN ? " · scroll for more" : ""}
                   </span>
                   <span className="ml-auto text-[11px] text-slate-400 tabular-nums">
-                    {s.key === "mutation" && !normal ? (
+                    {s.key === "mutation" && !normal && worth === 0 ? (
                       "no NPC price"
                     ) : (
                       <>
@@ -330,32 +351,35 @@ export const InventoryTable: React.FC<{
                 {/* About 5 rows tall, the rest scrolls. A subgrid, so the columns line up with the header; every
                     section reserves the scrollbar's width (stable gutter), scrolling or not, so they all stay the
                     same width. */}
-                <div
-                  className={`col-span-full grid grid-cols-subgrid items-center auto-rows-[minmax(2rem,auto)] overflow-x-hidden [scrollbar-gutter:stable] scrollbar-dark ${
-                    list.length > ROWS_SHOWN ? "overflow-y-auto overscroll-contain" : "overflow-y-hidden"
-                  }`}
-                  style={list.length > ROWS_SHOWN ? { maxHeight: `${ROWS_SHOWN * 2 + 0.5}rem` } : undefined}
-                  data-section={s.key}
-                  role="group"
-                  aria-label={`${s.title}, ${list.length} item${list.length === 1 ? "" : "s"}`}
-                  tabIndex={list.length > ROWS_SHOWN ? 0 : undefined}
-                >
-                  {list.map((r) => (
-                    <ItemLine
-                      key={r.id}
-                      r={r}
-                      normal={normal}
-                      perDay={perDay}
-                      qty={qty}
-                      coins={coins}
-                      autoReserve={plan.auto[r.id] ?? 0}
-                      onReserve={setReserve}
-                      onEditPrice={() => setEditing(r.id)}
-                      onRemove={!perDay && canChange && r.held > 0 ? () => change({ [r.id]: -r.held }) : undefined}
-                      busy={busy}
-                    />
-                  ))}
-                </div>
+                {!isCollapsed && (
+                  <div
+                    id={sectionId}
+                    className={`col-span-full grid grid-cols-subgrid items-center auto-rows-[minmax(2rem,auto)] overflow-x-hidden [scrollbar-gutter:stable] scrollbar-dark ${
+                      list.length > ROWS_SHOWN ? "overflow-y-auto overscroll-contain" : "overflow-y-hidden"
+                    }`}
+                    style={list.length > ROWS_SHOWN ? { maxHeight: `${ROWS_SHOWN * 2 + 0.5}rem` } : undefined}
+                    data-section={s.key}
+                    role="group"
+                    aria-label={`${s.title}, ${list.length} item${list.length === 1 ? "" : "s"}`}
+                    tabIndex={list.length > ROWS_SHOWN ? 0 : undefined}
+                  >
+                    {list.map((r) => (
+                      <ItemLine
+                        key={r.id}
+                        r={r}
+                        normal={normal}
+                        perDay={perDay}
+                        qty={qty}
+                        coins={coins}
+                        autoReserve={plan.auto[r.id] ?? 0}
+                        onReserve={setReserve}
+                        onEditPrice={() => setEditing(r.id)}
+                        onRemove={!perDay && canChange && r.held > 0 ? () => change({ [r.id]: -r.held }) : undefined}
+                        busy={busy}
+                      />
+                    ))}
+                  </div>
+                )}
               </React.Fragment>
             );
           })}
