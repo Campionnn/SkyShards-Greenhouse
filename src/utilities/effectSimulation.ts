@@ -6,21 +6,12 @@
  *    four cardinal neighbours, simultaneously. No plant holds its own buffs.
  * 2. Relays: every plant that holds effect_spread (it neighbours something
  *    listing it, e.g. a wild rose) gives everything it holds except
- *    effect_spread to its neighbours, and keeps doing so until nothing changes
- *    (a fixpoint). So a connected group of relays shares everything any of
- *    them received, in every direction, however long the chain. A lone rose
- *    relays nothing; its neighbours do. effect_spread itself is never relayed,
- *    so the set of relays is fixed by step 1.
- *    This is the model since the Oct 13 2026 patch ("Fixed inconsistent Effect
- *    Spread behavior"). Before it, each relay took a single turn in Java
- *    HashMap order ((13 * column + row) % table, table 16 doubling past 75%
- *    full) and only passed on what it held on its turn, so effects spread far
- *    in some directions and barely in others. The new result is a superset of
- *    the old one for every layout.
+ *    effect_spread to its neighbours, until nothing changes, so connected
+ *    relays share everything in every direction (since the Oct 13 2026 fix).
+ *    A lone rose relays nothing; its neighbours do.
  * - Effects are a set. Immunity cancels negatives for its holder, which still
  *   relays them. improved_x hides x.
- * - A multi-cell plant is one entity: one effect set, one turn keyed at its
- *   top-left cell.
+ * - A multi-cell plant is one entity with one effect set.
  * - A mutation slot (solver or designer target) marks where a mutation can
  *   spawn: it receives (that is what gets scored) but never gives or relays.
  *   A mutation placed as an input or locked onto the grid is a real plant.
@@ -165,8 +156,6 @@ export interface EffectSimulation {
   isSpecialEligible(mutationId: string, position: [number, number], size: number): boolean;
   /** Which required effects a spot is missing (empty list = eligible). */
   missingSpecialEffects(mutationId: string, position: [number, number], size: number): string[];
-  /** Positions (top-left) of the plants that relay, sorted by row, then column. */
-  relays: Array<[number, number]>;
 }
 
 const CARDINAL: Array<[number, number]> = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -246,31 +235,12 @@ export function simulateEffects(
     give(plant, plant.buffs.intrinsic);
   }
 
-  // 2. Every plant holding effect_spread relays what it holds until nothing changes.
-  // Relaying never hands on effect_spread, so the relay set is fixed here.
-  const relays = plants
-    .filter((p) => !p.isSlot && p.has.has(RELAY_EFFECT))
-    .sort((a, b) => a.position[0] - b.position[0] || a.position[1] - b.position[1]);
-  const isRelay = new Set(relays);
-  const sent = new Map<SimPlant, number>(); // payload size each relay last gave
-  const queue: SimPlant[] = [...relays];
-  const queued = new Set(queue);
-  while (queue.length > 0) {
-    const plant = queue.shift()!;
-    queued.delete(plant);
-    const payload = new Set([...plant.has].filter((e) => e !== RELAY_EFFECT));
-    if (payload.size === 0 || payload.size === sent.get(plant)) continue;
-    sent.set(plant, payload.size);
-    const before = new Map<SimPlant, number>();
-    const { plants: near } = neighbours(plant);
-    for (const q of near) if (isRelay.has(q)) before.set(q, q.has.size);
-    give(plant, payload);
-    for (const [q, size] of before) {
-      if (q.has.size !== size && !queued.has(q)) {
-        queue.push(q);
-        queued.add(q);
-      }
-    }
+  // 2. Plants holding effect_spread relay everything else they hold until nothing changes.
+  const relays = plants.filter((p) => !p.isSlot && p.has.has(RELAY_EFFECT));
+  const heldCount = () => plants.reduce((n, p) => n + p.has.size, 0);
+  for (let before = -1; before !== heldCount(); ) {
+    before = heldCount();
+    for (const plant of relays) give(plant, new Set([...plant.has].filter((e) => e !== RELAY_EFFECT)));
   }
 
   const heldAt = (row: number, col: number): Set<string> => {
@@ -304,7 +274,6 @@ export function simulateEffects(
     isSpecialEligible: (mutationId, position, size) =>
       !!SPECIAL_EFFECT_SETS[mutationId] && missingSpecialEffects(mutationId, position, size).length === 0,
     missingSpecialEffects,
-    relays: relays.map((p) => p.position),
   };
 }
 

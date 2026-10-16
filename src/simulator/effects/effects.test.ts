@@ -90,10 +90,6 @@ describe("effect propagation (4-way cardinal)", () => {
   it("a relay chain only passes through relays: a plant holding no effect_spread stops it", () => {
     // Row: nether_wart - A - rose - B. A and B relay (next to the rose); the rose itself doesn't.
     const sim = simulateEffects([at("nether_wart", 5, 5), at("wheat", 5, 6), at("wild_rose", 5, 7), at("wheat", 5, 8)]);
-    expect(sim.relays).toEqual([
-      [5, 6],
-      [5, 8],
-    ]);
     // A relays improved_harvest_boost to the rose, but the rose does not relay it on to B.
     expect(held(sim, 5, 7)).toContain("improved_harvest_boost");
     expect(held(sim, 5, 8)).not.toContain("improved_harvest_boost");
@@ -116,7 +112,7 @@ describe("effect propagation (4-way cardinal)", () => {
     }
   });
 
-  it("a multi-cell plant is one entity with one shared set and one relay turn", () => {
+  it("a multi-cell plant is one entity with one shared set", () => {
     // Noctilume (2x2) lists effect_spread; a wheat next to it relays. The noctilume itself receives once.
     const sim = simulateEffects([at("noctilume", 4, 4, { size: 2 }), at("potato", 3, 4)]);
     expect(held(sim, 4, 4)).toEqual(held(sim, 5, 5));
@@ -131,12 +127,11 @@ describe("effect propagation (4-way cardinal)", () => {
 
   it("a slot keeps everything it receives, effect_spread included, without becoming a relay (the dried-out plant rule)", () => {
     // A wheat flagged as a slot between a rose and a potato: it receives effect_spread
-    // and immunity, gives nothing, and takes no relay turn.
+    // and immunity, gives nothing, and doesn't relay.
     const sim = simulateEffects([at("wild_rose", 5, 5), at("wheat", 5, 6, { isSlot: true }), at("potato", 5, 7)]);
     expect(held(sim, 5, 6)).toEqual(["effect_spread", "immunity"]);
     expect(held(sim, 5, 7)).toEqual([]); // no harvest_boost (not given), nothing relayed
     expect(held(sim, 5, 5)).toEqual([]); // the rose gets nothing back either
-    expect(sim.relays).toEqual([]);
   });
 
   it("effects never leave the plot's own grid", () => {
@@ -150,7 +145,6 @@ describe("effect propagation (4-way cardinal)", () => {
     expect(held(sim, 5, 6)).toEqual([]);
     // The plant past Fire gets nothing, because inert Fire never relays.
     expect(held(sim, 5, 7)).toEqual([]);
-    expect(sim.relays).not.toContainEqual([5, 6]);
   });
 });
 
