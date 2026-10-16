@@ -7,7 +7,7 @@ import { CropImage } from "../shared";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { priceAge, priceRun, type Quotes } from "./bazaarFormat";
 import { formatCoins, formatCount, nameOf, rarityOf } from "./format";
-import { Leader, NumberInput, Stat } from "./controls";
+import { Leader, LeadValue, NumberInput, Stat } from "./controls";
 import { buttonClass, inputClass } from "./styles";
 
 // Normal-profile (Bazaar) panels. The engine counts what was produced, bought, sold and built
@@ -155,7 +155,7 @@ export const BazaarMoneyPanel: React.FC<{
                     )}
                     <Leader className="-mr-3" />
                   </span>
-                  <span className="text-right text-slate-400">{formatCoins(delta)}</span>
+                  <LeadValue className="text-slate-400">{formatCoins(delta)}</LeadValue>
                   <span className={`text-right ${cls}`}>{formatCoins(total)}</span>
                   <span className={`text-right ${r.strong ? (day < 0 ? "text-red-300" : "text-emerald-300") : "text-slate-400"}`}>{formatCoins(day)}</span>
                 </React.Fragment>

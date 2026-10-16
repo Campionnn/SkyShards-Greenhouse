@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { FlaskConical, ScanSearch, Shield, Store } from "lucide-react";
+import { FlaskConical, ScanSearch } from "lucide-react";
 import { InfoHint, SegmentedControl, useToast } from "../components/ui";
 import { LayoutPickerDialog } from "../components/simulator/LayoutPicker";
 import { MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
@@ -231,8 +231,8 @@ export const SimulatorPage: React.FC = () => {
             value={profile}
             onChange={setProfile}
             options={[
-              { value: "ironman", label: "Ironman", icon: <Shield />, title: "No Bazaar: every item comes from your own harvests" },
-              { value: "normal", label: "Normal profile", icon: <Store />, tone: "blue", title: "Buys what a layout is short of and sells surplus mutations on the Bazaar" },
+              { value: "ironman", label: "Ironman", title: "No Bazaar: every item comes from your own harvests" },
+              { value: "normal", label: "Normal", tone: "blue", title: "Buys what a layout is short of and sells surplus mutations on the Bazaar" },
             ]}
           />
           <InfoHint title="Profile mode" width={300}>

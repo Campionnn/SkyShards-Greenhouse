@@ -412,7 +412,16 @@ const ItemLine: React.FC<{
   // of the compacted item, which is exactly 25,600 crops' worth. Counts and coins elsewhere stay per crop.
   const compacted = normal ? COMPACTED_CROPS[r.id] : undefined;
   const unit = compacted?.per ?? 1;
-  const num = (n: number, cls = "text-slate-300") => <span className={`text-right tabular-nums ${n ? cls : "text-slate-600"}`}>{n ? qty(n) : "-"}</span>;
+  // `lead` runs the dotted leader right up to the figure.
+  const num = (n: number, cls = "text-slate-300", lead = false) =>
+    lead ? (
+      <span className={`flex items-center gap-1.5 justify-end tabular-nums ${n ? cls : "text-slate-600"}`}>
+        <Leader />
+        {n ? qty(n) : "-"}
+      </span>
+    ) : (
+      <span className={`text-right tabular-nums ${n ? cls : "text-slate-600"}`}>{n ? qty(n) : "-"}</span>
+    );
   const trade = (n: number, unit: number, cls: string) =>
     n ? (
       <span className="text-right tabular-nums leading-tight">
@@ -431,16 +440,20 @@ const ItemLine: React.FC<{
         <Leader className="-mr-3" />
       </span>
       {perDay ? (
-        <span />
+        // No held figure per day: the leader runs on across this empty column to the made figure.
+        <span className="flex items-center">
+          <Leader className="-mr-3" />
+        </span>
       ) : (
         <span
-          className={`text-right tabular-nums ${r.held < 0 ? "text-red-300" : r.held ? "text-slate-100" : "text-slate-600"}`}
+          className={`flex items-center gap-1.5 justify-end tabular-nums ${r.held < 0 ? "text-red-300" : r.held ? "text-slate-100" : "text-slate-600"}`}
           title={r.held < 0 ? "Below 0: placed on mutation debt (Advanced › Allow mutation debt); later harvests pay it back." : undefined}
         >
+          <Leader />
           {r.held ? formatCount(r.held) : "-"}
         </span>
       )}
-      {num(r.made, "text-emerald-300")}
+      {num(r.made, "text-emerald-300", perDay)}
       {num(r.used)}
       {normal ? (
         <>

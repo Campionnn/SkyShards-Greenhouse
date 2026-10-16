@@ -157,12 +157,29 @@ export const Leader: React.FC<{ className?: string }> = ({ className = "" }) => 
   <span
     aria-hidden
     className={`flex-1 min-w-3 h-px self-center ${className}`}
+    // Whole-pixel square dots, so every dot renders in the same shade (the old round, half-clipped
+    // dots anti-aliased differently depending on where the element landed). `fixed` anchors the
+    // pattern to the viewport instead of each leader, so two leaders in one row (the label's and the
+    // one in front of a number) join without a stray pair of dots, and rows line up with each other.
     style={{
-      backgroundImage: "radial-gradient(circle at 0.5px 0.5px, rgb(100 116 139 / 0.4) 0.75px, transparent 0.75px)",
-      backgroundSize: "6px 1px",
-      backgroundRepeat: "repeat-x",
+      backgroundImage: "linear-gradient(90deg, rgb(100 116 139 / 0.55) 1px, transparent 1px)",
+      backgroundSize: "4px 1px",
+      backgroundRepeat: "repeat",
+      backgroundAttachment: "fixed",
     }}
   />
+);
+
+/**
+ * A right-aligned figure with its own leader in front, for the first figure after a label. The
+ * label's leader stops at its cell edge; this one carries the dots on to the number, however much
+ * narrower than its column the number is.
+ */
+export const LeadValue: React.FC<{ className?: string; title?: string; children: React.ReactNode }> = ({ className = "", title, children }) => (
+  <span className={`flex items-center justify-end gap-1.5 ${className}`} title={title}>
+    <Leader />
+    {children}
+  </span>
 );
 
 export const Stat: React.FC<{ label: React.ReactNode; value: React.ReactNode; tone?: "good" | "bad" | "muted"; title?: string }> = ({
