@@ -1,3 +1,5 @@
+import { groundImageDataUrls } from "virtual:greenhouse-images";
+
 export interface CropDefinition {
   id: string; // API key and image file name
   name: string;
@@ -251,6 +253,7 @@ export function getCropImagePath(cropId: string): string {
   return `/greenhouse/crops/${cropId}.png`;
 }
 
+/** Ground textures are inlined as data URLs at build time, so they never load from the network. */
 export function getGroundImagePath(groundType: string): string {
-  return `/greenhouse/ground/${groundType}.png`;
+  return groundImageDataUrls[groundType] ?? `/greenhouse/ground/${groundType}.png`;
 }

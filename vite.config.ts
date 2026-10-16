@@ -5,6 +5,7 @@ import { resolve } from "path";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "fs";
 import { buildWikiStaticPages, addToSitemap } from "./src/wiki/staticPages";
 import type { GreenhouseDataJSON } from "./src/services/greenhouseDataService";
+import { greenhouseImagesPlugin } from "./vite.greenhouseImages";
 
 const isProd = process.env.NODE_ENV === "production";
 const isGitHubPages = process.env.GITHUB_PAGES === "true";
@@ -55,7 +56,7 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_TARGET || "https://api.skyshards.com";
 
   return {
-    plugins: [react(), tailwindcss(), copy404Plugin(), wikiPagesPlugin()],
+    plugins: [react(), tailwindcss(), greenhouseImagesPlugin(), copy404Plugin(), wikiPagesPlugin()],
     base: isProd && isGitHubPages ? "/SkyShards/" : "/",
     server: {
       proxy: {

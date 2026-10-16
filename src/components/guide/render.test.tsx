@@ -62,7 +62,7 @@ describe("FarmPicture", () => {
     const html = renderToString(<FarmPicture layout={farmOf(catalog, 1, "glasscorn").layout} nameOf={(id) => id} cellSize={20} />);
     expect(html).toContain("/greenhouse/crops/startlevine.png");
     expect(html).toContain("/greenhouse/crops/glasscorn.png");
-    expect(html).toContain("/greenhouse/ground/");
+    expect(html).toContain("data:image/png;base64"); // inlined ground texture
     expect(html).toContain("border-dashed");
   });
 
@@ -89,7 +89,7 @@ describe("PlotCard", () => {
     expect(html).toContain("Not right?");
     // The confirm button comes before the farm picture, so it never moves when sections below change.
     expect(html.indexOf("Did it: Plot 1")).toBeLessThan(html.indexOf("Place from your inventory"));
-    expect(html.indexOf("Did it: Plot 1")).toBeLessThan(html.indexOf("/greenhouse/ground/"));
+    expect(html.indexOf("Did it: Plot 1")).toBeLessThan(html.indexOf("data:image/png;base64"));
     expect(html).not.toContain("What's on the plot");
   });
 

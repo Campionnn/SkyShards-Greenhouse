@@ -1,0 +1,5 @@
+/greenhouse/crops/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/greenhouse/ground/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
