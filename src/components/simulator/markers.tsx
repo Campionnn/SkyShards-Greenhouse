@@ -1,6 +1,6 @@
 import React from "react";
 import { Eye } from "lucide-react";
-import { DRY_FILTER, INDICATOR_LABEL, MARK_STYLE, type GridMarker, type Indicator, type Mark } from "./markerStyles";
+import { DRY_FILTER, INDICATOR_LABEL, MARK_STYLE, markerKey, type GridMarker, type Indicator, type Mark } from "./markerStyles";
 
 /** The swatch drawn for each grid indicator, shared by the legend and the hover card. */
 const INDICATOR_SWATCH: Record<Indicator, React.ReactNode> = {
@@ -26,8 +26,8 @@ const INDICATOR_SWATCH: Record<Indicator, React.ReactNode> = {
   unmet: <span className="text-[9px] text-amber-300">⚠</span>,
 };
 
-const MarkerItem: React.FC<{ marker: GridMarker }> = ({ marker }) => (
-  <span className="flex items-center gap-1">
+const MarkerItem: React.FC<{ marker: GridMarker; className?: string; active?: boolean }> = ({ marker, className = "", active }) => (
+  <span className={`flex items-center gap-1 ${className}`} data-active={active ? "" : undefined}>
     <span className="flex flex-shrink-0 items-center gap-1">
       {"mark" in marker ? (
         <span className={`font-bold ${MARK_STYLE[marker.mark].color}`}>{MARK_STYLE[marker.mark].glyph}</span>
@@ -42,19 +42,30 @@ const MarkerItem: React.FC<{ marker: GridMarker }> = ({ marker }) => (
 /** Marks only a normal (Bazaar) profile can produce. */
 const NORMAL_ONLY_MARKS: readonly Mark[] = ["bought"];
 
-/** Legend for the grid marks (events of the last simulated cycle) and the other grid indicators. */
-export const PlotMarkLegend: React.FC<{ normalProfile?: boolean }> = ({ normalProfile = false }) => (
-  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
-    {(Object.keys(MARK_STYLE) as Mark[])
-      .filter((m) => normalProfile || !NORMAL_ONLY_MARKS.includes(m))
-      .map((m) => (
-        <MarkerItem key={m} marker={{ mark: m }} />
-      ))}
-    {(Object.keys(INDICATOR_LABEL) as Indicator[]).map((i) => (
-      <MarkerItem key={i} marker={{ indicator: i }} />
-    ))}
-  </div>
-);
+/**
+ * Legend for the grid marks (events of the last simulated cycle) and the other grid indicators.
+ * `highlight` holds the `markerKey`s drawn on the hovered grid element: those entries light up and
+ * the rest dim, so it is easy to see which legend entries apply.
+ */
+export const PlotMarkLegend: React.FC<{ normalProfile?: boolean; highlight?: readonly string[] }> = ({ normalProfile = false, highlight = [] }) => {
+  const active = new Set(highlight);
+  const anyActive = active.size > 0;
+  const item = (marker: GridMarker, key: string) => {
+    const on = active.has(markerKey(marker));
+    const cls = `rounded px-1 -mx-1 transition-[opacity,background-color,color] duration-150 ${
+      on ? "bg-slate-600/60 text-slate-100 ring-1 ring-slate-400/50" : anyActive ? "opacity-40" : ""
+    }`;
+    return <MarkerItem key={key} marker={marker} className={cls} active={on} />;
+  };
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400" data-testid="plot-mark-legend">
+      {(Object.keys(MARK_STYLE) as Mark[])
+        .filter((m) => normalProfile || !NORMAL_ONLY_MARKS.includes(m))
+        .map((m) => item({ mark: m }, m))}
+      {(Object.keys(INDICATOR_LABEL) as Indicator[]).map((i) => item({ indicator: i }, i))}
+    </div>
+  );
+};
 
 /** The hover card's "On the grid" section: the icons drawn on the hovered element, with their legend meaning. */
 export const GridMarkersSection: React.FC<{ markers: GridMarker[] }> = ({ markers }) =>

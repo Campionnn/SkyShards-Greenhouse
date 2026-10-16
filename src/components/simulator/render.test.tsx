@@ -317,6 +317,15 @@ describe("simulator panels render", () => {
     expect(html).toContain("checked target standing there dried out (halted");
   });
 
+  it("the legend highlights the entries drawn on the hovered element", () => {
+    const plain = renderToString(<PlotMarkLegend />);
+    expect(plain).not.toContain("data-active");
+    expect(plain).not.toContain("opacity-40");
+    const lit = renderToString(<PlotMarkLegend highlight={["indicator:spawn", "mark:harvested"]} />);
+    expect(lit.match(/data-active/g)).toHaveLength(2);
+    expect(lit).toContain("opacity-40");
+  });
+
   it("hover cards explain the grid icons on the hovered element with the legend's wording", () => {
     const s = startOf(singlePlot(layout([["wheat", 4, 3]], [["chloronite", 1, 1]])));
     const plot = s.plots[0];

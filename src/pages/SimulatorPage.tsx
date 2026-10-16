@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { FlaskConical, ScanSearch } from "lucide-react";
 import { InfoHint, SegmentedControl, useToast } from "../components/ui";
@@ -96,6 +96,16 @@ export const SimulatorPage: React.FC = () => {
   const [picking, setPicking] = useState(false);
   /** Sanity Check inspector: hovering an empty cell or slot shows which mutations could spawn there. */
   const [sanityCheckOn, setSanityCheckOn] = useState(false);
+  // Legend entries drawn on the hovered grid element, per plot (the legend highlights their union).
+  const [hoverMarkers, setHoverMarkers] = useState<Record<number, string[]>>({});
+  const onHoverMarkers = useCallback((plotId: number, keys: string[]) => {
+    setHoverMarkers((prev) => {
+      const old = prev[plotId] ?? [];
+      if (old.length === keys.length && old.every((k, i) => k === keys[i])) return prev;
+      return { ...prev, [plotId]: keys };
+    });
+  }, []);
+  const legendHighlight = useMemo(() => [...new Set(Object.values(hoverMarkers).flat())], [hoverMarkers]);
   /** Script editor overlay: which script is open. */
   const [scripting, setScripting] = useState<ScriptTarget | null>(null);
   // Ironman / normal profile: a site-wide setting (localStorage), applied to the scenario the engine runs.
@@ -307,11 +317,12 @@ export const SimulatorPage: React.FC = () => {
                       cycleSeconds={state.lastCycleSeconds}
                       config={state.scenario.settings.config}
                       sanityState={sanityCheckOn ? state : undefined}
+                      onHoverMarkers={onHoverMarkers}
                     />
                   </div>
                 ))}
               </div>
-              <PlotMarkLegend normalProfile={!!state.summary.market} />
+              <PlotMarkLegend normalProfile={!!state.summary.market} highlight={legendHighlight} />
             </div>
           ) : (
             <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-6 text-xs text-slate-400">

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, Pencil } from "lucide-react";
 import { useFitCellSize } from "../../hooks";
 import {
@@ -23,7 +23,7 @@ import { CompassFrame, COMPASS_RESERVE } from "../grid";
 import { kindData, nameOf, plantIconOf } from "./format";
 import { hoveredCellOffset } from "./sanityFormat";
 import { PlotMarkLegend } from "./markers";
-import { DRY_FILTER, MARK_STYLE, type GridMarker, type Mark } from "./markerStyles";
+import { DRY_FILTER, MARK_STYLE, markerKey, type GridMarker, type Mark } from "./markerStyles";
 import { SimTooltip, type TooltipTarget } from "./SimTooltip";
 import { buttonClass } from "./styles";
 
@@ -66,6 +66,8 @@ export interface PlotViewProps {
   config: SimConfig;
   /** Snapshot state for the Sanity Check inspector; omitted = off, with no extra hover targets. */
   sanityState?: SimulationState;
+  /** Reports the legend entries (`markerKey`s) drawn on the hovered element; `[]` when nothing is hovered. */
+  onHoverMarkers?: (plotId: number, keys: string[]) => void;
 }
 
 /** One plot, read-only: standing plants, empty labelled target cells, and what changed this cycle. */
@@ -80,6 +82,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
   cycleSeconds,
   config,
   sanityState,
+  onHoverMarkers,
 }) => {
   const fitRef = useRef<HTMLDivElement>(null);
   // The hovered cell, not the hovered thing: the card is re-derived from the current plot on every
@@ -208,6 +211,21 @@ export const PlotView: React.FC<PlotViewProps> = ({
       out.push({ mark: mark.mark, label: `${MARK_STYLE[mark.mark].label} (last cycle)` });
     return out;
   };
+
+  // Tell the page which legend entries apply to the hovered element (bare cells still report a last-cycle mark).
+  const hoverMarkers: GridMarker[] = hover
+    ? markersFor(hover)
+    : hoverCell && marks.has(`${hoverCell.row},${hoverCell.col}`)
+      ? [{ mark: marks.get(`${hoverCell.row},${hoverCell.col}`)!.mark }]
+      : [];
+  const hoverKeys = [...new Set(hoverMarkers.map(markerKey))].join("|");
+  // `onHoverMarkers` should be stable (useCallback); the cleanup clears this plot's entry on change/unmount.
+  useEffect(() => {
+    if (!onHoverMarkers) return;
+    const id = plot.id;
+    onHoverMarkers(id, hoverKeys ? hoverKeys.split("|") : []);
+    return () => onHoverMarkers(id, []);
+  }, [hoverKeys, plot.id, onHoverMarkers]);
 
   return (
     <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 min-w-0 flex flex-col">
@@ -388,7 +406,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
               cycleSeconds={cycleSeconds}
               config={config}
               plot={plot}
-              markers={markersFor(hover)}
+              markers={hoverMarkers}
             />
           )}
         </div>

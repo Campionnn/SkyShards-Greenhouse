@@ -54,3 +54,6 @@ export type Indicator = keyof typeof INDICATOR_LABEL;
 
 /** One icon shown on a hovered grid element; `label` overrides the legend text with something more specific. */
 export type GridMarker = { mark: Mark; label?: string } | { indicator: Indicator; label?: string };
+
+/** Stable id of a marker's legend entry (ignores the hover-specific label). */
+export const markerKey = (m: GridMarker): string => ("mark" in m ? `mark:${m.mark}` : `indicator:${m.indicator}`);
