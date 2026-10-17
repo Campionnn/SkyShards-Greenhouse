@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, FlaskConical, Flag, Link2, Pencil, Save, Trash2, Trophy, X } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, FlaskConical, Flag, Link2, Pencil, Save, ShieldCheck, Trash2, Trophy, X } from "lucide-react";
 import { AuthorLabel, Badge, PriceNote, ViewerControls } from "../components/flows/FlowControls";
 import { CellNumbers, FrequencyChart, ItemBreakdown, LayoutThumbs, ReportDialog, SeedTable, StatusBox } from "../components/flows/FlowDetailSections";
 import { FlowMarkdown } from "../components/flows/FlowMarkdown";
@@ -10,6 +10,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
 import { BADGE_TITLE, BOARD_LABEL, DESCRIPTION_MAX, findCell, TITLE_MAX, formatDate, itemBreakdown, percent, profitByEvery, slackFrom, spreadAt, TIER_LABEL, viewerResult } from "../leaderboard/view";
+import { adminDelete, adminHide, adminUnhide, getAdminKey, hiddenReasonLabel } from "../services/adminService";
 import { deleteFlow, flowLink, getFlow, updateFlow } from "../services/flowsService";
 import { defaultGameData } from "../simulator";
 
@@ -57,6 +58,62 @@ const EditForm: React.FC<{ detail: FlowDetail; onSaved: (title: string, descript
   );
 };
 
+/** Admin (key in sessionStorage): hidden / report info with Hide, Unhide and Delete. */
+export const ModerationBox: React.FC<{ detail: FlowDetail; onReload: () => void }> = ({ detail, onReload }) => {
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const hidden = detail.hidden ?? detail.status === "hidden";
+  const why = hidden ? hiddenReasonLabel(detail.hiddenReason) : null;
+  const run = async (action: "hide" | "unhide" | "delete") => {
+    if (action === "delete" && !window.confirm(`Delete "${detail.title}" for good? This can't be undone.`)) return;
+    setBusy(true);
+    try {
+      if (action === "hide") await adminHide(detail.id);
+      else if (action === "unhide") await adminUnhide(detail.id);
+      else await adminDelete(detail.id);
+      toast({ title: action === "hide" ? "Hidden" : action === "unhide" ? "Unhidden" : "Deleted", description: detail.title, variant: "success" });
+      if (action === "delete") navigate("/flows/admin");
+      else onReload();
+    } catch (e) {
+      toast({ title: `Could not ${action}`, description: e instanceof Error ? e.message : String(e), variant: "error" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs space-y-2" data-testid="moderation-box">
+      <div className="flex flex-wrap items-center gap-2">
+        <ShieldCheck className="w-4 h-4 text-amber-400" />
+        <span className="text-slate-200 font-medium">Moderation</span>
+        <Badge tone={detail.status === "live" ? "new" : detail.status === "rejected" ? "danger" : detail.status === "hidden" ? "stale" : "pending"}>{detail.status}</Badge>
+        {why && <Badge tone={detail.hiddenReason === "ban" ? "danger" : "estimated"}>{why}</Badge>}
+        <span className={detail.reportCount ? "text-amber-300" : "text-slate-400"}>
+          {detail.reportCount ?? 0} report{detail.reportCount === 1 ? "" : "s"}
+        </span>
+        <Link to="/flows/admin" className="text-slate-400 hover:text-slate-200 underline-offset-2 hover:underline">
+          Queue
+        </Link>
+      </div>
+      {detail.rejectReason && <div className="text-red-300 break-words">Rejected: {detail.rejectReason}</div>}
+      <div className="flex flex-wrap gap-2">
+        {hidden ? (
+          <button type="button" className={buttonClass.neutral} disabled={busy} onClick={() => run("unhide")}>
+            <Eye className="w-3.5 h-3.5" /> Unhide
+          </button>
+        ) : (
+          <button type="button" className={buttonClass.neutral} disabled={busy} onClick={() => run("hide")}>
+            <EyeOff className="w-3.5 h-3.5" /> Hide
+          </button>
+        )}
+        <button type="button" className={buttonClass.danger} disabled={busy} onClick={() => run("delete")}>
+          <Trash2 className="w-3.5 h-3.5" /> Delete
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDetail) => void; onReload: () => void }> = ({ detail, onChange, onReload }) => {
   const viewer = useFlowViewer();
   const navigate = useNavigate();
@@ -65,6 +122,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const [editing, setEditing] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [now] = useState(() => Date.now());
+  const [admin] = useState(() => !!getAdminKey());
   const owner = !!user && user.id === detail.author.id;
   const boardListed = detail.boards.includes(viewer.board);
   const settings = { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: viewer.useMyStats };
@@ -165,6 +223,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
           </>
         )}
         {owner && <StatusBox id={detail.id} initial={detail.status} onLive={onReload} />}
+        {admin && <ModerationBox detail={detail} onReload={onReload} />}
       </section>
 
       <section className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4 space-y-3">
@@ -227,7 +286,7 @@ export const FlowDetailPage: React.FC = () => {
   const [reload, setReload] = useState(0);
   useEffect(() => {
     let live = true;
-    getFlow(id)
+    getFlow(id, { adminKey: getAdminKey() })
       .then((detail) => live && setState({ id, detail }))
       .catch((e: unknown) => live && setState({ id, error: e instanceof Error ? e.message : String(e) }));
     return () => {

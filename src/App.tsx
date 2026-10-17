@@ -12,6 +12,7 @@ const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((module) =
 const GuidePage = lazy(() => import("./pages/GuidePage").then((module) => ({ default: module.GuidePage })));
 const FlowsPage = lazy(() => import("./pages/FlowsPage").then((module) => ({ default: module.FlowsPage })));
 const FlowDetailPage = lazy(() => import("./pages/FlowDetailPage").then((module) => ({ default: module.FlowDetailPage })));
+const FlowsAdminPage = lazy(() => import("./pages/FlowsAdminPage").then((module) => ({ default: module.FlowsAdminPage })));
 const AuthCallbackPage = lazy(() => import("./pages/AuthCallbackPage").then((module) => ({ default: module.AuthCallbackPage })));
 const AboutPage = lazy(() => import("./pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const ContactPage = lazy(() => import("./pages/ContactPage").then((module) => ({ default: module.ContactPage })));
@@ -94,6 +95,15 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<LoadingSpinner />}>
             <FlowsPage />
+          </Suspense>
+        ),
+      },
+      {
+        // Moderation, reached by URL only (before flows/:id).
+        path: "flows/admin",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <FlowsAdminPage />
           </Suspense>
         ),
       },

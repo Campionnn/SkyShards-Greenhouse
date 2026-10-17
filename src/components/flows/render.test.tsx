@@ -4,9 +4,11 @@ import { MemoryRouter } from "react-router-dom";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { GreenhouseDataProvider } from "../../context";
 import { flow, LAYOUT_A_CODE, LAYOUT_B_CODE, scenario, step } from "../../simulator/testHelpers";
-import { mockDetail, mockList } from "../../services/flowsMock";
+import { normalizeAdminRow } from "../../services/adminService";
+import { mockAdminList, mockDetail, mockList } from "../../services/flowsMock";
 import { AuthCallbackPage } from "../../pages/AuthCallbackPage";
-import { FlowDetailView } from "../../pages/FlowDetailPage";
+import { FlowDetailView, ModerationBox } from "../../pages/FlowDetailPage";
+import { AdminCards, AdminTable, FlowsAdminPage } from "../../pages/FlowsAdminPage";
 import { FlowsPage } from "../../pages/FlowsPage";
 import { SubmitFlowPanel } from "../simulator/SubmitFlowDialog";
 import { ToastProvider } from "../ui";
@@ -89,6 +91,42 @@ describe("leaderboard pages render", () => {
     expect(html).not.toContain("<img");
     expect(html).not.toContain("<b>");
     expect(html).not.toContain("<a ");
+  });
+});
+
+describe("admin page renders", () => {
+  it("locked: the admin key form", () => {
+    vi.stubGlobal("sessionStorage", new MemoryStorage());
+    const html = text(wrap(<FlowsAdminPage />));
+    expect(html).toContain("Leaderboard moderation");
+    expect(html).toContain("Admin key");
+    expect(html).toContain('type="password"');
+    expect(html).toContain("Unlock");
+    expect(html).not.toContain("Reported");
+  });
+
+  it("unlocked: filters, refresh, lock and the loading state", () => {
+    const s = new MemoryStorage();
+    s.setItem("skyshards-admin-key", "k");
+    vi.stubGlobal("sessionStorage", s);
+    const html = text(wrap(<FlowsAdminPage />));
+    for (const label of ["All", "Reported", "Hidden", "Pending", "Rejected", "Live", "Refresh", "Lock", "Loading..."]) expect(html).toContain(label);
+    expect(html).not.toContain("Unlock");
+  });
+
+  it("the table and cards show every column and the actions", async () => {
+    const rows = (await mockAdminList()).entries.map(normalizeAdminRow);
+    const html = text(wrap(<><AdminTable rows={rows} busy={null} act={() => {}} /><AdminCards rows={rows} busy={null} act={() => {}} /></>));
+    for (const s of ["Chloronite engine with wheat filler", "FREE COINS click here", "by reports", "Rejected: Best seed", "Ironman + Normal", "990000000000000001", "Copied from my flow", "> Hide<", "> Unhide<", "> Delete<", "> Ban<", "> Unban<"]) {
+      expect(html).toContain(s);
+    }
+    expect(html).toContain('href="/flows/mockSpam0004"');
+  });
+
+  it("the detail page's moderation box", async () => {
+    const detail = { ...(await mockDetail("mockAloe0002"))!, status: "hidden" as const, hidden: true, hiddenReason: "ban", reportCount: 2 };
+    const html = text(wrap(<ModerationBox detail={detail} onReload={() => {}} />));
+    for (const s of ["Moderation", "banned", "2 reports", "> Unhide<", "> Delete<"]) expect(html).toContain(s);
   });
 });
 

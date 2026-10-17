@@ -7,7 +7,7 @@ import type { FlowDetail, FlowListResponse, FlowStatusResponse, FlowSubmitBody }
 import type { Board } from "../leaderboard/rules";
 import type { TierId } from "../leaderboard/tiers";
 import { ApiError, apiFetch } from "./authService";
-import { flowsMockEnabled, mockDetail, mockList, mockStatus, mockSubmit } from "./flowsMock";
+import { flowsMockEnabled, mockAdminDetailExtras, mockDetail, mockList, mockStatus, mockSubmit } from "./flowsMock";
 
 const mock = () => import.meta.env.DEV && flowsMockEnabled();
 
@@ -47,13 +47,18 @@ export function clearFlowsCache(): void {
   listCache.clear();
 }
 
-export async function getFlow(id: string): Promise<FlowDetail> {
+/**
+ * `adminKey` (from adminService's sessionStorage) is sent as `X-Admin-Key`: the API then also
+ * returns hidden / rejected entries with their moderation fields.
+ */
+export async function getFlow(id: string, opts: { adminKey?: string | null } = {}): Promise<FlowDetail> {
   if (mock()) {
     const d = await mockDetail(id);
     if (!d) throw new ApiError(404, "Not found (the flow may be hidden or deleted).");
-    return d;
+    const extras = opts.adminKey ? mockAdminDetailExtras(id) : null;
+    return extras ? { ...d, ...extras } : d;
   }
-  const r = await apiFetch(`/flows/${encodeURIComponent(id)}`);
+  const r = await apiFetch(`/flows/${encodeURIComponent(id)}`, opts.adminKey ? { headers: { "X-Admin-Key": opts.adminKey } } : {});
   return (await r.json()) as FlowDetail;
 }
 

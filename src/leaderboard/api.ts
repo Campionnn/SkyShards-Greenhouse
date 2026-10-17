@@ -95,6 +95,48 @@ export interface FlowDetail {
   payload: SubmissionFile;
   cells: FlowCell[];
   seeds?: FlowSeedResult[];
+  /** Only with the owner's token or the admin key. */
+  rejectReason?: string | null;
+  hidden?: boolean;
+  /** Why it is hidden: "reports" (auto-hide), "admin" or "ban". */
+  hiddenReason?: string | null;
+  reportCount?: number;
+}
+
+/** Admin list filter (`GET /greenhouse/admin/flows?status=`); "" = all. */
+export type AdminStatusFilter = "" | "reported" | "hidden" | "pending" | "rejected" | "live";
+
+/** One report on an entry (the admin list may include them). */
+export interface AdminReport {
+  reporter_id: string;
+  reason: string;
+  created_at: Timestamp;
+}
+
+/** A raw `entries` row from the admin list, normalised by adminService (unknown keys dropped). */
+export interface AdminFlowRow {
+  id: string;
+  owner_id: string;
+  title: string;
+  description: string;
+  boards: string[];
+  cycles: number;
+  plots: number;
+  status: string;
+  reject_reason: string | null;
+  engine_version: string;
+  report_count: number;
+  hidden_by_admin: boolean;
+  hidden_reason: string | null;
+  prev_status: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+  author_username: string | null;
+  author_global_name: string | null;
+  author_avatar: string | null;
+  /** Not in the contract; shown when the API sends it. */
+  author_banned_at: Timestamp | null;
+  reports: AdminReport[];
 }
 
 export interface FlowJob {
