@@ -31,6 +31,8 @@ import { CheckboxField, IdSelect, NumberField, NumberInput, SelectField } from "
 import { formatDuration, nameOf } from "./format";
 import { PolicyDefaultsEditor } from "./FlowEditor";
 import { FlowExportDialog } from "./FlowExportDialog";
+// Lazy: the dialog brings react-markdown, which the simulator doesn't need until it opens.
+const SubmitFlowDialog = React.lazy(() => import("./SubmitFlowDialog").then((m) => ({ default: m.SubmitFlowDialog })));
 import { addPlot, duplicatePlot, exportFlows, importFlows, layoutSummary, nextPlotId, removePlot, type FlowExportOptions } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
 
@@ -59,6 +61,7 @@ export const ScenarioPanel: React.FC<{
   const [fileName, setFileName] = useState<string | null>(null);
   const [readingFile, setReadingFile] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const fileReadId = useRef(0);
 
   const toggleImport = () => {
@@ -205,7 +208,7 @@ export const ScenarioPanel: React.FC<{
         </div>
       )}
 
-      <div className="flex gap-2 mt-4">
+      <div className="flex flex-wrap gap-2 mt-4">
         <button
           className={buttonClass.neutral}
           onClick={() => setExporting(true)}
@@ -217,8 +220,21 @@ export const ScenarioPanel: React.FC<{
         <button className={buttonClass.neutral} onClick={toggleImport} aria-expanded={json !== null} title="Replace your plots and apply any setup sections included in an exported flows file">
           <Upload className="w-3.5 h-3.5" /> Import flows
         </button>
+        <button
+          className={buttonClass.neutral}
+          onClick={() => setSubmitting(true)}
+          aria-haspopup="dialog"
+          title="Put these flows on the public leaderboard (log in with Discord)"
+        >
+          <Trophy className="w-3.5 h-3.5 text-amber-300" /> Submit to leaderboard
+        </button>
       </div>
       {exporting && <FlowExportDialog onClose={() => setExporting(false)} onExport={exportJson} />}
+      {submitting && (
+        <React.Suspense fallback={null}>
+          <SubmitFlowDialog scenario={scenario} onChange={onChange} onClose={() => setSubmitting(false)} />
+        </React.Suspense>
+      )}
       {json !== null && (
         <div className="mt-2 space-y-1.5">
           <p className="text-[11px] text-slate-500">Replaces your plots and any setup sections included in the export. Settings and starting inventory left out of the file stay as they are.</p>
@@ -335,6 +351,14 @@ const ForcedEffectsEditor: React.FC<{
   );
 };
 
+/** The settings with the profile a board implies (normal = "normal", ironman = none). */
+function withBoardProfile(settings: Scenario["settings"], board: Board): Scenario["settings"] {
+  const out = { ...settings };
+  if (board === "normal") out.profile = "normal";
+  else delete out.profile;
+  return out;
+}
+
 const GROUP_LABEL: Record<ConfigGroup, string> = {
   verified: "Verified",
   unpublished: "Unpublished - reasoned defaults",
@@ -357,7 +381,8 @@ export const SettingsPanel: React.FC<{
     (settings.config.freePlacedItems?.length ? 1 : 0);
   const [rulesBoard, setRulesBoard] = useState<Board>(settings.profile === "normal" ? "normal" : "ironman");
   const [rulesEvery, setRulesEvery] = useState<number>(settings.activity.kind === "everyN" ? nearestEvery(settings.activity.n) : 1);
-  const differences = ruleDifferences(scenario, rulesBoard);
+  // The profile is site-wide (the page applies it from localStorage), so diff with the board's profile set.
+  const differences = ruleDifferences({ ...scenario, settings: withBoardProfile(settings, rulesBoard) }, rulesBoard);
   const applyLeaderboardRules = () => {
     const seed = Math.floor(Math.random() * 2 ** 31);
     const ruled = applyRules(scenario, rulesBoard, rulesEvery, seed);

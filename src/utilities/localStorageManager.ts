@@ -27,6 +27,7 @@ const STORAGE_KEYS = {
   BAZAAR_PRICES: "skyshards-bazaar-prices",
   BAZAAR_PRICING: "skyshards-bazaar-pricing",
   BAZAAR_OVERRIDES: "skyshards-bazaar-overrides",
+  AUTH_TOKEN: "skyshards-auth-token",
 } as const;
 
 /**
@@ -390,6 +391,30 @@ export class LocalStorageManager {
       if (Object.keys(o).length) out[id] = o;
     }
     return out;
+  }
+
+  /** Leaderboard login (`skyshards-auth-token`): the API's JWT, stored raw (not JSON). */
+  static saveAuthToken(token: string): boolean {
+    try {
+      localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+      return true;
+    } catch (error) {
+      console.error("Failed to save the auth token:", error);
+      return false;
+    }
+  }
+
+  static loadAuthToken(): string | null {
+    try {
+      const t = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+      return t && t.trim() ? t : null;
+    } catch {
+      return null;
+    }
+  }
+
+  static clearAuthToken(): void {
+    this.remove(STORAGE_KEYS.AUTH_TOKEN);
   }
 
   /** Clears every key except the simulator scenario. */

@@ -1,0 +1,188 @@
+import { describe, expect, it } from "vitest";
+import { defaultGameData } from "../simulator/data/default";
+import { DEFAULT_BAZAAR_PRICING } from "../simulator/economy/bazaar";
+import type { FlowCell, FlowListEntry } from "./api";
+import { valueResult } from "./pricing";
+import type { RunResult } from "./result";
+import { YIELD_STATS } from "./tiers";
+import {
+  avatarUrl,
+  filterRows,
+  findCell,
+  flowRow,
+  itemBreakdown,
+  NEW_FOR_MS,
+  profitByEvery,
+  rank,
+  rankEntries,
+  slackFrom,
+  spreadAt,
+  suppliesText,
+  toMillis,
+  type ViewSettings,
+} from "./view";
+
+const data = defaultGameData();
+const NOW = Date.UTC(2026, 4, 20);
+
+const result = (produced: Record<string, number>, extra: Partial<RunResult> = {}): RunResult => ({
+  cycles: 2000,
+  days: 140,
+  produced,
+  consumed: {},
+  bought: {},
+  built: {},
+  shortfall: {},
+  uptime: 0.95,
+  sustainable: true,
+  effort: { sessions: 2000, avg: 45, peak: 290, byKind: { harvest: 20 } },
+  halted: false,
+  ...extra,
+});
+
+const entry = (id: string, title: string, cell: RunResult | null, extra: Partial<FlowListEntry> = {}): FlowListEntry => ({
+  id,
+  title,
+  author: { id: "80351110224678912", name: `Author ${id}`, avatar: null },
+  plots: 3,
+  cycles: 2000,
+  createdAt: new Date(NOW - 30 * 86400_000).toISOString(),
+  updatedAt: new Date(NOW - 30 * 86400_000).toISOString(),
+  stale: false,
+  estimated: false,
+  cell,
+  spread: null,
+  effort: cell?.effort ?? null,
+  ...extra,
+});
+
+const ironman: ViewSettings = { board: "ironman", quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false, now: NOW };
+
+describe("leaderboard view: ranking", () => {
+  it("sorts by profit per day, puts unverified entries last and ranks ties together", () => {
+    const rows = rankEntries(
+      data,
+      [
+        entry("a", "Small", result({ wheat: 1000 })),
+        entry("b", "Pending", null),
+        entry("c", "Big", result({ wheat: 100000 })),
+        entry("d", "Big twin", result({ wheat: 100000 })),
+      ],
+      ironman
+    );
+    expect(rows.map((r) => r.entry.id)).toEqual(["c", "d", "a", "b"]);
+    expect(rows.map((r) => r.rank)).toEqual([1, 1, 3, 4]);
+    expect(rows[3].profitPerDay).toBeNull();
+    expect(rows[0].profitPerDay).toBeCloseTo(valueResult(data, result({ wheat: 100000 }), "ironman").profitPerDay);
+  });
+
+  it("rank gives standard competition ranks", () => {
+    expect(rank([{ profitPerDay: 5 }, { profitPerDay: 5 }, { profitPerDay: 4 }, { profitPerDay: null }, { profitPerDay: null }]).map((r) => r.rank)).toEqual([1, 1, 3, 4, 4]);
+  });
+
+  it("normal board subtracts purchases and reports the build cost separately", () => {
+    const quotes = { dead_plant: { lowestSellOffer: 1000, highestBuyOrder: 900 }, wheat: { lowestSellOffer: 10, highestBuyOrder: 8 } };
+    const r = result({ wheat: 1000 }, { bought: { dead_plant: 10 }, built: { dead_plant: 5 } });
+    const row = flowRow(data, entry("a", "A", r), { ...ironman, board: "normal", quotes });
+    const v = valueResult(data, r, "normal", quotes, DEFAULT_BAZAAR_PRICING);
+    expect(row.profitPerDay).toBeCloseTo(v.profitPerDay);
+    expect(row.boughtPerDay).toBeGreaterThan(0);
+    expect(row.buildCost).toBeGreaterThan(0);
+    expect(row.profitPerDay!).toBeCloseTo(row.revenuePerDay! - row.boughtPerDay!);
+  });
+
+  it("filters by title or author, keeping the ranks", () => {
+    const rows = rankEntries(data, [entry("a", "Chloronite engine", result({ wheat: 10 })), entry("b", "Aloe", result({ wheat: 20 }))], ironman);
+    const hit = filterRows(rows, "chloro");
+    expect(hit.map((r) => r.entry.id)).toEqual(["a"]);
+    expect(hit[0].rank).toBe(2);
+    expect(filterRows(rows, "author b").map((r) => r.entry.id)).toEqual(["b"]);
+    expect(filterRows(rows, "  ")).toHaveLength(2);
+  });
+});
+
+describe("leaderboard view: badges and labels", () => {
+  it("new (< 7 days), stale and the API's estimated flag", () => {
+    const fresh = flowRow(data, entry("a", "A", result({}), { createdAt: new Date(NOW - NEW_FOR_MS + 60_000).toISOString(), stale: true }), ironman);
+    expect(fresh.badges).toEqual({ new: true, stale: true, estimated: false });
+    const old = flowRow(data, entry("b", "B", result({}), { createdAt: Math.floor((NOW - NEW_FOR_MS - 1000) / 1000), estimated: true }), ironman);
+    expect(old.badges).toEqual({ new: false, stale: false, estimated: true });
+  });
+
+  it("scales to the viewer's yield stats only when asked and when they differ", () => {
+    const cell = result({ wheat: 1000, chloronite: 5 });
+    const viewerStats = { ...YIELD_STATS, farmingFortune: 1500 };
+    const off = flowRow(data, entry("a", "A", cell), { ...ironman, viewerStats, useMyStats: false });
+    const on = flowRow(data, entry("a", "A", cell), { ...ironman, viewerStats, useMyStats: true });
+    const same = flowRow(data, entry("a", "A", cell), { ...ironman, viewerStats: { ...YIELD_STATS }, useMyStats: true });
+    expect(off.scaled).toBe(false);
+    expect(on.scaled).toBe(true);
+    expect(same.scaled).toBe(false);
+    expect(on.profitPerDay!).toBeLessThan(off.profitPerDay!);
+  });
+
+  it("ironman supplies text from consumed dead plants and fermento", () => {
+    const row = flowRow(data, entry("a", "A", result({}, { consumed: { dead_plant: 12.4, fermento: 3, chloronite: 9 } })), ironman);
+    expect(row.suppliesPerDay).toEqual({ dead_plant: 12.4, fermento: 3 });
+    expect(suppliesText(row.suppliesPerDay)).toBe("12 dead plants, 3 fermento");
+    expect(suppliesText({ dead_plant: 1 })).toBe("1 dead plant");
+    expect(suppliesText({ fermento: 0.25 })).toBe("0.3 fermento");
+    expect(suppliesText({})).toBe("none");
+  });
+
+  it("slack comes from the API when present; otherwise null", () => {
+    expect(flowRow(data, entry("a", "A", result({})), ironman).slack).toBeNull();
+    expect(flowRow(data, entry("a", "A", result({}), { slack: 0.9 }), ironman).slack).toBe(0.9);
+  });
+
+  it("avatar URLs and timestamps", () => {
+    expect(avatarUrl("123", "abc")).toBe("https://cdn.discordapp.com/avatars/123/abc.png?size=64");
+    expect(avatarUrl("80351110224678912", null)).toBe(`https://cdn.discordapp.com/embed/avatars/${(80351110224678912n >> 22n) % 6n}.png`);
+    expect(avatarUrl("not-a-number", null)).toBe("https://cdn.discordapp.com/embed/avatars/0.png");
+    expect(toMillis(1_700_000_000)).toBe(1_700_000_000_000);
+    expect(toMillis(1_700_000_000_000)).toBe(1_700_000_000_000);
+    expect(toMillis("2026-01-01T00:00:00Z")).toBe(Date.UTC(2026, 0, 1));
+  });
+});
+
+describe("leaderboard view: detail page", () => {
+  const cells: FlowCell[] = [1, 2, 3, 4, 6, 8, 12].map((every) => ({
+    board: "ironman",
+    tier: "max",
+    every,
+    median: result({ wheat: 100000 * (1 - 0.05 * (every - 1)) }),
+    spread: { [String(every)]: 1.2 },
+    seeds: 5,
+    engineVersion: "x",
+  }));
+
+  it("profit by frequency and slack from it", () => {
+    const points = profitByEvery(data, cells, "ironman", "max", { quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false });
+    expect(points.map((p) => p.every)).toEqual([1, 2, 3, 4, 6, 8, 12]);
+    expect(points[0].profitPerDay!).toBeGreaterThan(points[6].profitPerDay!);
+    const s = slackFrom(points, 1)!;
+    expect(s).toBeCloseTo(0.95, 5); // only j = 2 in (1, 2]
+    expect(slackFrom(points, 12)).toBeNull();
+    expect(profitByEvery(data, cells, "ironman", "high", { quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false }).every((p) => p.profitPerDay === null)).toBe(true);
+  });
+
+  it("finds cells and reads spread maps or numbers", () => {
+    expect(findCell(cells, "ironman", "max", 3)?.every).toBe(3);
+    expect(findCell(cells, "normal", "max", 3)).toBeUndefined();
+    expect(spreadAt({ "3": 1.5 }, 3)).toBe(1.5);
+    expect(spreadAt({ "3": 1.5 }, 4)).toBeNull();
+    expect(spreadAt(1.7, 4)).toBe(1.7);
+    expect(spreadAt(null, 1)).toBeNull();
+  });
+
+  it("item breakdown sorts by coins per day, purchases negative", () => {
+    const quotes = { dead_plant: { lowestSellOffer: 1000, highestBuyOrder: 900 } };
+    const lines = itemBreakdown(data, result({ wheat: 1000, chloronite: 4 }, { bought: { dead_plant: 2 } }), "normal", quotes, DEFAULT_BAZAAR_PRICING);
+    expect(lines[0].item).toBe("wheat");
+    const bought = lines.find((l) => l.kind === "bought")!;
+    expect(bought.coinsPerDay).toBeLessThan(0);
+    expect(lines[lines.length - 1]).toBe(bought);
+    const iron = itemBreakdown(data, result({ wheat: 1000, chloronite: 4 }), "ironman", {}, DEFAULT_BAZAAR_PRICING);
+    expect(iron.find((l) => l.item === "chloronite")!.unitPrice).toBe(0);
+  });
+});

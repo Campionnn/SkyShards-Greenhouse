@@ -11,6 +11,7 @@ export const usePageTitle = () => {
     const getTitle = () => {
       const path = location.pathname;
 
+      if (path === "/flows" || path.startsWith("/flows/")) return "Greenhouse · Flow leaderboard";
       switch (path) {
         case "/":
           return "Greenhouse · Grid";

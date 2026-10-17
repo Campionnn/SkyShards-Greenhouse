@@ -10,6 +10,9 @@ const CalculatorPage = lazy(() => import("./pages/CalculatorPage").then((module)
 const DesignerPage = lazy(() => import("./pages/DesignerPage").then((module) => ({ default: module.DesignerPage })));
 const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((module) => ({ default: module.SimulatorPage })));
 const GuidePage = lazy(() => import("./pages/GuidePage").then((module) => ({ default: module.GuidePage })));
+const FlowsPage = lazy(() => import("./pages/FlowsPage").then((module) => ({ default: module.FlowsPage })));
+const FlowDetailPage = lazy(() => import("./pages/FlowDetailPage").then((module) => ({ default: module.FlowDetailPage })));
+const AuthCallbackPage = lazy(() => import("./pages/AuthCallbackPage").then((module) => ({ default: module.AuthCallbackPage })));
 const AboutPage = lazy(() => import("./pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const ContactPage = lazy(() => import("./pages/ContactPage").then((module) => ({ default: module.ContactPage })));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
@@ -83,6 +86,30 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<LoadingSpinner />}>
             <SimulatorPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "flows",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <FlowsPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "flows/:id",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <FlowDetailPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "auth/callback",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <AuthCallbackPage />
           </Suspense>
         ),
       },

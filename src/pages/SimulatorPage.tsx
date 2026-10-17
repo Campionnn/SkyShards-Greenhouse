@@ -9,7 +9,9 @@ import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
 import { buttonClass } from "../components/simulator/styles";
 import { FlowEditor } from "../components/simulator/FlowEditor";
 import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
-import { addPlot, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
+import { addPlot, importFlows, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
+import { applyRules } from "../leaderboard/rules";
+import { getFlow } from "../services/flowsService";
 import { ScriptEditor } from "../components/simulator/script/ScriptEditor";
 import { ScriptHaltBanner, ScriptPanel } from "../components/simulator/script/ScriptPanel";
 import type { ScriptTarget } from "../components/simulator/script/scriptEdit";
@@ -166,6 +168,55 @@ export const SimulatorPage: React.FC = () => {
     setIncoming(fresh);
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [location.state, location.pathname, location.search, navigate, toast]);
+
+  // `?flow=ID`: open a leaderboard entry under the rules (the site profile's board, online every
+  // cycle, a random seed), then strip the parameter so a reload doesn't load it again.
+  const flowParam = params.get("flow");
+  const handledFlow = useRef<string | null>(null);
+  const scenarioRef = useRef(scenario);
+  useEffect(() => {
+    scenarioRef.current = scenario;
+  }, [scenario]);
+  useEffect(() => {
+    if (!flowParam || handledFlow.current === flowParam) return;
+    handledFlow.current = flowParam;
+    const rest = new URLSearchParams(location.search);
+    rest.delete("flow");
+    const strip = () => navigate(`${location.pathname}${rest.size ? `?${rest}` : ""}`, { replace: true, state: location.state });
+    getFlow(flowParam)
+      .then((detail) => {
+        const before = scenarioRef.current;
+        let next: Scenario;
+        try {
+          const imported = importFlows(before, JSON.stringify(detail.payload));
+          const ruled = applyRules(imported, profile === "normal" ? "normal" : "ironman", 1, Math.floor(Math.random() * 2 ** 31));
+          // The profile is site-wide; keep the scenario's own value.
+          next = { ...ruled, settings: { ...ruled.settings } };
+          if (before.settings.profile) next.settings.profile = before.settings.profile;
+          else delete next.settings.profile;
+        } catch (e) {
+          strip();
+          toast({ title: "Could not load the flow", description: e instanceof Error ? e.message : String(e), variant: "error" });
+          return;
+        }
+        setScenario(next);
+        strip();
+        setEditing(null);
+        setFocus(ALL);
+        toast({
+          id: "simulator-flow-loaded",
+          title: `Loaded ${detail.title} by ${detail.author.name}`,
+          description: "Under the leaderboard rules: max stats, empty inventory, online every cycle, a random seed.",
+          variant: "success",
+          duration: 8000,
+          action: { label: "Undo", onClick: () => setScenario(before) },
+        });
+      })
+      .catch((e: unknown) => {
+        strip();
+        toast({ title: "Could not load the flow", description: e instanceof Error ? e.message : String(e), variant: "error" });
+      });
+  }, [flowParam, location.pathname, location.search, location.state, navigate, profile, toast]);
 
   const place = (layout: IncomingLayout, dest: LayoutDestination) => {
     const before = scenario;
