@@ -28,6 +28,7 @@ import { intInclusive, nextFloat, seedRng } from "../rng";
 import { sanityCheck } from "../analysis/sanityCheck";
 import { newScratch, type CycleCtx, type Env, type TickScratch } from "../sim/context";
 import { wouldDecayWithin } from "../sim/decay";
+import { effort } from "../sim/effort";
 import { destroyPlant } from "../sim/explosion";
 import { harvestPlant } from "../sim/harvest";
 import { spend } from "../sim/inventory";
@@ -1197,13 +1198,14 @@ class PlotHost extends HostObject {
     const plot = this.plot;
     if (!isFootprintFree(buildOccupancy(plot), row, col, def!.size)) return false;
     const origin = isHarvestableCrop(data, kind) ? "planted" : "placed";
-    if (origin === "placed" && !isFreePlacedItem(kind)) {
+    if (origin === "placed" && !isFreePlacedItem(kind, ctx.config)) {
       const allowDebt = ctx.config.allowMutationDebt === true && !!data.mutations[kind];
       const req = { cycle: ctx.cycle, plotId: plot.id, row, col, action: `place ${kind} (script)`, replacement: false, allowDebt };
       if (!spend(ctx.state, kind, 1, req, ctx.prices, ctx.emit)) return false;
     }
     const p = newPlant(ctx.state, data, ctx.config, kind, row, col, origin, ctx.cycle);
     insertPlant(plot, p);
+    effort(ctx.state, origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row, col, origin, replacement: false });
     return true;
   }
@@ -1398,25 +1400,42 @@ class PlantHost extends HostObject {
           return this.act(info, key, (plot, q) => harvestPlant(plot, q, rt.cycleCtx, rt.scratchFor(this.plotId)));
         });
       case "destroy":
-        return fn(key, (_a, info) => this.act(info, key, (plot, q) => destroyPlant(plot, q, rt.cycleCtx, "destroyed by script")));
+        return fn(key, (_a, info) => this.act(info, key, (plot, q) => {
+          effort(rt.cycleCtx.state, "remove");
+          destroyPlant(plot, q, rt.cycleCtx, "destroyed by script");
+        }));
       case "waterIt":
         return fn(key, (a, info) => {
           const add = a[0] === undefined ? null : num(a[0], info, "amount");
           return this.act(info, key, (_plot, q) => {
             if (q.kindId === "soggybud") return; // can't be watered
+            // Effort: one per call (the built-in phase counts once per plot instead).
+            if (q.water < MAX_WATER) effort(rt.cycleCtx.state, "water");
             q.water = add === null ? MAX_WATER : Math.min(MAX_WATER, q.water + add);
           });
         });
       case "wake":
-        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => void (q.gate.asleep = false)));
+        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => {
+          if (q.gate.asleep) effort(rt.cycleCtx.state, "gate");
+          q.gate.asleep = false;
+        }));
       case "vacuum":
-        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => void (q.gate.ratAlive = false)));
+        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => {
+          if (q.gate.ratAlive) effort(rt.cycleCtx.state, "gate");
+          q.gate.ratAlive = false;
+        }));
       case "discharge":
-        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => void (q.gate.charge !== undefined && (q.gate.charge = 0))));
+        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => {
+          if (q.gate.charge) effort(rt.cycleCtx.state, "gate");
+          if (q.gate.charge !== undefined) q.gate.charge = 0;
+        }));
       case "feed":
         return fn(key, (_a, info) =>
           this.act(info, key, (_plot, q) => {
-            if (q.kindId === "fleshtrap" && q.origin === "spawned") q.gate.hunger = (q.gate.hunger ?? 0) + rt.cycleCtx.config.fleshtrapFeedHunger;
+            if (q.kindId === "fleshtrap" && q.origin === "spawned") {
+              q.gate.hunger = (q.gate.hunger ?? 0) + rt.cycleCtx.config.fleshtrapFeedHunger;
+              effort(rt.cycleCtx.state, "gate");
+            }
           })
         );
       case "protect":

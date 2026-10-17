@@ -5,8 +5,9 @@ import { forcedEffectsOf } from "../script/overrides";
 import { ScriptRuntime } from "../script/runtime";
 import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
+import { closeSession, effort, effortOf } from "./effort";
 import { uniqueCropsAcross } from "./init";
-import { reservePlan, sellSurplus } from "./market";
+import { marketTotals, reservePlan, sellSurplus } from "./market";
 import { runPlayerSession } from "./player";
 import { finalizeSummary } from "./summary";
 import { tickPlot } from "./tick";
@@ -98,7 +99,9 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
       if (active) scripts.callHook("onSession", [], "controller");
     }
 
-    // 5. Player session.
+    // 5. Player session. Effort: the session's work is everything counted from here to the clock.
+    const effortBefore = active ? effortOf(state).total : 0;
+    const marketBefore = active && state.summary.market ? marketTotals(state.summary.market) : 0;
     for (const { plot, scratch } of plots) {
       if (active) runPlayerSession(plot, ctx, scratch);
       else {
@@ -111,6 +114,10 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     // 6. Scripts close the cycle. Normal profile: the player sells surplus mutation items before logging off.
     if (scripts && active) scripts.callHook("afterSession", [], "controller");
     if (active && reserve) sellSurplus(state, env.data, reserve);
+    if (active) {
+      if (state.summary.market && marketTotals(state.summary.market) !== marketBefore) effort(state, "bazaar");
+      closeSession(state, effortBefore);
+    }
     if (scripts) {
       scripts.callHook("onCycleEnd");
       scripts.save();

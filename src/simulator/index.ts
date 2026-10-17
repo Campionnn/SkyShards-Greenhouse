@@ -6,9 +6,11 @@ export {
   DECAY_EXTENSION_HOURS,
   DEFAULT_CONFIG,
   DEVOURER_ROOT_CHANCE,
+  EFFORT_WEIGHTS,
   HALT_WATER,
   isFreePlacedItem,
   MAX_WATER,
+  MINIGAME_HARVEST_KINDS,
   MUTATION_CREDIT_ORDERS,
   normalizeForcedEffects,
   ROOT_SPREAD_CHANCE,
@@ -39,6 +41,7 @@ export type {
   SanityRequirement,
 } from "./analysis/sanityCheck";
 export { uptimeRatio } from "./sim/summary";
+export { effortPerSession, zeroEffort } from "./sim/effort";
 export { layoutFromDecoded, layoutFromShareCode } from "./share/layoutFromShare";
 export { DEFAULT_PLAYER_STATS, defaultSettings, scenarioFromShareCodes, staticFlow } from "./scenario";
 export { migrateScenario } from "./migrate";

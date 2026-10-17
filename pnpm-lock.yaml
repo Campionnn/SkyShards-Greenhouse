@@ -120,6 +120,9 @@ importers:
       cross-env:
         specifier: ^7.0.3
         version: 7.0.3
+      esbuild:
+        specifier: 0.25.9
+        version: 0.25.9
       eslint:
         specifier: ^9.33.0
         version: 9.33.0(jiti@2.5.1)

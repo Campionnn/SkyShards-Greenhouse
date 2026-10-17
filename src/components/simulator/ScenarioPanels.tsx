@@ -1,5 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Trophy, Upload } from "lucide-react";
+import { applyRules, BOARDS, ruleDifferences, type Board } from "../../leaderboard/rules";
+import { EVERY, nearestEvery } from "../../leaderboard/tiers";
 import {
   aloeHarvestSchedule,
   aloeHarvestStageFor,
@@ -349,10 +351,45 @@ export const SettingsPanel: React.FC<{
   const { settings } = scenario;
   const setSettings = (patch: Partial<Scenario["settings"]>) => onChange({ ...scenario, settings: { ...settings, ...patch } });
   const setConfig = (patch: Partial<SimConfig>) => setSettings({ config: { ...settings.config, ...patch } });
-  const nonDefault = CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length + (settings.config.forcedEffects ? 1 : 0);
+  const nonDefault =
+    CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length +
+    (settings.config.forcedEffects ? 1 : 0) +
+    (settings.config.freePlacedItems?.length ? 1 : 0);
+  const [rulesBoard, setRulesBoard] = useState<Board>(settings.profile === "normal" ? "normal" : "ironman");
+  const [rulesEvery, setRulesEvery] = useState<number>(settings.activity.kind === "everyN" ? nearestEvery(settings.activity.n) : 1);
+  const differences = ruleDifferences(scenario, rulesBoard);
+  const applyLeaderboardRules = () => {
+    const seed = Math.floor(Math.random() * 2 ** 31);
+    const ruled = applyRules(scenario, rulesBoard, rulesEvery, seed);
+    // The profile is site-wide (the page applies it from localStorage), so leave the scenario's own value alone.
+    const next: Scenario = { ...ruled, settings: { ...ruled.settings } };
+    if (settings.profile) next.settings.profile = settings.profile;
+    else delete next.settings.profile;
+    onChange(next);
+  };
 
   return (
     <Panel title="Settings" icon={<Settings2 />}>
+      <div className="mb-3 rounded border border-slate-700/60 bg-slate-800/40 p-2">
+        <div className="flex items-center gap-1 text-xs text-slate-300 mb-1.5">
+          <Trophy className="w-3.5 h-3.5 text-amber-300" /> Leaderboard rules
+          <InfoHint title="Leaderboard rules" width={300}>
+            Flows on the leaderboard are measured with wiki-maximum player stats, default advanced settings, an empty starting inventory, the player
+            online every N cycles and (ironman board) unlimited Dead Plants and Fermento to place. Apply the same rules here to test your flow the way the
+            server will, with your own random seed. The server uses secret seeds of its own.
+          </InfoHint>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <SelectField<Board> label="Board" value={rulesBoard} options={BOARDS.map((b) => ({ value: b, label: b === "ironman" ? "Ironman" : "Normal" }))} onChange={setRulesBoard} />
+          <SelectField<string> label="Online every" value={String(rulesEvery)} options={EVERY.map((n) => ({ value: String(n), label: `${n} cycle${n === 1 ? "" : "s"}` }))} onChange={(v) => setRulesEvery(Number(v))} />
+          <button className={buttonClass.neutral} onClick={applyLeaderboardRules} title={differences.length ? `Changes: ${differences.join("; ")}` : "Already under the rules; re-rolls the seed"}>
+            <Trophy className="w-3.5 h-3.5" /> Apply leaderboard rules
+          </button>
+        </div>
+        {differences.length > 0 && (
+          <div className="mt-1.5 text-[11px] text-amber-200/90">Your settings differ from the rules: {differences.join("; ")}.</div>
+        )}
+      </div>
       <div className="mb-3">
         <CheckboxField
           label={
@@ -469,6 +506,22 @@ export const SettingsPanel: React.FC<{
             value={settings.config.forcedEffects}
             onChange={(forcedEffects) => setSettings({ config: withForcedEffects(settings.config, forcedEffects) })}
           />
+          {!!settings.config.freePlacedItems?.length && (
+            <div className="rounded border border-amber-500/30 p-2 text-[11px] text-amber-200/90">
+              <span className="font-medium">Unlimited supplies (leaderboard ironman rules):</span> {settings.config.freePlacedItems.map(nameOf).join(", ")} are placed
+              without using inventory, like fire.{" "}
+              <button
+                className="underline hover:text-amber-100"
+                onClick={() => {
+                  const config = { ...settings.config };
+                  delete config.freePlacedItems;
+                  setSettings({ config });
+                }}
+              >
+                Turn off
+              </button>
+            </div>
+          )}
           <div>
             <SectionLabel>Not modelled</SectionLabel>
             <ul className="text-[11px] text-slate-500 space-y-0.5">

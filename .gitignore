@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Built leaderboard verifier (pnpm build:verify); the copy in ../SkyShards-API/tools/verify is committed there
+dist-verify
 *.local
 
 # Editor directories and files

@@ -2,6 +2,7 @@ import { isFreePlacedItem, type SimConfig } from "../config";
 import type { GameData } from "../data/types";
 import { cellIndex, footprint, footprintFits, ringCells } from "../grid/cells";
 import type { CycleCtx, ResolvedLayout, TickScratch } from "./context";
+import { effort } from "./effort";
 import { destroyPlant, isPrimedBlastberry } from "./explosion";
 import { harvestPlant } from "./harvest";
 import { closePlotDebts, credit, spend } from "./inventory";
@@ -17,6 +18,7 @@ export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, sc
     harvestPlant(plot, p, ctx, scratch);
     return;
   }
+  effort(ctx.state, "remove");
   if (p.isDeadPlant) {
     removePlant(plot, p);
     credit(ctx.state, DEAD_PLANT, p.size * p.size);
@@ -47,20 +49,22 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
     const at = occ[cellIndex(d.row, d.col)];
     if (at && at.kindId === d.kindId && at.row === d.row && at.col === d.col && at.origin === d.origin) continue;
     if (!isFootprintFree(occ, d.row, d.col, d.size)) continue;
-    if (d.origin === "placed" && mode !== "setup" && !isFreePlacedItem(d.kindId)) {
+    if (d.origin === "placed" && mode !== "setup" && !isFreePlacedItem(d.kindId, ctx.config)) {
       // Mutation debt: mutation items only (not fermento or dead plants).
       const allowDebt = ctx.config.allowMutationDebt === true && !!ctx.env.data.mutations[d.kindId];
       const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement, allowDebt };
       if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
     } else if (replacement) {
       ctx.state.summary.replacements += 1;
-    } else if (mode === "setup" && d.origin === "placed" && !isFreePlacedItem(d.kindId) && ctx.state.summary.market) {
+    } else if (mode === "setup" && d.origin === "placed" && !isFreePlacedItem(d.kindId, ctx.config) && ctx.state.summary.market) {
       // Normal profile: setup stays free, but count what building it would cost (sim/market.ts).
       bump(ctx.state.summary.market.built, d.kindId);
     }
     const p = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, d.origin, ctx.cycle);
     insertPlant(plot, p);
     for (const idx of footprint(d.row, d.col, d.size)) occ[idx] = p;
+    // Setup is built before the run; everything after is the player's work.
+    if (mode !== "setup") effort(ctx.state, d.origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, origin: p.origin, replacement });
   }
 }
@@ -112,7 +116,7 @@ export function applyStepLayout(
   closePlotDebts(ctx.state, plot.id);
   // A later step (never setup) skips requirement inputs of targets already holding their mutation.
   const onlyNeeded = mode === "step" && ctx.policiesFor(plot.id).onlyReplaceForEmptyTargets === true;
-  placeLayoutPlants(plot, onlyNeeded ? neededLayout(plot, layout, ctx.env.data) : layout, ctx, mode);
+  placeLayoutPlants(plot, onlyNeeded ? neededLayout(plot, layout, ctx.env.data, ctx.config) : layout, ctx, mode);
 }
 
 type LayoutPlant = ResolvedLayout["plants"][number];
@@ -129,8 +133,8 @@ function slotHoldsTarget(occ: Occupancy, s: SlotLabel): boolean {
  * whose mutation requires its kind is only needed while at least one of those targets is empty
  * (doesn't hold its mutation). Anything that feeds no target is always needed.
  */
-export function layoutPlantNeeded(plot: PlotState, d: LayoutPlant, occ: Occupancy, data: GameData): boolean {
-  if (d.origin !== "placed" || isFreePlacedItem(d.kindId)) return true;
+export function layoutPlantNeeded(plot: PlotState, d: LayoutPlant, occ: Occupancy, data: GameData, config?: SimConfig): boolean {
+  if (d.origin !== "placed" || isFreePlacedItem(d.kindId, config)) return true;
   const cells = footprint(d.row, d.col, d.size);
   let feeds = false;
   for (const s of plot.slots) {
@@ -144,9 +148,9 @@ export function layoutPlantNeeded(plot: PlotState, d: LayoutPlant, occ: Occupanc
 }
 
 /** The layout, minus the requirement inputs only full targets would use (`layoutPlantNeeded`). */
-export function neededLayout(plot: PlotState, layout: ResolvedLayout, data: GameData): ResolvedLayout {
+export function neededLayout(plot: PlotState, layout: ResolvedLayout, data: GameData, config?: SimConfig): ResolvedLayout {
   const occ = buildOccupancy(plot);
-  return { ...layout, plants: layout.plants.filter((d) => layoutPlantNeeded(plot, d, occ, data)) };
+  return { ...layout, plants: layout.plants.filter((d) => layoutPlantNeeded(plot, d, occ, data, config)) };
 }
 
 /**
@@ -164,7 +168,7 @@ export function replacePlacedBeforeDecay(
 ): void {
   const kept = (p: PlantState) => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
   for (const d of layout.plants) {
-    if (d.origin !== "placed" || isFreePlacedItem(d.kindId)) continue;
+    if (d.origin !== "placed" || isFreePlacedItem(d.kindId, ctx.config)) continue;
     const p = buildOccupancy(plot)[cellIndex(d.row, d.col)];
     // A primed Blastberry would explode when broken: leave it to its own decay.
     if (!p || !matches(p, d) || kept(p) || isPrimedBlastberry(p) || !due(p)) continue;
@@ -172,6 +176,7 @@ export function replacePlacedBeforeDecay(
     const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `replace ${d.kindId} before decay`, replacement: true };
     if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
     removePlant(plot, p);
+    effort(ctx.state, "replace");
     ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "replaced before decay" });
     const fresh = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, "placed", ctx.cycle);
     insertPlant(plot, fresh);
@@ -197,7 +202,7 @@ export function maintainLayout(plot: PlotState, fullLayout: ResolvedLayout, ctx:
   }
 
   // After the Dead Plant pass, so a target a mutation decayed out of counts as empty.
-  if (onlyForEmptyTargets) layout = neededLayout(plot, fullLayout, ctx.env.data);
+  if (onlyForEmptyTargets) layout = neededLayout(plot, fullLayout, ctx.env.data, ctx.config);
   const occ = buildOccupancy(plot);
   for (const d of layout.plants) {
     for (const idx of footprint(d.row, d.col, d.size)) {

@@ -39,6 +39,7 @@ export function zeroSummary(plotIds: PlotId[]): RunSummary {
     unfilledCellCycles: 0,
     uptime: zeroUptime(),
     perPlot: Object.fromEntries(plotIds.map((id) => [String(id), zeroPerPlot()])),
+    effort: { sessions: 0, total: 0, peak: 0, counts: {} },
   };
 }
 

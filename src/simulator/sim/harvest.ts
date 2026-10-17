@@ -8,6 +8,7 @@ import { chance, nextFloat } from "../rng";
 import { ALOE_FRAGMENT, aloeRow, FRAGMENTS_PER_ALOE } from "../growth/aloe";
 import { uniqueCropYieldBonus } from "../growth/clock";
 import type { CycleCtx, TickScratch } from "./context";
+import { effortHarvest } from "./effort";
 import { explode, isPrimedBlastberry } from "./explosion";
 import { convertAloeFragments, credit } from "./inventory";
 import { JELLYBEAN, removePlant, yieldEffectsLocked } from "./plants";
@@ -130,6 +131,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   summary.revenue.crops += coinValue - rareValue - rareCropValue - itemValue;
   for (const [item, qty] of Object.entries(rareCrops)) bump(summary.rareCrops, item, qty);
   bump(summary.harvested, p.kindId);
+  effortHarvest(ctx.state, p.kindId);
   const pp = perPlot(summary, plot.id);
   pp.harvested += 1;
   pp.revenue += coinValue;

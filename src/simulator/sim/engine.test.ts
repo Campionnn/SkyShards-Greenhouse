@@ -496,6 +496,26 @@ describe("debt: would it ever need something it does not have?", () => {
     expect(r.summary.placedItems.fire).toBeUndefined();
   });
 
+  it("config.freePlacedItems: listed items are free like fire; unlisted ones still need stock", () => {
+    const steps = [
+      step("bare", layout([["wheat", 1, 1]]), [{ kind: "cycles", n: 1 }]),
+      step("paid", layout([["dead_plant", 0, 0], ["fermento", 0, 2], ["chloronite", 5, 5], ["wheat", 1, 1]])),
+    ];
+    const free = scenario([flow(steps, false)], { config: { freePlacedItems: ["dead_plant", "fermento"] } });
+    const r = engine.run(start(free), 3);
+    expect(plantAt(r.state, 1, 0, 0)).toMatchObject({ kindId: "dead_plant", origin: "placed" });
+    expect(plantAt(r.state, 1, 0, 2)?.kindId).toBe("fermento");
+    expect(r.summary.placedItems.dead_plant).toBeUndefined();
+    expect(r.summary.placedItems.fermento).toBeUndefined();
+    // Chloronite is not free: still a shortfall.
+    expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
+    expect(r.state.debts.map((d) => d.item)).toEqual(["chloronite"]);
+
+    // Without the setting, dead plants and fermento go short too.
+    const paid = engine.run(start(scenario([flow(steps, false)])), 3);
+    expect(new Set(paid.state.debts.map((d) => d.item))).toEqual(new Set(["dead_plant", "fermento", "chloronite"]));
+  });
+
   it("allowMutationDebt: a mutation item is re-placed without stock, borrowed below 0, no debt", () => {
     const sc = singlePlot(layout([["chloronite", 5, 5]]), { config: { allowMutationDebt: true } });
     const r = TIMER_ONLY.run(start(sc, TIMER_ONLY), 18); // decays at cycle 17, re-placed that session

@@ -307,6 +307,38 @@ export interface RunSummary {
   perPlot: Record<string, PerPlotSummary>;
   /** Normal profile only (missing in ironman): Bazaar quantities the page prices (economy/market.ts `valueRun`). */
   market?: MarketSummary;
+  /**
+   * How much work the player did: weighted action counts (`EFFORT_WEIGHTS` in config.ts), always
+   * present in new states; old saved states may lack it (read as zero, created on first use).
+   */
+  effort?: EffortSummary;
+}
+
+/** The player's action kinds the effort score counts (weights in `EFFORT_WEIGHTS`). */
+export type EffortKind =
+  | "water"
+  | "harvest"
+  | "minigame"
+  | "replant"
+  | "place"
+  | "remove"
+  | "replace"
+  | "roots"
+  | "ground"
+  | "gate"
+  | "noctilume"
+  | "stepChange"
+  | "bazaar";
+
+export interface EffortSummary {
+  /** Online sessions so far (cycles the player acted in). */
+  sessions: number;
+  /** Weighted total of every action. */
+  total: number;
+  /** The most weighted effort any one session took. */
+  peak: number;
+  /** Raw action counts by kind (unweighted). */
+  counts: Partial<Record<EffortKind, number>>;
 }
 
 /**

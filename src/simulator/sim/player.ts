@@ -6,6 +6,7 @@ import { respawnChance } from "../spawn/respawn";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import type { CycleCtx, Phase, TickScratch } from "./context";
 import { wouldDecayWithin } from "./decay";
+import { effort } from "./effort";
 import { harvestPlant } from "./harvest";
 import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
 import { layoutInputAt, maintainLayout, neededLayout, removeByPlayer, replacePlacedBeforeDecay } from "./placement";
@@ -21,32 +22,57 @@ function decaysBeforeNextSession(plot: PlotState, p: PlantState, ctx: CycleCtx):
   return wouldDecayWithin(plot, p, Number.isFinite(k) ? k * ctx.cycleSeconds : Infinity);
 }
 
+/** Water every plant to max. Effort: once per plot, only if some plant actually needed water. */
 function water(plot: PlotState, ctx: CycleCtx): void {
   if (ctx.policiesFor(plot.id).watering !== "toMax") return;
-  for (const p of plot.plants) if (p.kindId !== "soggybud") p.water = MAX_WATER; // Soggybud can't be watered
+  let watered = false;
+  for (const p of plot.plants) {
+    if (p.kindId === "soggybud") continue; // Soggybud can't be watered
+    if (p.water < MAX_WATER) watered = true;
+    p.water = MAX_WATER;
+  }
+  if (watered) effort(ctx.state, "water");
 }
 
 /** Wake Snoozling, vacuum the Cheesebite rat, discharge Thunderling, feed Fleshtrap. */
 function tendGates(plot: PlotState, ctx: CycleCtx): void {
   const g = ctx.policiesFor(plot.id).gateInteractions;
+  let noctilume = false;
   for (const p of plot.plants) {
-    if (g.wakeSnoozling && p.gate.asleep) p.gate.asleep = false;
-    if (g.vacuumRat && p.gate.ratAlive) p.gate.ratAlive = false;
-    if (g.dischargeThunderling && p.gate.charge) p.gate.charge = 0;
+    if (g.wakeSnoozling && p.gate.asleep) {
+      p.gate.asleep = false;
+      effort(ctx.state, "gate");
+    }
+    if (g.vacuumRat && p.gate.ratAlive) {
+      p.gate.ratAlive = false;
+      effort(ctx.state, "gate");
+    }
+    if (g.dischargeThunderling && p.gate.charge) {
+      p.gate.charge = 0;
+      effort(ctx.state, "gate");
+    }
     if (g.feedFleshtrap && p.kindId === "fleshtrap" && p.origin === "spawned") {
       p.gate.hunger = (p.gate.hunger ?? 0) + ctx.config.fleshtrapFeedHunger;
+      effort(ctx.state, "gate");
     }
+    // Noctilume: the growth gate reads `noctilumeTime` on active cycles; the player changes the
+    // time once per visit, however many Noctilumes stand there.
+    if (g.noctilumeTime && p.kindId === "noctilume" && p.origin === "spawned" && !isFullyGrown(p)) noctilume = true;
   }
+  if (noctilume) effort(ctx.state, "noctilume");
 }
 
-/** Break Devourer roots (no drops). */
+/** Break Devourer roots (no drops). Effort: once per plot per session with roots. */
 function clearRoots(plot: PlotState, ctx: CycleCtx): void {
   if (!ctx.policiesFor(plot.id).gateInteractions.clearRoots) return;
+  let cleared = false;
   for (const p of [...plot.plants]) {
     if (!isRoot(p)) continue;
     removePlant(plot, p);
+    cleared = true;
     ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "cleared root" });
   }
+  if (cleared) effort(ctx.state, "roots");
 }
 
 /**
@@ -102,6 +128,7 @@ function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
     harvestPlant(plot, p, ctx, scratch);
     const replant = newPlant(ctx.state, ctx.env.data, ctx.config, kindId, row, col, "planted", ctx.cycle);
     insertPlant(plot, replant);
+    effort(ctx.state, "replant");
     ctx.emit(plot.id, { kind: "placed", plantId: replant.id, kindId, row, col, origin: "planted", replacement: false });
   }
 }
@@ -130,7 +157,7 @@ function tendPlacedItems(plot: PlotState, ctx: CycleCtx): void {
   const policies = ctx.policiesFor(plot.id);
   if (policies.placedUpkeep !== "replaceBeforeDecay") return;
   let layout = ctx.layoutFor(plot.id);
-  if (policies.onlyReplaceForEmptyTargets === true) layout = neededLayout(plot, layout, ctx.env.data);
+  if (policies.onlyReplaceForEmptyTargets === true) layout = neededLayout(plot, layout, ctx.env.data, ctx.config);
   replacePlacedBeforeDecay(plot, layout, ctx, (p) => decaysBeforeNextSession(plot, p, ctx));
 }
 
@@ -175,6 +202,7 @@ function fixGround(plot: PlotState, ctx: CycleCtx): void {
       if (current === m.ground) continue;
       if (plot.groundTiles[key] === m.ground) delete plot.groundOverrides[key];
       else plot.groundOverrides[key] = m.ground;
+      effort(ctx.state, "ground");
       ctx.emit(plot.id, { kind: "groundFixed", row, col, from: current, to: m.ground, mutationId: m.id });
     }
   }

@@ -5,6 +5,8 @@
  * verified, unpublished (reasoned defaults), model switches.
  */
 
+import type { EffortKind } from "./sim/state";
+
 // ---- Fixed values (no longer settings) ----
 
 /** Spawn pool denominator floor: max(SPAWN_POOL_FLOOR, Σweights); the remainder is the blank. */
@@ -57,7 +59,39 @@ export const JELLYBEAN_MULTIPLIER_CAP = 10;
  * never harvested).
  */
 export const FREE_PLACED_ITEMS: readonly string[] = ["fire"];
-export const isFreePlacedItem = (kindId: string): boolean => FREE_PLACED_ITEMS.includes(kindId);
+/**
+ * Is this placed item free? Always `FREE_PLACED_ITEMS`; a scenario may add more through
+ * `config.freePlacedItems` (the leaderboard's ironman rules make Dead Plants and Fermento free).
+ */
+export const isFreePlacedItem = (kindId: string, config?: Pick<SimConfig, "freePlacedItems">): boolean =>
+  FREE_PLACED_ITEMS.includes(kindId) || (config?.freePlacedItems?.includes(kindId) ?? false);
+
+/**
+ * Effort weights: how much work each player action is (`RunSummary.effort`, sim/effort.ts).
+ * Per online session the engine counts: watering once per plot (if anything was watered),
+ * each harvest (minigame kinds count `minigame` instead), each base crop replanted, each item
+ * placed outside setup, each plant the player breaks or clears, each placed item swapped before
+ * decay, root clearing once per plot, each ground block fixed, each gate interaction, a Noctilume
+ * time change once per plot, each step change (on top of the places and removes it causes), and
+ * a Bazaar visit once per session anything was bought or sold.
+ */
+export const EFFORT_WEIGHTS: Readonly<Record<EffortKind, number>> = {
+  water: 1,
+  harvest: 1,
+  minigame: 2,
+  replant: 1,
+  place: 3,
+  remove: 3,
+  replace: 3,
+  roots: 2,
+  ground: 2,
+  gate: 1,
+  noctilume: 1,
+  stepChange: 2,
+  bazaar: 2,
+};
+/** Harvests that are a minigame in game (PlantBoy Advance, Stoplight Petal, Phantomleaf). */
+export const MINIGAME_HARVEST_KINDS: readonly string[] = ["plantboy_advance", "stoplight_petal", "phantomleaf"];
 
 export type ChorusTeleport = "emptyOnly" | "anyCell";
 /**
@@ -150,6 +184,12 @@ export interface SimConfig {
    * Absent or empty = off. Optional so scenarios without it are unchanged.
    */
   forcedEffects?: Record<string, string[]>;
+  /**
+   * Extra placed items with an unlimited supply, on top of `FREE_PLACED_ITEMS` (fire): placing
+   * them never spends inventory or records debt. The leaderboard's ironman rules set
+   * `["dead_plant", "fermento"]`. Absent or empty = off; scenarios without it are unchanged.
+   */
+  freePlacedItems?: string[];
 }
 
 /** A copy of `config` with `forcedEffects` set, or the key removed when nothing is forced. */

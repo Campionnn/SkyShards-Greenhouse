@@ -1,4 +1,4 @@
-import { isFreePlacedItem } from "../config";
+import { isFreePlacedItem, type SimConfig } from "../config";
 import type { GameData, ItemId } from "../data/types";
 import { isBazaarItem } from "../economy/bazaar";
 import { createLayoutResolver } from "../flow/layout";
@@ -24,6 +24,14 @@ export function emptyMarket(): MarketSummary {
   return { produced: {}, bought: {}, sold: {}, built: {} };
 }
 
+/** Units bought plus sold so far: changes exactly when the player visited the Bazaar (effort). */
+export function marketTotals(m: MarketSummary): number {
+  let n = 0;
+  for (const q of Object.values(m.bought)) n += q;
+  for (const q of Object.values(m.sold)) n += q;
+  return n;
+}
+
 /** The run's Bazaar counts, or null in ironman. */
 export const marketOf = (state: SimulationState): MarketSummary | null => state.summary.market ?? null;
 
@@ -37,9 +45,9 @@ export function countProduced(state: SimulationState, item: ItemId, qty: number)
 export const canBuy = (state: SimulationState, item: ItemId): boolean => !!state.summary.market && isBazaarItem(item);
 
 /** Placed items a layout puts down (not base crops or fire), by item. */
-function placedCounts(layout: ResolvedLayout): Record<ItemId, number> {
+function placedCounts(layout: ResolvedLayout, config: SimConfig): Record<ItemId, number> {
   const out: Record<ItemId, number> = {};
-  for (const d of layout.plants) if (d.origin === "placed" && !isFreePlacedItem(d.kindId)) bump(out, d.kindId);
+  for (const d of layout.plants) if (d.origin === "placed" && !isFreePlacedItem(d.kindId, config)) bump(out, d.kindId);
   return out;
 }
 
@@ -71,7 +79,7 @@ export function reservePlan(scenario: Scenario, data: GameData, resolve: (layout
     for (const step of plot.flow.steps) {
       let counts: Record<ItemId, number>;
       try {
-        counts = placedCounts(resolve(step.layout));
+        counts = placedCounts(resolve(step.layout), scenario.settings.config);
       } catch {
         continue; // an invalid layout fails validation elsewhere
       }
