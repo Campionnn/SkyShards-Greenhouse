@@ -168,7 +168,7 @@ export const FrequencyChart: React.FC<{ points: FrequencyPoint[]; selected: numb
             <g>
               <rect x={xOf(selected)} y={pad.t} width={xOf(windowEnd) - xOf(selected)} height={ih} fill="rgb(251 191 36 / 0.06)" />
               <text x={(xOf(selected) + xOf(windowEnd)) / 2} y={pad.t + ih - 7} textAnchor="middle" fontSize={10} fill="rgb(252 211 77 / 0.7)">
-                if you log in late
+                Forgiving range
               </text>
             </g>
           )}
@@ -271,7 +271,7 @@ export const FrequencyChart: React.FC<{ points: FrequencyPoint[]; selected: numb
           <span className="h-2.5 w-2.5 rounded-full bg-amber-300 ring-2 ring-amber-100/60" /> yours
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-4 rounded-sm bg-amber-400/15" /> logging in late
+          <span className="h-2.5 w-4 rounded-sm bg-amber-400/15" /> Forgiving range: what you'd make if you came back up to twice as late
         </span>
       </div>
     </div>

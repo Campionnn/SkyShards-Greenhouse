@@ -389,8 +389,9 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
           <span className="flex items-center gap-1 text-xs text-slate-300">
             <span className="font-medium text-emerald-300">{forgiving === null ? "n/a" : percent(forgiving)}</span> forgiving
             <InfoHint title="Forgiving" width={300}>
-              How much of the profit survives when you log in later than planned: the profit at the next frequencies up to twice yours, relative to yours,
-              weighted toward the nearest. 100% means logging in late costs nothing. n/a at 12 cycles or with no profit.
+              How much of your profit you keep when you come back later than planned. It compares the points in the shaded Forgiving range (your frequency
+              up to twice it) with yours, counting the slightly-late ones the most. 100% means being late costs nothing; a low % means the flow falls
+              apart if you miss a login. Shows n/a at 12 cycles (nothing slower was simulated) or with no profit.
             </InfoHint>
           </span>
         }
