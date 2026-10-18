@@ -512,19 +512,30 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
       {status?.rejectReason && <div className="break-words text-red-300">{status.rejectReason}</div>}
       {error && <div className="text-amber-300">Could not refresh the status: {error}</div>}
       {status?.jobs.length ? (
-        <ul className="space-y-0.5">
-          {status.jobs.map((j, i) => (
-            <li key={i} className="flex flex-wrap gap-x-2">
-              <span className="text-slate-400">
-                {BOARD_LABEL[j.board]} · {TIER_LABEL[j.tier as TierId] ?? j.tier} tier · {j.priority === "A" ? "goes live after this" : "background"}
-              </span>
-              <span className={JOB_TONE[j.status] ?? "text-slate-300"}>{j.status}</span>
-              {j.error && <span className="break-words text-red-300">{j.error}</span>}
-            </li>
-          ))}
+        <ul className="space-y-1.5">
+          {status.jobs.map((j, i) => {
+            const frac = j.total ? Math.min(1, (j.done ?? 0) / j.total) : 0;
+            const label = j.status === "queued" && j.queuePosition ? `queued · #${j.queuePosition} in line` : j.status === "running" && j.total ? `running · ${j.done ?? 0}/${j.total} runs` : j.status;
+            return (
+              <li key={i} className="space-y-1">
+                <div className="flex flex-wrap gap-x-2">
+                  <span className="text-slate-400">
+                    {BOARD_LABEL[j.board]} · {TIER_LABEL[j.tier as TierId] ?? j.tier} tier · {j.priority === "A" ? "goes live after this" : "background"}
+                  </span>
+                  <span className={JOB_TONE[j.status] ?? "text-slate-300"}>{label}</span>
+                  {j.error && <span className="break-words text-red-300">{j.error}</span>}
+                </div>
+                {j.status === "running" && j.total ? (
+                  <div className="h-1 overflow-hidden rounded bg-slate-700/60">
+                    <div className="h-full bg-blue-400/70 transition-[width] duration-500" style={{ width: `${Math.round(frac * 100)}%` }} />
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       ) : null}
-      {pending && <p className="text-slate-500">The server simulates every online frequency with 5 secret seeds; this takes a few minutes. You can leave this page.</p>}
+      {pending && <p className="text-slate-500">The server simulates every online frequency with 5 secret seeds; this takes a few minutes. This updates by itself.</p>}
     </div>
   );
 };

@@ -201,6 +201,9 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
           </button>
         </div>
         <StatusBox id={submitted.id} initial={submitted.status} />
+        <p className="text-[11px] text-slate-400 leading-relaxed">
+          You can close this window, or the tab: the server finishes the verification on its own. Check on it any time from the link above.
+        </p>
       </DialogFrame>
     );
 

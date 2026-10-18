@@ -178,6 +178,11 @@ export interface FlowJob {
   priority: "A" | "B";
   status: string;
   error: string | null;
+  /** Runs finished / total in this job. */
+  done?: number;
+  total?: number;
+  /** 1-based place in the queue while queued. */
+  queuePosition?: number | null;
 }
 
 export interface FlowStatusResponse {
