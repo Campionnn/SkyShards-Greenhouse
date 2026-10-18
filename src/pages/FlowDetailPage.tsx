@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Activity, ArrowLeft, BarChart3, Clock, Code2, Coins, Eye, EyeOff, FlaskConical, Flag, Layers, Link2, Pencil, Save, ShieldCheck, Sprout, Trash2, Trophy, X } from "lucide-react";
+import { Activity, ArrowLeft, BarChart3, Clock, Code2, Coins, Eye, EyeOff, FileText, FlaskConical, Flag, Layers, Link2, Pencil, Save, ShieldCheck, Sprout, Trash2, X } from "lucide-react";
 import { AuthorLabel, Badge, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { EffortBreakdown, FlowWalkthrough, FrequencyChart, ItemBreakdown, ReportDialog, SeedTable, SourceBreakdown, StatTile, StatusBox } from "../components/flows/FlowDetailSections";
 import { useFlowShape } from "../components/flows/flowsDisplay";
@@ -337,7 +337,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
       </section>
 
       {detail.description?.trim() && !editing && (
-        <Panel title="Notes from the author" icon={<Trophy />}>
+        <Panel title="Description" icon={<FileText />}>
           <FlowMarkdown text={detail.description} />
         </Panel>
       )}
