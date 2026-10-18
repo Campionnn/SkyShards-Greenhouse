@@ -45,8 +45,9 @@ export const EarningsPanel: React.FC<{ summary: RunSummary; quotes: Record<strin
       {shown.length === 0 ? (
         <p className="text-xs text-slate-500">{days > 0 ? "Nothing harvested for money yet." : "Run the simulation to see this."}</p>
       ) : (
-        /* 8 rows visible (20 px each, 6 px apart); the rest scroll. */
-        <ul className="max-h-[202px] space-y-1.5 overflow-y-auto overscroll-contain scrollbar-dark pr-1" aria-label="Earnings by plant">
+        /* 8 rows visible (20 px each, 6 px apart); the rest scroll. The stable gutter and right
+           padding keep the scrollbar (overlay ones included) clear of the % column. */
+        <ul className="max-h-[202px] space-y-1.5 overflow-y-auto overscroll-contain scrollbar-dark pr-3 [scrollbar-gutter:stable]" aria-label="Earnings by plant">
           {shown.map((l) => {
             const share = total > 0 ? l.coinsPerDay / total : 0;
             const rarity = rarityOf(l.kind);
