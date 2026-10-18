@@ -19,10 +19,61 @@ const PrivacyPolicy: React.FC = () => (
     <h2 className="text-xl font-semibold mb-2 text-slate-300">What We Collect</h2>
     <ul className="list-disc pl-6 mb-4 text-slate-400">
       <li>
-        <span className="font-bold">No personal information</span> is collected.
+        <span className="font-bold">No personal information</span> is collected just from browsing or using the
+        calculators and tools.
       </li>
       <li>Anonymous usage data (like page views) may be collected for analytics and improvement.</li>
-      <li>No account or login is required.</li>
+      <li>
+        No account or login is required, except to submit, edit, delete or report flows on the Flow Leaderboard (see
+        below).
+      </li>
+    </ul>
+
+    <Divider />
+    <h2 className="text-xl font-semibold mb-2 text-slate-300">Flow Leaderboard &amp; Discord Login</h2>
+    <p className="mb-4 text-slate-400">
+      The Flow Leaderboard lets you submit simulator flows to be verified and ranked. Submitting, editing, deleting and
+      reporting flows requires logging in with Discord. Viewing the leaderboard does not.
+    </p>
+    <ul className="list-disc pl-6 mb-4 text-slate-400">
+      <li>
+        <span className="font-bold">Login:</span> we use Discord OAuth with the <span className="font-mono text-slate-300">identify</span>{" "}
+        scope only. We receive your public Discord profile: user ID, username, display name and avatar. We do{" "}
+        <span className="font-bold">not</span> receive your email address, servers, friends or messages. We use your
+        account creation date, which is part of your Discord ID, to require a minimum account age.
+      </li>
+      <li>
+        <span className="font-bold">What we store:</span> your Discord ID, username, display name, avatar, and the times
+        you first and last logged in. If an account is banned, we also keep the ban and its reason.
+      </li>
+      <li>
+        <span className="font-bold">What is public:</span> each submitted flow is shown with its title, description,
+        layout and results, and with your Discord username, display name and avatar as its author. Anything you write
+        in a title or description is public, so do not put personal information in it.
+      </li>
+      <li>
+        <span className="font-bold">Verification:</span> our server re-runs your flow in the simulator and keeps item
+        counts and statistics, not personal data.
+      </li>
+      <li>
+        <span className="font-bold">Abuse prevention:</span> we keep the times of your submissions to rate-limit them,
+        the reports you file or receive (with the reason given), and moderation actions such as hiding or deleting a
+        flow or banning an account.
+      </li>
+      <li>
+        <span className="font-bold">In your browser:</span> after logging in, a login token is stored in your
+        browser&rsquo;s local storage so you stay signed in. Logging out removes it. You can also clear it by clearing
+        your site data.
+      </li>
+      <li>
+        <span className="font-bold">Your choices:</span> you can delete your own flows at any time. To have your
+        account record removed as well, contact us (see Contact below) and we will remove your account and flows. Your
+        Discord data is also governed by{" "}
+        <a href="https://discord.com/privacy" target="_blank" rel="noopener noreferrer" className="text-amber-300/70 underline font-bold">
+          Discord&rsquo;s privacy policy
+        </a>
+        .
+      </li>
     </ul>
 
     <Divider />
@@ -81,7 +132,7 @@ const PrivacyPolicy: React.FC = () => (
     <Divider />
     <h2 className="text-xl font-semibold mb-2 text-slate-300">Third-Party Services</h2>
     <ul className="list-disc pl-6 mb-4 text-slate-400">
-      <li>Links to third-party sites (e.g., Ko-fi) are for your convenience.</li>
+      <li>Links to third-party sites (e.g., Ko-fi, Discord) are for your convenience.</li>
       <li>
         We are <span className="italic">not responsible</span> for their content or privacy practices.
       </li>
