@@ -5,7 +5,7 @@ import type { RunResult } from "../../leaderboard/result";
 import type { Board } from "../../leaderboard/rules";
 import { valueResult, type Quotes } from "../../leaderboard/pricing";
 import { spreadRatio } from "../../leaderboard/result";
-import { BOARD_LABEL, percent, ratioText, TIER_LABEL, type FrequencyPoint, type ItemLine } from "../../leaderboard/view";
+import { BOARD_LABEL, percent, ratioText, TIER_LABEL, type FrequencyPoint, type ItemLine, type SourceLine } from "../../leaderboard/view";
 import type { TierId } from "../../leaderboard/tiers";
 import type { BazaarPricing } from "../../simulator";
 import { defaultGameData, describeConditions } from "../../simulator";
@@ -57,50 +57,86 @@ export const EffortBreakdown: React.FC<{ result: RunResult }> = ({ result }) => 
   );
 };
 
-/** Profit per day across online frequencies: an SVG bar chart, the viewer's bar bright. */
-export const FrequencyChart: React.FC<{ points: FrequencyPoint[]; selected: number; onSelect?: (every: number) => void }> = ({ points, selected, onSelect }) => {
-  const max = Math.max(1, ...points.map((p) => p.profitPerDay ?? 0));
-  const W = 420;
-  const H = 200;
-  const pad = { l: 4, r: 4, t: 26, b: 34 };
-  const slot = (W - pad.l - pad.r) / points.length;
-  const bar = Math.min(44, slot * 0.62);
-  const ih = H - pad.t - pad.b;
+/**
+ * Profit per day across online frequencies, as a list of horizontal bars: one row per
+ * frequency with how long that is in real time and what share of the best you keep. The
+ * viewer's row is highlighted; click a row to switch to it.
+ */
+export const FrequencyChart: React.FC<{ points: FrequencyPoint[]; selected: number; hoursPerCycle: number; onSelect?: (every: number) => void }> = ({ points, selected, hoursPerCycle, onSelect }) => {
+  const best = Math.max(0, ...points.map((p) => p.profitPerDay ?? 0));
+  const fmtHours = (h: number) => (h < 1 ? `${Math.round(h * 60)}m` : h < 10 ? `${h.toFixed(1).replace(/\.0$/, "")}h` : `${Math.round(h)}h`);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Profit per day by online frequency">
-      <defs>
-        <linearGradient id="flows-bar" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgb(110 231 183)" />
-          <stop offset="100%" stopColor="rgb(16 185 129)" />
-        </linearGradient>
-      </defs>
-      {[0.25, 0.5, 0.75, 1].map((f) => (
-        <line key={f} x1={pad.l} x2={W - pad.r} y1={H - pad.b - f * ih} y2={H - pad.b - f * ih} stroke="rgb(51 65 85 / 0.45)" strokeDasharray="2 4" />
-      ))}
-      <line x1={pad.l} x2={W - pad.r} y1={H - pad.b} y2={H - pad.b} stroke="rgb(71 85 105)" />
-      {points.map((p, i) => {
-        const x = pad.l + slot * i + (slot - bar) / 2;
-        const value = p.profitPerDay ?? 0;
-        const h = p.profitPerDay === null ? 0 : Math.max(2, (Math.max(0, value) / max) * ih);
+    <ul className="space-y-1" role="list" aria-label="Profit per day by online frequency">
+      {points.map((p) => {
         const active = p.every === selected;
+        const v = p.profitPerDay;
+        const share = v !== null && best > 0 ? Math.max(0, v) / best : 0;
         return (
-          <g key={p.every} onClick={() => onSelect?.(p.every)} style={{ cursor: onSelect ? "pointer" : undefined }}>
-            <title>{`Online every ${p.every} cycle${p.every === 1 ? "" : "s"}: ${p.profitPerDay === null ? "not verified" : `${formatCoins(value)} / day`}`}</title>
-            <rect x={pad.l + slot * i} y={0} width={slot} height={H} fill="transparent" />
-            <rect x={x} y={H - pad.b - h} width={bar} height={h} rx={4} fill={active ? "url(#flows-bar)" : "rgb(52 211 153 / 0.28)"} />
-            <text x={x + bar / 2} y={H - pad.b - h - 7} textAnchor="middle" fontSize={12} fontWeight={active ? 700 : 500} fill={active ? "rgb(253 230 138)" : "rgb(148 163 184)"}>
-              {p.profitPerDay === null ? "n/a" : formatCoins(value)}
-            </text>
-            <text x={x + bar / 2} y={H - pad.b + 18} textAnchor="middle" fontSize={13} fontWeight={active ? 700 : 400} fill={active ? "rgb(226 232 240)" : "rgb(100 116 139)"}>
-              {p.every}
-            </text>
-          </g>
+          <li key={p.every}>
+            <button
+              type="button"
+              onClick={() => onSelect?.(p.every)}
+              aria-pressed={active}
+              className={`grid w-full grid-cols-[4.75rem_1fr_4.25rem_2.75rem] items-center gap-3 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+                active ? "bg-emerald-500/10 ring-1 ring-emerald-500/40" : "hover:bg-slate-700/30"
+              }`}
+            >
+              <span className={`tabular-nums ${active ? "text-slate-100" : "text-slate-400"}`}>
+                every <span className="font-semibold">{p.every}</span>
+                <span className="block text-[10px] text-slate-500">≈ {fmtHours(p.every * hoursPerCycle)}</span>
+              </span>
+              <span className="relative h-2.5 overflow-hidden rounded-full bg-slate-700/40">
+                <span
+                  className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 ease-out ${active ? "bg-gradient-to-r from-emerald-500 to-emerald-300" : "bg-emerald-400/35"}`}
+                  style={{ width: `${share * 100}%` }}
+                />
+              </span>
+              <span className={`text-right tabular-nums ${v === null ? "text-slate-600" : active ? "font-semibold text-amber-300" : "text-slate-300"}`}>
+                {v === null ? "n/a" : formatCoins(v)}
+              </span>
+              <span className={`text-right tabular-nums text-[11px] ${active ? "text-emerald-300" : "text-slate-500"}`}>{v === null || best <= 0 ? "" : `${Math.round(share * 100)}%`}</span>
+            </button>
+          </li>
         );
       })}
-      <text x={W / 2} y={H - 2} textAnchor="middle" fontSize={11} fill="rgb(100 116 139)">
-        online every N cycles
-      </text>
-    </svg>
+    </ul>
+  );
+};
+
+/** Money by source: which harvested plants the coins come from, each with what it drops. */
+export const SourceBreakdown: React.FC<{ lines: SourceLine[] }> = ({ lines }) => {
+  const shown = lines.filter((l) => l.coinsPerDay > 0);
+  if (!shown.length) return <p className="text-xs text-slate-500">No per-plant numbers for this entry yet (it was verified before they were recorded).</p>;
+  const total = shown.reduce((s, l) => s + l.coinsPerDay, 0);
+  return (
+    <ul className="divide-y divide-slate-700/30" aria-label="Money by source">
+      {shown.map((l) => {
+        const share = total > 0 ? l.coinsPerDay / total : 0;
+        const items = Object.entries(l.items).sort((a, b) => b[1] - a[1]);
+        return (
+          <li key={l.kind} className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 py-2">
+            <CropImage cropId={l.kind} cropName={nameOf(l.kind)} size="custom" width={22} height={22} showFallback />
+            <div className="min-w-0">
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="truncate text-slate-200">
+                  {nameOf(l.kind)}
+                  <span className="text-slate-500"> {l.isMutation ? "harvests" : "crops"}</span>
+                </span>
+                <span className="whitespace-nowrap tabular-nums text-slate-500">{Math.round(share * 100)}%</span>
+              </div>
+              <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-700/40">
+                <div className={`h-full rounded-full ${l.isMutation ? "bg-amber-400/70" : "bg-emerald-400/70"}`} style={{ width: `${share * 100}%` }} />
+              </div>
+              <div className="mt-1 truncate text-[10px] text-slate-500" title={items.map(([i, n]) => `${formatRate(n)} ${nameOf(i)}`).join(", ")}>
+                drops {items.slice(0, 3).map(([i, n]) => `${formatRate(n)} ${nameOf(i)}`).join(", ")}
+                {items.length > 3 ? ", ..." : ""} per day
+              </div>
+            </div>
+            <span className="w-16 text-right text-xs font-medium tabular-nums text-emerald-300">{formatCoins(l.coinsPerDay)}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 };
 

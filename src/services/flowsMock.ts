@@ -57,7 +57,7 @@ const SPECS: Spec[] = [
     plots: 3,
     cycles: 2000,
     ageDays: 2,
-    produced: { wheat: 120000, chloronite: 40, ethereal_vine: 3, cropie: 18 },
+    produced: { wheat: 120000, chloronite: 40, magic_jellybean: 6, coalroot: 12, scourroot: 9, ethereal_vine: 3, cropie: 18 },
     consumed: { dead_plant: 12, fermento: 3 },
     bought: { dead_plant: 12, fermento: 3 },
     built: { chloronite: 4, magic_jellybean: 6 },
@@ -168,7 +168,22 @@ function resultFor(s: Spec, board: Board, tier: TierId, every: number, noise = 1
       byKind: { harvest: 20 * every, water: 3, place: 2.5, remove: 1.2, gate: 0.5, stepChange: 0.1 },
     },
     halted: false,
+    bySource: bySourceOf(scale(s.produced, f)),
+    stepTime: Object.fromEntries(Array.from({ length: s.plots }, (_, i) => [String(i + 1), { "step-1": 1 }])),
   };
+}
+
+/** Split produced items over plausible sources: each mutation item to itself, crops and rares to the mutations and wheat. */
+function bySourceOf(produced: Record<string, number>): Record<string, Record<string, number>> {
+  const data = defaultGameData();
+  const muts = Object.keys(produced).filter((k) => data.mutations[k]);
+  const out: Record<string, Record<string, number>> = {};
+  for (const [item, n] of Object.entries(produced)) {
+    if (data.mutations[item]) (out[item] ??= {})[item] = n;
+    else if (muts.length) muts.forEach((m, i) => ((out[m] ??= {})[item] = (n * (muts.length - i)) / ((muts.length * (muts.length + 1)) / 2)));
+    else (out[item] ??= {})[item] = n;
+  }
+  return out;
 }
 
 const ago = (days: number) => new Date(Date.now() - days * 86400_000).toISOString();
@@ -220,6 +235,7 @@ export function mockList(board: Board, tier: TierId, every: number, plots?: numb
       seeds: used === "max" ? 5 : 3,
       effort: cell.effort,
       summary: summaryOf(s),
+      thumb: { plot: 1, step: "step-1", layout: payloadOf(s).plots[s.plots > 1 ? 1 : 0].flow.steps[0].layout, share: 0.72 },
       curve,
     };
   });
@@ -253,6 +269,7 @@ export function mockDetail(id: string): Promise<FlowDetail | null> {
     stale: !!s.stale,
     payload: payloadOf(s),
     summary: summaryOf(s),
+    thumb: { plot: 1, step: "step-1", layout: payloadOf(s).plots[s.plots > 1 ? 1 : 0].flow.steps[0].layout, share: 0.72 },
     cells,
     seeds,
   });

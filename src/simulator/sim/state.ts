@@ -312,6 +312,11 @@ export interface RunSummary {
    * present in new states; old saved states may lack it (read as zero, created on first use).
    */
   effort?: EffortSummary;
+  /**
+   * Harvest drops by the plant kind that dropped them: kind -> item -> count (fragments that became
+   * an All-in Aloe in the same harvest count as `all_in_aloe`). Created on the first harvest.
+   */
+  bySource?: Record<KindId, Record<ItemId, number>>;
 }
 
 /** The player's action kinds the effort score counts (weights in `EFFORT_WEIGHTS`). */

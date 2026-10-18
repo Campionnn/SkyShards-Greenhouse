@@ -4,7 +4,8 @@ import type { FlowViewer, ViewerStats } from "../../hooks/useFlowViewer";
 import type { FlowAuthor } from "../../leaderboard/api";
 import { cycleHours, EVERY, TIER_STATS, TIERS, type TierId } from "../../leaderboard/tiers";
 import { avatarUrl, TIER_LABEL } from "../../leaderboard/view";
-import { ARMOR_SET_LABEL, ARMOR_SETS, type ArmorSet } from "../../simulator";
+import { ARMOR_SET_LABEL, ARMOR_SETS, BAZAAR_PRODUCTS, type ArmorSet } from "../../simulator";
+import { BazaarPriceControls, BazaarPriceDialog } from "../simulator/BazaarPanels";
 import { priceAge } from "../simulator/bazaarFormat";
 import { formatDuration } from "../simulator/format";
 import { InfoHint, SegmentedControl } from "../ui";
@@ -65,7 +66,7 @@ const YIELD_FIELDS: FieldSpec[] = [
 const fieldInput =
   "w-full bg-slate-900/70 border border-slate-600/40 rounded-md px-2 py-1.5 text-sm text-slate-100 tabular-nums focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors";
 
-const NumberStat: React.FC<{ spec: FieldSpec; value: number; onChange: (v: number) => void; accent?: string }> = ({ spec, value, onChange, accent = "border-l-slate-600/60" }) => {
+const NumberStat: React.FC<{ spec: FieldSpec; value: number; onChange: (v: number) => void }> = ({ spec, value, onChange }) => {
   const [text, setText] = useState<string | null>(null);
   const commit = (raw: string) => {
     const n = Number(raw);
@@ -73,8 +74,8 @@ const NumberStat: React.FC<{ spec: FieldSpec; value: number; onChange: (v: numbe
     setText(null);
   };
   return (
-    <label className={`block border-l-2 ${accent} pl-2.5 min-w-0`}>
-      <span className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+    <label className="block min-w-0">
+      <span className="flex items-center gap-1 text-xs text-slate-400">
         {spec.label}
         {spec.hint && (
           <InfoHint title={spec.label} width={240}>
@@ -201,7 +202,7 @@ const EveryInput: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
     <div className="space-y-2">
       <div className="flex items-end gap-3">
         <div className="w-28">
-          <NumberStat spec={{ key: "every", label: "Every", min: 1, max: 48, hint: "How often you log in, in greenhouse cycles." }} value={viewer.stats.every} onChange={(every) => viewer.setStats({ every })} accent="border-l-emerald-500/70" />
+          <NumberStat spec={{ key: "every", label: "Every", min: 1, max: 48, hint: "How often you log in, in greenhouse cycles." }} value={viewer.stats.every} onChange={(every) => viewer.setStats({ every })} />
         </div>
         <div className="pb-2 text-xs text-slate-400">
           cycles <span className="text-slate-500">·</span> about every <span className="text-slate-200 tabular-nums">{formatDuration(hours * 3600)}</span>
@@ -228,6 +229,19 @@ const EveryInput: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
         <p className="text-[11px] text-amber-200/80">Flows were simulated at {EVERY.join(", ")} cycles: showing the nearest, every {viewer.every}.</p>
       )}
     </div>
+  );
+};
+
+/** Normal board: the simulator's buy / sell side, tax and price editor, shared with it. */
+const BazaarPricing: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
+  const [editing, setEditing] = useState(false);
+  const [now] = useState(() => Date.now());
+  const itemIds = useMemo(() => Object.keys(BAZAAR_PRODUCTS), []);
+  return (
+    <Group icon={<Coins />} title="Bazaar prices">
+      <BazaarPriceControls bazaar={viewer.bazaar} now={now} onEditPrices={() => setEditing(true)} />
+      {editing && <BazaarPriceDialog bazaar={viewer.bazaar} focusItem={null} itemIds={itemIds} onClose={() => setEditing(false)} />}
+    </Group>
   );
 };
 
@@ -274,7 +288,7 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
             >
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {[...SPEED_FIELDS, ...SPAWN_FIELDS].map((f) => (
-                  <NumberStat key={f.key} spec={f} value={s[f.key]} onChange={set(f.key)} accent="border-l-emerald-500/50" />
+                  <NumberStat key={f.key} spec={f} value={s[f.key]} onChange={set(f.key)} />
                 ))}
               </div>
             </Group>
@@ -293,10 +307,10 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
             >
               <div className="grid grid-cols-2 gap-3">
                 {YIELD_FIELDS.map((f) => (
-                  <NumberStat key={f.key} spec={f} value={s[f.key]} onChange={set(f.key)} accent="border-l-amber-400/60" />
+                  <NumberStat key={f.key} spec={f} value={s[f.key]} onChange={set(f.key)} />
                 ))}
-                <label className="col-span-2 block border-l-2 border-l-amber-400/60 pl-2.5">
-                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Farming armor</span>
+                <label className="col-span-2 block">
+                  <span className="text-xs text-slate-400">Farming armor</span>
                   <select className={`${fieldInput} mt-1`} value={s.armorSet} onChange={(e) => viewer.setStats({ armorSet: e.target.value as ArmorSet })} aria-label="Farming armor">
                     {ARMOR_SETS.map((a) => (
                       <option key={a} value={a}>
@@ -318,6 +332,11 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
               </button>
             </div>
           </div>
+          {viewer.board === "normal" && (
+            <div className="border-t border-slate-700/40 pt-4 lg:col-span-2">
+              <BazaarPricing viewer={viewer} />
+            </div>
+          )}
         </div>
       )}
     </section>

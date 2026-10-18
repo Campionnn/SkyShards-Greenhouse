@@ -1,6 +1,7 @@
 import type { EffortResult, RunResult } from "./result";
 import type { Board, SubmissionFile } from "./rules";
 import type { FlowSummary } from "./summary";
+import type { StepLayout } from "../simulator/flow/types";
 import type { TierId } from "./tiers";
 
 /**
@@ -35,6 +36,15 @@ export interface SpreadInfo {
 /** Spread as the API sends it: one cell's info, a map per `every`, or a bare ratio. */
 export type Spread = SpreadInfo | Record<string, SpreadInfo | number> | number;
 
+/** The step layout a flow spends the most time in (the ranking thumbnail). */
+export interface FlowThumb {
+  plot: number;
+  step: string;
+  layout: StepLayout;
+  /** Share of the run spent in it. */
+  share: number;
+}
+
 /** One point of a list row's frequency curve: the parts of a RunResult the page prices. */
 export interface CurvePoint {
   produced: Record<string, number>;
@@ -67,6 +77,8 @@ export interface FlowListEntry {
   effort: EffortResult | null;
   /** The static flow summary (summary.ts): plots, targets, thumbnails. Missing on old entries. */
   summary?: FlowSummary | null;
+  /** The most-used step layout (set once verified); falls back to the summary's start layout. */
+  thumb?: FlowThumb | null;
   /** The same tier's cells at every frequency (keyed by `every`), for the row's curve and Slack. */
   curve?: Record<string, CurvePoint>;
   /** Not in the contract yet: Slack if the API ever precomputes it. */
@@ -113,6 +125,7 @@ export interface FlowDetail {
   stale: boolean;
   payload: SubmissionFile;
   summary?: FlowSummary | null;
+  thumb?: FlowThumb | null;
   cells: FlowCell[];
   seeds?: FlowSeedResult[];
   /** Only with the owner's token or the admin key. */

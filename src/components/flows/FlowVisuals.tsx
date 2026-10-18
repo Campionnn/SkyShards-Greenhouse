@@ -4,6 +4,7 @@ import type { StepLayout } from "../../simulator/flow/types";
 import { defaultGameData } from "../../simulator";
 import type { RevenueSplit, FrequencyPoint } from "../../leaderboard/view";
 import { getRarityTextColor } from "../../utilities/rarity";
+import { getCropPreviewColor } from "../../data/cropColors";
 import { FarmPicture } from "../guide/FarmPicture";
 import { CropImage } from "../shared";
 import { formatCoins, nameOf, rarityOf } from "../simulator/format";
@@ -108,16 +109,64 @@ export const LayoutThumb: React.FC<{ layout: StepLayout | null; cellSize?: numbe
   );
 };
 
+/**
+ * A tiny layout as coloured boxes (the Designer's preview colours): readable at sizes where crop
+ * images are not. Inputs are solid, targets are outlined in their mutation's colour.
+ */
+export const LayoutBoxes: React.FC<{ layout: StepLayout | null; cell?: number; className?: string }> = ({ layout, cell = 7, className = "" }) => {
+  const cells = useMemo(() => {
+    if (!layout) return null;
+    try {
+      const r = resolveLayout(layout, DATA).resolved;
+      const map = new Map<number, { id: string; target: boolean }>();
+      for (const p of r.plants) for (let dr = 0; dr < p.size; dr++) for (let dc = 0; dc < p.size; dc++) map.set((p.row + dr) * 10 + p.col + dc, { id: p.kindId, target: false });
+      for (const s of r.slots) for (let dr = 0; dr < s.size; dr++) for (let dc = 0; dc < s.size; dc++) if (!map.has((s.row + dr) * 10 + s.col + dc)) map.set((s.row + dr) * 10 + s.col + dc, { id: s.mutationId, target: true });
+      return map;
+    } catch {
+      return null;
+    }
+  }, [layout]);
+  const gap = 1;
+  const px = cell * 10 + gap * 9;
+  return (
+    <div className={`rounded-md bg-slate-950/80 p-1 ring-1 ring-slate-700/50 ${className}`} style={{ width: px + 8, height: px + 8 }} aria-hidden>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(10, ${cell}px)`, gap }}>
+        {Array.from({ length: 100 }, (_, i) => {
+          const c = cells?.get(i);
+          if (!c) return <div key={i} style={{ width: cell, height: cell, borderRadius: 1.5, background: "rgb(30 41 59 / 0.7)" }} />;
+          const color = getCropPreviewColor(c.id, c.target);
+          return (
+            <div
+              key={i}
+              style={{
+                width: cell,
+                height: cell,
+                borderRadius: 1.5,
+                background: c.target ? `${color}33` : color,
+                boxShadow: c.target ? `inset 0 0 0 1px ${color}` : undefined,
+              }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // ---- Mutation chips --------------------------------------------------------------------------
 
-export const MutationChip: React.FC<{ id: string; count?: number; size?: "sm" | "md" }> = ({ id, count, size = "sm" }) => {
+export const MutationChip: React.FC<{ id: string; count?: number; size?: "sm" | "md"; earning?: number | null }> = ({ id, count, size = "sm", earning }) => {
   const rarity = rarityOf(id);
   const px = size === "md" ? 20 : 16;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md border border-slate-600/40 bg-slate-900/60 ${size === "md" ? "px-1.5 py-0.5 text-xs" : "px-1 py-0.5 text-[11px]"}`}>
+    <span
+      className={`inline-flex items-center gap-1 rounded-md border border-slate-600/40 bg-slate-900/60 ${size === "md" ? "px-1.5 py-0.5 text-xs" : "px-1 py-0.5 text-[11px]"}`}
+      title={earning != null ? `${nameOf(id)}: ${formatCoins(earning)} / day from its harvests` : undefined}
+    >
       <CropImage cropId={id} cropName={nameOf(id)} size="custom" width={px} height={px} showFallback />
       <span className={`whitespace-nowrap ${rarity ? getRarityTextColor(rarity) : "text-slate-300"}`}>{nameOf(id)}</span>
       {count !== undefined && count > 1 && <span className="text-slate-500 tabular-nums">×{count}</span>}
+      {earning != null && earning > 0 && <span className="tabular-nums text-slate-400">{formatCoins(earning)}</span>}
     </span>
   );
 };

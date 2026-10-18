@@ -47,7 +47,8 @@ describe("authService: token handling", () => {
 
   it("builds the login URL with the return path", async () => {
     const { loginUrl } = await import("./authService");
-    expect(loginUrl("/flows/abc")).toMatch(/\/auth\/discord\/login\?return=%2Fflows%2Fabc$/);
+    expect(loginUrl("/flows/abc", null)).toMatch(/\/auth\/discord\/login\?return=%2Fflows%2Fabc$/);
+    expect(loginUrl("/flows", "https://b8e7f0dc.skyshards-greenhouse-8xe.pages.dev")).toMatch(/return=%2Fflows&origin=https%3A%2F%2Fb8e7f0dc\.skyshards-greenhouse-8xe\.pages\.dev$/);
   });
 
   it("sends the bearer token and drops it on a 401", async () => {

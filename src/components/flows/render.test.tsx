@@ -60,7 +60,7 @@ describe("leaderboard pages render", () => {
   it("/flows/:id renders every section from a full entry", async () => {
     const detail = (await mockDetail("mockChloro01"))!;
     const html = text(wrap(<FlowDetailView detail={detail} onChange={() => {}} onReload={() => {}} />));
-    for (const s of ["Chloronite engine with wheat filler", "Open in simulator", "Copy link", "Profit by online frequency", "forgiving", "Where the money comes from", "The flow", "Plot 1", "Consistency across seeds", "Work per login", "Notes from the author", "Mutations / day", "Seed spread"]) {
+    for (const s of ["Chloronite engine with wheat filler", "Open in simulator", "Copy link", "Profit by online frequency", "forgiving", "What you earn", "Where it comes from", "Top earners", "The flow", "Plot 1", "Consistency across seeds", "Work per login", "Notes from the author", "Mutations / day", "Seed spread"]) {
       expect(html).toContain(s);
     }
     // Restricted Markdown: headings and emphasis render; links are unwrapped to text.

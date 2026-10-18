@@ -2,16 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowUpRight, Code2, FlaskConical, Layers, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
 import { AuthorLabel, Badge, PriceNote, StatsPanel } from "../components/flows/FlowControls";
-import { topRarity } from "../components/flows/flowsDisplay";
-import { EffortMeter, LayoutThumb, MutationChip, Sparkline, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
-import { formatCoins, formatRate } from "../components/simulator/format";
+import { EffortMeter, LayoutBoxes, MutationChip, Sparkline, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
+import { formatCoins, nameOf } from "../components/simulator/format";
 import { InfoHint } from "../components/ui";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowListResponse } from "../leaderboard/api";
 import { BADGE_TITLE, filterRows, maxProfit, percent, rankEntries, SORT_LABEL, sortRows, suppliesText, type FlowRow, type SortKey } from "../leaderboard/view";
 import { listFlows } from "../services/flowsService";
 import { defaultGameData } from "../simulator";
-import { getRarityTextColor } from "../utilities/rarity";
 
 const DATA = defaultGameData();
 
@@ -70,9 +68,11 @@ const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: 
   const navigate = useNavigate();
   const { entry } = row;
   const summary = entry.summary ?? null;
-  const thumb = summary?.plots.find((p) => p.thumb)?.thumb ?? null;
-  const targets = summary?.targets ?? [];
-  const rarity = topRarity(targets);
+  // The layout the flow spends the most time in (server-picked once verified), else plot 1's start.
+  const startCode = summary?.plots.find((p) => p.thumb)?.thumb ?? null;
+  const thumbLayout = entry.thumb?.layout ?? (startCode ? { code: startCode } : null);
+  const topEarning = row.earning.slice(0, 3);
+  const moreTargets = row.earning.length - topEarning.length;
   const steps = summary?.steps ?? null;
   const supply = normal ? (row.boughtPerDay ? `${formatCoins(row.boughtPerDay)}/day supplies` : null) : (() => {
     const t = suppliesText(row.suppliesPerDay);
@@ -93,8 +93,8 @@ const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: 
     >
       <div className={`pt-0.5 text-center text-lg font-semibold tabular-nums sm:self-center sm:pt-0 ${RANK_STYLE[row.rank] ?? "text-slate-500"}`}>{row.rank}</div>
 
-      <div className="hidden self-center sm:block">
-        <LayoutThumb layout={thumb ? { code: thumb } : null} cellSize={8} />
+      <div className="hidden self-center sm:block" title={entry.thumb ? `Plot ${entry.thumb.plot}'s most-used layout (${percent(entry.thumb.share)} of the time)` : undefined}>
+        <LayoutBoxes layout={thumbLayout} cell={7} />
       </div>
 
       <div className="min-w-0 space-y-1.5">
@@ -125,22 +125,17 @@ const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: 
               <Code2 className="h-3 w-3" /> scripted
             </span>
           )}
-          {row.mutationsPerDay !== null && row.mutationsPerDay > 0 && (
-            <>
-              <span className="text-slate-600">·</span>
-              <span className="tabular-nums">{formatRate(row.mutationsPerDay)} mutations/day</span>
-            </>
-          )}
-          {rarity && (
-            <span className={`text-[11px] font-semibold uppercase tracking-wide ${getRarityTextColor(rarity)}`}>{rarity}</span>
-          )}
         </div>
-        {targets.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {targets.slice(0, 5).map((id) => (
-              <MutationChip key={id} id={id} />
+        {topEarning.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            {topEarning.map((t) => (
+              <MutationChip key={t.id} id={t.id} earning={t.coinsPerDay} />
             ))}
-            {targets.length > 5 && <span className="self-center text-[11px] text-slate-500">+{targets.length - 5}</span>}
+            {moreTargets > 0 && (
+              <span className="rounded-md border border-slate-700/50 px-1.5 py-0.5 text-[11px] tabular-nums text-slate-400" title={row.earning.slice(3).map((t) => nameOf(t.id)).join(", ")}>
+                +{moreTargets}
+              </span>
+            )}
           </div>
         )}
         {excerpt && <p className="hidden max-w-xl truncate text-xs italic text-slate-500 md:block">“{excerpt}”</p>}

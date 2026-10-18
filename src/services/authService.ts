@@ -28,8 +28,14 @@ export function safeReturnPath(path: string | null | undefined, fallback = "/flo
   return path;
 }
 
-export function loginUrl(returnPath: string): string {
-  return `${REMOTE_API_BASE}/auth/discord/login?return=${encodeURIComponent(safeReturnPath(returnPath))}`;
+/**
+ * The API's Discord login URL. `origin` tells the API which site to send the browser back to
+ * (production, a Cloudflare Pages preview, or localhost); the API checks it against an allow-list
+ * and falls back to production.
+ */
+export function loginUrl(returnPath: string, origin: string | null = typeof window !== "undefined" ? window.location.origin : null): string {
+  const params = `return=${encodeURIComponent(safeReturnPath(returnPath))}${origin ? `&origin=${encodeURIComponent(origin)}` : ""}`;
+  return `${REMOTE_API_BASE}/auth/discord/login?${params}`;
 }
 
 export const AUTH_ERROR_TEXT: Record<string, string> = {

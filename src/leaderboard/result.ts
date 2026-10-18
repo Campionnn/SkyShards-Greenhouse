@@ -38,6 +38,29 @@ export interface RunResult {
   effort: EffortResult;
   /** A script halted the run (error or pause) before it finished. */
   halted: boolean;
+  /** Harvest drops per day by the plant kind that dropped them: kind -> item -> per day. */
+  bySource?: Record<string, PerDay>;
+  /** Share of the run each plot spent in each step: plot id -> step id -> fraction (sums to ~1). */
+  stepTime?: Record<string, Record<string, number>>;
+}
+
+/** Share of the run's time each plot spent in each flow step, from the runners' history. */
+export function stepTimeOf(state: SimulationState): Record<string, Record<string, number>> {
+  const total = state.elapsedSeconds;
+  const out: Record<string, Record<string, number>> = {};
+  if (!(total > 0)) return out;
+  for (const runner of state.flows) {
+    const shares: Record<string, number> = {};
+    for (const h of runner.history) {
+      if (h.skipped) continue;
+      const start = h.startSeconds ?? 0;
+      const end = h.endSeconds ?? total;
+      const t = Math.max(0, Math.min(total, end) - start);
+      if (t > 0) shares[h.stepId] = (shares[h.stepId] ?? 0) + t / total;
+    }
+    out[String(runner.plotId)] = shares;
+  }
+  return out;
 }
 
 const perDay = (counts: Readonly<Record<string, number>>, days: number): PerDay => {
@@ -77,6 +100,8 @@ export function runResult(state: SimulationState, sustainable: boolean): RunResu
     sustainable,
     effort: effortResult(state.summary.effort),
     halted: !!state.scripts?.halt,
+    bySource: Object.fromEntries(Object.entries(state.summary.bySource ?? {}).map(([k, m]) => [k, perDay(m, days)])),
+    stepTime: stepTimeOf(state),
   };
 }
 
@@ -85,6 +110,19 @@ export function median(values: readonly number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor((sorted.length - 1) / 2)];
+}
+
+/** Per (outer, inner) key median, missing counted as 0 (bySource, stepTime). */
+function medianNested(maps: readonly (Readonly<Record<string, Readonly<Record<string, number>>>> | undefined)[]): Record<string, Record<string, number>> | undefined {
+  if (maps.every((m) => m === undefined)) return undefined;
+  const outer = new Set<string>();
+  for (const m of maps) for (const k of Object.keys(m ?? {})) outer.add(k);
+  const out: Record<string, Record<string, number>> = {};
+  for (const k of [...outer].sort()) {
+    const inner = medianMap(maps.map((m) => m?.[k] ?? {}));
+    if (Object.keys(inner).length) out[k] = inner;
+  }
+  return out;
 }
 
 function medianMap(maps: readonly Readonly<Record<string, number>>[]): Record<string, number> {
@@ -122,6 +160,11 @@ export function medianResult(results: readonly RunResult[]): RunResult {
       byKind,
     },
     halted: results.some((r) => r.halted),
+    ...(() => {
+      const bySource = medianNested(results.map((r) => r.bySource));
+      const stepTime = medianNested(results.map((r) => r.stepTime));
+      return { ...(bySource ? { bySource } : {}), ...(stepTime ? { stepTime } : {}) };
+    })(),
   };
 }
 

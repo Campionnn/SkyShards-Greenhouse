@@ -119,6 +119,11 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   for (const [item, qty] of Object.entries(drops)) credit(ctx.state, item, qty);
   const converted = convertAloeFragments(ctx.state);
   if (converted > 0) ctx.emit(plot.id, { kind: "converted", from: ALOE_FRAGMENT, to: "all_in_aloe", count: converted });
+  // Where the drops came from (which plant kind earned them), for "money by source" views.
+  // Fragments that just became All-in Aloe count as aloe items of this plant.
+  const source = ((ctx.state.summary.bySource ??= {})[p.kindId] ??= {});
+  for (const [item, qty] of Object.entries(drops)) if (item !== ALOE_FRAGMENT && qty > 0) bump(source, item, qty);
+  if (converted > 0) bump(source, "all_in_aloe", converted);
 
   const coinValue = valueOf(drops, ctx.prices);
   const rareValue = valueOf(rareDrops, ctx.prices);

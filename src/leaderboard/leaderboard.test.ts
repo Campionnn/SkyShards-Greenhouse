@@ -223,6 +223,22 @@ describe("pricing", () => {
 describe("verify", () => {
   const submission = submissionFromScenario(twoStep());
 
+  it("results record money by source and each step's share of the run", () => {
+    const o = runOnce(engine, submission, "ironman", "max", 1, 5, 40, { wallMs: 60_000 });
+    const st = o.result!.stepTime!;
+    const shares = Object.values(st["1"]);
+    expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 5);
+    expect(Object.keys(st["1"]).sort()).toEqual(["one", "two"]);
+    const sc = twoStep();
+    sc.settings.policies = { ...sc.settings.policies, baseCropUpkeep: "harvestWhenGrown" };
+    const r = runOnce(engine, submissionFromScenario(sc), "ironman", "max", 1, 5, 40, { wallMs: 60_000 }).result!;
+    expect(r.bySource!.potato.potato).toBeGreaterThan(0);
+    // The medians keep both nested maps.
+    const m = medianResult([r, r, r]);
+    expect(m.bySource!.potato.potato).toBeCloseTo(r.bySource!.potato.potato);
+    expect(m.stepTime).toEqual(r.stepTime);
+  });
+
   it("runOnce produces a result with per-day counts and effort", () => {
     const sc = twoStep();
     sc.settings.policies = { ...sc.settings.policies, baseCropUpkeep: "harvestWhenGrown" };

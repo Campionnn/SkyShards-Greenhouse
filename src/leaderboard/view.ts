@@ -113,6 +113,8 @@ export interface FlowRow {
   effortPeak: number | null;
   /** Coins per day per unit of effort per login. */
   perEffort: number | null;
+  /** Target mutations, most earning first. */
+  earning: { id: ItemId; coinsPerDay: number | null }[];
   uptime: number | null;
   /** From the row's frequency curve (the API's when it sends one). */
   slack: number | null;
@@ -227,14 +229,28 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
     curve,
     badges,
   };
+  const targets = entry.summary?.targets ?? [];
   if (!entry.cell)
-    return { ...base, profitPerDay: null, revenuePerDay: null, boughtPerDay: null, buildCost: null, split: null, mutationsPerDay: null, perEffort: null, scaled: false, unpriced: [] };
+    return {
+      ...base,
+      profitPerDay: null,
+      revenuePerDay: null,
+      boughtPerDay: null,
+      buildCost: null,
+      split: null,
+      mutationsPerDay: null,
+      perEffort: null,
+      earning: targets.map((id) => ({ id, coinsPerDay: null })),
+      scaled: false,
+      unpriced: [],
+    };
   const { result, scaled } = viewerResult(data, entry.cell, s);
   const quotes = s.board === "normal" ? s.quotes : {};
   const pricing = s.pricing ?? DEFAULT_BAZAAR_PRICING;
   const v = valueResult(data, result, s.board, quotes, pricing);
   return {
     ...base,
+    earning: earningTargets(data, targets, result.bySource, s.board, quotes, pricing),
     profitPerDay: v.profitPerDay,
     revenuePerDay: v.revenuePerDay,
     boughtPerDay: v.boughtPerDay,
@@ -389,6 +405,44 @@ export function itemBreakdown(data: GameData, r: RunResult, board: Board, quotes
     }
   }
   return lines.sort((a, b) => b.coinsPerDay - a.coinsPerDay || b.perDay - a.perDay || a.item.localeCompare(b.item));
+}
+
+export interface SourceLine {
+  /** The plant kind that was harvested. */
+  kind: ItemId;
+  /** Harvests of it per day are not stored; this is the coins its drops bring per day. */
+  coinsPerDay: number;
+  /** Drops per day, by item. */
+  items: Record<ItemId, number>;
+  isMutation: boolean;
+}
+
+/**
+ * Money by source: each harvested plant kind and the coins its drops bring, highest first. Reads
+ * `bySource` (kind -> item -> per day, or totals from a live simulator run). Empty without it.
+ */
+export function moneyBySource(data: GameData, bySource: Readonly<Record<string, Readonly<Record<string, number>>>> | undefined, board: Board, quotes: Quotes, pricing: BazaarPricing): SourceLine[] {
+  if (!bySource) return [];
+  const lines: SourceLine[] = [];
+  for (const [kind, items] of Object.entries(bySource)) {
+    let coins = 0;
+    for (const [item, n] of Object.entries(items)) coins += n * (sellPrice(data, item, board, board === "normal" ? quotes : {}, pricing) ?? 0);
+    lines.push({ kind, coinsPerDay: coins, items: { ...items }, isMutation: !!data.mutations[kind] });
+  }
+  return lines.sort((a, b) => b.coinsPerDay - a.coinsPerDay || a.kind.localeCompare(b.kind));
+}
+
+/**
+ * The flow's target mutations ordered by how much their harvests earn (top first); targets that
+ * earned nothing follow in the summary's order. Falls back to the summary order without `bySource`.
+ */
+export function earningTargets(data: GameData, targets: readonly ItemId[], bySource: Readonly<Record<string, Readonly<Record<string, number>>>> | undefined, board: Board, quotes: Quotes, pricing: BazaarPricing): { id: ItemId; coinsPerDay: number | null }[] {
+  const earned = new Map(moneyBySource(data, bySource, board, quotes, pricing).map((l) => [l.kind, l.coinsPerDay]));
+  const all = [...new Set([...targets, ...[...earned.keys()].filter((k) => data.mutations[k])])];
+  return all
+    .map((id, i) => ({ id, coinsPerDay: earned.has(id) ? earned.get(id)! : null, i }))
+    .sort((a, b) => (b.coinsPerDay ?? -1) - (a.coinsPerDay ?? -1) || a.i - b.i)
+    .map(({ id, coinsPerDay }) => ({ id, coinsPerDay }));
 }
 
 /** "45 / 290". */

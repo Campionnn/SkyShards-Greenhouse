@@ -7,7 +7,9 @@ import type { RunResult } from "./result";
 import { YIELD_STATS } from "./tiers";
 import {
   avatarUrl,
+  earningTargets,
   filterRows,
+  moneyBySource,
   findCell,
   flowRow,
   itemBreakdown,
@@ -149,6 +151,19 @@ describe("leaderboard view: badges and labels", () => {
     expect(row.split!.rare).toBeGreaterThan(0);
     expect(row.mutationsPerDay).toBe(4);
     expect(row.perEffort).toBeCloseTo(row.profitPerDay! / 45);
+  });
+
+  it("money by source and the earning targets order", () => {
+    const bySource = { chloronite: { wheat: 100, chloronite: 3 }, wheat: { wheat: 1000 }, coalroot: { wheat: 10 } };
+    const lines = moneyBySource(data, bySource, "ironman", {}, DEFAULT_BAZAAR_PRICING);
+    expect(lines.map((l) => l.kind)).toEqual(["wheat", "chloronite", "coalroot"]);
+    expect(lines[1].isMutation).toBe(true);
+    // Targets ordered by earnings; one that earned nothing keeps its place after them.
+    const order = earningTargets(data, ["scourroot", "coalroot", "chloronite"], bySource, "ironman", {}, DEFAULT_BAZAAR_PRICING);
+    expect(order.map((t) => t.id)).toEqual(["chloronite", "coalroot", "scourroot"]);
+    expect(order[2].coinsPerDay).toBeNull();
+    // Without bySource: the summary order.
+    expect(earningTargets(data, ["b_none", "a_none"], undefined, "ironman", {}, DEFAULT_BAZAAR_PRICING).map((t) => t.id)).toEqual(["b_none", "a_none"]);
   });
 
   it("sortRows reorders without changing ranks; missing values sort last", () => {
