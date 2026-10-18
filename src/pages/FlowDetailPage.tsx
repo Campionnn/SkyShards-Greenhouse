@@ -394,7 +394,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
             </InfoHint>
           </span>
         }
-        description={`How much you make if you log in this often (${TIER_LABEL[tierShown]} tier), as a share of the best. Click a row to use it.`}
+        description={`How much you make by how often you log in (${TIER_LABEL[tierShown]} tier). Hover a point for its numbers; click one to use that frequency.`}
       >
         <FrequencyChart points={points} selected={viewer.every} hoursPerCycle={cycleHours(viewer.stats)} onSelect={viewer.setEvery} />
       </Panel>
