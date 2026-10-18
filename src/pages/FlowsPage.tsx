@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FlaskConical, RefreshCw, Search, Trophy } from "lucide-react";
-import { AuthorLabel, Badge, PriceNote, ViewerControls } from "../components/flows/FlowControls";
-import { formatCoins } from "../components/simulator/format";
-import { buttonClass, inputClass } from "../components/simulator/styles";
-import { InfoHint, SegmentedControl } from "../components/ui";
+import { ArrowUpRight, Code2, FlaskConical, Layers, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
+import { AuthorLabel, Badge, PriceNote, StatsPanel } from "../components/flows/FlowControls";
+import { topRarity } from "../components/flows/flowsDisplay";
+import { EffortMeter, LayoutThumb, MutationChip, Sparkline, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
+import { formatCoins, formatRate } from "../components/simulator/format";
+import { InfoHint } from "../components/ui";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowListResponse } from "../leaderboard/api";
-import { BADGE_TITLE, effortText, filterRows, percent, rankEntries, suppliesText, type FlowRow } from "../leaderboard/view";
+import { BADGE_TITLE, filterRows, maxProfit, percent, rankEntries, SORT_LABEL, sortRows, suppliesText, type FlowRow, type SortKey } from "../leaderboard/view";
 import { listFlows } from "../services/flowsService";
 import { defaultGameData } from "../simulator";
+import { getRarityTextColor } from "../utilities/rarity";
 
 const DATA = defaultGameData();
 
@@ -25,138 +27,197 @@ function useMinuteClock(): number {
   return now;
 }
 
-const RowBadges: React.FC<{ row: FlowRow }> = ({ row }) => (
-  <span className="inline-flex flex-wrap gap-1">
-    {row.badges.new && <Badge tone="new" title={BADGE_TITLE.new}>new</Badge>}
-    {row.badges.stale && <Badge tone="stale" title={BADGE_TITLE.stale}>stale</Badge>}
-    {(row.badges.estimated || row.scaled) && (
-      <Badge tone="estimated" title={[row.badges.estimated && BADGE_TITLE.estimated, row.scaled && BADGE_TITLE.scaled].filter(Boolean).join(" ")}>
-        estimated
-      </Badge>
-    )}
-    {row.profitPerDay === null && <Badge tone="pending" title="Not verified at this tier and frequency yet.">pending</Badge>}
-  </span>
+const RANK_STYLE: Record<number, string> = {
+  1: "text-amber-300",
+  2: "text-slate-200",
+  3: "text-orange-300",
+};
+
+const Chip: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode; title?: string }> = ({ active, onClick, children, title }) => (
+  <button
+    type="button"
+    role="tab"
+    aria-selected={active}
+    title={title}
+    onClick={onClick}
+    className={`whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+      active ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200" : "border-transparent text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
+    }`}
+  >
+    {children}
+  </button>
 );
 
-const profitTone = (row: FlowRow) => ((row.profitPerDay ?? 0) < 0 ? "text-red-300" : "text-emerald-300");
-const profitText = (row: FlowRow) => (row.profitPerDay === null ? "—" : formatCoins(row.profitPerDay));
-const supplyText = (row: FlowRow, normal: boolean) =>
-  row.profitPerDay === null ? "—" : normal ? formatCoins(row.boughtPerDay ?? 0) : suppliesText(row.suppliesPerDay);
+const SORT_HINT: Record<SortKey, string> = {
+  profit: "Coins per day at your stats and prices.",
+  perEffort: "Coins per day for each point of work per login: the best return on your time.",
+  effort: "The fewest actions per login first.",
+  forgiving: "How much profit survives logging in late.",
+  newest: "Most recently submitted first.",
+};
 
-const OpenButton: React.FC<{ id: string }> = ({ id }) => {
+const RowBadges: React.FC<{ row: FlowRow }> = ({ row }) => (
+  <>
+    {row.badges.new && <Badge tone="new" title={BADGE_TITLE.new}>new</Badge>}
+    {row.badges.stale && <Badge tone="stale" title={BADGE_TITLE.stale}>re-verifying</Badge>}
+    {row.badges.estimated && <Badge tone="estimated" title={BADGE_TITLE.estimated}>max-tier stand-in</Badge>}
+    {row.profitPerDay === null && <Badge tone="pending" title="Not verified at this tier and frequency yet.">pending</Badge>}
+  </>
+);
+
+/** One ranked flow. */
+const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: boolean; index: number }> = ({ row, top, every, normal, index }) => {
   const navigate = useNavigate();
+  const { entry } = row;
+  const summary = entry.summary ?? null;
+  const thumb = summary?.plots.find((p) => p.thumb)?.thumb ?? null;
+  const targets = summary?.targets ?? [];
+  const rarity = topRarity(targets);
+  const steps = summary?.steps ?? null;
+  const supply = normal ? (row.boughtPerDay ? `${formatCoins(row.boughtPerDay)}/day supplies` : null) : (() => {
+    const t = suppliesText(row.suppliesPerDay);
+    return t === "none" ? null : `${t}/day to farm`;
+  })();
+  const open = () => navigate(`/flows/${entry.id}`);
+  // A one-line plain-text taste of the description (Markdown marks stripped).
+  const excerpt = (entry.excerpt ?? "")
+    .replace(/[#>*_`[\]()-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return (
-    <button type="button" className={buttonClass.icon} onClick={() => navigate(`/simulator?flow=${encodeURIComponent(id)}`)} title="Open in simulator" aria-label="Open in simulator">
-      <FlaskConical className="w-4 h-4" />
-    </button>
+    <li
+      className="group relative grid cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-lg border border-transparent px-2 py-3 transition-[background-color,border-color] duration-150 hover:border-slate-600/40 hover:bg-slate-800/50 sm:grid-cols-[2.25rem_auto_minmax(0,1fr)_auto] sm:px-3 flows-row-in"
+      style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}
+      onClick={open}
+      data-testid="flow-row"
+    >
+      <div className={`pt-0.5 text-center text-lg font-semibold tabular-nums sm:self-center sm:pt-0 ${RANK_STYLE[row.rank] ?? "text-slate-500"}`}>{row.rank}</div>
+
+      <div className="hidden self-center sm:block">
+        <LayoutThumb layout={thumb ? { code: thumb } : null} cellSize={8} />
+      </div>
+
+      <div className="min-w-0 space-y-1.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <Link to={`/flows/${entry.id}`} onClick={(e) => e.stopPropagation()} className="break-words text-sm font-semibold text-slate-100 transition-colors group-hover:text-emerald-200">
+              {entry.title}
+            </Link>
+            <RowBadges row={row} />
+          </div>
+          {/* Phones: the headline number sits beside the title. */}
+          <div className="text-right sm:hidden">
+            <div className={`text-base font-semibold tabular-nums leading-tight ${row.profitPerDay !== null && row.profitPerDay < 0 ? "text-red-300" : "text-amber-300"}`}>
+              {row.profitPerDay === null ? "—" : formatCoins(row.profitPerDay)}
+            </div>
+            <div className="text-[10px] text-slate-500">/ day</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400">
+          <AuthorLabel author={entry.author} size={16} />
+          <span className="text-slate-600">·</span>
+          <span className="inline-flex items-center gap-1">
+            <Layers className="h-3 w-3" /> {entry.plots} plot{entry.plots === 1 ? "" : "s"}
+            {steps !== null && steps > entry.plots ? `, ${steps} steps` : ""}
+          </span>
+          {summary?.scripted && (
+            <span className="inline-flex items-center gap-1 text-violet-300">
+              <Code2 className="h-3 w-3" /> scripted
+            </span>
+          )}
+          {row.mutationsPerDay !== null && row.mutationsPerDay > 0 && (
+            <>
+              <span className="text-slate-600">·</span>
+              <span className="tabular-nums">{formatRate(row.mutationsPerDay)} mutations/day</span>
+            </>
+          )}
+          {rarity && (
+            <span className={`text-[11px] font-semibold uppercase tracking-wide ${getRarityTextColor(rarity)}`}>{rarity}</span>
+          )}
+        </div>
+        {targets.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {targets.slice(0, 5).map((id) => (
+              <MutationChip key={id} id={id} />
+            ))}
+            {targets.length > 5 && <span className="self-center text-[11px] text-slate-500">+{targets.length - 5}</span>}
+          </div>
+        )}
+        {excerpt && <p className="hidden max-w-xl truncate text-xs italic text-slate-500 md:block">“{excerpt}”</p>}
+        <div className="max-w-xl pt-0.5">
+          <SplitBar split={row.split} fraction={top > 0 && row.profitPerDay !== null ? row.profitPerDay / top : 0} />
+          <SplitLegend split={row.split} className="mt-1" />
+        </div>
+      </div>
+
+      {/* Numbers: a compact strip under the content on phones, a right-hand column from sm. */}
+      <div className="col-span-2 flex flex-wrap items-end justify-between gap-x-4 gap-y-2 sm:col-span-1 sm:block sm:min-w-[11rem] sm:text-right">
+        <div className="hidden sm:block">
+          <div className={`text-xl font-semibold tabular-nums leading-tight ${row.profitPerDay !== null && row.profitPerDay < 0 ? "text-red-300" : "text-amber-300"}`}>
+            {row.profitPerDay === null ? "—" : formatCoins(row.profitPerDay)}
+          </div>
+          <div className="text-[11px] text-slate-500">coins / day{row.scaled ? " · est." : ""}</div>
+        </div>
+        <div className="space-y-0.5 text-[11px] tabular-nums text-slate-400 sm:mt-1.5">
+          {supply && <div>{supply}</div>}
+          {normal && row.buildCost !== null && row.buildCost > 0 && <div className="text-sky-300/90">{formatCoins(row.buildCost)} to build</div>}
+          <div className="flex items-center gap-2 sm:justify-end">
+            <EffortMeter avg={row.effortAvg} peak={row.effortPeak} />
+            {row.slack !== null && (
+              <span className="text-slate-400" title="Forgiving: how much of the profit survives logging in late">
+                {percent(row.slack)} forgiving
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="sm:mt-2 sm:flex sm:justify-end">
+          <Sparkline points={row.curve} selected={every} />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="absolute right-2 top-2 hidden rounded-md p-1 text-slate-500 opacity-0 transition-opacity duration-150 hover:bg-slate-700/60 hover:text-emerald-300 group-hover:opacity-100 lg:block"
+        onClick={(e) => {
+          e.stopPropagation();
+          navigate(`/simulator?flow=${encodeURIComponent(entry.id)}`);
+        }}
+        title="Open in simulator"
+        aria-label="Open in simulator"
+      >
+        <FlaskConical className="h-4 w-4" />
+      </button>
+    </li>
   );
 };
 
-const FlowsTable: React.FC<{ rows: FlowRow[]; normal: boolean; showSlack: boolean }> = ({ rows, normal, showSlack }) => (
-  <div className="hidden lg:block overflow-x-auto">
-    <table className="w-full text-xs" data-testid="flows-table">
-      <thead>
-        <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-700/60 whitespace-nowrap">
-          <th className="font-medium py-2 pr-2 w-10">#</th>
-          <th className="font-medium py-2 pr-3">Flow</th>
-          <th className="font-medium py-2 pr-3">Author</th>
-          <th className="font-medium py-2 pr-3 text-right">Plots</th>
-          <th className="font-medium py-2 pr-3 text-right">Profit / day</th>
-          <th className="font-medium py-2 pr-3">{normal ? "Bought / day" : "Supplies / day"}</th>
-          {normal && <th className="font-medium py-2 pr-3 text-right">Setup cost</th>}
-          <th className="font-medium py-2 pr-3 text-right" title="Effort per login: average / heaviest session">
-            Effort
-          </th>
-          {showSlack && (
-            <th className="font-medium py-2 pr-3 text-right" title="How forgiving it is when you log in late (see the entry page)">
-              Forgiving
-            </th>
-          )}
-          <th className="font-medium py-2 pr-3 text-right">Cycles</th>
-          <th className="font-medium py-2 pr-2" aria-label="Open in simulator" />
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.entry.id} className="border-b border-slate-700/30 align-top hover:bg-slate-700/20">
-            <td className="py-2 pr-2 text-slate-400 tabular-nums">{row.rank}</td>
-            <td className="py-2 pr-3 min-w-[12rem]">
-              <Link to={`/flows/${row.entry.id}`} className="text-slate-100 hover:text-emerald-300 font-medium break-words">
-                {row.entry.title}
-              </Link>
-              <div className="mt-1">
-                <RowBadges row={row} />
-              </div>
-            </td>
-            <td className="py-2 pr-3 text-slate-300 min-w-[8rem]">
-              <AuthorLabel author={row.entry.author} />
-            </td>
-            <td className="py-2 pr-3 text-right text-slate-300 tabular-nums">{row.entry.plots}</td>
-            <td className={`py-2 pr-3 text-right font-medium tabular-nums whitespace-nowrap ${profitTone(row)}`}>{profitText(row)}</td>
-            <td className="py-2 pr-3 text-slate-300 min-w-[8rem]">{supplyText(row, normal)}</td>
-            {normal && <td className="py-2 pr-3 text-right text-slate-300 tabular-nums whitespace-nowrap">{row.buildCost === null ? "—" : formatCoins(row.buildCost)}</td>}
-            <td className="py-2 pr-3 text-right text-slate-300 tabular-nums whitespace-nowrap">{effortText(row.effortAvg, row.effortPeak)}</td>
-            {showSlack && <td className="py-2 pr-3 text-right text-slate-300 tabular-nums">{percent(row.slack)}</td>}
-            <td className="py-2 pr-3 text-right text-slate-400 tabular-nums">{row.entry.cycles.toLocaleString()}</td>
-            <td className="py-1.5 pr-2 text-right">
-              <OpenButton id={row.entry.id} />
-            </td>
-          </tr>
+const Legend: React.FC = () => (
+  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+    <span className="inline-flex items-center gap-1.5">
+      <span className="h-1.5 w-3 rounded-full bg-emerald-400/80" /> crops
+    </span>
+    <span className="inline-flex items-center gap-1.5">
+      <span className="h-1.5 w-3 rounded-full bg-amber-400/80" /> mutation items
+    </span>
+    <span className="inline-flex items-center gap-1.5">
+      <span className="h-1.5 w-3 rounded-full bg-sky-400/80" /> rare crops and drops
+    </span>
+    <span className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-end gap-[2px]">
+        {[40, 70, 100].map((h) => (
+          <span key={h} className="w-1 rounded-sm bg-emerald-400/40" style={{ height: h / 10 + 3 }} />
         ))}
-      </tbody>
-    </table>
+      </span>
+      profit if you log in every 1, 2, 3, 4, 6, 8, 12 cycles
+    </span>
   </div>
-);
-
-const Fact: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="min-w-0">
-    <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
-    <div className="text-slate-200 break-words">{children}</div>
-  </div>
-);
-
-/** Phones: one card per entry instead of the table. */
-const FlowsCards: React.FC<{ rows: FlowRow[]; normal: boolean }> = ({ rows, normal }) => (
-  <ol className="lg:hidden space-y-2" data-testid="flows-cards">
-    {rows.map((row) => (
-      <li key={row.entry.id} className="rounded-lg border border-slate-700/60 bg-slate-800/40 p-3">
-        <div className="flex items-start gap-2">
-          <span className="text-slate-400 text-sm tabular-nums w-6 flex-shrink-0">{row.rank}</span>
-          <div className="min-w-0 flex-1">
-            <Link to={`/flows/${row.entry.id}`} className="text-sm text-slate-100 font-medium hover:text-emerald-300 break-words">
-              {row.entry.title}
-            </Link>
-            <div className="mt-1 text-xs text-slate-400">
-              <AuthorLabel author={row.entry.author} size={16} />
-            </div>
-          </div>
-          <OpenButton id={row.entry.id} />
-        </div>
-        <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2 text-xs">
-          <Fact label="Profit / day">
-            <span className={`font-medium ${profitTone(row)}`}>{profitText(row)}</span>
-          </Fact>
-          <Fact label={normal ? "Bought / day" : "Supplies / day"}>{supplyText(row, normal)}</Fact>
-          {normal && <Fact label="Setup cost">{row.buildCost === null ? "—" : formatCoins(row.buildCost)}</Fact>}
-          <Fact label="Effort (avg / peak)">{effortText(row.effortAvg, row.effortPeak)}</Fact>
-          <Fact label="Plots · cycles">
-            {row.entry.plots} · {row.entry.cycles.toLocaleString()}
-          </Fact>
-        </div>
-        {(row.badges.new || row.badges.stale || row.badges.estimated || row.scaled || row.profitPerDay === null) && (
-          <div className="mt-2">
-            <RowBadges row={row} />
-          </div>
-        )}
-      </li>
-    ))}
-  </ol>
 );
 
 export const FlowsPage: React.FC = () => {
   const viewer = useFlowViewer();
   const now = useMinuteClock();
   const [plots, setPlots] = useState<PlotsFilter>("any");
+  const [sort, setSort] = useState<SortKey>("profit");
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<{ key: string; data?: FlowListResponse; error?: string } | null>(null);
   const [reload, setReload] = useState(0);
@@ -178,96 +239,139 @@ export const FlowsPage: React.FC = () => {
 
   const loading = !result || result.key !== key;
   const entries = useMemo(() => (result && !loading ? (result.data?.entries ?? []) : []), [result, loading]);
-  const rows = useMemo(
+  const ranked = useMemo(
     () =>
-      rankEntries(DATA, entries, {
-        board: viewer.board,
-        quotes: viewer.quotes,
-        pricing: viewer.bazaar.pricing,
-        viewerStats: viewer.viewerStats,
-        useMyStats: viewer.useMyStats,
-        now,
-      }),
-    [entries, viewer.board, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.useMyStats, now]
+      rankEntries(
+        DATA,
+        entries,
+        { board: viewer.board, quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true, now },
+        viewer.every
+      ),
+    [entries, viewer.board, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.every, now]
   );
-  const shown = useMemo(() => filterRows(rows, query), [rows, query]);
+  const shown = useMemo(() => sortRows(filterRows(ranked, query), sort), [ranked, query, sort]);
+  const top = maxProfit(ranked);
   const normal = viewer.board === "normal";
 
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Trophy className="w-4 h-4 text-amber-400" />
-        <h1 className="text-sm font-medium text-slate-200">Flow leaderboard</h1>
-        <InfoHint title="How entries are ranked" width={340}>
-          <p>
-            Every flow was simulated by the server under the same rules (empty start, default settings, secret seeds) at each online frequency and stat
-            tier. It stores item counts per day; your browser prices them with your board's prices, so the ranking follows the controls instantly.
-          </p>
-          <p>Submit your own from the simulator's Scenario panel.</p>
-        </InfoHint>
-        <span className="text-xs text-slate-500">Ranked by profit per day for how you play.</span>
-      </div>
+    <div className="space-y-4 py-2 sm:py-4">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 text-lg font-semibold text-slate-100">
+            <Trophy className="h-5 w-5 text-amber-400" /> Flow rankings
+            <InfoHint title="How flows are ranked" width={340}>
+              <p className="mb-1.5">
+                Every flow was simulated by the server under the same rules (empty start, default settings, secret seeds) at each online frequency and
+                four stat tiers.
+              </p>
+              <p>The server stores item counts per day; your browser prices them for your board and stats, so the ranking follows your inputs instantly.</p>
+            </InfoHint>
+          </h1>
+          <p className="mt-0.5 text-xs text-slate-400">Greenhouse flows from the community, ranked for how you play.</p>
+        </div>
+        <Link
+          to="/simulator"
+          className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-[background-color,transform] duration-150 hover:bg-emerald-500/25 active:scale-[0.97]"
+        >
+          <Sprout className="h-3.5 w-3.5" /> Submit a flow <ArrowUpRight className="h-3 w-3 opacity-70" />
+        </Link>
+      </header>
 
-      <section className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4 space-y-3">
-        <ViewerControls viewer={viewer}>
-          <label className="flex flex-col gap-1 text-[11px] text-slate-400">
-            <span>Plots</span>
-            <SegmentedControl<PlotsFilter>
-              size="xs"
-              nowrap
-              value={plots}
-              onChange={setPlots}
-              options={[
-                { value: "any", label: "Any" },
-                { value: "1", label: "1" },
-                { value: "2", label: "2" },
-                { value: "3", label: "3" },
-              ]}
+      <StatsPanel viewer={viewer} />
+
+      <section className="rounded-lg border border-slate-600/30 bg-slate-800/40">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-700/40 px-3 py-2.5 sm:px-4">
+          <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Sort by">
+            {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+              <Chip key={k} active={sort === k} onClick={() => setSort(k)} title={SORT_HINT[k]}>
+                {SORT_LABEL[k]}
+              </Chip>
+            ))}
+          </div>
+          <div className="flex items-center gap-1" role="tablist" aria-label="Plots">
+            <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-500">Plots</span>
+            {(["any", "1", "2", "3"] as PlotsFilter[]).map((p) => (
+              <Chip key={p} active={plots === p} onClick={() => setPlots(p)}>
+                {p === "any" ? "Any" : p}
+              </Chip>
+            ))}
+          </div>
+          <label className="relative ml-auto w-full min-w-[12rem] sm:w-56">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+            <input
+              type="search"
+              className="w-full rounded-md border border-slate-600/40 bg-slate-900/60 py-1.5 pl-8 pr-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-emerald-500/60 focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+              placeholder="Search title or author"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search flows"
             />
           </label>
-        </ViewerControls>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="relative flex-1 min-w-[14rem] max-w-md">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input type="search" className={`${inputClass} w-full pl-7 py-1.5`} placeholder="Search title or author" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search flows" />
-          </label>
-          <button type="button" className={buttonClass.neutral} onClick={() => setReload((n) => n + 1)} disabled={loading}>
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
-          </button>
-          <div className="w-full sm:w-auto sm:ml-auto">
-            <PriceNote viewer={viewer} now={now} />
-          </div>
         </div>
-        {viewer.scaling && (
-          <p className="text-[11px] text-amber-200/80">Numbers are scaled to your yield stats from the simulator: estimated. Turn off "Use my yield stats" to see the server's maximum-stat numbers.</p>
-        )}
-      </section>
 
-      <section className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-2 sm:p-4">
-        {loading ? (
-          <div className="py-10 text-center text-xs text-slate-400">Loading the leaderboard...</div>
-        ) : result?.error ? (
-          <div className="py-8 text-center text-xs space-y-2">
-            <div className="text-red-300">Could not load the leaderboard: {result.error}</div>
-            <button type="button" className={`${buttonClass.neutral} mx-auto`} onClick={() => setReload((n) => n + 1)}>
-              <RefreshCw className="w-3.5 h-3.5" /> Try again
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 sm:px-4">
+          <Legend />
+          <div className="flex items-center gap-3">
+            <PriceNote viewer={viewer} now={now} />
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-[11px] text-slate-400 transition-colors hover:text-slate-200 disabled:opacity-50"
+              onClick={() => setReload((n) => n + 1)}
+              disabled={loading}
+              title="Fetch the list again"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} /> Reload
             </button>
           </div>
-        ) : rows.length === 0 ? (
-          <div className="py-10 text-center text-xs text-slate-400 space-y-1">
-            <div>No flows on this board{plots !== "any" ? ` with ${plots} plot${plots === "1" ? "" : "s"}` : ""} yet.</div>
-            <div>
-              Be the first: build one in the <Link to="/simulator" className="text-emerald-300 hover:underline">simulator</Link> and press "Submit to leaderboard".
+        </div>
+        {viewer.scaling && <p className="px-3 pt-1 text-[11px] text-amber-200/70 sm:px-4">Crop and rare-crop numbers are scaled to your yield stats (an estimate).</p>}
+
+        <div className="p-1.5 sm:p-2">
+          {loading ? (
+            <ul className="space-y-1" aria-busy>
+              {[0, 1, 2, 3].map((i) => (
+                <li key={i} className="flex animate-pulse items-center gap-3 px-3 py-3">
+                  <div className="h-5 w-6 rounded bg-slate-700/40" />
+                  <div className="h-[59px] w-[59px] rounded-md bg-slate-700/40" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-1/3 rounded bg-slate-700/40" />
+                    <div className="h-2.5 w-1/2 rounded bg-slate-700/30" />
+                    <div className="h-1.5 w-2/3 rounded bg-slate-700/30" />
+                  </div>
+                  <div className="hidden h-6 w-20 rounded bg-slate-700/40 sm:block" />
+                </li>
+              ))}
+              <li className="sr-only">Loading the rankings...</li>
+            </ul>
+          ) : result?.error ? (
+            <div className="space-y-2 py-10 text-center text-xs">
+              <div className="text-red-300">Could not load the rankings: {result.error}</div>
+              <button type="button" className="mx-auto inline-flex items-center gap-1 rounded-md border border-slate-600/40 px-2.5 py-1.5 text-slate-300 hover:bg-slate-700/60" onClick={() => setReload((n) => n + 1)}>
+                <RefreshCw className="h-3.5 w-3.5" /> Try again
+              </button>
             </div>
-          </div>
-        ) : shown.length === 0 ? (
-          <div className="py-10 text-center text-xs text-slate-400">Nothing matches "{query}".</div>
-        ) : (
-          <>
-            <FlowsTable rows={shown} normal={normal} showSlack={shown.some((r) => r.slack !== null)} />
-            <FlowsCards rows={shown} normal={normal} />
-          </>
-        )}
+          ) : ranked.length === 0 ? (
+            <div className="space-y-1 py-12 text-center text-xs text-slate-400">
+              <Trophy className="mx-auto mb-2 h-6 w-6 text-slate-600" />
+              <div>No flows on this board{plots !== "any" ? ` with ${plots} plot${plots === "1" ? "" : "s"}` : ""} yet.</div>
+              <div>
+                Be the first: build one in the{" "}
+                <Link to="/simulator" className="text-emerald-300 hover:underline">
+                  simulator
+                </Link>{" "}
+                and press "Submit to leaderboard".
+              </div>
+            </div>
+          ) : shown.length === 0 ? (
+            <div className="py-10 text-center text-xs text-slate-400">Nothing matches "{query}".</div>
+          ) : (
+            <ol className="divide-y divide-slate-700/30" data-testid="flows-list">
+              {shown.map((row, i) => (
+                <FlowRowItem key={row.entry.id} row={row} top={top} every={viewer.every} normal={normal} index={i} />
+              ))}
+            </ol>
+          )}
+        </div>
       </section>
     </div>
   );

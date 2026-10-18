@@ -1,233 +1,257 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Flag, Loader2 } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { ArrowRight, Code2, Flag, Loader2, Repeat } from "lucide-react";
 import type { FlowDetail, FlowSeedResult, FlowStatusResponse } from "../../leaderboard/api";
 import type { RunResult } from "../../leaderboard/result";
 import type { Board } from "../../leaderboard/rules";
 import { valueResult, type Quotes } from "../../leaderboard/pricing";
 import { spreadRatio } from "../../leaderboard/result";
-import { BOARD_LABEL, effortText, percent, ratioText, suppliesOf, suppliesText, TIER_LABEL, type FrequencyPoint, type ItemLine } from "../../leaderboard/view";
+import { BOARD_LABEL, percent, ratioText, TIER_LABEL, type FrequencyPoint, type ItemLine } from "../../leaderboard/view";
 import type { TierId } from "../../leaderboard/tiers";
 import type { BazaarPricing } from "../../simulator";
-import { defaultGameData } from "../../simulator";
+import { defaultGameData, describeConditions } from "../../simulator";
+import type { FlowStep } from "../../simulator/flow/types";
 import { getFlowStatus, reportFlow } from "../../services/flowsService";
-import { LayoutPreview } from "../designer";
 import { CropImage } from "../shared";
-import { Stat } from "../simulator/controls";
 import { formatCoins, formatRate, nameOf } from "../simulator/format";
-import { layoutToPlacements } from "../simulator/scenarioEdit";
 import { buttonClass, inputClass } from "../simulator/styles";
-import { SectionLabel, useToast } from "../ui";
+import { useToast } from "../ui";
 import { Badge } from "./FlowControls";
+import { EFFORT_LABEL } from "./flowsDisplay";
+import { LayoutThumb, MutationChip } from "./FlowVisuals";
 import { DialogFrame, ModalDialog } from "./ModalDialog";
 
 const DATA = defaultGameData();
 
-const EFFORT_LABEL: Record<string, string> = {
-  water: "Watering",
-  harvest: "Harvests",
-  minigame: "Minigame harvests",
-  replant: "Replants",
-  place: "Placements",
-  remove: "Removals",
-  replace: "Replacements before decay",
-  roots: "Root clearing",
-  ground: "Ground fixes",
-  gate: "Gate interactions",
-  noctilume: "Noctilume time changes",
-  stepChange: "Step changes",
-  bazaar: "Bazaar visits",
-};
+/** Weight of each action kind (config.ts EFFORT_WEIGHTS), for the "share of the work" bars. */
+const EFFORT_WEIGHT: Record<string, number> = { water: 1, harvest: 1, minigame: 2, replant: 1, place: 3, remove: 3, replace: 3, roots: 2, ground: 2, gate: 1, noctilume: 1, stepChange: 2, bazaar: 2 };
 
-/** (a) The chosen cell's numbers. */
-export const CellNumbers: React.FC<{
-  result: RunResult;
-  board: Board;
-  quotes: Quotes;
-  pricing: BazaarPricing;
-  seeds: number;
-  spread: number | null;
-}> = ({ result, board, quotes, pricing, seeds, spread }) => {
-  const v = valueResult(DATA, result, board, board === "normal" ? quotes : {}, pricing);
-  const byKind = Object.entries(result.effort.byKind)
-    .filter(([, n]) => (n ?? 0) > 0)
-    .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
+/** A labelled stat tile. */
+export const StatTile: React.FC<{ label: React.ReactNode; value: React.ReactNode; sub?: React.ReactNode; tone?: string; title?: string }> = ({ label, value, sub, tone = "text-slate-100", title }) => (
+  <div className="min-w-0 rounded-lg border border-slate-700/50 bg-slate-900/40 px-3 py-2.5" title={title}>
+    <div className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</div>
+    <div className={`mt-0.5 text-base font-semibold tabular-nums ${tone}`}>{value}</div>
+    {sub && <div className="mt-0.5 text-[11px] text-slate-500">{sub}</div>}
+  </div>
+);
+
+/** Effort per login, broken down by action, weighted by how much work each is. */
+export const EffortBreakdown: React.FC<{ result: RunResult }> = ({ result }) => {
+  const rows = Object.entries(result.effort.byKind)
+    .map(([k, n]) => ({ k, n: n ?? 0, w: (n ?? 0) * (EFFORT_WEIGHT[k] ?? 1) }))
+    .filter((r) => r.n > 0)
+    .sort((a, b) => b.w - a.w);
+  const total = rows.reduce((s, r) => s + r.w, 0);
+  if (!rows.length) return <p className="text-xs text-slate-500">No actions recorded.</p>;
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-      <div>
-        <SectionLabel>Money</SectionLabel>
-        <Stat label="Profit / day" value={<span className="text-emerald-300 font-medium">{formatCoins(v.profitPerDay)}</span>} />
-        <Stat label="Revenue / day" value={formatCoins(v.revenuePerDay)} />
-        {board === "normal" ? (
-          <>
-            <Stat label="Supplies bought / day" value={formatCoins(v.boughtPerDay)} />
-            <Stat label="Setup build cost (once)" value={formatCoins(v.buildCost)} title="Buying the items the first layouts place. Not part of the profit." />
-          </>
-        ) : (
-          <Stat label="Supplies to farm / day" value={suppliesText(suppliesOf(result))} title="Dead Plants and Fermento placed per day (free on the server; you farm them yourself)" />
-        )}
-        {v.unpriced.length > 0 && <div className="text-[11px] text-amber-300 mt-1">No price for: {v.unpriced.map(nameOf).join(", ")}</div>}
-        <div className="mt-3">
-          <SectionLabel>Run</SectionLabel>
-          <Stat label="Checked-target uptime" value={percent(result.uptime)} />
-          <Stat label="Sustainable" value={result.sustainable ? "yes" : "no"} tone={result.sustainable ? "good" : "bad"} />
-          <Stat label="Seeds" value={seeds} />
-          <Stat label="Seed spread (best / median)" value={ratioText(spread)} tone={spread !== null && spread > 2 ? "bad" : undefined} />
-          <Stat label="Simulated" value={`${result.cycles.toLocaleString()} cycles (${result.days.toFixed(1)} days)`} />
-        </div>
-      </div>
-      <div>
-        <SectionLabel>Effort per login</SectionLabel>
-        <Stat label="Average / heaviest" value={effortText(result.effort.avg, result.effort.peak)} />
-        <Stat label="Logins" value={result.effort.sessions.toLocaleString()} />
-        {byKind.length > 0 && (
-          <ul className="mt-2 space-y-0.5" aria-label="Effort by kind">
-            {byKind.map(([k, n]) => (
-              <li key={k}>
-                <Stat label={EFFORT_LABEL[k] ?? k} value={`${formatRate(n ?? 0)} per login`} tone="muted" />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+    <ul className="space-y-1.5" aria-label="Effort by action">
+      {rows.map((r) => (
+        <li key={r.k} className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 text-xs">
+          <span className="truncate text-slate-300">{EFFORT_LABEL[r.k] ?? r.k}</span>
+          <span className="h-1.5 overflow-hidden rounded-full bg-slate-700/40">
+            <span className="block h-full rounded-full bg-emerald-400/70" style={{ width: `${total > 0 ? (r.w / total) * 100 : 0}%` }} />
+          </span>
+          <span className="w-24 text-right tabular-nums text-slate-400">{formatRate(r.n)} / login</span>
+        </li>
+      ))}
+    </ul>
   );
 };
 
-/** (b) Profit per day across online frequencies: a plain SVG bar chart. */
+/** Profit per day across online frequencies: an SVG bar chart, the viewer's bar bright. */
 export const FrequencyChart: React.FC<{ points: FrequencyPoint[]; selected: number; onSelect?: (every: number) => void }> = ({ points, selected, onSelect }) => {
   const max = Math.max(1, ...points.map((p) => p.profitPerDay ?? 0));
-  // A small viewBox keeps the labels readable when the chart shrinks to a phone's width.
-  const W = 400;
-  const H = 190;
-  const pad = { l: 4, r: 4, t: 24, b: 30 };
+  const W = 420;
+  const H = 200;
+  const pad = { l: 4, r: 4, t: 26, b: 34 };
   const slot = (W - pad.l - pad.r) / points.length;
-  const bar = Math.min(48, slot * 0.6);
+  const bar = Math.min(44, slot * 0.62);
   const ih = H - pad.t - pad.b;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto max-w-2xl" role="img" aria-label="Profit per day by online frequency">
-      <line x1={pad.l} x2={W - pad.r} y1={H - pad.b} y2={H - pad.b} stroke="rgb(71 85 105)" strokeWidth={1} />
+    <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Profit per day by online frequency">
+      <defs>
+        <linearGradient id="flows-bar" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgb(110 231 183)" />
+          <stop offset="100%" stopColor="rgb(16 185 129)" />
+        </linearGradient>
+      </defs>
+      {[0.25, 0.5, 0.75, 1].map((f) => (
+        <line key={f} x1={pad.l} x2={W - pad.r} y1={H - pad.b - f * ih} y2={H - pad.b - f * ih} stroke="rgb(51 65 85 / 0.45)" strokeDasharray="2 4" />
+      ))}
+      <line x1={pad.l} x2={W - pad.r} y1={H - pad.b} y2={H - pad.b} stroke="rgb(71 85 105)" />
       {points.map((p, i) => {
         const x = pad.l + slot * i + (slot - bar) / 2;
         const value = p.profitPerDay ?? 0;
-        const h = p.profitPerDay === null ? 0 : Math.max(1, (Math.max(0, value) / max) * ih);
+        const h = p.profitPerDay === null ? 0 : Math.max(2, (Math.max(0, value) / max) * ih);
         const active = p.every === selected;
         return (
           <g key={p.every} onClick={() => onSelect?.(p.every)} style={{ cursor: onSelect ? "pointer" : undefined }}>
             <title>{`Online every ${p.every} cycle${p.every === 1 ? "" : "s"}: ${p.profitPerDay === null ? "not verified" : `${formatCoins(value)} / day`}`}</title>
-            <rect x={pad.l + slot * i} y={pad.t - 16} width={slot} height={H - pad.t + 16} fill="transparent" />
-            <rect x={x} y={H - pad.b - h} width={bar} height={h} rx={3} fill={active ? "rgb(52 211 153)" : "rgb(52 211 153 / 0.35)"} />
-            <text x={x + bar / 2} y={H - pad.b - h - 6} textAnchor="middle" fontSize={13} fontWeight={active ? 600 : 400} fill={active ? "rgb(209 250 229)" : "rgb(148 163 184)"}>
+            <rect x={pad.l + slot * i} y={0} width={slot} height={H} fill="transparent" />
+            <rect x={x} y={H - pad.b - h} width={bar} height={h} rx={4} fill={active ? "url(#flows-bar)" : "rgb(52 211 153 / 0.28)"} />
+            <text x={x + bar / 2} y={H - pad.b - h - 7} textAnchor="middle" fontSize={12} fontWeight={active ? 700 : 500} fill={active ? "rgb(253 230 138)" : "rgb(148 163 184)"}>
               {p.profitPerDay === null ? "n/a" : formatCoins(value)}
             </text>
-            <text x={x + bar / 2} y={H - pad.b + 18} textAnchor="middle" fontSize={14} fill={active ? "rgb(226 232 240)" : "rgb(100 116 139)"}>
+            <text x={x + bar / 2} y={H - pad.b + 18} textAnchor="middle" fontSize={13} fontWeight={active ? 700 : 400} fill={active ? "rgb(226 232 240)" : "rgb(100 116 139)"}>
               {p.every}
             </text>
           </g>
         );
       })}
+      <text x={W / 2} y={H - 2} textAnchor="middle" fontSize={11} fill="rgb(100 116 139)">
+        online every N cycles
+      </text>
     </svg>
   );
 };
 
-/** (c) Per-item breakdown. */
+/** Per-item value: a ranked list with shares. */
 export const ItemBreakdown: React.FC<{ lines: ItemLine[] }> = ({ lines }) => {
   if (!lines.length) return <p className="text-xs text-slate-500">Nothing produced in this cell.</p>;
+  const positive = lines.filter((l) => l.coinsPerDay > 0).reduce((s, l) => s + l.coinsPerDay, 0);
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-700/60">
-            <th className="font-medium py-1.5 pr-3">Item</th>
-            <th className="font-medium py-1.5 pr-3 text-right">Per day</th>
-            <th className="font-medium py-1.5 pr-3 text-right">Unit price</th>
-            <th className="font-medium py-1.5 text-right">Coins / day</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((l) => (
-            <tr key={`${l.kind}-${l.item}`} className="border-b border-slate-700/30">
-              <td className="py-1.5 pr-3">
-                <span className="flex items-center gap-2 min-w-0">
-                  <CropImage cropId={l.item} cropName={nameOf(l.item)} size="custom" width={20} height={20} showFallback />
-                  <span className="text-slate-200 break-words">
-                    {nameOf(l.item)}
-                    {l.kind === "bought" && <span className="text-slate-500"> (bought)</span>}
-                  </span>
+    <ul className="divide-y divide-slate-700/30" aria-label="Items per day">
+      {lines.map((l) => {
+        const share = positive > 0 && l.coinsPerDay > 0 ? l.coinsPerDay / positive : 0;
+        return (
+          <li key={`${l.kind}-${l.item}`} className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 py-2">
+            <CropImage cropId={l.item} cropName={nameOf(l.item)} size="custom" width={22} height={22} showFallback />
+            <div className="min-w-0">
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="truncate text-slate-200">
+                  {nameOf(l.item)}
+                  {l.kind === "bought" && <span className="text-slate-500"> bought</span>}
                 </span>
-              </td>
-              <td className="py-1.5 pr-3 text-right tabular-nums text-slate-300">{formatRate(l.perDay)}</td>
-              <td className="py-1.5 pr-3 text-right tabular-nums text-slate-400">{l.unitPrice === null ? "no price" : formatCoins(l.unitPrice)}</td>
-              <td className={`py-1.5 text-right tabular-nums ${l.coinsPerDay < 0 ? "text-red-300" : "text-emerald-300"}`}>{formatCoins(l.coinsPerDay)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                <span className="whitespace-nowrap tabular-nums text-slate-500">
+                  {formatRate(l.perDay)}/day × {l.unitPrice === null ? "no price" : formatCoins(l.unitPrice)}
+                </span>
+              </div>
+              <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-700/40">
+                <div className={`h-full rounded-full ${l.coinsPerDay < 0 ? "bg-red-400/70" : "bg-emerald-400/70"}`} style={{ width: `${l.coinsPerDay < 0 ? 100 : share * 100}%` }} />
+              </div>
+            </div>
+            <span className={`w-16 text-right text-xs font-medium tabular-nums ${l.coinsPerDay < 0 ? "text-red-300" : "text-emerald-300"}`}>{formatCoins(l.coinsPerDay)}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 };
 
-/** (d) Each plot's first-step layout. */
-export const LayoutThumbs: React.FC<{ detail: FlowDetail }> = ({ detail }) => {
-  const plots = useMemo(
-    () =>
-      (detail.payload?.plots ?? []).map((p) => {
-        const step = p.flow.steps[p.flow.startIndex] ?? p.flow.steps[0];
-        try {
-          const { inputs, targets } = layoutToPlacements(step.layout);
-          return { id: p.id, steps: p.flow.steps.length, scripted: !!p.script?.source.trim(), layout: { inputs, targets }, label: step.label };
-        } catch {
-          return { id: p.id, steps: p.flow.steps.length, scripted: !!p.script?.source.trim(), layout: null, label: step?.label };
-        }
-      }),
-    [detail.payload]
-  );
+/** "→ step 2 when 9 Chorus Fruit fully grown" for one step's exits. */
+function exitText(step: FlowStep, steps: FlowStep[]): string {
+  const name = (id: string) => {
+    const i = steps.findIndex((s) => s.id === id);
+    return i >= 0 ? `step ${i + 1}` : id;
+  };
+  if (!step.exits.length) return "stays here";
+  return step.exits
+    .map((e) => `${e.to !== undefined ? `to ${name(e.to)}` : "next"} when ${e.when.length ? describeConditions(e.when, e.match, name, nameOf) : "never"}`)
+    .join("; otherwise ");
+}
+
+/** Every plot's flow, step by step, drawn as the real layouts. */
+export const FlowWalkthrough: React.FC<{ detail: FlowDetail }> = ({ detail }) => {
+  const plots = detail.payload?.plots ?? [];
+  const summaries = new Map((detail.summary?.plots ?? []).map((p) => [p.id, p]));
+  const [active, setActive] = useState<Record<number, number>>({});
+  if (!plots.length) return <p className="text-xs text-slate-500">No layouts in this entry.</p>;
   return (
-    <div className="flex flex-wrap gap-4">
-      {plots.map((p) => (
-        <figure key={p.id} className="space-y-1">
-          {p.layout ? <LayoutPreview layout={p.layout} cellSize={14} /> : <div className="w-[150px] h-[150px] grid place-items-center text-[11px] text-slate-500 border border-slate-700 rounded">Layout unreadable</div>}
-          <figcaption className="text-[11px] text-slate-400 max-w-[160px] break-words">
-            <span className="text-slate-200">Plot {p.id}</span> · {p.steps} step{p.steps === 1 ? "" : "s"}
-            {p.scripted ? ", scripted" : ""}
-            {p.label ? <div className="text-slate-500">{p.label}</div> : null}
-          </figcaption>
-        </figure>
-      ))}
+    <div className={`grid grid-cols-1 gap-4 ${plots.length > 1 ? "lg:grid-cols-2" : ""} ${plots.length > 2 ? "xl:grid-cols-3" : ""}`}>
+      {plots.map((p) => {
+        const steps = p.flow.steps;
+        const idx = Math.min(active[p.id] ?? p.flow.startIndex ?? 0, steps.length - 1);
+        const step = steps[idx];
+        const sum = summaries.get(p.id);
+        const targets = Object.entries(sum?.targets ?? {}).sort((a, b) => b[1] - a[1]);
+        return (
+          <article key={p.id} className="min-w-0 rounded-lg border border-slate-700/50 bg-slate-900/40 p-3">
+            <header className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-slate-100">Plot {p.id}</span>
+              <span className="text-[11px] text-slate-500">
+                {steps.length} step{steps.length === 1 ? "" : "s"}
+              </span>
+              {p.flow.loop && steps.length > 1 && (
+                <Badge tone="info" icon={<Repeat />}>
+                  loops
+                </Badge>
+              )}
+              {p.script?.source.trim() && (
+                <Badge tone="violet" icon={<Code2 />}>
+                  script
+                </Badge>
+              )}
+            </header>
+            <LayoutThumb layout={step.layout} maxCell={30} tooltips compass className="w-full" />
+            {steps.length > 1 && (
+              <div className="mt-2 flex flex-wrap gap-1" role="tablist" aria-label={`Plot ${p.id} steps`}>
+                {steps.map((s, i) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={i === idx}
+                    onClick={() => setActive((cur) => ({ ...cur, [p.id]: i }))}
+                    title={s.label || `Step ${i + 1}`}
+                    className={`rounded-md border px-2 py-0.5 text-[11px] tabular-nums transition-colors ${
+                      i === idx ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-200" : "border-slate-600/40 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="mt-2 space-y-1 text-xs">
+              <div className="font-medium text-slate-200">
+                {steps.length > 1 ? `Step ${idx + 1}` : "Layout"}
+                {step.label ? <span className="font-normal text-slate-400"> · {step.label}</span> : null}
+              </div>
+              {steps.length > 1 && (
+                <p className="flex items-start gap-1 text-slate-400">
+                  <ArrowRight className="mt-0.5 h-3 w-3 flex-shrink-0 text-slate-500" />
+                  <span className="break-words">{exitText(step, steps)}</span>
+                </p>
+              )}
+            </div>
+            {targets.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {targets.map(([id, n]) => (
+                  <MutationChip key={id} id={id} count={n} />
+                ))}
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 };
 
-/** (e) Per-seed results of the chosen cell. */
+/** Per-seed results of the chosen cell. */
 export const SeedTable: React.FC<{ seeds: FlowSeedResult[]; board: Board; quotes: Quotes; pricing: BazaarPricing }> = ({ seeds, board, quotes, pricing }) => {
   const rows = seeds
     .slice()
     .sort((a, b) => a.seedIndex - b.seedIndex)
     .map((s) => ({ s, profit: valueResult(DATA, s.result, board, board === "normal" ? quotes : {}, pricing).profitPerDay }));
   const ratio = spreadRatio(rows.map((r) => r.profit));
+  const best = Math.max(1, ...rows.map((r) => r.profit));
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-700/60">
-            <th className="font-medium py-1.5 pr-3">Seed</th>
-            <th className="font-medium py-1.5 pr-3 text-right">Profit / day</th>
-            <th className="font-medium py-1.5 pr-3 text-right">Uptime</th>
-            <th className="font-medium py-1.5 text-right">Effort</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ s, profit }) => (
-            <tr key={s.seedIndex} className="border-b border-slate-700/30">
-              <td className="py-1.5 pr-3 text-slate-300">#{s.seedIndex + 1}</td>
-              <td className="py-1.5 pr-3 text-right tabular-nums text-emerald-300">{formatCoins(profit)}</td>
-              <td className="py-1.5 pr-3 text-right tabular-nums text-slate-300">{percent(s.result.uptime)}</td>
-              <td className="py-1.5 text-right tabular-nums text-slate-300">{effortText(s.result.effort.avg, s.result.effort.peak)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="mt-2 text-[11px] text-slate-500">
-        Best / median: <span className={ratio > 2 ? "text-red-300" : "text-slate-300"}>{ratioText(ratio)}</span>. The stored numbers are the median of each item over the seeds.
+    <div className="space-y-2">
+      <ul className="space-y-1.5">
+        {rows.map(({ s, profit }) => (
+          <li key={s.seedIndex} className="grid grid-cols-[2.5rem_1fr_auto_auto] items-center gap-3 text-xs">
+            <span className="text-slate-500">#{s.seedIndex + 1}</span>
+            <span className="h-1.5 overflow-hidden rounded-full bg-slate-700/40">
+              <span className="block h-full rounded-full bg-emerald-400/60" style={{ width: `${Math.max(0, profit / best) * 100}%` }} />
+            </span>
+            <span className="w-14 text-right tabular-nums text-emerald-300">{formatCoins(profit)}</span>
+            <span className="w-16 text-right tabular-nums text-slate-500">{percent(s.result.uptime)} up</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-slate-500">
+        Best / median: <span className={ratio > 2 ? "text-red-300" : "text-slate-300"}>{ratioText(ratio)}</span> (the server rejects over 2×). The ranking uses
+        the median of every item over these seeds, so no single lucky seed counts.
       </p>
     </div>
   );
@@ -268,13 +292,13 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
   }, [id]);
   const s = status?.status ?? initial;
   return (
-    <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3 text-xs space-y-2" data-testid="flow-status">
+    <div className="space-y-2 rounded-lg border border-slate-700/60 bg-slate-900/40 p-3 text-xs" data-testid="flow-status">
       <div className="flex items-center gap-2">
         <span className="text-slate-300">Verification:</span>
         <Badge tone={s === "live" ? "new" : s === "rejected" ? "danger" : s === "hidden" ? "stale" : "pending"}>{s === "hidden" ? "hidden pending review" : s}</Badge>
-        {pending && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-300" />}
+        {pending && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-300" />}
       </div>
-      {status?.rejectReason && <div className="text-red-300 break-words">{status.rejectReason}</div>}
+      {status?.rejectReason && <div className="break-words text-red-300">{status.rejectReason}</div>}
       {error && <div className="text-amber-300">Could not refresh the status: {error}</div>}
       {status?.jobs.length ? (
         <ul className="space-y-0.5">
@@ -284,7 +308,7 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
                 {BOARD_LABEL[j.board]} · {TIER_LABEL[j.tier as TierId] ?? j.tier} tier · {j.priority === "A" ? "goes live after this" : "background"}
               </span>
               <span className={JOB_TONE[j.status] ?? "text-slate-300"}>{j.status}</span>
-              {j.error && <span className="text-red-300 break-words">{j.error}</span>}
+              {j.error && <span className="break-words text-red-300">{j.error}</span>}
             </li>
           ))}
         </ul>
@@ -318,7 +342,7 @@ export const ReportPanel: React.FC<{ id: string; onClose: () => void }> = ({ id,
       id="report-flow-title"
       title={
         <>
-          <Flag className="w-4 h-4 text-red-300" /> Report this flow
+          <Flag className="h-4 w-4 text-red-300" /> Report this flow
         </>
       }
       onClose={onClose}
@@ -328,14 +352,14 @@ export const ReportPanel: React.FC<{ id: string; onClose: () => void }> = ({ id,
             Cancel
           </button>
           <button type="button" className={buttonClass.danger} onClick={send} disabled={busy || !reason.trim()}>
-            <Flag className="w-3.5 h-3.5" /> {busy ? "Sending..." : "Send report"}
+            <Flag className="h-3.5 w-3.5" /> {busy ? "Sending..." : "Send report"}
           </button>
         </>
       }
     >
       <label className="block space-y-1 text-xs text-slate-300">
         <span>What's wrong? (offensive text, a copied flow, a broken entry...)</span>
-        <textarea className={`${inputClass} w-full h-24`} maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
+        <textarea className={`${inputClass} h-24 w-full`} maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
         <span className="block text-right text-[11px] text-slate-500">{reason.length} / 200</span>
       </label>
       {error && <p className="text-xs text-red-300">{error}</p>}

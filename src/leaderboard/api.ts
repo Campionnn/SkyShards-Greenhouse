@@ -1,5 +1,6 @@
 import type { EffortResult, RunResult } from "./result";
 import type { Board, SubmissionFile } from "./rules";
+import type { FlowSummary } from "./summary";
 import type { TierId } from "./tiers";
 
 /**
@@ -34,10 +35,22 @@ export interface SpreadInfo {
 /** Spread as the API sends it: one cell's info, a map per `every`, or a bare ratio. */
 export type Spread = SpreadInfo | Record<string, SpreadInfo | number> | number;
 
+/** One point of a list row's frequency curve: the parts of a RunResult the page prices. */
+export interface CurvePoint {
+  produced: Record<string, number>;
+  bought: Record<string, number>;
+  consumed: Record<string, number>;
+  effort?: { avg: number | null; peak: number | null };
+}
+
 export interface FlowListEntry {
   id: string;
   title: string;
+  /** The first ~240 characters of the description (Markdown source). */
+  excerpt?: string;
   author: FlowAuthor;
+  /** The boards the entry is on. */
+  boards?: Board[];
   plots: number;
   cycles: number;
   createdAt: Timestamp;
@@ -49,8 +62,14 @@ export interface FlowListEntry {
   /** Median result for the requested board / tier / every; null when not verified yet. */
   cell: RunResult | null;
   spread: Spread | null;
+  /** Seeds behind `cell`. */
+  seeds?: number | null;
   effort: EffortResult | null;
-  /** Not in the contract yet: Slack if the API ever precomputes it (the page shows "—" otherwise). */
+  /** The static flow summary (summary.ts): plots, targets, thumbnails. Missing on old entries. */
+  summary?: FlowSummary | null;
+  /** The same tier's cells at every frequency (keyed by `every`), for the row's curve and Slack. */
+  curve?: Record<string, CurvePoint>;
+  /** Not in the contract yet: Slack if the API ever precomputes it. */
   slack?: number | null;
 }
 
@@ -93,6 +112,7 @@ export interface FlowDetail {
   engineVersion: string;
   stale: boolean;
   payload: SubmissionFile;
+  summary?: FlowSummary | null;
   cells: FlowCell[];
   seeds?: FlowSeedResult[];
   /** Only with the owner's token or the admin key. */

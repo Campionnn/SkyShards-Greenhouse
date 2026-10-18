@@ -64,6 +64,30 @@ export function nearestTier(stats: SimStats): TierId {
   return best;
 }
 
+/** How close a stat set is to each tier, for the page's "snapped to" readout. */
+export interface TierSnap {
+  tier: TierId;
+  /** The viewer's growth-speed score and each tier's, so the page can draw where they sit. */
+  score: number;
+  scores: Record<TierId, number>;
+  /** 0..1: where the viewer sits between the slowest and the fastest tier. */
+  position: number;
+}
+
+/** The nearest tier by growth speed, with the numbers behind the choice. */
+export function snapToTier(stats: SimStats): TierSnap {
+  const scores = Object.fromEntries(TIERS.map((t) => [t, speedScore(TIER_STATS[t])])) as Record<TierId, number>;
+  const score = speedScore(stats);
+  const lo = scores.low;
+  const hi = scores.max;
+  return { tier: nearestTier(stats), score, scores, position: hi > lo ? Math.max(0, Math.min(1, (score - lo) / (hi - lo))) : 1 };
+}
+
+/** Cycle length in hours at a stat set (unique crops counted at the Flora shard only). */
+export function cycleHours(stats: SimStats): number {
+  return 4 / (1 + speedScore(stats));
+}
+
 /** The grid frequency nearest to `every` cycles (ties go to the lower one). */
 export function nearestEvery(every: number): number {
   let best = EVERY[0];

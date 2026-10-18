@@ -49,20 +49,18 @@ const wrap = (node: React.ReactNode) =>
 const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"');
 
 describe("leaderboard pages render", () => {
-  it("/flows renders the controls and a loading state", () => {
+  it("/flows renders the stats panel, sorting, filters and a loading state", () => {
     const html = text(wrap(<FlowsPage />));
-    expect(html).toContain("Flow leaderboard");
-    expect(html).toContain("Online every");
-    expect(html).toContain("Stat tier");
-    expect(html).toContain("Use my yield stats");
-    expect(html).toContain("Search title or author");
-    expect(html).toContain("Loading the leaderboard...");
+    for (const s of ["Flow rankings", "Your stats", "How often you log in", "Crop Growth", "Farming Fortune", "Farming armor", "Scored at", "Profit per effort", "Most forgiving", "Search title or author", "Loading the rankings..."]) {
+      expect(html).toContain(s);
+    }
+    expect(html).toContain('data-testid="tier-meter"');
   });
 
   it("/flows/:id renders every section from a full entry", async () => {
     const detail = (await mockDetail("mockChloro01"))!;
     const html = text(wrap(<FlowDetailView detail={detail} onChange={() => {}} onReload={() => {}} />));
-    for (const s of ["Chloronite engine with wheat filler", "Open in simulator", "Copy link", "Profit by online frequency", "Forgiving:", "Items per day", "Starting layouts", "Per-seed results", "Effort per login"]) {
+    for (const s of ["Chloronite engine with wheat filler", "Open in simulator", "Copy link", "Profit by online frequency", "forgiving", "Where the money comes from", "The flow", "Plot 1", "Consistency across seeds", "Work per login", "Notes from the author", "Mutations / day", "Seed spread"]) {
       expect(html).toContain(s);
     }
     // Restricted Markdown: headings and emphasis render; links are unwrapped to text.

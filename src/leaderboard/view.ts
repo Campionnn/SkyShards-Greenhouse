@@ -1,5 +1,7 @@
 import type { GameData, ItemId } from "../simulator/data/types";
 import { DEFAULT_BAZAAR_PRICING, type BazaarPricing } from "../simulator/economy/bazaar";
+import { RARE_DROP_ITEMS } from "../simulator/economy/bounty";
+import { RARE_CROP_ITEMS } from "../simulator/economy/rareCrops";
 import type { AuthUser, FlowAuthor, FlowCell, FlowListEntry, Spread, SpreadInfo, Timestamp } from "./api";
 import { buyPrice, scaleResult, sellPrice, slack, valueResult, yieldStatsDiffer, type Quotes, type YieldStats } from "./pricing";
 import type { RunResult } from "./result";
@@ -86,6 +88,13 @@ export interface RowBadges {
   new: boolean;
 }
 
+/** Where a flow's revenue comes from (coins per day). */
+export interface RevenueSplit {
+  crops: number;
+  mutations: number;
+  rare: number;
+}
+
 export interface FlowRow {
   entry: FlowListEntry;
   rank: number;
@@ -94,17 +103,36 @@ export interface FlowRow {
   revenuePerDay: number | null;
   boughtPerDay: number | null;
   buildCost: number | null;
+  /** Revenue by category (crops, mutation items, rare crops and drops). */
+  split: RevenueSplit | null;
   /** Ironman: Dead Plants / Fermento consumed per day (counts). */
   suppliesPerDay: Record<ItemId, number>;
+  /** Mutations harvested per day (count of mutation items produced). */
+  mutationsPerDay: number | null;
   effortAvg: number | null;
   effortPeak: number | null;
-  /** Only when the API provides it; the list has one frequency cell so it can't be derived. */
+  /** Coins per day per unit of effort per login. */
+  perEffort: number | null;
+  uptime: number | null;
+  /** From the row's frequency curve (the API's when it sends one). */
   slack: number | null;
+  /** Profit per day at every grid frequency (null where not verified). */
+  curve: FrequencyPoint[];
   /** Counts were scaled to the viewer's yield stats (an estimate). */
   scaled: boolean;
   badges: RowBadges;
   unpriced: ItemId[];
 }
+
+export type SortKey = "profit" | "perEffort" | "effort" | "forgiving" | "newest";
+
+export const SORT_LABEL: Record<SortKey, string> = {
+  profit: "Profit",
+  perEffort: "Profit per effort",
+  effort: "Least effort",
+  forgiving: "Most forgiving",
+  newest: "Newest",
+};
 
 /** The result as the viewer sees it: scaled to their yield stats when asked and known. */
 export function viewerResult(data: GameData, cell: RunResult, s: Pick<ViewSettings, "viewerStats" | "useMyStats">): { result: RunResult; scaled: boolean } {
@@ -132,8 +160,54 @@ export function suppliesText(supplies: Record<ItemId, number>): string {
   return parts.length ? parts.join(", ") : "none";
 }
 
-/** Price one list entry for the viewer. */
-export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings): Omit<FlowRow, "rank"> {
+/** Revenue by category under a board's prices. */
+export function revenueSplit(data: GameData, r: RunResult, board: Board, quotes: Quotes, pricing: BazaarPricing): RevenueSplit {
+  const out: RevenueSplit = { crops: 0, mutations: 0, rare: 0 };
+  for (const [item, n] of Object.entries(r.produced)) {
+    const unit = sellPrice(data, item, board, board === "normal" ? quotes : {}, pricing) ?? 0;
+    const coins = n * unit;
+    if (data.mutations[item]) out.mutations += coins;
+    else if (RARE_CROP_ITEMS.includes(item) || RARE_DROP_ITEMS.includes(item)) out.rare += coins;
+    else out.crops += coins;
+  }
+  return out;
+}
+
+/** Mutation items harvested per day. */
+export function mutationsPerDay(data: GameData, r: RunResult): number {
+  let n = 0;
+  for (const [item, q] of Object.entries(r.produced)) if (data.mutations[item]) n += q;
+  return n;
+}
+
+/** A list row's frequency curve, priced for the viewer (null where the API sent no point). */
+export function rowCurve(data: GameData, entry: FlowListEntry, s: ViewSettings): FrequencyPoint[] {
+  const curve = entry.curve ?? {};
+  return EVERY.map((every) => {
+    const p = curve[String(every)];
+    if (!p) return { every, profitPerDay: null };
+    const asResult = { ...EMPTY_RESULT, produced: p.produced ?? {}, bought: p.bought ?? {}, consumed: p.consumed ?? {} };
+    const { result } = viewerResult(data, asResult, s);
+    return { every, profitPerDay: valueResult(data, result, s.board, s.board === "normal" ? s.quotes : {}, s.pricing ?? DEFAULT_BAZAAR_PRICING).profitPerDay };
+  });
+}
+
+const EMPTY_RESULT: RunResult = {
+  cycles: 0,
+  days: 0,
+  produced: {},
+  consumed: {},
+  bought: {},
+  built: {},
+  shortfall: {},
+  uptime: 0,
+  sustainable: true,
+  effort: { sessions: 0, avg: 0, peak: 0, byKind: {} },
+  halted: false,
+};
+
+/** Price one list entry for the viewer. `every` is the frequency the list was fetched at (for Slack). */
+export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, every = 1): Omit<FlowRow, "rank"> {
   const created = toMillis(entry.createdAt);
   const badges: RowBadges = {
     stale: !!entry.stale,
@@ -141,23 +215,33 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings): 
     new: Number.isFinite(created) && s.now - created >= 0 && s.now - created < NEW_FOR_MS,
   };
   const effort = entry.effort ?? entry.cell?.effort ?? null;
+  const curve = rowCurve(data, entry, s);
+  const derivedSlack = slackFrom(curve, every);
   const base = {
     entry,
     suppliesPerDay: suppliesOf(entry.cell),
     effortAvg: effort ? effort.avg : null,
     effortPeak: effort ? effort.peak : null,
-    slack: typeof entry.slack === "number" ? entry.slack : null,
+    uptime: entry.cell ? entry.cell.uptime : null,
+    slack: typeof entry.slack === "number" ? entry.slack : derivedSlack,
+    curve,
     badges,
   };
-  if (!entry.cell) return { ...base, profitPerDay: null, revenuePerDay: null, boughtPerDay: null, buildCost: null, scaled: false, unpriced: [] };
+  if (!entry.cell)
+    return { ...base, profitPerDay: null, revenuePerDay: null, boughtPerDay: null, buildCost: null, split: null, mutationsPerDay: null, perEffort: null, scaled: false, unpriced: [] };
   const { result, scaled } = viewerResult(data, entry.cell, s);
-  const v = valueResult(data, result, s.board, s.board === "normal" ? s.quotes : {}, s.pricing ?? DEFAULT_BAZAAR_PRICING);
+  const quotes = s.board === "normal" ? s.quotes : {};
+  const pricing = s.pricing ?? DEFAULT_BAZAAR_PRICING;
+  const v = valueResult(data, result, s.board, quotes, pricing);
   return {
     ...base,
     profitPerDay: v.profitPerDay,
     revenuePerDay: v.revenuePerDay,
     boughtPerDay: v.boughtPerDay,
     buildCost: v.buildCost,
+    split: revenueSplit(data, result, s.board, quotes, pricing),
+    mutationsPerDay: mutationsPerDay(data, result),
+    perEffort: effort && effort.avg > 0 ? v.profitPerDay / effort.avg : null,
     scaled,
     unpriced: v.unpriced,
   };
@@ -178,9 +262,12 @@ export function rank<T extends { profitPerDay: number | null }>(sorted: readonly
   });
 }
 
-/** Rows sorted by profit per day, best first (unverified entries last, by title), then ranked. */
-export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s: ViewSettings): FlowRow[] {
-  const rows = entries.map((e) => flowRow(data, e, s));
+/**
+ * Rows ranked by profit per day, best first (unverified entries last, by title). The rank is always
+ * the profit rank; `sortRows` reorders for other views without changing it.
+ */
+export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s: ViewSettings, every = 1): FlowRow[] {
+  const rows = entries.map((e) => flowRow(data, e, s, every));
   rows.sort((a, b) => {
     if (a.profitPerDay === null && b.profitPerDay === null) return a.entry.title.localeCompare(b.entry.title);
     if (a.profitPerDay === null) return 1;
@@ -188,6 +275,43 @@ export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s
     return b.profitPerDay - a.profitPerDay || a.entry.title.localeCompare(b.entry.title);
   });
   return rank(rows);
+}
+
+/** Missing values always sort last, whichever way the key goes. */
+function byKey<T>(get: (r: T) => number | null, desc: boolean) {
+  return (a: T, b: T) => {
+    const x = get(a);
+    const y = get(b);
+    if (x === null && y === null) return 0;
+    if (x === null) return 1;
+    if (y === null) return -1;
+    return desc ? y - x : x - y;
+  };
+}
+
+/** Reorder ranked rows for a sort key (stable: ties keep the profit order). */
+export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
+  const out = [...rows];
+  switch (key) {
+    case "profit":
+      return out;
+    case "perEffort":
+      return out.sort(byKey((r) => r.perEffort, true));
+    case "effort":
+      return out.sort(byKey((r) => (r.profitPerDay === null ? null : r.effortAvg), false));
+    case "forgiving":
+      return out.sort(byKey((r) => r.slack, true));
+    case "newest":
+      return out.sort(byKey((r) => {
+        const t = toMillis(r.entry.createdAt);
+        return Number.isFinite(t) ? t : null;
+      }, true));
+  }
+}
+
+/** The largest profit in a set of rows (for the relative bars). */
+export function maxProfit(rows: readonly FlowRow[]): number {
+  return rows.reduce((m, r) => Math.max(m, r.profitPerDay ?? 0), 0);
 }
 
 /** Case-insensitive match on title or author name; ranks are kept from the full list. */

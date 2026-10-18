@@ -6,8 +6,10 @@
  */
 import type { AuthUser, FlowCell, FlowDetail, FlowListEntry, FlowListResponse, FlowSeedResult, FlowStatusResponse } from "../leaderboard/api";
 import type { RunResult } from "../leaderboard/result";
-import type { Board, SubmissionFile } from "../leaderboard/rules";
+import { parseSubmission, type Board, type SubmissionFile } from "../leaderboard/rules";
+import { summarizeSubmission, type FlowSummary } from "../leaderboard/summary";
 import { EVERY, TIERS, type TierId } from "../leaderboard/tiers";
+import { defaultGameData } from "../simulator/data/default";
 
 export const MOCK_KEY = "skyshards-flows-mock";
 export const MOCK_TOKEN = "mock-token";
@@ -95,6 +97,51 @@ const SPECS: Spec[] = [
     effort: [80, 410],
     description: "",
   },
+  {
+    id: "mockNoct0006",
+    title: "Noctilume night shift",
+    author: { id: "312548796201451520", name: "moonlit", avatar: null },
+    plots: 3,
+    cycles: 5000,
+    ageDays: 1,
+    produced: { noctilume: 14, wild_rose: 220000, cactus: 40000, ethereal_vine: 2, helianthus: 0.6 },
+    consumed: { dead_plant: 4 },
+    bought: { dead_plant: 4 },
+    built: { noctilume: 2, wild_rose: 0 },
+    falloff: 0.11,
+    effort: [22, 140],
+    description: "Set the time each login. Three identical plots; nothing to rebuild.",
+  },
+  {
+    id: "mockDevr0007",
+    title: "Devourer root farm",
+    author: { id: "443201775698612224", name: "Rooted", avatar: null },
+    plots: 2,
+    cycles: 2000,
+    ageDays: 9,
+    produced: { devourer: 3.2, brown_mushroom: 150000, pumpkin: 70000, cropie: 6 },
+    consumed: { fermento: 2 },
+    bought: { fermento: 2 },
+    built: { zombud: 8, puffercloud: 6 },
+    falloff: 0.05,
+    effort: [140, 620],
+    description: "Heavy: clear roots every login and rebuild the Zombud ring after each Devourer.",
+  },
+  {
+    id: "mockVeil0008",
+    title: "Veilshroom carpet, zero upkeep",
+    author: { id: "512088963174449152", name: "fungi", avatar: null },
+    plots: 1,
+    cycles: 2000,
+    ageDays: 14,
+    produced: { veilshroom: 210, brown_mushroom: 80000, red_mushroom: 30000 },
+    consumed: {},
+    bought: {},
+    built: {},
+    falloff: 0.01,
+    effort: [8, 30],
+    description: "Plant it, forget it. Log in whenever you like.",
+  },
 ];
 
 /** A result for one cell: the spec scaled by tier and frequency, plus a little per-seed noise. */
@@ -136,22 +183,44 @@ const payloadOf = (s: Spec): SubmissionFile =>
 
 const delay = <T>(v: T, ms = 250) => new Promise<T>((r) => setTimeout(() => r(v), ms));
 
+const summaryOf = (s: Spec): FlowSummary => {
+  const sub = parseSubmission(payloadOf(s)).submission;
+  if (!sub) return { plots: [], targets: [], inputs: [], steps: 0, scripted: false };
+  const out = summarizeSubmission(sub, defaultGameData());
+  // The two sample layouts grow Chloronite-ish targets; show the spec's mutations instead, so the
+  // mock list looks like the flows it describes.
+  const mutations = Object.keys(s.produced).filter((k) => defaultGameData().mutations[k]);
+  return mutations.length ? { ...out, targets: mutations } : out;
+};
+
 export function mockList(board: Board, tier: TierId, every: number, plots?: number): Promise<FlowListResponse> {
   const entries: FlowListEntry[] = SPECS.filter((s) => !plots || s.plots === plots).map((s) => {
-    const cell = resultFor(s, board, s.id === "mockGlass003" && tier !== "max" ? "max" : tier, every);
+    const used = s.id === "mockGlass003" && tier !== "max" ? "max" : tier;
+    const cell = resultFor(s, board, used, every);
+    const curve = Object.fromEntries(
+      EVERY.map((n) => {
+        const r = resultFor(s, board, used, n);
+        return [String(n), { produced: r.produced, bought: r.bought, consumed: r.consumed, effort: { avg: r.effort.avg, peak: r.effort.peak } }];
+      })
+    );
     return {
       id: s.id,
       title: s.title,
+      excerpt: s.description.slice(0, 240),
       author: s.author,
+      boards: ["ironman", "normal"],
       plots: s.plots,
       cycles: s.cycles,
       createdAt: ago(s.ageDays),
       updatedAt: ago(Math.max(0, s.ageDays - 1)),
       stale: !!s.stale,
-      estimated: s.id === "mockGlass003" && tier !== "max",
+      estimated: used !== tier,
       cell,
-      spread: { [String(every)]: 1.1 + s.falloff },
+      spread: { seeds: 5, values: [], best: 1, median: 1, worst: 1, ratio: 1.04 + s.falloff },
+      seeds: used === "max" ? 5 : 3,
       effort: cell.effort,
+      summary: summaryOf(s),
+      curve,
     };
   });
   return delay({ engineVersion: "mock", entries });
@@ -183,6 +252,7 @@ export function mockDetail(id: string): Promise<FlowDetail | null> {
     engineVersion: "mock",
     stale: !!s.stale,
     payload: payloadOf(s),
+    summary: summaryOf(s),
     cells,
     seeds,
   });

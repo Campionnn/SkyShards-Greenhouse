@@ -2,6 +2,7 @@ import { parseBazaar, type BazaarQuote } from "../simulator/economy/bazaar";
 import type { ItemId } from "../simulator/data/types";
 import { createEngine } from "../simulator/engine";
 import { checkSubmission, clampCycles, parseSubmission, type Board } from "./rules";
+import { summarizeSubmission } from "./summary";
 import { EVERY, TIERS, type TierId } from "./tiers";
 import { outlierCheck, verifyJob, type VerifyRun } from "./verify";
 
@@ -15,7 +16,7 @@ import { outlierCheck, verifyJob, type VerifyRun } from "./verify";
  *   {mode: "version"}
  *     -> {engineVersion, every, tiers}
  *   {mode: "check", payload}
- *     -> {ok, errors, warnings, plots, bytes}
+ *     -> {ok, errors, warnings, plots, bytes, summary: FlowSummary | null}  (summary.ts)
  *   {mode: "verify", payload, board, tier, cycles, runs: [{every, seed, seedIndex}], wallMsPerRun?,
  *     bazaar?: {item: {buy, sell}} | raw Hypixel response | null, outlierRatio?}
  *     -> {engineVersion, results: [{every, seedIndex, seed, ok, error, result, wallMs}], outlier?}
@@ -63,8 +64,9 @@ export function handle(req: CliRequest, progress: (line: string) => void = () =>
       return { engineVersion: ENGINE_VERSION, every: [...EVERY], tiers: [...TIERS] };
     case "check": {
       const parsed = parseSubmission(req.payload);
-      if (!parsed.submission) return { ok: false, errors: parsed.errors, warnings: [], plots: 0, bytes: 0 };
-      return checkSubmission(parsed.submission, engine.data);
+      if (!parsed.submission) return { ok: false, errors: parsed.errors, warnings: [], plots: 0, bytes: 0, summary: null };
+      const check = checkSubmission(parsed.submission, engine.data);
+      return { ...check, summary: check.ok ? summarizeSubmission(parsed.submission, engine.data) : null };
     }
     case "verify": {
       const parsed = parseSubmission(req.payload);

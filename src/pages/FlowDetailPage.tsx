@@ -1,15 +1,38 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Eye, EyeOff, FlaskConical, Flag, Link2, Pencil, Save, ShieldCheck, Trash2, Trophy, X } from "lucide-react";
-import { AuthorLabel, Badge, PriceNote, ViewerControls } from "../components/flows/FlowControls";
-import { CellNumbers, FrequencyChart, ItemBreakdown, LayoutThumbs, ReportDialog, SeedTable, StatusBox } from "../components/flows/FlowDetailSections";
+import { Activity, ArrowLeft, BarChart3, Clock, Code2, Eye, EyeOff, FlaskConical, Flag, Layers, Link2, Pencil, Save, ShieldCheck, Sprout, Trash2, Trophy, X } from "lucide-react";
+import { AuthorLabel, Badge, PriceNote, StatsPanel } from "../components/flows/FlowControls";
+import { EffortBreakdown, FlowWalkthrough, FrequencyChart, ItemBreakdown, ReportDialog, SeedTable, StatTile, StatusBox } from "../components/flows/FlowDetailSections";
+import { useFlowShape } from "../components/flows/flowsDisplay";
 import { FlowMarkdown } from "../components/flows/FlowMarkdown";
+import { EffortMeter, LayoutThumb, MutationChip, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
+import { formatCoins, formatRate } from "../components/simulator/format";
 import { buttonClass, inputClass } from "../components/simulator/styles";
 import { InfoHint, Panel, useToast } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
-import { BADGE_TITLE, BOARD_LABEL, DESCRIPTION_MAX, findCell, TITLE_MAX, formatDate, itemBreakdown, percent, profitByEvery, slackFrom, spreadAt, TIER_LABEL, viewerResult } from "../leaderboard/view";
+import { valueResult } from "../leaderboard/pricing";
+import {
+  BADGE_TITLE,
+  BOARD_LABEL,
+  DESCRIPTION_MAX,
+  findCell,
+  formatDate,
+  itemBreakdown,
+  mutationsPerDay,
+  percent,
+  profitByEvery,
+  ratioText,
+  revenueSplit,
+  slackFrom,
+  spreadAt,
+  suppliesOf,
+  suppliesText,
+  TIER_LABEL,
+  TITLE_MAX,
+  viewerResult,
+} from "../leaderboard/view";
 import { adminDelete, adminHide, adminUnhide, getAdminKey, hiddenReasonLabel } from "../services/adminService";
 import { deleteFlow, flowLink, getFlow, updateFlow } from "../services/flowsService";
 import { defaultGameData } from "../simulator";
@@ -37,21 +60,21 @@ const EditForm: React.FC<{ detail: FlowDetail; onSaved: (title: string, descript
     <div className="space-y-2">
       <label className="block space-y-1 text-xs text-slate-300">
         <span>Title</span>
-        <input className={`${inputClass} w-full text-sm py-1.5`} maxLength={TITLE_MAX} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input className={`${inputClass} w-full py-1.5 text-sm`} maxLength={TITLE_MAX} value={title} onChange={(e) => setTitle(e.target.value)} />
       </label>
       <label className="block space-y-1 text-xs text-slate-300">
         <span>Description (Markdown, no links or images)</span>
-        <textarea className={`${inputClass} w-full h-40`} maxLength={DESCRIPTION_MAX} value={description} onChange={(e) => setDescription(e.target.value)} />
+        <textarea className={`${inputClass} h-40 w-full`} maxLength={DESCRIPTION_MAX} value={description} onChange={(e) => setDescription(e.target.value)} />
         <span className="block text-right text-[11px] text-slate-500">
           {description.length} / {DESCRIPTION_MAX}
         </span>
       </label>
       <div className="flex gap-2">
         <button type="button" className={buttonClass.primary} onClick={save} disabled={busy || !title.trim()}>
-          <Save className="w-3.5 h-3.5" /> {busy ? "Saving..." : "Save"}
+          <Save className="h-3.5 w-3.5" /> {busy ? "Saving..." : "Save"}
         </button>
         <button type="button" className={buttonClass.neutral} onClick={onCancel}>
-          <X className="w-3.5 h-3.5" /> Cancel
+          <X className="h-3.5 w-3.5" /> Cancel
         </button>
       </div>
     </div>
@@ -82,35 +105,49 @@ export const ModerationBox: React.FC<{ detail: FlowDetail; onReload: () => void 
     }
   };
   return (
-    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs space-y-2" data-testid="moderation-box">
+    <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs" data-testid="moderation-box">
       <div className="flex flex-wrap items-center gap-2">
-        <ShieldCheck className="w-4 h-4 text-amber-400" />
-        <span className="text-slate-200 font-medium">Moderation</span>
+        <ShieldCheck className="h-4 w-4 text-amber-400" />
+        <span className="font-medium text-slate-200">Moderation</span>
         <Badge tone={detail.status === "live" ? "new" : detail.status === "rejected" ? "danger" : detail.status === "hidden" ? "stale" : "pending"}>{detail.status}</Badge>
         {why && <Badge tone={detail.hiddenReason === "ban" ? "danger" : "estimated"}>{why}</Badge>}
         <span className={detail.reportCount ? "text-amber-300" : "text-slate-400"}>
           {detail.reportCount ?? 0} report{detail.reportCount === 1 ? "" : "s"}
         </span>
-        <Link to="/flows/admin" className="text-slate-400 hover:text-slate-200 underline-offset-2 hover:underline">
+        <Link to="/flows/admin" className="text-slate-400 underline-offset-2 hover:text-slate-200 hover:underline">
           Queue
         </Link>
       </div>
-      {detail.rejectReason && <div className="text-red-300 break-words">Rejected: {detail.rejectReason}</div>}
+      {detail.rejectReason && <div className="break-words text-red-300">Rejected: {detail.rejectReason}</div>}
       <div className="flex flex-wrap gap-2">
         {hidden ? (
           <button type="button" className={buttonClass.neutral} disabled={busy} onClick={() => run("unhide")}>
-            <Eye className="w-3.5 h-3.5" /> Unhide
+            <Eye className="h-3.5 w-3.5" /> Unhide
           </button>
         ) : (
           <button type="button" className={buttonClass.neutral} disabled={busy} onClick={() => run("hide")}>
-            <EyeOff className="w-3.5 h-3.5" /> Hide
+            <EyeOff className="h-3.5 w-3.5" /> Hide
           </button>
         )}
         <button type="button" className={buttonClass.danger} disabled={busy} onClick={() => run("delete")}>
-          <Trash2 className="w-3.5 h-3.5" /> Delete
+          <Trash2 className="h-3.5 w-3.5" /> Delete
         </button>
       </div>
     </div>
+  );
+};
+
+const ActionButton: React.FC<{ onClick: () => void; tone?: "primary" | "neutral" | "danger"; children: React.ReactNode }> = ({ onClick, tone = "neutral", children }) => {
+  const cls =
+    tone === "primary"
+      ? "border-emerald-500/50 bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+      : tone === "danger"
+        ? "border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+        : "border-slate-600/50 bg-slate-800/70 text-slate-200 hover:bg-slate-700/70";
+  return (
+    <button type="button" onClick={onClick} className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-[background-color,transform] duration-150 active:scale-[0.97] ${cls}`}>
+      {children}
+    </button>
   );
 };
 
@@ -123,18 +160,29 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const [reporting, setReporting] = useState(false);
   const [now] = useState(() => Date.now());
   const [admin] = useState(() => !!getAdminKey());
+  const shape = useFlowShape(detail);
   const owner = !!user && user.id === detail.author.id;
   const boardListed = detail.boards.includes(viewer.board);
-  const settings = { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: viewer.useMyStats };
-  const cell = findCell(detail.cells, viewer.board, viewer.tier, viewer.every);
+  const settings = { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true };
+  // The viewer's tier, or the max tier standing in while other tiers are still being verified.
+  const exact = findCell(detail.cells, viewer.board, viewer.tier, viewer.every);
+  const cell = exact ?? findCell(detail.cells, viewer.board, "max", viewer.every);
+  const tierShown = exact ? viewer.tier : "max";
   const points = useMemo(
-    () => profitByEvery(DATA, detail.cells, viewer.board, viewer.tier, { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: viewer.useMyStats }),
-    [detail.cells, viewer.board, viewer.tier, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.useMyStats]
+    () => profitByEvery(DATA, detail.cells, viewer.board, tierShown, { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true }),
+    [detail.cells, viewer.board, tierShown, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats]
   );
   const forgiving = slackFrom(points, viewer.every);
   const shown = cell ? viewerResult(DATA, cell.median, settings) : null;
+  const quotes = viewer.board === "normal" ? viewer.quotes : {};
+  const value = shown ? valueResult(DATA, shown.result, viewer.board, quotes, viewer.bazaar.pricing) : null;
+  const split = shown ? revenueSplit(DATA, shown.result, viewer.board, quotes, viewer.bazaar.pricing) : null;
   const lines = shown ? itemBreakdown(DATA, shown.result, viewer.board, viewer.quotes, viewer.bazaar.pricing) : [];
-  const seeds = (detail.seeds ?? []).filter((s) => s.board === viewer.board && s.tier === viewer.tier && s.every === viewer.every);
+  const seeds = (detail.seeds ?? []).filter((s) => s.board === viewer.board && s.tier === tierShown && s.every === viewer.every);
+  const spread = cell ? spreadAt(cell.spread, viewer.every) : null;
+  const targets = detail.summary?.targets ?? [];
+  const firstThumb = detail.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
+  const supplies = shown ? suppliesText(suppliesOf(shown.result)) : "none";
 
   const copyLink = async () => {
     try {
@@ -156,123 +204,203 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   };
 
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl space-y-4">
-      <Link to="/flows" className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200">
-        <ArrowLeft className="w-3.5 h-3.5" /> Flow leaderboard
+    <div className="space-y-4 py-2 sm:py-4">
+      <Link to="/flows" className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-200">
+        <ArrowLeft className="h-3.5 w-3.5" /> Flow rankings
       </Link>
 
-      <section className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 space-y-3">
-        {editing ? (
-          <EditForm
-            detail={detail}
-            onCancel={() => setEditing(false)}
-            onSaved={(title, description) => {
-              onChange({ ...detail, title, description });
-              setEditing(false);
-            }}
-          />
-        ) : (
-          <>
-            <div className="flex flex-wrap items-start gap-3">
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <h1 className="text-lg font-semibold text-slate-100 break-words flex items-start gap-2">
-                  <Trophy className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <span className="min-w-0">{detail.title}</span>
-                </h1>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                  <AuthorLabel author={detail.author} size={22} />
-                  <span>{detail.boards.map((b) => BOARD_LABEL[b]).join(" + ")}</span>
-                  <span>
-                    {detail.plots} plot{detail.plots === 1 ? "" : "s"}
-                  </span>
-                  <span>{detail.cycles.toLocaleString()} cycles</span>
-                  <span>Submitted {formatDate(detail.createdAt)}</span>
-                  {String(detail.updatedAt) !== String(detail.createdAt) && <span>Updated {formatDate(detail.updatedAt)}</span>}
-                  {detail.stale && (
-                    <Badge tone="stale" title={BADGE_TITLE.stale}>
-                      stale
-                    </Badge>
+      {/* Hero: the first layout, the title and the headline number. */}
+      <section className="relative overflow-hidden rounded-xl border border-slate-600/30 bg-slate-800/40">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(16,185,129,0.10),transparent_55%)]" aria-hidden />
+        <div className="relative grid grid-cols-1 gap-5 p-4 sm:p-5 md:grid-cols-[auto_minmax(0,1fr)]">
+          <div className="justify-self-center md:justify-self-start">
+            <LayoutThumb layout={firstThumb ? { code: firstThumb } : (detail.payload?.plots?.[0]?.flow.steps[0]?.layout ?? null)} cellSize={17} />
+          </div>
+          <div className="min-w-0 space-y-3">
+            {editing ? (
+              <EditForm
+                detail={detail}
+                onCancel={() => setEditing(false)}
+                onSaved={(title, description) => {
+                  onChange({ ...detail, title, description });
+                  setEditing(false);
+                }}
+              />
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {detail.boards.map((b) => (
+                      <Badge key={b} tone={b === "normal" ? "pending" : "new"}>
+                        {BOARD_LABEL[b]}
+                      </Badge>
+                    ))}
+                    {detail.stale && (
+                      <Badge tone="stale" title={BADGE_TITLE.stale}>
+                        re-verifying
+                      </Badge>
+                    )}
+                    {shape.scripted && (
+                      <Badge tone="violet" icon={<Code2 />}>
+                        scripted
+                      </Badge>
+                    )}
+                  </div>
+                  <h1 className="break-words text-2xl font-bold tracking-tight text-slate-50">{detail.title}</h1>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                    <AuthorLabel author={detail.author} size={20} />
+                    <span className="inline-flex items-center gap-1">
+                      <Layers className="h-3 w-3" /> {detail.plots} plot{detail.plots === 1 ? "" : "s"}, {shape.steps} step{shape.steps === 1 ? "" : "s"}
+                    </span>
+                    <span>{detail.cycles.toLocaleString()} cycles simulated</span>
+                    <span>Submitted {formatDate(detail.createdAt)}</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+                  <div>
+                    <div className="text-4xl font-bold leading-none tabular-nums text-amber-300">{value ? formatCoins(value.profitPerDay) : "—"}</div>
+                    <div className="mt-1 text-xs text-slate-400">
+                      coins / day · {BOARD_LABEL[viewer.board]}, {TIER_LABEL[tierShown]} tier, online every {viewer.every}
+                      {shown?.scaled ? " · scaled to your yield (est.)" : ""}
+                    </div>
+                  </div>
+                  {shown && (
+                    <div className="flex items-center gap-2 pb-1">
+                      <EffortMeter avg={shown.result.effort.avg} peak={shown.result.effort.peak} />
+                      {forgiving !== null && <span className="text-xs text-slate-400">· {percent(forgiving)} forgiving</span>}
+                    </div>
                   )}
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className={buttonClass.primary} onClick={() => navigate(`/simulator?flow=${encodeURIComponent(detail.id)}`)}>
-                  <FlaskConical className="w-3.5 h-3.5" /> Open in simulator
-                </button>
-                <button type="button" className={buttonClass.neutral} onClick={copyLink}>
-                  <Link2 className="w-3.5 h-3.5" /> Copy link
-                </button>
-                {user && !owner && (
-                  <button type="button" className={buttonClass.neutral} onClick={() => setReporting(true)}>
-                    <Flag className="w-3.5 h-3.5" /> Report
-                  </button>
+                {split && value && (
+                  <div className="max-w-lg">
+                    <SplitBar split={split} fraction={1} className="h-2" />
+                    <SplitLegend split={split} className="mt-1.5" />
+                  </div>
                 )}
-                {owner && (
-                  <>
-                    <button type="button" className={buttonClass.neutral} onClick={() => setEditing(true)}>
-                      <Pencil className="w-3.5 h-3.5" /> Edit
-                    </button>
-                    <button type="button" className={buttonClass.danger} onClick={remove}>
-                      <Trash2 className="w-3.5 h-3.5" /> Delete
-                    </button>
-                  </>
+                {targets.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {targets.map((id) => (
+                      <MutationChip key={id} id={id} size="md" />
+                    ))}
+                  </div>
                 )}
-              </div>
-            </div>
-            {detail.description?.trim() ? <FlowMarkdown text={detail.description} /> : <p className="text-xs text-slate-500">No description.</p>}
-          </>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <ActionButton tone="primary" onClick={() => navigate(`/simulator?flow=${encodeURIComponent(detail.id)}`)}>
+                    <FlaskConical className="h-3.5 w-3.5" /> Open in simulator
+                  </ActionButton>
+                  <ActionButton onClick={copyLink}>
+                    <Link2 className="h-3.5 w-3.5" /> Copy link
+                  </ActionButton>
+                  {user && !owner && (
+                    <ActionButton onClick={() => setReporting(true)}>
+                      <Flag className="h-3.5 w-3.5" /> Report
+                    </ActionButton>
+                  )}
+                  {owner && (
+                    <>
+                      <ActionButton onClick={() => setEditing(true)}>
+                        <Pencil className="h-3.5 w-3.5" /> Edit
+                      </ActionButton>
+                      <ActionButton tone="danger" onClick={remove}>
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </ActionButton>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        {(owner || admin) && (
+          <div className="relative space-y-3 border-t border-slate-700/40 p-4">
+            {owner && <StatusBox id={detail.id} initial={detail.status} onLive={onReload} />}
+            {admin && <ModerationBox detail={detail} onReload={onReload} />}
+          </div>
         )}
-        {owner && <StatusBox id={detail.id} initial={detail.status} onLive={onReload} />}
-        {admin && <ModerationBox detail={detail} onReload={onReload} />}
       </section>
 
-      <section className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4 space-y-3">
-        <ViewerControls viewer={viewer} />
-        <PriceNote viewer={viewer} now={now} />
-        {!boardListed && <p className="text-xs text-amber-200">This flow is not entered on the {BOARD_LABEL[viewer.board]} board.</p>}
-      </section>
+      <StatsPanel viewer={viewer} defaultOpen={false} />
 
-      <Panel
-        title={`${BOARD_LABEL[viewer.board]} · ${TIER_LABEL[viewer.tier]} tier · online every ${viewer.every} cycle${viewer.every === 1 ? "" : "s"}`}
-        actions={shown?.scaled ? <Badge tone="estimated" title={BADGE_TITLE.scaled}>estimated</Badge> : undefined}
-      >
-        {cell && shown ? (
-          <CellNumbers result={shown.result} board={viewer.board} quotes={viewer.quotes} pricing={viewer.bazaar.pricing} seeds={cell.seeds} spread={spreadAt(cell.spread, viewer.every)} />
-        ) : (
-          <p className="text-xs text-slate-400">{boardListed ? "This cell isn't verified yet. Try the max tier, or check back later." : "No results on this board."}</p>
-        )}
-      </Panel>
+      {!boardListed && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">This flow is not entered on the {BOARD_LABEL[viewer.board]} board.</p>}
+      {boardListed && !exact && cell && (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+          The {TIER_LABEL[viewer.tier]} tier isn't verified yet for this flow; showing the Max tier instead.
+        </p>
+      )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+      {shown && value && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <StatTile label="Revenue / day" value={formatCoins(value.revenuePerDay)} />
+          {viewer.board === "normal" ? (
+            <StatTile label="Supplies / day" value={formatCoins(value.boughtPerDay)} sub={value.buildCost > 0 ? `${formatCoins(value.buildCost)} to build once` : undefined} tone="text-sky-200" />
+          ) : (
+            <StatTile label="Supplies to farm" value={supplies === "none" ? "None" : supplies} sub={supplies === "none" ? undefined : "per day"} tone="text-slate-200" />
+          )}
+          <StatTile label="Mutations / day" value={formatRate(mutationsPerDay(DATA, shown.result))} />
+          <StatTile label="Effort / login" value={`${Math.round(shown.result.effort.avg)}`} sub={`heaviest ${Math.round(shown.result.effort.peak)}`} />
+          <StatTile label="Target uptime" value={percent(shown.result.uptime)} tone={shown.result.sustainable ? "text-emerald-300" : "text-amber-300"} sub={shown.result.sustainable ? "sustainable" : "has downtime"} />
+          <StatTile
+            label="Seed spread"
+            value={ratioText(spread)}
+            sub={`${cell?.seeds ?? 0} secret seeds`}
+            tone={spread !== null && spread > 1.5 ? "text-amber-300" : "text-slate-100"}
+            title="Best seed / median seed. Lower is more consistent."
+          />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <Panel
           title="Profit by online frequency"
+          icon={<BarChart3 />}
           actions={
             <span className="flex items-center gap-1 text-xs text-slate-300">
-              Forgiving: <span className="text-emerald-300 font-medium">{forgiving === null ? "n/a" : percent(forgiving)}</span>
-              <InfoHint title="Forgiving (Slack)" width={300}>
-                How much of the profit survives when you log in later than planned: the profit at the next frequencies up to twice yours, relative to
-                yours, weighted towards the nearest. 100% = logging in late costs nothing. n/a at 12 cycles (no point beyond it) or with no profit.
+              <span className="font-medium text-emerald-300">{forgiving === null ? "n/a" : percent(forgiving)}</span> forgiving
+              <InfoHint title="Forgiving" width={300}>
+                How much of the profit survives when you log in later than planned: the profit at the next frequencies up to twice yours, relative to yours,
+                weighted toward the nearest. 100% means logging in late costs nothing. n/a at 12 cycles or with no profit.
               </InfoHint>
             </span>
           }
         >
           <FrequencyChart points={points} selected={viewer.every} onSelect={viewer.setEvery} />
-          <p className="text-[11px] text-slate-500 mt-1">Online every N cycles ({TIER_LABEL[viewer.tier]} tier). Click a bar to pick that frequency.</p>
+          <p className="mt-1 text-[11px] text-slate-500">Click a bar to see that frequency ({TIER_LABEL[tierShown]} tier).</p>
         </Panel>
-        <Panel title="Items per day">
+        <Panel title="Where the money comes from" icon={<Sprout />}>
           <ItemBreakdown lines={lines} />
+          {value && value.unpriced.length > 0 && <p className="mt-2 text-[11px] text-amber-300">No price for some items; they count as 0.</p>}
         </Panel>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-        <Panel title="Starting layouts" description="Each plot's first step. Open it in the simulator for the whole flow.">
-          <LayoutThumbs detail={detail} />
+      <Panel title="The flow" icon={<Layers />} description="Every plot, step by step, as the real layouts. Hover a cell to see what it is.">
+        <FlowWalkthrough detail={detail} />
+      </Panel>
+
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <Panel title="Work per login" icon={<Activity />} description="Weighted by how much work each action is.">
+          {shown ? <EffortBreakdown result={shown.result} /> : <p className="text-xs text-slate-500">Not verified at this frequency yet.</p>}
         </Panel>
-        {seeds.length > 0 && (
-          <Panel title="Per-seed results">
+        {seeds.length > 0 ? (
+          <Panel title="Consistency across seeds" icon={<Clock />}>
             <SeedTable seeds={seeds} board={viewer.board} quotes={viewer.quotes} pricing={viewer.bazaar.pricing} />
           </Panel>
+        ) : (
+          <div />
         )}
+      </div>
+
+      {detail.description?.trim() && (
+        <Panel title="Notes from the author" icon={<Trophy />}>
+          <FlowMarkdown text={detail.description} />
+        </Panel>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+        <PriceNote viewer={viewer} now={now} />
+        <span>
+          Updated {formatDate(detail.updatedAt)} · engine {detail.engineVersion?.slice(0, 8) || "?"}
+        </span>
       </div>
 
       {reporting && <ReportDialog id={detail.id} onClose={() => setReporting(false)} />}
@@ -296,13 +424,20 @@ export const FlowDetailPage: React.FC = () => {
   const onChange = useCallback((detail: FlowDetail) => setState({ id: detail.id, detail }), []);
   const onReload = useCallback(() => setReload((n) => n + 1), []);
 
-  if (!state || state.id !== id) return <div className="container mx-auto px-4 py-10 text-center text-xs text-slate-400">Loading the flow...</div>;
+  if (!state || state.id !== id)
+    return (
+      <div className="space-y-4 py-4" aria-busy>
+        <div className="h-4 w-32 animate-pulse rounded bg-slate-700/40" />
+        <div className="h-56 animate-pulse rounded-xl border border-slate-700/40 bg-slate-800/40" />
+        <span className="sr-only">Loading the flow...</span>
+      </div>
+    );
   if (state.error || !state.detail)
     return (
-      <div className="container mx-auto px-4 py-10 text-center text-sm space-y-3">
+      <div className="space-y-3 px-4 py-10 text-center text-sm">
         <div className="text-red-300">Could not load this flow: {state.error}</div>
-        <Link to="/flows" className="text-emerald-300 hover:underline text-xs">
-          Back to the leaderboard
+        <Link to="/flows" className="text-xs text-emerald-300 hover:underline">
+          Back to the rankings
         </Link>
       </div>
     );

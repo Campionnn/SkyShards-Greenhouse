@@ -11,7 +11,9 @@ import {
   findCell,
   flowRow,
   itemBreakdown,
+  maxProfit,
   NEW_FOR_MS,
+  sortRows,
   profitByEvery,
   rank,
   rankEntries,
@@ -130,9 +132,41 @@ describe("leaderboard view: badges and labels", () => {
     expect(suppliesText({})).toBe("none");
   });
 
-  it("slack comes from the API when present; otherwise null", () => {
+  it("slack comes from the API when present, else from the row's frequency curve", () => {
     expect(flowRow(data, entry("a", "A", result({})), ironman).slack).toBeNull();
     expect(flowRow(data, entry("a", "A", result({}), { slack: 0.9 }), ironman).slack).toBe(0.9);
+    const curve = Object.fromEntries([1, 2, 3, 4, 6, 8, 12].map((n) => [String(n), { produced: { wheat: 1000 * (13 - n) }, bought: {}, consumed: {} }]));
+    const row = flowRow(data, entry("a", "A", result({ wheat: 12000 }), { curve }), ironman, 1);
+    expect(row.curve.map((p) => p.every)).toEqual([1, 2, 3, 4, 6, 8, 12]);
+    expect(row.curve[0].profitPerDay).toBeGreaterThan(row.curve[6].profitPerDay!);
+    expect(row.slack).toBeCloseTo(11 / 12, 5); // only j = 2 lies in (1, 2]
+  });
+
+  it("splits revenue by category and counts mutations per day", () => {
+    const row = flowRow(data, entry("a", "A", result({ wheat: 1000, chloronite: 4, cropie: 2 })), ironman);
+    expect(row.split!.crops).toBe(1000 * data.crops.wheat.sellPrice);
+    expect(row.split!.mutations).toBe(0); // ironman: mutation items have no NPC price
+    expect(row.split!.rare).toBeGreaterThan(0);
+    expect(row.mutationsPerDay).toBe(4);
+    expect(row.perEffort).toBeCloseTo(row.profitPerDay! / 45);
+  });
+
+  it("sortRows reorders without changing ranks; missing values sort last", () => {
+    const rows = rankEntries(
+      data,
+      [
+        entry("a", "Rich busy", result({ wheat: 9000 }, { effort: { sessions: 1, avg: 300, peak: 900, byKind: {} } })),
+        entry("b", "Poor lazy", result({ wheat: 1000 }, { effort: { sessions: 1, avg: 5, peak: 10, byKind: {} } }), { createdAt: new Date(NOW).toISOString() }),
+        entry("c", "Unverified", null),
+      ],
+      ironman
+    );
+    expect(rows.map((r) => r.entry.id)).toEqual(["a", "b", "c"]);
+    expect(sortRows(rows, "effort").map((r) => r.entry.id)).toEqual(["b", "a", "c"]);
+    expect(sortRows(rows, "perEffort").map((r) => r.entry.id)).toEqual(["b", "a", "c"]);
+    expect(sortRows(rows, "newest")[0].entry.id).toBe("b");
+    expect(sortRows(rows, "effort").find((r) => r.entry.id === "a")!.rank).toBe(1);
+    expect(maxProfit(rows)).toBe(rows[0].profitPerDay);
   });
 
   it("avatar URLs and timestamps", () => {
@@ -173,6 +207,9 @@ describe("leaderboard view: detail page", () => {
     expect(spreadAt({ "3": 1.5 }, 4)).toBeNull();
     expect(spreadAt(1.7, 4)).toBe(1.7);
     expect(spreadAt(null, 1)).toBeNull();
+    // The API's per-cell shape (leaderboard/stats.py spread): {ratio, ...}; null = unbounded.
+    expect(spreadAt({ seeds: 5, values: [], best: 2, median: 1, worst: 1, ratio: 1.3 }, 1)).toBe(1.3);
+    expect(spreadAt({ seeds: 5, values: [], best: 2, median: 0, worst: 0, ratio: null }, 1)).toBe(Infinity);
   });
 
   it("item breakdown sorts by coins per day, purchases negative", () => {
