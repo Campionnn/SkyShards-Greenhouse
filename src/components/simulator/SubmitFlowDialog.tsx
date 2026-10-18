@@ -19,6 +19,7 @@ import { DiscordIcon, useToast } from "../ui";
 import { NumberInput } from "./controls";
 import { formatCoins } from "./format";
 import { buttonClass, inputClass } from "./styles";
+import { clearSubmitDraft, loadSubmitDraft, saveSubmitDraft } from "./submitDraft";
 
 const DATA = defaultGameData();
 const TEST_SEEDS = 5;
@@ -40,8 +41,10 @@ const Section: React.FC<{ title: React.ReactNode; children: React.ReactNode }> =
   </section>
 );
 
-const LoginBox: React.FC = () => {
-  const { user, loading, banned, login, logout } = useAuth();
+const DISCORD_BUTTON = "px-3 py-1.5 rounded-md text-xs font-medium bg-[#5865F2]/80 hover:bg-[#5865F2] text-white flex items-center gap-1.5 cursor-pointer";
+
+const LoginBox: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
+  const { user, loading, banned, logout } = useAuth();
   if (loading) return <p className="text-xs text-slate-400">Checking your login...</p>;
   if (user)
     return (
@@ -56,12 +59,15 @@ const LoginBox: React.FC = () => {
       </div>
     );
   return (
-    <div className="space-y-1.5">
+    <div className="rounded-md border border-[#5865F2]/50 bg-[#5865F2]/10 p-2.5 space-y-2" data-testid="login-required">
+      <p className="text-xs text-slate-100">
+        <b>You need to log in with Discord to submit.</b> You can fill everything in first: your title, description and choices are kept while you log in.
+      </p>
       {banned && <p className="text-xs text-red-300">This account is banned from the leaderboard.</p>}
-      <button type="button" className="px-3 py-1.5 rounded-md text-xs font-medium bg-[#5865F2]/80 hover:bg-[#5865F2] text-white flex items-center gap-1.5 cursor-pointer" onClick={() => login("/simulator")}>
+      <button type="button" className={DISCORD_BUTTON} onClick={onLogin}>
         <DiscordIcon className="w-4 h-4" /> Log in with Discord
       </button>
-      <p className="text-[11px] text-slate-500">Only your Discord name and avatar are used (the account must be at least 30 days old). Your flows stay in this browser until you submit.</p>
+      <p className="text-[11px] text-slate-400">Only your Discord name and avatar are used (the account must be at least 30 days old). Your flows stay in this browser until you submit.</p>
     </div>
   );
 };
@@ -78,20 +84,29 @@ interface TestState {
 /** The dialog body (no portal), so SSR tests can render it. */
 export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }) => {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, loading: authLoading, login } = useAuth();
   const [profile] = useProfileMode();
   const bazaar = useBazaarPrices(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  // Restored from the draft (kept across the Discord login redirect), else the defaults.
+  const [draft] = useState(loadSubmitDraft);
+  const [title, setTitle] = useState(draft?.title ?? "");
+  const [description, setDescription] = useState(draft?.description ?? "");
   const [preview, setPreview] = useState(false);
-  const [boards, setBoards] = useState<Board[]>([profile === "normal" ? "normal" : "ironman"]);
-  const [cycles, setCycles] = useState(DEFAULT_CYCLES);
+  const [boards, setBoards] = useState<Board[]>(draft?.boards.length ? draft.boards : [profile === "normal" ? "normal" : "ironman"]);
+  const [cycles, setCycles] = useState(draft && Number.isFinite(draft.cycles) ? clampCycles(draft.cycles) : DEFAULT_CYCLES);
   const [test, setTest] = useState<TestState | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<{ message: string; errors: string[] } | null>(null);
   const [submitted, setSubmitted] = useState<{ id: string; status: string } | null>(null);
   const pool = useRef<LocalTestPool | null>(null);
   useEffect(() => () => pool.current?.cancel(), []);
+  useEffect(() => {
+    if (!submitted) saveSubmitDraft({ title, description, boards, cycles });
+  }, [title, description, boards, cycles, submitted]);
+  const startLogin = () => {
+    saveSubmitDraft({ title, description, boards, cycles, reopen: true });
+    login("/simulator");
+  };
 
   const board: Board = boards[0] ?? "ironman";
   const every = scenario.settings.activity.kind === "everyN" ? nearestEvery(scenario.settings.activity.n) : 1;
@@ -157,6 +172,7 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
     try {
       const res = await submitFlow({ title: title.trim(), description, boards, cycles: clampCycles(cycles), payload: submissionFile(submission) });
       setSubmitted(res);
+      clearSubmitDraft();
       toast({ title: "Submitted", description: "The server is verifying your flow now.", variant: "success" });
     } catch (e) {
       const errors = e && typeof e === "object" && "errors" in e && Array.isArray((e as { errors: unknown }).errors) ? ((e as { errors: string[] }).errors) : [];
@@ -220,18 +236,24 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
       onClose={onClose}
       footer={
         <>
-          {!user && <span className="text-[11px] text-slate-500 mr-auto self-center">Log in to submit.</span>}
+          {!user && !authLoading && <span className="text-[11px] text-slate-400 mr-auto self-center">Your entry is kept while you log in.</span>}
           <button type="button" className={buttonClass.neutral} onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className={buttonClass.primary} onClick={submit} disabled={!canSubmit} title={!check.ok ? "Fix the errors above first" : !titleOk ? "Give it a title" : undefined}>
-            <Send className="w-3.5 h-3.5" /> {submitting ? "Submitting..." : "Submit"}
-          </button>
+          {!user && !authLoading ? (
+            <button type="button" className={DISCORD_BUTTON} onClick={startLogin}>
+              <DiscordIcon className="w-3.5 h-3.5" /> Log in to submit
+            </button>
+          ) : (
+            <button type="button" className={buttonClass.primary} onClick={submit} disabled={!canSubmit} title={!check.ok ? "Fix the errors above first" : !titleOk ? "Give it a title" : undefined}>
+              <Send className="w-3.5 h-3.5" /> {submitting ? "Submitting..." : "Submit"}
+            </button>
+          )}
         </>
       }
     >
       <Section title="Account">
-        <LoginBox />
+        <LoginBox onLogin={startLogin} />
       </Section>
 
       <Section title="What gets submitted">

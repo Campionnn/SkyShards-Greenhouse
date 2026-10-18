@@ -141,7 +141,10 @@ describe("submit dialog renders", () => {
     expect(html).toContain("0 / 60");
     expect(html).toContain("0 / 2000");
     expect(html).toContain("Test with 5 random seeds");
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>.*Submit<\/button>/s);
+    // Logged out: the footer's action is the Discord login, not a disabled Submit.
+    expect(html).toContain("Log in to submit");
+    expect(html).toContain("kept while you log in");
+    expect(html).not.toMatch(/>\s*Submit<\/button>/);
   });
 
   it("lists checkSubmission errors", () => {

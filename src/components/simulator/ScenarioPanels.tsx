@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Trophy, Upload } from "lucide-react";
 import { applyRules, BOARDS, ruleDifferences, type Board } from "../../leaderboard/rules";
 import { EVERY, nearestEvery } from "../../leaderboard/tiers";
@@ -35,6 +35,7 @@ import { FlowExportDialog } from "./FlowExportDialog";
 const SubmitFlowDialog = React.lazy(() => import("./SubmitFlowDialog").then((m) => ({ default: m.SubmitFlowDialog })));
 import { addPlot, duplicatePlot, exportFlows, importFlows, layoutSummary, nextPlotId, removePlot, type FlowExportOptions } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
+import { consumeSubmitReopen } from "./submitDraft";
 
 // ---- Scenario: share links, plots, import/export ---------------------------
 
@@ -62,6 +63,10 @@ export const ScenarioPanel: React.FC<{
   const [readingFile, setReadingFile] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Back from the Discord login the dialog started: open it again (its fields come from the draft).
+  useEffect(() => {
+    if (consumeSubmitReopen()) setSubmitting(true);
+  }, []);
   const fileReadId = useRef(0);
 
   const toggleImport = () => {
