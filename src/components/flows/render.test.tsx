@@ -140,6 +140,7 @@ describe("submit dialog renders", () => {
     expect(html).toContain("Apply the rules here");
     expect(html).toContain("0 / 60");
     expect(html).toContain("0 / 2000");
+    expect(html).toContain("Leave an empty line to start a new paragraph");
     expect(html).toContain("Test with 5 random seeds");
     // Logged out: the footer's action is the Discord login, not a disabled Submit.
     expect(html).toContain("Log in to submit");

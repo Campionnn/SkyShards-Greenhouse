@@ -329,8 +329,15 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
           ) : (
             <textarea className={`${inputClass} w-full h-28`} maxLength={DESCRIPTION_MAX} value={description} onChange={(e) => setDescription(e.target.value)} aria-label="Description" placeholder="How it works, when to log in, what to watch out for..." />
           )}
-          <div className="text-right text-[11px] text-slate-500">
-            {description.length} / {DESCRIPTION_MAX}
+          <div className="flex items-start justify-between gap-3 text-[11px] text-slate-500">
+            <span data-testid="newline-hint">
+
+              <b className="font-medium text-slate-400">New lines:</b> pressing Enter once joins the lines back together. Leave an empty line to start a new paragraph, or end a line with a backslash (\) to break
+              it there. Check with Preview.
+            </span>
+            <span className="flex-shrink-0">
+              {description.length} / {DESCRIPTION_MAX}
+            </span>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-300">
