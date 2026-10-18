@@ -24,8 +24,13 @@ export interface VerifyJob {
   tier: TierId;
   cycles: number;
   runs: VerifyRun[];
-  /** Wall-clock cap per run; a run over it fails. */
+  /** Wall-clock backstop per run (catches a stuck process); a run over it fails. */
   wallMsPerRun: number;
+  /**
+   * CPU-time cap per run, where the runtime can measure it (Node). This is the real "too slow"
+   * limit: unlike wall time it does not grow when other work on the machine competes for the CPU.
+   */
+  cpuMsPerRun?: number;
 }
 
 export interface VerifyRunOutcome {
@@ -36,14 +41,35 @@ export interface VerifyRunOutcome {
   error: string | null;
   result: RunResult | null;
   wallMs: number;
+  /** CPU time the run used (null where the runtime can't measure it, e.g. a browser). */
+  cpuMs: number | null;
 }
 
 /** Cycles per `engine.run` slice between clock checks. */
 const SLICE = 100;
 
+type CpuUsage = () => { user: number; system: number };
+
+/** Process CPU time in ms (Node), or undefined in a browser. */
+function processCpuClock(): (() => number) | undefined {
+  const usage = (globalThis as { process?: { cpuUsage?: CpuUsage } }).process?.cpuUsage;
+  if (typeof usage !== "function") return undefined;
+  return () => {
+    const u = usage();
+    return (u.user + u.system) / 1000;
+  };
+}
+
+const seconds = (ms: number) => Math.round(ms / 1000);
+
 export interface RunOnceOptions {
+  /** Wall-clock cap. */
   wallMs: number;
+  /** CPU-time cap; ignored when there is no CPU clock. */
+  cpuMs?: number;
   now?: () => number;
+  /** CPU clock in ms (defaults to the process's, where available). */
+  cpuNow?: () => number;
   /** Called after every slice with the cycles done. */
   onProgress?: (done: number, total: number) => void;
 }
@@ -51,8 +77,11 @@ export interface RunOnceOptions {
 /** Simulate one cell to completion (or the cap). Never throws for a scenario the engine rejects: returns the error. */
 export function runOnce(engine: Engine, submission: Submission, board: Board, tier: TierId, every: number, seed: number, cycles: number, opts: RunOnceOptions): VerifyRunOutcome {
   const now = opts.now ?? (() => globalThis.performance?.now() ?? Date.now());
+  const cpuNow = opts.cpuNow ?? processCpuClock();
   const t0 = now();
-  const out = (ok: boolean, error: string | null, result: RunResult | null): VerifyRunOutcome => ({ every, seedIndex: -1, seed, ok, error, result, wallMs: now() - t0 });
+  const c0 = cpuNow?.() ?? 0;
+  const cpuUsed = () => (cpuNow ? cpuNow() - c0 : null);
+  const out = (ok: boolean, error: string | null, result: RunResult | null): VerifyRunOutcome => ({ every, seedIndex: -1, seed, ok, error, result, wallMs: now() - t0, cpuMs: cpuUsed() });
   let state;
   try {
     state = engine.initState(ruleScenario(submission, { board, tier, every, seed })).state;
@@ -71,7 +100,9 @@ export function runOnce(engine: Engine, submission: Submission, board: Board, ti
       const why = halt ? `script ${halt.kind}${halt.message ? `: ${halt.message}` : ""} at cycle ${state.cycle}` : `run stopped at cycle ${state.cycle}`;
       return out(false, why, runResult(state, engine.analyse(state).sustainable));
     }
-    if (now() - t0 > opts.wallMs) return out(false, `took longer than ${Math.round(opts.wallMs / 1000)} s (${done} of ${cycles} cycles)`, null);
+    const cpu = cpuUsed();
+    if (opts.cpuMs !== undefined && cpu !== null && cpu > opts.cpuMs) return out(false, `used more than ${seconds(opts.cpuMs)} s of CPU time (${done} of ${cycles} cycles)`, null);
+    if (now() - t0 > opts.wallMs) return out(false, `took longer than ${seconds(opts.wallMs)} s (${done} of ${cycles} cycles)`, null);
   }
   return out(true, null, runResult(state, engine.analyse(state).sustainable));
 }
@@ -80,7 +111,7 @@ export function runOnce(engine: Engine, submission: Submission, board: Board, ti
 export function verifyJob(engine: Engine, job: VerifyJob, onProgress?: (done: number, total: number) => void): VerifyRunOutcome[] {
   const outcomes: VerifyRunOutcome[] = [];
   job.runs.forEach((r, i) => {
-    const o = runOnce(engine, job.submission, job.board, job.tier, r.every, r.seed, job.cycles, { wallMs: job.wallMsPerRun });
+    const o = runOnce(engine, job.submission, job.board, job.tier, r.every, r.seed, job.cycles, { wallMs: job.wallMsPerRun, cpuMs: job.cpuMsPerRun });
     o.seedIndex = r.seedIndex;
     outcomes.push(o);
     onProgress?.(i + 1, job.runs.length);

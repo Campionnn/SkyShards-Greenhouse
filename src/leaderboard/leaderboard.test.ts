@@ -266,6 +266,16 @@ describe("verify", () => {
     expect(o.error).toMatch(/took longer/);
   });
 
+  it("fails a run over the CPU cap, independent of wall time", () => {
+    let cpu = 0;
+    const o = runOnce(engine, submission, "ironman", "max", 1, 5, 400, { wallMs: 1e9, cpuMs: 150, cpuNow: () => (cpu += 100) });
+    expect(o.ok).toBe(false);
+    expect(o.error).toMatch(/CPU time/);
+    const fine = runOnce(engine, submission, "ironman", "max", 1, 5, 400, { wallMs: 1e9, cpuMs: 1e9 });
+    expect(fine.ok).toBe(true);
+    expect(fine.cpuMs).toBeGreaterThan(0);
+  });
+
   it("fails a run a script halts", () => {
     const sc = twoStep();
     sc.script = { source: "function onTick() { if (cycle >= 3) pause('stop') }" };

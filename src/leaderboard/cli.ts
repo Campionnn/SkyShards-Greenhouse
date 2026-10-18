@@ -17,9 +17,9 @@ import { outlierCheck, verifyJob, type VerifyRun } from "./verify";
  *     -> {engineVersion, every, tiers}
  *   {mode: "check", payload}
  *     -> {ok, errors, warnings, plots, bytes, summary: FlowSummary | null}  (summary.ts)
- *   {mode: "verify", payload, board, tier, cycles, runs: [{every, seed, seedIndex}], wallMsPerRun?,
+ *   {mode: "verify", payload, board, tier, cycles, runs: [{every, seed, seedIndex}], wallMsPerRun?, cpuMsPerRun?,
  *     bazaar?: {item: {buy, sell}} | raw Hypixel response | null, outlierRatio?}
- *     -> {engineVersion, results: [{every, seedIndex, seed, ok, error, result, wallMs}], outlier?}
+ *     -> {engineVersion, results: [{every, seedIndex, seed, ok, error, result, wallMs, cpuMs}], outlier?}
  */
 
 declare const __ENGINE_VERSION__: string | undefined;
@@ -33,11 +33,14 @@ export interface CliRequest {
   cycles?: number;
   runs?: VerifyRun[];
   wallMsPerRun?: number;
+  cpuMsPerRun?: number;
   bazaar?: unknown;
   outlierRatio?: number;
 }
 
-const DEFAULT_WALL_MS = 60_000;
+/** Per-run caps. CPU time is the real limit (immune to a busy machine); wall time only catches a stuck run. */
+const DEFAULT_CPU_MS = 60_000;
+const DEFAULT_WALL_MS = 300_000;
 const DEFAULT_OUTLIER_RATIO = 2;
 
 /** Accept `{item: {buy, sell}}` (the API's snapshot) or a raw `/v2/skyblock/bazaar` body. */
@@ -88,6 +91,7 @@ export function handle(req: CliRequest, progress: (line: string) => void = () =>
         cycles: clampCycles(req.cycles),
         runs,
         wallMsPerRun: typeof req.wallMsPerRun === "number" && req.wallMsPerRun > 0 ? req.wallMsPerRun : DEFAULT_WALL_MS,
+        cpuMsPerRun: typeof req.cpuMsPerRun === "number" && req.cpuMsPerRun > 0 ? req.cpuMsPerRun : DEFAULT_CPU_MS,
       };
       const results = verifyJob(engine, job, (done, total) => progress(`progress ${done}/${total}`));
       const quotes = readQuotes(req.bazaar);
