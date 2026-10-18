@@ -155,7 +155,7 @@ const ActionButton: React.FC<{ onClick: () => void; tone?: "primary" | "neutral"
 };
 
 export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDetail) => void; onReload: () => void }> = ({ detail, onChange, onReload }) => {
-  const viewer = useFlowViewer();
+  const viewer = useFlowViewer(detail.boards);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -345,6 +345,9 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
       <StatsPanel viewer={viewer} defaultOpen={false} />
 
       {!boardListed && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">This flow is not entered on the {BOARD_LABEL[viewer.board]} board.</p>}
+      {viewer.boardForced && (
+        <p className="rounded-lg border border-slate-600/40 bg-slate-800/40 px-3 py-2 text-xs text-slate-300">Only entered on the {BOARD_LABEL[viewer.board]} board, so it's shown with {BOARD_LABEL[viewer.board]} prices.</p>
+      )}
       {boardListed && !exact && cell && (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
           The {TIER_LABEL[viewer.tier]} tier isn't verified yet for this flow; showing the Max tier instead.

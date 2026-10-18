@@ -104,6 +104,8 @@ export const yieldOf = (s: ViewerStats): YieldStats => ({
 
 export interface FlowViewer {
   board: Board;
+  /** The flow isn't entered on the viewer's own board, so `board` is the flow's board instead. */
+  boardForced: boolean;
   setBoard: (b: Board) => void;
   stats: ViewerStats;
   setStats: (patch: Partial<ViewerStats>) => void;
@@ -125,8 +127,11 @@ export interface FlowViewer {
   quotes: Quotes;
 }
 
-/** Board, stats and prices shared by /flows and /flows/:id (stats persist in localStorage). */
-export function useFlowViewer(): FlowViewer {
+/**
+ * Board, stats and prices shared by /flows and /flows/:id (stats persist in localStorage).
+ * `available` (the detail page): the boards the flow is entered on; the board falls back to one of them.
+ */
+export function useFlowViewer(available?: readonly Board[]): FlowViewer {
   const [profile, setProfile] = useProfileMode();
   const [{ stats }, setLoaded] = useState(loadViewerStats);
   const hasSimulatorStats = useMemo(() => statsFromSimulator() !== null, []);
@@ -137,12 +142,17 @@ export function useFlowViewer(): FlowViewer {
       /* private mode: keep the session copy */
     }
   }, [stats]);
-  const board: Board = profile === "normal" ? "normal" : "ironman";
+  const preferred: Board = profile === "normal" ? "normal" : "ironman";
+  // A flow entered on one board only is shown on that board, whatever the site-wide mode is
+  // (the saved mode itself is left alone).
+  const boardForced = !!available && available.length > 0 && !available.includes(preferred);
+  const board: Board = boardForced ? available[0] : preferred;
   const bazaar = useBazaarPrices(board === "normal");
   const snap = useMemo(() => snapToTier(stats), [stats]);
   const viewerStats = useMemo(() => yieldOf(stats), [stats]);
   return {
     board,
+    boardForced,
     setBoard: (b) => setProfile(b),
     stats,
     setStats: (patch) => setLoaded((cur) => ({ stats: readViewerStats({ ...cur.stats, ...patch }), source: "saved" })),
