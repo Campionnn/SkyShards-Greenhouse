@@ -61,7 +61,7 @@ const LoginBox: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
   return (
     <div className="rounded-md border border-[#5865F2]/50 bg-[#5865F2]/10 p-2.5 space-y-2" data-testid="login-required">
       <p className="text-xs text-slate-100">
-        <b>You need to log in with Discord to submit.</b> You can fill everything in first: your title, description and choices are kept while you log in.
+        <b>You need to log in with Discord to submit.</b>
       </p>
       {banned && <p className="text-xs text-red-300">This account is banned from the leaderboard.</p>}
       <button type="button" className={DISCORD_BUTTON} onClick={onLogin}>
@@ -315,7 +315,7 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
               {title.length} / {TITLE_MAX}
             </span>
           </span>
-          <input className={`${inputClass} w-full text-sm py-1.5`} maxLength={TITLE_MAX} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Chloronite engine, low effort" />
+          <input className={`${inputClass} w-full text-sm py-1.5`} maxLength={TITLE_MAX} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Chloronite farm easy to use" />
         </label>
         <div className="space-y-1 text-xs text-slate-300">
           <div className="flex flex-wrap items-center justify-between gap-2">
