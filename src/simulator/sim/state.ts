@@ -240,6 +240,13 @@ export interface LedgerRow {
   /** Lowest stock seen; below 0 when `allowMutationDebt` borrowed the item. */
   minStock: number;
   firstStockoutCycle: number | null;
+  /**
+   * `config.bootstrapDebt`: the starting layouts borrowed this item and its stock hasn't been
+   * back at 0 since. Present only while open; may be missing in old states.
+   */
+  loanOpen?: true;
+  /** `config.bootstrapDebt`: the cycle this item's bootstrap loan was paid back (stock back at 0 or above). */
+  repaidCycle?: number;
 }
 
 export interface DebtEvent {

@@ -49,10 +49,12 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
     const at = occ[cellIndex(d.row, d.col)];
     if (at && at.kindId === d.kindId && at.row === d.row && at.col === d.col && at.origin === d.origin) continue;
     if (!isFootprintFree(occ, d.row, d.col, d.size)) continue;
-    if (d.origin === "placed" && mode !== "setup" && !isFreePlacedItem(d.kindId, ctx.config)) {
+    const paidSetup = mode === "setup" && ctx.config.bootstrapDebt === true;
+    if (d.origin === "placed" && (mode !== "setup" || paidSetup) && !isFreePlacedItem(d.kindId, ctx.config)) {
       // Mutation debt: mutation items only (not fermento or dead plants).
       const allowDebt = ctx.config.allowMutationDebt === true && !!ctx.env.data.mutations[d.kindId];
-      const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement, allowDebt };
+      // Bootstrap debt: the starting layouts are bought on credit (a loan per item).
+      const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement, allowDebt, openLoan: paidSetup };
       if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
     } else if (replacement) {
       ctx.state.summary.replacements += 1;

@@ -39,6 +39,14 @@ export function credit(state: SimulationState, item: ItemId, qty: number): void 
   state.inventory[item] = (state.inventory[item] ?? 0) + qty;
   row.produced += qty;
   countProduced(state, item, qty);
+  closeLoanIfRepaid(state, item, row);
+}
+
+/** `config.bootstrapDebt`: an open loan closes for good once the item's stock is back at 0 or above. */
+function closeLoanIfRepaid(state: SimulationState, item: ItemId, row: LedgerRow): void {
+  if (!row.loanOpen || (state.inventory[item] ?? 0) < 0) return;
+  delete row.loanOpen;
+  row.repaidCycle = state.cycle;
 }
 
 export interface SpendRequest {
@@ -54,6 +62,11 @@ export interface SpendRequest {
    * succeeds, taking the stock below 0 (booked in `summary.borrowed`).
    */
   allowDebt?: boolean;
+  /**
+   * `config.bootstrapDebt` setup: borrow what the stock doesn't cover and open a loan on the
+   * item (`LedgerRow.loanOpen`). Any spend of an item with an open loan may also borrow.
+   */
+  openLoan?: boolean;
 }
 
 /**
@@ -83,11 +96,12 @@ export function spend(
     emit(req.plotId, { kind: "bought", item, row: req.row, col: req.col, qty: buy });
   }
 
-  if (available >= qty || req.allowDebt) {
+  if (available >= qty || req.allowDebt || req.openLoan || row.loanOpen) {
     const borrowed = Math.min(qty, qty - available);
     if (borrowed > 0) {
       bump((state.summary.borrowed ??= {}), item, borrowed);
       emit(req.plotId, { kind: "borrowed", item, row: req.row, col: req.col, qty: borrowed, stock: available - qty });
+      if (req.openLoan) row.loanOpen = true;
     }
     state.inventory[item] = available - qty;
     row.consumed += qty;
@@ -144,6 +158,7 @@ export function injectItems(input: SimulationState, items: Record<ItemId, number
     state.inventory[item] = next;
     bump(state.summary.injected, item, next - have);
     if (next < row.minStock) row.minStock = next;
+    closeLoanIfRepaid(state, item, row);
   }
   convertAloeFragments(state);
   return state;

@@ -1,6 +1,7 @@
 import type { ItemId } from "../simulator/data/types";
 import type { EffortKind, EffortSummary, SimulationState } from "../simulator/sim/state";
 import { uptimeRatio } from "../simulator/sim/summary";
+import { PAYBACK_CYCLES } from "./rules";
 
 /**
  * What the server stores per verification run (docs/plans/flow-leaderboard.md §3.3): item counts
@@ -42,7 +43,39 @@ export interface RunResult {
   bySource?: Record<string, PerDay>;
   /** Share of the run each plot spent in each step: plot id -> step id -> fraction (sums to ~1). */
   stepTime?: Record<string, Record<string, number>>;
+  /**
+   * Ironman bootstrap debt (`PAYBACK_CYCLES`): the most units of each item the starting layouts
+   * owed at once (a count, not per day). Empty when nothing was borrowed. Missing on old results.
+   */
+  peakDebt?: Record<ItemId, number>;
+  /**
+   * The cycle the last bootstrap loan was paid back: 0 when nothing was borrowed, null when some
+   * loan was still open at the end. A cell's value is the median over seeds (never = infinite).
+   */
+  paybackCycle?: number | null;
+  /**
+   * Paid every loan back by `PAYBACK_CYCLES`. A cell is solvent when most of its seeds are; an
+   * insolvent cell is left out of that frequency's ranking. Missing on old results (= solvent).
+   */
+  solvent?: boolean;
 }
+
+/** Bootstrap debt of a finished run (`config.bootstrapDebt`): peak owed per item and the payback cycle. */
+export function debtOf(state: SimulationState): { peakDebt: Record<ItemId, number>; paybackCycle: number | null } {
+  const peakDebt: Record<ItemId, number> = {};
+  let paybackCycle: number | null = 0;
+  for (const [item, row] of Object.entries(state.ledger)) {
+    if (!row.loanOpen && row.repaidCycle === undefined) continue;
+    if (row.minStock < 0) peakDebt[item] = -row.minStock;
+    if (row.loanOpen) paybackCycle = null;
+    else if (paybackCycle !== null) paybackCycle = Math.max(paybackCycle, row.repaidCycle!);
+  }
+  return { peakDebt, paybackCycle };
+}
+
+/** Whether a payback cycle meets the deadline. */
+export const paidBackBy = (paybackCycle: number | null | undefined, deadline: number): boolean =>
+  paybackCycle === undefined || (paybackCycle !== null && paybackCycle <= deadline);
 
 /** Share of the run's time each plot spent in each flow step, from the runners' history. */
 export function stepTimeOf(state: SimulationState): Record<string, Record<string, number>> {
@@ -88,6 +121,7 @@ export function runResult(state: SimulationState, sustainable: boolean): RunResu
     if (row.shortfall > 0) shortfall[item] = row.shortfall;
   }
   const market = state.summary.market;
+  const debt = state.scenario.settings.config.bootstrapDebt === true ? debtOf(state) : null;
   return {
     cycles: state.cycle,
     days,
@@ -102,6 +136,8 @@ export function runResult(state: SimulationState, sustainable: boolean): RunResu
     halted: !!state.scripts?.halt,
     bySource: Object.fromEntries(Object.entries(state.summary.bySource ?? {}).map(([k, m]) => [k, perDay(m, days)])),
     stepTime: stepTimeOf(state),
+    // Ironman only (the board that buys its starting layouts on credit).
+    ...(debt ? { peakDebt: debt.peakDebt, paybackCycle: debt.paybackCycle, solvent: paidBackBy(debt.paybackCycle, PAYBACK_CYCLES) } : {}),
   };
 }
 
@@ -165,7 +201,23 @@ export function medianResult(results: readonly RunResult[]): RunResult {
       const stepTime = medianNested(results.map((r) => r.stepTime));
       return { ...(bySource ? { bySource } : {}), ...(stepTime ? { stepTime } : {}) };
     })(),
+    ...(() => {
+      const withDebt = results.filter((r) => r.paybackCycle !== undefined);
+      if (!withDebt.length) return {};
+      // A loan still open at the end counts as never paid back (Infinity in the median).
+      const payback = median(withDebt.map((r) => (r.paybackCycle === null ? Infinity : r.paybackCycle!)));
+      return {
+        peakDebt: medianMap(withDebt.map((r) => r.peakDebt ?? {})),
+        paybackCycle: Number.isFinite(payback) ? payback : null,
+        solvent: cellSolvent(results),
+      };
+    })(),
   };
+}
+
+/** A cell is solvent when more than half its seeds paid their bootstrap debt back in time (results without the field count as solvent). */
+export function cellSolvent(results: readonly Pick<RunResult, "solvent">[]): boolean {
+  return results.filter((r) => r.solvent !== false).length * 2 > results.length;
 }
 
 /** best / median of a valuation over seeds (the outlier check); 1 when all equal, Infinity when the median is 0 and some seed is not. */

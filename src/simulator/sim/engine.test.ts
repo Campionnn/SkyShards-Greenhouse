@@ -552,6 +552,37 @@ describe("debt: would it ever need something it does not have?", () => {
     expect(owed.inventory.chloronite).toBe(-1);
   });
 
+  it("bootstrapDebt: the starting layout is bought on credit, a loan per item, closed for good once paid back", () => {
+    const sc = singlePlot(layout([["chloronite", 5, 5], ["chloronite", 5, 7], ["fire", 0, 0]]), { config: { bootstrapDebt: true } });
+    const s = TIMER_ONLY.initState(sc).state;
+    expect(plantAt(s, 1, 5, 5)?.kindId).toBe("chloronite");
+    expect(s.inventory.chloronite).toBe(-2);
+    expect(s.summary.borrowed).toEqual({ chloronite: 2 });
+    expect(s.ledger.chloronite).toMatchObject({ consumed: 2, minStock: -2, loanOpen: true });
+    expect(s.inventory.fire ?? 0).toBe(0); // fire stays free
+    expect(s.debts).toEqual([]);
+
+    // While the loan is open, re-placing what decayed borrows too (no shortfall).
+    const r = TIMER_ONLY.run(s, 18);
+    expect(r.state.inventory.chloronite).toBe(-4);
+    expect(r.state.debts).toEqual([]);
+    expect(r.state.ledger.chloronite.loanOpen).toBe(true);
+
+    // Stock back at 0: the loan closes at that cycle, and later shortfalls are shortfalls again.
+    const repaid = TIMER_ONLY.addItems(r.state, { chloronite: 4 });
+    expect(repaid.ledger.chloronite.loanOpen).toBeUndefined();
+    expect(repaid.ledger.chloronite.repaidCycle).toBe(18);
+    const later = TIMER_ONLY.run(repaid, 20);
+    expect(later.state.inventory.chloronite).toBe(0);
+    expect(later.state.debts.map((d) => d.item)).toContain("chloronite");
+  });
+
+  it("bootstrapDebt off (the default): setup stays free and no ledger row gets loan fields", () => {
+    const s = start(singlePlot(layout([["chloronite", 5, 5]])));
+    expect(s.inventory.chloronite ?? 0).toBe(0);
+    expect(JSON.stringify(s)).not.toContain("loanOpen");
+  });
+
   it("inventory never goes negative", () => {
     const r = engine.run(start(singlePlot(layout([["chloronite", 5, 5], ["fire", 0, 0]]))), 50);
     for (const qty of Object.values(r.state.inventory)) expect(qty).toBeGreaterThanOrEqual(0);

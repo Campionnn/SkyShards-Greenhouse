@@ -7,7 +7,8 @@ import { formatCoins, nameOf } from "../components/simulator/format";
 import { InfoHint } from "../components/ui";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowListResponse } from "../leaderboard/api";
-import { BADGE_TITLE, filterRows, maxProfit, percent, rankEntries, SORT_LABEL, sortRows, suppliesText, type FlowRow, type SortKey } from "../leaderboard/view";
+import { BADGE_TITLE, filterRows, maxProfit, percent, rankEntries, SORT_LABEL, sortRows, splitSolvent, suppliesText, type FlowRow, type SortKey } from "../leaderboard/view";
+import { PAYBACK_CYCLES } from "../leaderboard/rules";
 import { listFlows } from "../services/flowsService";
 import { defaultGameData } from "../simulator";
 
@@ -233,7 +234,9 @@ export const FlowsPage: React.FC = () => {
   }, [key, viewer.board, viewer.tier, viewer.every, plots, reload]);
 
   const loading = !result || result.key !== key;
-  const entries = useMemo(() => (result && !loading ? (result.data?.entries ?? []) : []), [result, loading]);
+  const all = useMemo(() => (result && !loading ? (result.data?.entries ?? []) : []), [result, loading]);
+  // Ironman: cells that don't pay their starting layout back in time are left out of this frequency's ranking.
+  const { solvent: entries, insolvent } = useMemo(() => splitSolvent(all), [all]);
   const ranked = useMemo(
     () =>
       rankEntries(
@@ -320,6 +323,12 @@ export const FlowsPage: React.FC = () => {
           </div>
         </div>
         {viewer.scaling && <p className="px-3 pt-1 text-[11px] text-amber-200/70 sm:px-4">Crop and rare-crop numbers are scaled to your yield stats (an estimate).</p>}
+        {!loading && insolvent.length > 0 && (
+          <p className="px-3 pt-1 text-[11px] text-slate-400 sm:px-4" data-testid="insolvent-note">
+            {insolvent.length} flow{insolvent.length === 1 ? " doesn't" : "s don't"} pay back {insolvent.length === 1 ? "its" : "their"} starting layout by cycle{" "}
+            {PAYBACK_CYCLES.toLocaleString()} when online every {viewer.every} cycle{viewer.every === 1 ? "" : "s"}, so {insolvent.length === 1 ? "it isn't" : "they aren't"} ranked here.
+          </p>
+        )}
 
         <div className="p-1.5 sm:p-2">
           {loading ? (
@@ -348,7 +357,11 @@ export const FlowsPage: React.FC = () => {
           ) : ranked.length === 0 ? (
             <div className="space-y-1 py-12 text-center text-xs text-slate-400">
               <Trophy className="mx-auto mb-2 h-6 w-6 text-slate-600" />
-              <div>No flows on this board{plots !== "any" ? ` with ${plots} plot${plots === "1" ? "" : "s"}` : ""} yet.</div>
+              <div>
+                {insolvent.length > 0 ? "No flows pay back at this frequency" : "No flows on this board"}
+                {plots !== "any" ? ` with ${plots} plot${plots === "1" ? "" : "s"}` : ""}
+                {insolvent.length > 0 ? "." : " yet."}
+              </div>
               <div>
                 Be the first: build one in the{" "}
                 <Link to="/simulator" className="text-emerald-300 hover:underline">

@@ -190,6 +190,16 @@ export interface SimConfig {
    * `["dead_plant", "fermento"]`. Absent or empty = off; scenarios without it are unchanged.
    */
   freePlacedItems?: string[];
+  /**
+   * Bootstrap debt (the leaderboard's ironman rules): the starting layouts are paid for on
+   * credit instead of placed free. Every paid placed item setup puts down is spent from the
+   * inventory, borrowing what it doesn't hold (stock below 0); that opens a loan on the item.
+   * While a loan is open the player may keep borrowing that item (re-placing, later steps,
+   * scripts); the first time its stock is back at 0 or above the loan closes for good
+   * (`LedgerRow.repaidCycle`) and shortfalls behave as usual again. Absent or false = setup is
+   * free. Read as `=== true`, so saved scenarios without the key are unchanged.
+   */
+  bootstrapDebt: boolean;
 }
 
 /** A copy of `config` with `forcedEffects` set, or the key removed when nothing is forced. */
@@ -232,6 +242,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   keepIdenticalOnStepChange: true,
   spawnsFillLayoutInputs: true,
   allowMutationDebt: false,
+  bootstrapDebt: false,
   legacyMutationYield: false,
   plotOrder: [1, 2, 3],
 };
@@ -270,6 +281,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "keepIdenticalOnStepChange", label: "Keep identical plants on step change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a step change untouched." },
   { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid flows work: grow Magic Jellybeans in one step, then use them as inputs in the next while they finish growing." },
   { key: "allowMutationDebt", label: "Allow mutation debt", group: "model", input: { type: "boolean" }, description: "The player places mutation items even when the inventory has none: the stock goes negative (shown in red in the Inventory) and later harvests pay it back. Useful to see what a flow produces before you have the items. Fermento and dead plants still need stock. Off: a missing item leaves the cell empty and is recorded as a shortfall." },
+  { key: "bootstrapDebt", label: "Starting layouts on credit", group: "model", input: { type: "boolean" }, description: "The leaderboard's ironman rule. The starting layouts are not free: every mutation item they place is spent from the inventory, borrowing what it doesn't hold (the stock goes negative). Until an item's stock is back at 0 the player may keep borrowing it; after that, a missing item leaves the cell empty as usual. On the leaderboard every item must be paid back by cycle 1000. Off: the starting layouts are placed free." },
   { key: "legacyMutationYield", label: "Legacy: yield scales mutation items", group: "model", input: { type: "boolean" }, description: "The behaviour before the game update that \"Fixed Plant Yield bonuses incorrectly applying to mutation items and Ethereal Vine drops\". On: the greenhouse yield sum (Plant Yield upgrade, Unique Crop Bonus, Harvest Boost/Loss) also scales a harvested mutation's own item count and its Ethereal Vine count (e.g. a Duskbloom at +30% yield drops 1, with a 30% chance of a 2nd). Off (current game): mutations drop their base count (1, or Chloronite's Mining Fortune ladder, the Jellybean / All-in Aloe stage multiplier) and Ethereal Vine drops as rolled. Crop bundles are yield-scaled either way." },
 ];
 

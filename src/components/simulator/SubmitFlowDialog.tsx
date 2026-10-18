@@ -4,8 +4,8 @@ import { useAuth } from "../../hooks/useAuth";
 import { useBazaarPrices } from "../../hooks/useBazaarPrices";
 import { useProfileMode } from "../../hooks/useProfileMode";
 import { valueResult } from "../../leaderboard/pricing";
-import { spreadRatio } from "../../leaderboard/result";
-import { applyRules, BOARDS, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, ruleDifferences, submissionFile, submissionFromScenario, type Board } from "../../leaderboard/rules";
+import { cellSolvent, spreadRatio } from "../../leaderboard/result";
+import { applyRules, BOARDS, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, PAYBACK_CYCLES, ruleDifferences, submissionFile, submissionFromScenario, type Board } from "../../leaderboard/rules";
 import { nearestEvery } from "../../leaderboard/tiers";
 import { BOARD_LABEL, DESCRIPTION_MAX, effortText, OUTLIER_RATIO, ratioText, TITLE_MAX, userName } from "../../leaderboard/view";
 import { LocalTestPool, randomSeeds, type SeedOutcome } from "../../leaderboard/worker/pool";
@@ -144,7 +144,9 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
     const quotes = bazaar.quotes ?? {};
     const rows = test.outcomes.map((o) => (o?.result ? { o, profit: valueResult(DATA, o.result, test.board, test.board === "normal" ? quotes : {}, bazaar.pricing).profitPerDay } : o ? { o, profit: null } : null));
     const profits = rows.filter((r): r is { o: SeedOutcome; profit: number } => !!r && r.o.ok && r.profit !== null).map((r) => r.profit);
-    return { rows, ratio: profits.length === test.outcomes.length ? spreadRatio(profits) : null, failed: rows.some((r) => r && !r.o.ok) };
+    const done = test.outcomes.filter((o): o is SeedOutcome => !!o?.ok && !!o.result);
+    const insolvent = done.length === test.outcomes.length && !cellSolvent(done.map((o) => o.result!));
+    return { rows, ratio: profits.length === test.outcomes.length ? spreadRatio(profits) : null, failed: rows.some((r) => r && !r.o.ok), insolvent };
   }, [test, bazaar.quotes, bazaar.pricing]);
 
   const titleOk = title.trim().length > 0 && title.trim().length <= TITLE_MAX;
@@ -237,6 +239,12 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
           Your {check.plots} plot{check.plots === 1 ? "" : "s"} with every step, layout, exit, policy override and script ({Math.ceil(check.bytes / 1024)} KB). The server sets
           everything else: empty starting inventory, default advanced settings, its own stat tiers and secret seeds, at every online frequency.
         </p>
+        {boards.includes("ironman") && (
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Ironman: the starting layouts aren't free. Their mutation items are borrowed, and the flow must grow each one back by cycle {PAYBACK_CYCLES.toLocaleString()}. Frequencies where
+            most seeds don't make it aren't ranked; not making it at online every cycle rejects the flow.
+          </p>
+        )}
         {check.errors.length > 0 && (
           <ul className="rounded-md bg-red-500/10 border border-red-500/30 px-2 py-1.5 text-xs text-red-200 space-y-1" data-testid="submit-errors">
             {check.errors.map((e, i) => (
@@ -345,7 +353,10 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
                 <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-700/60">
                   <th className="font-medium py-1 pr-2">Seed</th>
                   <th className="font-medium py-1 pr-2 text-right">Profit / day</th>
-                  <th className="font-medium py-1 text-right">Effort (avg / peak)</th>
+                  <th className="font-medium py-1 pr-2 text-right">Effort (avg / peak)</th>
+                  <th className="font-medium py-1 text-right" title={`Ironman: the cycle the starting layout's last borrowed item was grown back (needed by ${PAYBACK_CYCLES.toLocaleString()})`}>
+                    Paid back
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -355,19 +366,26 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
                     <tr key={i} className="border-b border-slate-700/30 align-top">
                       <td className="py-1 pr-2 text-slate-400">#{i + 1}</td>
                       {!o ? (
-                        <td colSpan={2} className="py-1">
+                        <td colSpan={3} className="py-1">
                           <div className="h-1.5 rounded bg-slate-700/60 overflow-hidden mt-1.5">
                             <div className="h-full bg-emerald-500/60 transition-[width]" style={{ width: `${Math.round((test.progress[i] ?? 0) * 100)}%` }} />
                           </div>
                         </td>
                       ) : !o.ok ? (
-                        <td colSpan={2} className="py-1 text-red-300 break-words">
+                        <td colSpan={3} className="py-1 text-red-300 break-words">
                           Failed: {o.error}
                         </td>
                       ) : (
                         <>
                           <td className="py-1 pr-2 text-right tabular-nums text-emerald-300">{row?.profit == null ? "—" : formatCoins(row.profit)}</td>
-                          <td className="py-1 text-right tabular-nums text-slate-300">{o.result ? effortText(o.result.effort.avg, o.result.effort.peak) : "—"}</td>
+                          <td className="py-1 pr-2 text-right tabular-nums text-slate-300">{o.result ? effortText(o.result.effort.avg, o.result.effort.peak) : "—"}</td>
+                          <td className={`py-1 text-right tabular-nums ${o.result?.solvent === false ? "text-red-300" : "text-slate-300"}`}>
+                            {o.result?.paybackCycle === undefined || !Object.keys(o.result.peakDebt ?? {}).length
+                              ? "—"
+                              : o.result.paybackCycle === null
+                                ? "never"
+                                : `cycle ${o.result.paybackCycle.toLocaleString()}`}
+                          </td>
                         </>
                       )}
                     </tr>
@@ -386,6 +404,12 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
               </p>
             )}
             {testValues.failed && <p className="text-xs text-red-300">A failed seed makes the server reject the submission.</p>}
+            {testValues.insolvent && (
+              <p className="text-xs text-red-300">
+                Most seeds don't pay the starting layout back by cycle {PAYBACK_CYCLES.toLocaleString()}.{" "}
+                {every === 1 ? "At online every cycle the server rejects the flow." : `It won't be ranked at online every ${every} cycles.`}
+              </p>
+            )}
             {test.board === "normal" && !bazaar.prices && <p className="text-[11px] text-amber-300">No cached Bazaar prices: open the simulator in Normal mode once to fetch them.</p>}
             {test.error && <p className="text-xs text-red-300">{test.error}</p>}
             <p className="text-[11px] text-slate-500">Your seeds are random; the server uses secret seeds of its own, so its numbers will differ a little.</p>

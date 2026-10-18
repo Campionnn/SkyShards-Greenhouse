@@ -30,6 +30,12 @@ export const DEFAULT_CYCLES = 2000;
 export const MAX_PAYLOAD_BYTES = 256 * 1024;
 /** Ironman: placed supplies with an unlimited supply. */
 export const IRONMAN_FREE_ITEMS: readonly string[] = ["dead_plant", "fermento"];
+/**
+ * Ironman: the starting layouts are bought on credit (`config.bootstrapDebt`) and every item's
+ * debt must be paid back by this cycle. A grid cell whose seeds mostly miss it is insolvent: left
+ * out of that frequency's ranking. Missing it at max stats, online every cycle, rejects the entry.
+ */
+export const PAYBACK_CYCLES = 1000;
 
 export const FLOWS_FILE_KIND = "skyshards-greenhouse-flows";
 
@@ -174,11 +180,14 @@ export interface RunSpec {
   seed: number;
 }
 
-/** The config every verification run uses: defaults, plus free supplies on the ironman board. */
+/** The config every verification run uses: defaults; ironman adds free supplies and a starting layout bought on credit. */
 export function ruleConfig(board: Board): SimConfig {
   const config: SimConfig = structuredClone(DEFAULT_CONFIG);
   delete config.forcedEffects;
-  if (board === "ironman") config.freePlacedItems = [...IRONMAN_FREE_ITEMS];
+  if (board === "ironman") {
+    config.freePlacedItems = [...IRONMAN_FREE_ITEMS];
+    config.bootstrapDebt = true;
+  }
   return config;
 }
 

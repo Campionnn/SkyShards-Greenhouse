@@ -51,6 +51,8 @@ export interface CurvePoint {
   bought: Record<string, number>;
   consumed: Record<string, number>;
   effort?: { avg: number | null; peak: number | null };
+  /** False when the cell doesn't pay its ironman starting layout back in time (missing = solvent). */
+  solvent?: boolean;
 }
 
 export interface FlowListEntry {

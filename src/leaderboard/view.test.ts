@@ -7,7 +7,10 @@ import type { RunResult } from "./result";
 import { YIELD_STATS } from "./tiers";
 import {
   avatarUrl,
+  debtLines,
   earningTargets,
+  paybackText,
+  splitSolvent,
   filterRows,
   moneyBySource,
   findCell,
@@ -213,6 +216,24 @@ describe("leaderboard view: detail page", () => {
     expect(s).toBeCloseTo(0.95, 5); // only j = 2 in (1, 2]
     expect(slackFrom(points, 12)).toBeNull();
     expect(profitByEvery(data, cells, "ironman", "high", { quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false }).every((p) => p.profitPerDay === null)).toBe(true);
+  });
+
+  it("insolvent cells: out of the ranking and the curve, worth 0 to Forgiving; debt texts", () => {
+    const broke = result({ wheat: 999999 }, { solvent: false, paybackCycle: null, peakDebt: { chloronite: 3, cropie: 1 } });
+    const { solvent, insolvent } = splitSolvent([entry("a", "A", result({ wheat: 10 })), entry("b", "B", broke), entry("c", "C", null)]);
+    expect(solvent.map((e) => e.id)).toEqual(["a", "c"]);
+    expect(insolvent.map((e) => e.id)).toEqual(["b"]);
+    const mixed = cells.map((c) => (c.every === 2 ? { ...c, median: broke } : c));
+    const points = profitByEvery(data, mixed, "ironman", "max", { quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false });
+    expect(points[1]).toEqual({ every: 2, profitPerDay: null, insolvent: true });
+    expect(slackFrom(points, 1)).toBe(0);
+    const row = flowRow(data, entry("a", "A", result({ wheat: 10 }), { curve: { "1": { produced: { wheat: 10 }, bought: {}, consumed: {} }, "2": { produced: { wheat: 10 }, bought: {}, consumed: {}, solvent: false } } }), ironman);
+    expect(row.curve[1]).toMatchObject({ every: 2, profitPerDay: null, insolvent: true });
+    expect(paybackText(broke)).toBe("Never paid back");
+    expect(paybackText({ paybackCycle: 420, peakDebt: { chloronite: 2 } })).toBe("Paid back by cycle 420");
+    expect(paybackText({ paybackCycle: 0, peakDebt: {} })).toBeNull();
+    expect(paybackText({})).toBeNull();
+    expect(debtLines(broke)).toEqual([{ item: "chloronite", units: 3 }, { item: "cropie", units: 1 }]);
   });
 
   it("finds cells and reads spread maps or numbers", () => {

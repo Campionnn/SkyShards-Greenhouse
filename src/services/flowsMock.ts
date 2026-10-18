@@ -6,7 +6,7 @@
  */
 import type { AuthUser, FlowCell, FlowDetail, FlowListEntry, FlowListResponse, FlowSeedResult, FlowStatusResponse } from "../leaderboard/api";
 import type { RunResult } from "../leaderboard/result";
-import { parseSubmission, type Board, type SubmissionFile } from "../leaderboard/rules";
+import { parseSubmission, PAYBACK_CYCLES, type Board, type SubmissionFile } from "../leaderboard/rules";
 import { summarizeSubmission, type FlowSummary } from "../leaderboard/summary";
 import { EVERY, TIERS, type TierId } from "../leaderboard/tiers";
 import { defaultGameData } from "../simulator/data/default";
@@ -170,7 +170,17 @@ function resultFor(s: Spec, board: Board, tier: TierId, every: number, noise = 1
     halted: false,
     bySource: bySourceOf(scale(s.produced, f)),
     stepTime: Object.fromEntries(Array.from({ length: s.plots }, (_, i) => [String(i + 1), { "step-1": 1 }])),
+    ...(board === "ironman" ? debtFor(s, every) : {}),
   };
+}
+
+/** Ironman: the starting layout's mutation items on credit; rarer logins pay back later (fast falloff flows miss the deadline). */
+function debtFor(s: Spec, every: number): Pick<RunResult, "peakDebt" | "paybackCycle" | "solvent"> {
+  const peakDebt = Object.fromEntries(Object.entries(s.built).filter(([item, n]) => n > 0 && defaultGameData().mutations[item]));
+  if (!Object.keys(peakDebt).length) return { peakDebt, paybackCycle: 0, solvent: true };
+  const cycle = Math.round(100 * every * (1 + s.falloff * 10));
+  const paybackCycle = cycle > 1500 ? null : cycle;
+  return { peakDebt, paybackCycle, solvent: paybackCycle !== null && paybackCycle <= PAYBACK_CYCLES };
 }
 
 /** Split produced items over plausible sources: each mutation item to itself, crops and rares to the mutations and wheat. */
@@ -215,7 +225,10 @@ export function mockList(board: Board, tier: TierId, every: number, plots?: numb
     const curve = Object.fromEntries(
       EVERY.map((n) => {
         const r = resultFor(s, board, used, n);
-        return [String(n), { produced: r.produced, bought: r.bought, consumed: r.consumed, effort: { avg: r.effort.avg, peak: r.effort.peak } }];
+        return [
+          String(n),
+          { produced: r.produced, bought: r.bought, consumed: r.consumed, effort: { avg: r.effort.avg, peak: r.effort.peak }, ...(r.solvent === false ? { solvent: false } : {}) },
+        ];
       })
     );
     return {

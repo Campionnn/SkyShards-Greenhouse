@@ -14,10 +14,14 @@ import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
 import { valueResult } from "../leaderboard/pricing";
 import { cycleHours } from "../leaderboard/tiers";
+import { PAYBACK_CYCLES } from "../leaderboard/rules";
 import {
   BADGE_TITLE,
   BOARD_LABEL,
+  debtLines,
   DESCRIPTION_MAX,
+  isSolvent,
+  paybackText,
   earningTargets,
   moneyBySource,
   findCell,
@@ -188,6 +192,9 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const firstThumb = detail.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
   const heroLayout = detail.thumb?.layout ?? (firstThumb ? { code: firstThumb } : (detail.payload?.plots?.[0]?.flow.steps[0]?.layout ?? null));
   const supplies = shown ? suppliesText(suppliesOf(shown.result)) : "none";
+  const solvent = isSolvent(cell?.median);
+  const payback = cell ? paybackText(cell.median) : null;
+  const owed = cell ? debtLines(cell.median) : [];
 
   const copyLink = async () => {
     try {
@@ -352,6 +359,29 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
           The {TIER_LABEL[viewer.tier]} tier isn't verified yet for this flow; showing the Max tier instead.
         </p>
+      )}
+      {boardListed && cell && !solvent && (
+        <p className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-200" data-testid="insolvent">
+          Online every {viewer.every} cycle{viewer.every === 1 ? "" : "s"}, this flow doesn't pay its starting layout back by cycle {PAYBACK_CYCLES.toLocaleString()}, so it isn't
+          ranked at this frequency. The numbers below are what it would make anyway.
+        </p>
+      )}
+      {boardListed && payback && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-slate-600/30 bg-slate-800/40 px-3 py-2 text-xs text-slate-300" data-testid="starting-debt">
+          <span className="flex items-center gap-1 font-medium text-slate-200">
+            Starting layout on credit
+            <InfoHint title="Starting layout on credit" width={300}>
+              On the Ironman board the first layout isn't free: the mutation items it places are borrowed, and the flow has to grow every one of them back by cycle{" "}
+              {PAYBACK_CYCLES.toLocaleString()}. These are the most it owed at once (median over seeds) and when the last item was paid back.
+            </InfoHint>
+          </span>
+          {owed.map((d) => (
+            <span key={d.item} className="tabular-nums text-slate-400">
+              {Math.round(d.units).toLocaleString()} {nameOf(d.item)}
+            </span>
+          ))}
+          <span className={`ml-auto tabular-nums ${solvent ? "text-emerald-300" : "text-red-300"}`}>{payback}</span>
+        </div>
       )}
 
       {shown && value && (

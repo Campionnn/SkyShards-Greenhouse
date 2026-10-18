@@ -6,12 +6,13 @@ import { defaultSettings } from "../simulator/scenario";
 import { flow, layout, scenario, step } from "../simulator/testHelpers";
 import { handle } from "./cli";
 import { scaleProduced, slack, valueResult, yieldStatsDiffer } from "./pricing";
-import { median, medianResult, spreadRatio, type RunResult } from "./result";
+import { cellSolvent, median, medianResult, spreadRatio, type RunResult } from "./result";
 import {
   applyRules,
   checkSubmission,
   clampCycles,
   IRONMAN_FREE_ITEMS,
+  PAYBACK_CYCLES,
   parseSubmission,
   ruleDifferences,
   ruleScenario,
@@ -85,8 +86,10 @@ describe("rules: parse and normalise a submission", () => {
     expect(normal.settings.config.freePlacedItems).toBeUndefined();
     expect(normal.settings.profile).toBe("normal");
     expect(normal.settings.playerStats).toEqual(tierStats("low"));
-    // Only the free items differ between the boards' configs.
-    const ironRest = { ...iron.settings.config };
+    // Only the free items and the starting layout on credit differ between the boards' configs.
+    expect(iron.settings.config.bootstrapDebt).toBe(true);
+    expect(normal.settings.config.bootstrapDebt).toBe(false);
+    const ironRest = { ...iron.settings.config, bootstrapDebt: false };
     delete ironRest.freePlacedItems;
     expect(ironRest).toEqual({ ...DEFAULT_CONFIG });
   });
@@ -110,7 +113,7 @@ describe("rules: parse and normalise a submission", () => {
     expect(ruled.plots).toBe(sc.plots);
     expect(ruled.settings.seed).toBe(42);
     expect(ruled.settings.activity).toEqual({ kind: "everyN", n: 3, offset: 0 });
-    expect(ruleDifferences(ruled, "normal")).toEqual(["advanced setting \"freePlacedItems\" differs", "profile is not normal"]);
+    expect(ruleDifferences(ruled, "normal")).toEqual(["advanced setting \"bootstrapDebt\" differs", "advanced setting \"freePlacedItems\" differs", "profile is not normal"]);
   });
 
   it("clamps the cycle count", () => {
@@ -168,6 +171,19 @@ describe("results: median and spread", () => {
     expect(m.sustainable).toBe(false);
     expect(m.halted).toBe(true);
     expect(m.effort.byKind.harvest).toBe(3);
+  });
+
+  it("a cell is solvent when most seeds paid back; payback medians count 'never' as infinite", () => {
+    const paid = (cycle: number | null) => result({}, { peakDebt: { chloronite: 4 }, paybackCycle: cycle, solvent: cycle !== null && cycle <= PAYBACK_CYCLES });
+    expect(cellSolvent([paid(400), paid(900), paid(null)])).toBe(true);
+    expect(cellSolvent([paid(400), paid(null), paid(1200)])).toBe(false);
+    expect(cellSolvent([result({}), result({})])).toBe(true); // no debt data: solvent
+    const m = medianResult([paid(400), paid(null), paid(null)]);
+    expect(m.paybackCycle).toBeNull();
+    expect(m.solvent).toBe(false);
+    expect(m.peakDebt).toEqual({ chloronite: 4 });
+    expect(medianResult([paid(400), paid(600), paid(null)]).paybackCycle).toBe(600);
+    expect(medianResult([result({})]).solvent).toBeUndefined();
   });
 
   it("spreadRatio is best over median", () => {
@@ -251,6 +267,21 @@ describe("verify", () => {
     expect(o.result!.produced.potato).toBeGreaterThan(0);
     expect(o.result!.effort.byKind.harvest).toBeGreaterThan(0);
     expect(o.result!.effort.byKind.replant).toBeGreaterThan(0);
+  });
+
+  it("ironman results carry the starting layout's debt; normal ones don't", () => {
+    // A placed chloronite with nothing that grows it back: borrowed at setup, never paid back.
+    const sc = scenario([flow([step("one", layout([["chloronite", 5, 5], ["wheat", 0, 0]]))], false)]);
+    const iron = runOnce(engine, submissionFromScenario(sc), "ironman", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
+    expect(iron.peakDebt).toEqual({ chloronite: 1 });
+    expect(iron.paybackCycle).toBeNull();
+    expect(iron.solvent).toBe(false);
+    const normal = runOnce(engine, submissionFromScenario(sc), "normal", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
+    expect(normal.paybackCycle).toBeUndefined();
+    expect(normal.solvent).toBeUndefined();
+    // Base crops only: nothing borrowed, paid back at cycle 0.
+    const free = runOnce(engine, submission, "ironman", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
+    expect(free).toMatchObject({ peakDebt: {}, paybackCycle: 0, solvent: true });
   });
 
   it("the same seed gives the same result; a different seed may differ", () => {

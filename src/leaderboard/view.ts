@@ -182,12 +182,41 @@ export function mutationsPerDay(data: GameData, r: RunResult): number {
   return n;
 }
 
-/** A list row's frequency curve, priced for the viewer (null where the API sent no point). */
+/** Whether a cell paid its ironman starting layout back in time (results without the field are solvent). */
+export const isSolvent = (r: { solvent?: boolean } | null | undefined): boolean => r?.solvent !== false;
+
+/**
+ * Split list entries into the ranked ones and those whose cell at this frequency doesn't pay its
+ * ironman starting layout back by `PAYBACK_CYCLES` (left out of the ranking, counted on the page).
+ */
+export function splitSolvent<T extends { cell: { solvent?: boolean } | null }>(entries: readonly T[]): { solvent: T[]; insolvent: T[] } {
+  const solvent: T[] = [];
+  const insolvent: T[] = [];
+  for (const e of entries) (isSolvent(e.cell) ? solvent : insolvent).push(e);
+  return { solvent, insolvent };
+}
+
+/** "Pays back by cycle 420" / "Never pays back" for a median result; null when it borrowed nothing (or has no debt data). */
+export function paybackText(r: Pick<RunResult, "paybackCycle" | "peakDebt">): string | null {
+  if (r.paybackCycle === undefined || !r.peakDebt || Object.keys(r.peakDebt).length === 0) return null;
+  return r.paybackCycle === null ? "Never paid back" : `Paid back by cycle ${Math.round(r.paybackCycle).toLocaleString("en-US")}`;
+}
+
+/** Items the starting layout borrowed, most units first. */
+export function debtLines(r: Pick<RunResult, "peakDebt">): { item: ItemId; units: number }[] {
+  return Object.entries(r.peakDebt ?? {})
+    .filter(([, n]) => n > 0)
+    .map(([item, units]) => ({ item, units }))
+    .sort((a, b) => b.units - a.units || a.item.localeCompare(b.item));
+}
+
+/** A list row's frequency curve, priced for the viewer (null where the API sent no point or the cell is insolvent). */
 export function rowCurve(data: GameData, entry: FlowListEntry, s: ViewSettings): FrequencyPoint[] {
   const curve = entry.curve ?? {};
   return EVERY.map((every) => {
     const p = curve[String(every)];
     if (!p) return { every, profitPerDay: null };
+    if (!isSolvent(p)) return { every, profitPerDay: null, insolvent: true };
     const asResult = { ...EMPTY_RESULT, produced: p.produced ?? {}, bought: p.bought ?? {}, consumed: p.consumed ?? {} };
     const { result } = viewerResult(data, asResult, s);
     return { every, profitPerDay: valueResult(data, result, s.board, s.board === "normal" ? s.quotes : {}, s.pricing ?? DEFAULT_BAZAAR_PRICING).profitPerDay };
@@ -361,13 +390,16 @@ export function spreadAt(spread: Spread | null | undefined, every: number): numb
 export interface FrequencyPoint {
   every: number;
   profitPerDay: number | null;
+  /** The cell exists but doesn't pay its starting layout back in time (profit shown as none). */
+  insolvent?: boolean;
 }
 
-/** Profit per day at every grid frequency of one board / tier (null where no cell exists). */
+/** Profit per day at every grid frequency of one board / tier (null where no cell exists or it is insolvent). */
 export function profitByEvery(data: GameData, cells: readonly FlowCell[], board: Board, tier: TierId, s: Omit<ViewSettings, "board" | "now">): FrequencyPoint[] {
   return EVERY.map((every) => {
     const cell = findCell(cells, board, tier, every);
     if (!cell) return { every, profitPerDay: null };
+    if (!isSolvent(cell.median)) return { every, profitPerDay: null, insolvent: true };
     const { result } = viewerResult(data, cell.median, s);
     return { every, profitPerDay: valueResult(data, result, board, board === "normal" ? s.quotes : {}, s.pricing).profitPerDay };
   });
@@ -377,6 +409,8 @@ export function profitByEvery(data: GameData, cells: readonly FlowCell[], board:
 export function slackFrom(points: readonly FrequencyPoint[], every: number): number | null {
   const at = (n: number) => {
     const p = points.find((x) => x.every === n);
+    // Logging in so late that the starting layout never pays back keeps nothing.
+    if (p?.insolvent) return 0;
     return p && p.profitPerDay !== null ? p.profitPerDay : undefined;
   };
   return slack(every, at, EVERY);
