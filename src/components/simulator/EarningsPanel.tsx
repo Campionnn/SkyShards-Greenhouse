@@ -45,12 +45,13 @@ export const EarningsPanel: React.FC<{ summary: RunSummary; quotes: Record<strin
       {shown.length === 0 ? (
         <p className="text-xs text-slate-500">{days > 0 ? "Nothing harvested for money yet." : "Run the simulation to see this."}</p>
       ) : (
-        <ul className="space-y-1.5" aria-label="Earnings by plant">
-          {shown.slice(0, 12).map((l) => {
+        /* 8 rows visible (20 px each, 6 px apart); the rest scroll. */
+        <ul className="max-h-[202px] space-y-1.5 overflow-y-auto overscroll-contain scrollbar-dark pr-1" aria-label="Earnings by plant">
+          {shown.map((l) => {
             const share = total > 0 ? l.coinsPerDay / total : 0;
             const rarity = rarityOf(l.kind);
             return (
-              <li key={l.kind} className="grid grid-cols-[1.25rem_minmax(0,9rem)_1fr_auto_2.5rem] items-center gap-2 text-xs">
+              <li key={l.kind} className="grid h-5 grid-cols-[1.25rem_minmax(0,9rem)_1fr_auto_2.5rem] items-center gap-2 text-xs">
                 <CropImage cropId={l.kind} cropName={nameOf(l.kind)} size="custom" width={18} height={18} showFallback />
                 <span className={`truncate ${rarity ? getRarityTextColor(rarity) : "text-slate-300"}`} title={Object.entries(l.items).map(([i, n]) => `${formatRate(n)} ${nameOf(i)}/day`).join(", ")}>
                   {nameOf(l.kind)}
