@@ -278,13 +278,55 @@ export const FrequencyChart: React.FC<{ points: FrequencyPoint[]; selected: numb
   );
 };
 
+/** Rows a breakdown list shows before the rest scrolls (like the simulator's inventory sections). */
+const LIST_ROWS_SHOWN = 8;
+
+/**
+ * A `<ul>` that shows its first `LIST_ROWS_SHOWN` rows and scrolls the rest. The cap is measured from the rows
+ * themselves (they differ in height between the two lists), with a rough rem estimate until the first measure.
+ */
+const ScrollList: React.FC<{ count: number; label: string; estimateRem: number; children: React.ReactNode }> = ({ count, label, estimateRem, children }) => {
+  const ref = useRef<HTMLUListElement>(null);
+  const scrolls = count > LIST_ROWS_SHOWN;
+  const [maxHeight, setMaxHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!scrolls || !el) return;
+    const measure = () => {
+      const next = el.children[LIST_ROWS_SHOWN] as HTMLElement | undefined;
+      // The list is `relative`, so a row's offsetTop is measured from the list's top. Cut a little into the
+      // next row so it's clear there is more.
+      if (next) setMaxHeight(next.offsetTop + Math.min(12, next.offsetHeight / 3));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [scrolls, count]);
+  return (
+    <>
+      <ul
+        ref={ref}
+        className={`relative divide-y divide-slate-700/30 ${scrolls ? "overflow-y-auto overscroll-contain scrollbar-dark pr-3 [scrollbar-gutter:stable]" : ""}`}
+        style={scrolls ? { maxHeight: maxHeight !== null ? `${maxHeight}px` : `${LIST_ROWS_SHOWN * estimateRem + 0.75}rem` } : undefined}
+        aria-label={label}
+        tabIndex={scrolls ? 0 : undefined}
+      >
+        {children}
+      </ul>
+      {scrolls && <p className="mt-1.5 text-[11px] text-slate-500">{count} total · scroll for more</p>}
+    </>
+  );
+};
+
 /** Money by source: which harvested plants the coins come from, each with what it drops. */
 export const SourceBreakdown: React.FC<{ lines: SourceLine[] }> = ({ lines }) => {
   const shown = lines.filter((l) => l.coinsPerDay > 0);
   if (!shown.length) return <p className="text-xs text-slate-500">No per-plant numbers for this entry yet (it was verified before they were recorded).</p>;
   const total = shown.reduce((s, l) => s + l.coinsPerDay, 0);
   return (
-    <ul className="divide-y divide-slate-700/30" aria-label="Money by source">
+    <ScrollList count={shown.length} label="Money by source" estimateRem={3.6}>
       {shown.map((l) => {
         const share = total > 0 ? l.coinsPerDay / total : 0;
         const items = Object.entries(l.items).sort((a, b) => b[1] - a[1]);
@@ -311,7 +353,7 @@ export const SourceBreakdown: React.FC<{ lines: SourceLine[] }> = ({ lines }) =>
           </li>
         );
       })}
-    </ul>
+    </ScrollList>
   );
 };
 
@@ -320,7 +362,7 @@ export const ItemBreakdown: React.FC<{ lines: ItemLine[] }> = ({ lines }) => {
   if (!lines.length) return <p className="text-xs text-slate-500">Nothing produced in this cell.</p>;
   const positive = lines.filter((l) => l.coinsPerDay > 0).reduce((s, l) => s + l.coinsPerDay, 0);
   return (
-    <ul className="divide-y divide-slate-700/30" aria-label="Items per day">
+    <ScrollList count={lines.length} label="Items per day" estimateRem={2.9}>
       {lines.map((l) => {
         const share = positive > 0 && l.coinsPerDay > 0 ? l.coinsPerDay / positive : 0;
         return (
@@ -344,7 +386,7 @@ export const ItemBreakdown: React.FC<{ lines: ItemLine[] }> = ({ lines }) => {
           </li>
         );
       })}
-    </ul>
+    </ScrollList>
   );
 };
 
