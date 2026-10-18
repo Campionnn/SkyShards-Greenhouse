@@ -105,7 +105,10 @@ export interface FlowSeedResult {
   tier: TierId;
   every: number;
   seedIndex: number;
+  /** Normalised by the service (older APIs sent the result's fields flat on the row). */
   result: RunResult;
+  ok?: boolean;
+  error?: string | null;
 }
 
 export type FlowStatus = "pending" | "live" | "rejected" | "hidden";

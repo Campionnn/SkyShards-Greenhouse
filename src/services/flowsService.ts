@@ -3,7 +3,8 @@
  * cached in memory per (board, tier, every, plots) for the session; `force` refetches (Refresh).
  * In development, `localStorage["skyshards-flows-mock"] = "1"` serves canned data (flowsMock.ts).
  */
-import type { FlowDetail, FlowListResponse, FlowStatusResponse, FlowSubmitBody } from "../leaderboard/api";
+import type { FlowDetail, FlowListResponse, FlowSeedResult, FlowStatusResponse, FlowSubmitBody } from "../leaderboard/api";
+import type { RunResult } from "../leaderboard/result";
 import type { Board } from "../leaderboard/rules";
 import type { TierId } from "../leaderboard/tiers";
 import { ApiError, apiFetch } from "./authService";
@@ -59,7 +60,42 @@ export async function getFlow(id: string, opts: { adminKey?: string | null } = {
     return extras ? { ...d, ...extras } : d;
   }
   const r = await apiFetch(`/flows/${encodeURIComponent(id)}`, opts.adminKey ? { headers: { "X-Admin-Key": opts.adminKey } } : {});
-  return (await r.json()) as FlowDetail;
+  return normalizeDetail((await r.json()) as FlowDetail);
+}
+
+const EMPTY_EFFORT = { sessions: 0, avg: 0, peak: 0, byKind: {} };
+
+/** One seed row as a `FlowSeedResult` with a full `result`, or null for a failed run without counts. */
+function normalizeSeed(raw: unknown): FlowSeedResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown> & Partial<FlowSeedResult>;
+  const src = (row.result && typeof row.result === "object" ? row.result : row) as Partial<RunResult>;
+  if (!src.produced || typeof src.produced !== "object") return null;
+  const result: RunResult = {
+    cycles: src.cycles ?? 0,
+    days: src.days ?? 0,
+    produced: src.produced,
+    consumed: src.consumed ?? {},
+    bought: src.bought ?? {},
+    built: src.built ?? {},
+    shortfall: src.shortfall ?? {},
+    uptime: src.uptime ?? 0,
+    sustainable: src.sustainable ?? false,
+    effort: { ...EMPTY_EFFORT, ...(src.effort ?? {}) },
+    halted: src.halted ?? false,
+    ...(src.bySource ? { bySource: src.bySource } : {}),
+    ...(src.stepTime ? { stepTime: src.stepTime } : {}),
+  };
+  return { board: row.board as FlowSeedResult["board"], tier: row.tier as FlowSeedResult["tier"], every: Number(row.every), seedIndex: Number(row.seedIndex), result, ok: row.ok, error: row.error };
+}
+
+/** Defensive shape fixes for the detail response (cells without a median are dropped). */
+export function normalizeDetail(d: FlowDetail): FlowDetail {
+  return {
+    ...d,
+    cells: (d.cells ?? []).filter((c) => c && c.median && typeof c.median.produced === "object"),
+    seeds: d.seeds ? d.seeds.map(normalizeSeed).filter((s): s is FlowSeedResult => s !== null) : d.seeds,
+  };
 }
 
 export async function getFlowStatus(id: string): Promise<FlowStatusResponse> {
