@@ -5,7 +5,8 @@
  *
  * Static (no simulation state), so it works for any step of the flow. Optional overlays mark the
  * cells a session places from the inventory, and inputs still missing from an earlier visit.
- * Hovering (or tapping) a cell shows what it is.
+ * Hovering (or tapping) a cell shows what it is; clicking it (a second tap on touch) opens the
+ * item's wiki modal when the app's InfoModalProvider is mounted.
  */
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFitCellSize } from "../../hooks/useFitCellSize";
@@ -18,6 +19,7 @@ import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage } from "../shared/CropImage";
 import { CompassFrame, COMPASS_RESERVE } from "../grid/CompassFrame";
 import { Portal } from "../ui/Portal";
+import { useOptionalOpenInfo } from "../../context/InfoModalContext";
 import type { Cell, PlotFacts } from "../../guide";
 
 const GRID = 10;
@@ -68,6 +70,7 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
   const { width, height } = getGridDimensions(cellSize, gap);
   const [tip, setTip] = useState<{ tip: Tip; rect: DOMRect; pinned: boolean } | null>(null);
   const showTips = tooltips && cellSize >= 14;
+  const openInfo = useOptionalOpenInfo();
 
   const occupied = useMemo(() => {
     const set = new Set<string>();
@@ -99,7 +102,11 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
     };
   }, [tip]);
 
-  /** Hover (mouse) shows it; a tap pins it, a second tap on the same cell closes it. */
+  /**
+   * Mouse: hover shows the card, a click opens the item's wiki modal. Touch: a tap pins the card,
+   * a second tap on the same cell opens the wiki modal (or closes the card when there is no modal).
+   */
+  const lastPointer = useRef("mouse");
   const tipProps = (t: Tip) =>
     showTips
       ? {
@@ -110,9 +117,18 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
           onPointerLeave: (e: React.PointerEvent<HTMLDivElement>) => {
             if (e.pointerType === "mouse") setTip((cur) => (cur && !cur.pinned ? null : cur));
           },
+          onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
+            lastPointer.current = e.pointerType;
+          },
           onClick: (e: React.MouseEvent<HTMLDivElement>) => {
             const rect = e.currentTarget.getBoundingClientRect();
-            setTip((cur) => (cur?.pinned && cur.tip.row === t.row && cur.tip.col === t.col ? null : { tip: t, rect, pinned: true }));
+            const same = tip?.pinned && tip.tip.row === t.row && tip.tip.col === t.col;
+            if (openInfo && (lastPointer.current === "mouse" || same)) {
+              setTip(null);
+              openInfo(t.id);
+              return;
+            }
+            setTip(same ? null : { tip: t, rect, pinned: true });
           },
         }
       : {};
@@ -150,7 +166,7 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
             key={`slot-${k}`}
             role="img"
             aria-label={`Target: ${nameOf(s.mutationId)}`}
-            className={`absolute flex items-center justify-center rounded border-2 border-dashed ${showTips ? "cursor-help" : ""} ${
+            className={`absolute flex items-center justify-center rounded border-2 border-dashed ${showTips ? (openInfo ? "cursor-pointer" : "cursor-help") : ""} ${
               grown ? "border-emerald-400/80 bg-emerald-500/15" : "border-cyan-400/70 bg-cyan-500/10"
             }`}
             style={{ ...getCellPixelPosition(s.row, s.col, cellSize, gap), width: size, height: size }}
@@ -180,7 +196,7 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
             key={`plant-${k}`}
             role="img"
             aria-label={`${nameOf(p.kindId)}${placing ? ", placed from your inventory" : ""}${gone ? ", missing" : ""}`}
-            className={`absolute flex items-center justify-center overflow-hidden rounded ${showTips ? "cursor-help" : ""} ${
+            className={`absolute flex items-center justify-center overflow-hidden rounded ${showTips ? (openInfo ? "cursor-pointer" : "cursor-help") : ""} ${
               gone ? "border-2 border-dashed border-red-500/70 bg-red-500/10" : ""
             }`}
             style={{
@@ -213,15 +229,15 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
   return (
     <div ref={fixed ? undefined : fitRef} className={`w-full min-w-0 max-w-full overflow-hidden ${className}`}>
       {compass ? <CompassFrame className="mx-auto">{grid}</CompassFrame> : <div className="mx-auto w-fit">{grid}</div>}
-      {tip && <CellTooltip {...tip} nameOf={nameOf} data={data} />}
+      {tip && <CellTooltip {...tip} nameOf={nameOf} data={data} hint={openInfo ? (tip.pinned ? "Tap again for details." : "Click for details.") : undefined} />}
     </div>
   );
 };
 
-const TIP_WIDTH = 232;
+const TIP_WIDTH = 210;
 
 /** The hover card: what is on the cell, in words, for players who don't know every crop by sight. */
-const CellTooltip: React.FC<{ tip: Tip; rect: DOMRect; nameOf: (id: string) => string; data?: GameData }> = ({ tip, rect, nameOf, data }) => {
+const CellTooltip: React.FC<{ tip: Tip; rect: DOMRect; nameOf: (id: string) => string; data?: GameData; hint?: string }> = ({ tip, rect, nameOf, data, hint }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   useLayoutEffect(() => {
@@ -239,22 +255,16 @@ const CellTooltip: React.FC<{ tip: Tip; rect: DOMRect; nameOf: (id: string) => s
     setPos({ top, left });
   }, [rect]);
 
-  const mutation = data?.mutations[tip.id];
-  const rarity = mutation?.rarity;
-  const needs = mutation?.requirements ?? [];
-  let lines: { text: string; tone?: string }[];
+  const rarity = data?.mutations[tip.id]?.rarity;
+  // Only what the player has to act on; everything else is in the wiki modal a click away.
+  let lines: { text: string; tone?: string }[] = [];
   if (tip.kind === "slot") {
-    lines = [{ text: `Target cell: ${nameOf(tip.id)} spawns here. Leave it empty.`, tone: "text-cyan-300" }];
+    lines = [{ text: "Target cell: it spawns here. Leave it empty.", tone: "text-cyan-300" }];
     if (tip.stage !== undefined) lines.push({ text: tip.fullyGrown ? "Reported fully grown: harvest it." : `Reported growing (stage ${tip.stage}).`, tone: "text-emerald-300" });
-    if (needs.length) lines.push({ text: `Needs ${needs.map((r) => `${r.count}× ${nameOf(r.crop)}`).join(", ")} around it.` });
   } else if (tip.missing) {
-    lines = [{ text: `Missing: there wasn't a ${nameOf(tip.id)} in your inventory to place here. Place one when you have it.`, tone: "text-red-300" }];
+    lines = [{ text: "Missing: none in your inventory. Place one when you have it.", tone: "text-red-300" }];
   } else if (tip.placing) {
-    lines = [{ text: "Place this from your inventory. Confirming the plot takes it off your stock.", tone: "text-amber-300" }];
-  } else if (tip.paid) {
-    lines = [{ text: "Placed from your inventory (already standing)." }];
-  } else {
-    lines = [{ text: tip.id === "fire" ? "Fire: free to place." : "Plant it: free." }];
+    lines = [{ text: "Place this from your inventory.", tone: "text-amber-300" }];
   }
 
   return (
@@ -265,15 +275,11 @@ const CellTooltip: React.FC<{ tip: Tip; rect: DOMRect; nameOf: (id: string) => s
         className="pointer-events-none fixed z-[9999] rounded-lg border border-slate-600/60 bg-slate-900/95 p-3 text-xs shadow-xl backdrop-blur-sm"
         style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: TIP_WIDTH }}
       >
-        <div className="mb-1.5 flex items-center gap-2">
+        <div className={`flex items-center gap-2 ${lines.length || hint ? "mb-1.5" : ""}`}>
           <CropImage cropId={tip.id} cropName={nameOf(tip.id)} size="xs" showFallback={false} />
           <div className="min-w-0">
             <div className={`truncate text-sm font-medium ${rarity ? getRarityTextColor(rarity) : "text-slate-100"}`}>{nameOf(tip.id)}</div>
-            <div className="text-[11px] text-slate-500">
-              row {tip.row + 1}, col {tip.col + 1}
-              {tip.size > 1 ? ` · ${tip.size}x${tip.size}` : ""}
-              {rarity ? ` · ${rarity}` : ""}
-            </div>
+            {rarity && <div className="text-[11px] capitalize text-slate-500">{rarity}</div>}
           </div>
         </div>
         <div className="space-y-1">
@@ -282,6 +288,7 @@ const CellTooltip: React.FC<{ tip: Tip; rect: DOMRect; nameOf: (id: string) => s
               {l.text}
             </p>
           ))}
+          {hint && <p className="text-[11px] text-slate-500">{hint}</p>}
         </div>
       </div>
     </Portal>

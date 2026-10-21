@@ -4,4 +4,4 @@ export type { DesignerMode, DesignerPlacement, SelectedCropForDesigner, Mutation
 export { GridStateProvider, useGridState } from "./GridStateContext";
 export { GreenhouseDataProvider, useGreenhouseData } from "./GreenhouseDataContext";
 export { LockedPlacementsProvider, useLockedPlacements } from "./LockedPlacementsContext";
-export { InfoModalProvider, useInfoModal, getEffectDescription } from "./InfoModalContext";
+export { InfoModalProvider, useInfoModal, useOptionalOpenInfo, getEffectDescription } from "./InfoModalContext";

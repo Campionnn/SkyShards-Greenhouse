@@ -28,6 +28,7 @@ dist-verify
 
 # Local-only Rose Dragon flow generator (its output lives in public/greenhouse/flows/)
 /tools/rose-dragon/
+/tools
 
 tmp
 docs/

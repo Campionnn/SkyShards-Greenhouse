@@ -101,6 +101,9 @@ export const useInfoModal = (): InfoModalContextType => {
   return context;
 };
 
+/** `openInfo` when the modal is mounted, otherwise null (server renders, isolated tests). */
+export const useOptionalOpenInfo = (): ((itemId: string) => void) | null => useContext(InfoModalContext)?.openInfo ?? null;
+
 export const getEffectDescription = (effectId: string, effectsMap: Record<string, EffectDefinition>): string => {
   const effect = effectsMap[effectId] || getEffectData(effectId);
   return effect?.description || "";
