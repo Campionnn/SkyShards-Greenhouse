@@ -291,11 +291,17 @@ export class ScriptRuntime {
       if (outer) throw err; // the outermost call records it
       this.recordHalt(this.haltFor(err, inst.key, hook));
     } finally {
+      if (!outer) this.countSteps(this.interp.steps);
       this.current = prev.current;
       this.currentHook = prev.hook;
       this.mode = prev.mode;
     }
     if (!outer) this.flush();
+  }
+
+  /** Add one outermost call's interpreter steps to the run's total (ScriptsState.steps). */
+  private countSteps(n: number): void {
+    if (n > 0) this.scriptsState.steps = (this.scriptsState.steps ?? 0) + n;
   }
 
   private haltFor(err: ScriptError, script: ScriptKey, hook: string): ScriptHalt {
@@ -407,6 +413,7 @@ export class ScriptRuntime {
       this.recordHalt(halt);
       return false;
     } finally {
+      this.countSteps(this.interp.steps);
       this.current = prev.current;
       this.currentHook = prev.hook;
       this.mode = prev.mode;

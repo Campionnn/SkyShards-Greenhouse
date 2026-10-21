@@ -329,6 +329,11 @@ export const FlowsPage: React.FC = () => {
             {PAYBACK_CYCLES.toLocaleString()} when online every {viewer.every} cycle{viewer.every === 1 ? "" : "s"}, so {insolvent.length === 1 ? "it isn't" : "they aren't"} ranked here.
           </p>
         )}
+        {!loading && result?.data?.truncated && (
+          <p className="px-3 pt-1 text-[11px] text-amber-200/70 sm:px-4" data-testid="truncated-note">
+            Showing the {all.length.toLocaleString()} most recently updated flows; older ones aren't included.
+          </p>
+        )}
 
         <div className="p-1.5 sm:p-2">
           {loading ? (

@@ -95,6 +95,12 @@ export interface ScriptsState {
   /** Set when a script errored or called pause(); the run stops after that cycle. Cleared by the next run. */
   halt: ScriptHalt | null;
   /**
+   * Interpreter steps every script used so far in the run (hooks, top level, exit conditions).
+   * A deterministic measure of script work: the leaderboard caps it per run instead of timing it.
+   * Absent until a script has run.
+   */
+  steps?: number;
+  /**
    * Debug: forced effects a script set (`forceEffects`), replacing the scenario's
    * `config.forcedEffects` for every plot while present ({} = all off). Absent = the scenario setting.
    */

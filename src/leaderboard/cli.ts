@@ -4,7 +4,7 @@ import { createEngine } from "../simulator/engine";
 import { checkSubmission, clampCycles, parseSubmission, type Board } from "./rules";
 import { summarizeSubmission } from "./summary";
 import { EVERY, TIERS, type TierId } from "./tiers";
-import { outlierCheck, verifyJob, type VerifyRun } from "./verify";
+import { CPU_MS_BACKSTOP, outlierCheck, verifyJob, WALL_MS_BACKSTOP, type VerifyRun } from "./verify";
 
 /**
  * The verifier CLI (docs/plans/flow-leaderboard.md §5.3, §6.2). One JSON request on stdin, one
@@ -17,7 +17,7 @@ import { outlierCheck, verifyJob, type VerifyRun } from "./verify";
  *     -> {engineVersion, every, tiers}
  *   {mode: "check", payload}
  *     -> {ok, errors, warnings, plots, bytes, summary: FlowSummary | null}  (summary.ts)
- *   {mode: "verify", payload, board, tier, cycles, runs: [{every, seed, seedIndex}], wallMsPerRun?, cpuMsPerRun?,
+ *   {mode: "verify", payload, board, tier, cycles, runs: [{every, seed, seedIndex}], wallMsPerRun?, cpuMsPerRun?, scriptStepsPerRun?,
  *     bazaar?: {item: {buy, sell}} | raw Hypixel response | null, outlierRatio?}
  *     -> {engineVersion, results: [{every, seedIndex, seed, ok, error, result, wallMs, cpuMs}], outlier?}
  */
@@ -34,13 +34,17 @@ export interface CliRequest {
   runs?: VerifyRun[];
   wallMsPerRun?: number;
   cpuMsPerRun?: number;
+  scriptStepsPerRun?: number;
   bazaar?: unknown;
   outlierRatio?: number;
 }
 
-/** Per-run caps. CPU time is the real limit (immune to a busy machine); wall time only catches a stuck run. */
-const DEFAULT_CPU_MS = 60_000;
-const DEFAULT_WALL_MS = 300_000;
+/**
+ * Per-run caps. The deciding one is the deterministic script step cap (same verdict on any
+ * machine); CPU and wall time are generous backstops only.
+ */
+const DEFAULT_CPU_MS = CPU_MS_BACKSTOP;
+const DEFAULT_WALL_MS = WALL_MS_BACKSTOP;
 const DEFAULT_OUTLIER_RATIO = 2;
 
 /** Accept `{item: {buy, sell}}` (the API's snapshot) or a raw `/v2/skyblock/bazaar` body. */
@@ -92,6 +96,7 @@ export function handle(req: CliRequest, progress: (line: string) => void = () =>
         runs,
         wallMsPerRun: typeof req.wallMsPerRun === "number" && req.wallMsPerRun > 0 ? req.wallMsPerRun : DEFAULT_WALL_MS,
         cpuMsPerRun: typeof req.cpuMsPerRun === "number" && req.cpuMsPerRun > 0 ? req.cpuMsPerRun : DEFAULT_CPU_MS,
+        scriptStepsPerRun: typeof req.scriptStepsPerRun === "number" && req.scriptStepsPerRun > 0 ? req.scriptStepsPerRun : undefined,
       };
       const results = verifyJob(engine, job, (done, total) => progress(`progress ${done}/${total}`));
       const quotes = readQuotes(req.bazaar);

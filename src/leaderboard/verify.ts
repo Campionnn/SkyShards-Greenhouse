@@ -27,11 +27,31 @@ export interface VerifyJob {
   /** Wall-clock backstop per run (catches a stuck process); a run over it fails. */
   wallMsPerRun: number;
   /**
-   * CPU-time cap per run, where the runtime can measure it (Node). This is the real "too slow"
-   * limit: unlike wall time it does not grow when other work on the machine competes for the CPU.
+   * CPU-time backstop per run, where the runtime can measure it (Node). Generous on purpose: CPU
+   * time depends on the machine (a Cloud Run vCPU is about half a VPS core), so it must never be
+   * what decides a normal flow. The deciding limit is the deterministic `scriptStepsPerRun`.
    */
   cpuMsPerRun?: number;
+  /** Interpreter steps all scripts may use in one run (deterministic: same verdict on every machine); default scriptStepCap(cycles). */
+  scriptStepsPerRun?: number;
 }
+
+/**
+ * Script work a run may do, in interpreter steps per simulated cycle (averaged over the run).
+ * Engine work per cycle is bounded by the grid (3 plots, cycles <= MAX_CYCLES), so scripts are
+ * the only unbounded part; capping their steps makes "too slow" a property of the flow, not of
+ * the machine verifying it. Shared by the CLI and the page's local test.
+ */
+// ~26M steps/s on a desktop core, ~13M on the VPS, ~6M on a Cloud Run vCPU: 200M steps (2000
+// cycles) is ~15 s of script work on the VPS, and 500M (5000 cycles) stays well inside the CPU
+// backstop even on Cloud Run.
+export const SCRIPT_STEPS_PER_CYCLE = 100_000;
+/** The step cap of a run of `cycles` cycles. */
+export const scriptStepCap = (cycles: number): number => SCRIPT_STEPS_PER_CYCLE * Math.max(1, Math.floor(cycles));
+/** CPU-time backstop (ms) for anything the step cap doesn't cover. */
+export const CPU_MS_BACKSTOP = 300_000;
+/** Wall-clock backstop (ms) against a stuck process. */
+export const WALL_MS_BACKSTOP = 600_000;
 
 export interface VerifyRunOutcome {
   every: number;
@@ -67,6 +87,8 @@ export interface RunOnceOptions {
   wallMs: number;
   /** CPU-time cap; ignored when there is no CPU clock. */
   cpuMs?: number;
+  /** Script step cap (ScriptsState.steps); defaults to scriptStepCap(cycles). */
+  scriptSteps?: number;
   now?: () => number;
   /** CPU clock in ms (defaults to the process's, where available). */
   cpuNow?: () => number;
@@ -100,6 +122,9 @@ export function runOnce(engine: Engine, submission: Submission, board: Board, ti
       const why = halt ? `script ${halt.kind}${halt.message ? `: ${halt.message}` : ""} at cycle ${state.cycle}` : `run stopped at cycle ${state.cycle}`;
       return out(false, why, runResult(state, engine.analyse(state).sustainable));
     }
+    const stepCap = opts.scriptSteps ?? scriptStepCap(cycles);
+    const steps = state.scripts?.steps ?? 0;
+    if (steps > stepCap) return out(false, `scripts used more than ${stepCap.toLocaleString("en-US")} steps (${done} of ${cycles} cycles)`, null);
     const cpu = cpuUsed();
     if (opts.cpuMs !== undefined && cpu !== null && cpu > opts.cpuMs) return out(false, `used more than ${seconds(opts.cpuMs)} s of CPU time (${done} of ${cycles} cycles)`, null);
     if (now() - t0 > opts.wallMs) return out(false, `took longer than ${seconds(opts.wallMs)} s (${done} of ${cycles} cycles)`, null);
@@ -111,7 +136,7 @@ export function runOnce(engine: Engine, submission: Submission, board: Board, ti
 export function verifyJob(engine: Engine, job: VerifyJob, onProgress?: (done: number, total: number) => void): VerifyRunOutcome[] {
   const outcomes: VerifyRunOutcome[] = [];
   job.runs.forEach((r, i) => {
-    const o = runOnce(engine, job.submission, job.board, job.tier, r.every, r.seed, job.cycles, { wallMs: job.wallMsPerRun, cpuMs: job.cpuMsPerRun });
+    const o = runOnce(engine, job.submission, job.board, job.tier, r.every, r.seed, job.cycles, { wallMs: job.wallMsPerRun, cpuMs: job.cpuMsPerRun, scriptSteps: job.scriptStepsPerRun });
     o.seedIndex = r.seedIndex;
     outcomes.push(o);
     onProgress?.(i + 1, job.runs.length);

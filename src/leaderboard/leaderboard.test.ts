@@ -307,6 +307,24 @@ describe("verify", () => {
     expect(fine.cpuMs).toBeGreaterThan(0);
   });
 
+  it("fails a run over the script step cap, independent of the machine", () => {
+    const sc = twoStep();
+    sc.script = { source: "function onTick() { let n = 0; for (let i = 0; i < 1000; i++) { n += i } }" };
+    const sub = submissionFromScenario(sc);
+    const capped = runOnce(engine, sub, "ironman", "max", 1, 5, 400, { wallMs: 1e9, scriptSteps: 50_000 });
+    expect(capped.ok).toBe(false);
+    expect(capped.error).toMatch(/steps/);
+    // Deterministic: it fails at the same cycle every time.
+    expect(runOnce(engine, sub, "ironman", "max", 1, 5, 400, { wallMs: 1e9, scriptSteps: 50_000 }).error).toBe(capped.error);
+    expect(runOnce(engine, sub, "ironman", "max", 1, 5, 40, { wallMs: 1e9 }).ok).toBe(true);
+    // The runtime counts steps in the state, the same across a split run.
+    const state = engine.initState(ruleScenario(sub, { board: "ironman", tier: "max", every: 1, seed: 5 })).state;
+    const whole = engine.run(state, 20).state.scripts!.steps!;
+    const split = engine.run(engine.run(state, 10).state, 10).state.scripts!.steps!;
+    expect(whole).toBeGreaterThan(20_000);
+    expect(split).toBe(whole);
+  });
+
   it("fails a run a script halts", () => {
     const sc = twoStep();
     sc.script = { source: "function onTick() { if (cycle >= 3) pause('stop') }" };

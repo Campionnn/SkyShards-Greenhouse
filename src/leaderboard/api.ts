@@ -90,6 +90,8 @@ export interface FlowListEntry {
 export interface FlowListResponse {
   engineVersion: string;
   entries: FlowListEntry[];
+  /** More live entries exist than the API sends (it keeps the most recently updated). */
+  truncated?: boolean;
 }
 
 export interface FlowCell {

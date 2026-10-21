@@ -7,6 +7,7 @@ import { valueResult } from "../../leaderboard/pricing";
 import { cellSolvent, spreadRatio } from "../../leaderboard/result";
 import { applyRules, BOARDS, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, PAYBACK_CYCLES, ruleDifferences, submissionFile, submissionFromScenario, type Board } from "../../leaderboard/rules";
 import { nearestEvery } from "../../leaderboard/tiers";
+import { WALL_MS_BACKSTOP } from "../../leaderboard/verify";
 import { BOARD_LABEL, DESCRIPTION_MAX, effortText, OUTLIER_RATIO, ratioText, TITLE_MAX, userName } from "../../leaderboard/view";
 import { LocalTestPool, randomSeeds, type SeedOutcome } from "../../leaderboard/worker/pool";
 import { flowLink, submitFlow } from "../../services/flowsService";
@@ -23,8 +24,8 @@ import { clearSubmitDraft, loadSubmitDraft, saveSubmitDraft } from "./submitDraf
 
 const DATA = defaultGameData();
 const TEST_SEEDS = 5;
-/** The server's per-run cap. */
-const WALL_MS = 60_000;
+/** The server's wall-clock backstop (the deciding cap is the deterministic script step cap, applied by runOnce). */
+const WALL_MS = WALL_MS_BACKSTOP;
 
 type Props = { scenario: Scenario; onChange: (sc: Scenario) => void; onClose: () => void };
 

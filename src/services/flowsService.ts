@@ -34,7 +34,7 @@ export function listFlows(q: ListQuery, opts: { force?: boolean } = {}): Promise
   const p = mock()
     ? mockList(q.board, q.tier, q.every, q.plots)
     : apiFetch(`/flows?${params}`, {}, { auth: false }).then((r) => r.json() as Promise<FlowListResponse>);
-  const guarded = p.then((res) => ({ engineVersion: res?.engineVersion ?? "", entries: Array.isArray(res?.entries) ? res.entries : [] }));
+  const guarded = p.then((res) => ({ engineVersion: res?.engineVersion ?? "", entries: Array.isArray(res?.entries) ? res.entries : [], truncated: res?.truncated === true }));
   listCache.set(key, guarded);
   // A failed fetch is not cached.
   guarded.catch(() => {
@@ -85,6 +85,10 @@ function normalizeSeed(raw: unknown): FlowSeedResult | null {
     halted: src.halted ?? false,
     ...(src.bySource ? { bySource: src.bySource } : {}),
     ...(src.stepTime ? { stepTime: src.stepTime } : {}),
+    // Ironman bootstrap debt (absent on normal-board and old results).
+    ...(src.peakDebt ? { peakDebt: src.peakDebt } : {}),
+    ...(src.paybackCycle !== undefined ? { paybackCycle: src.paybackCycle } : {}),
+    ...(typeof src.solvent === "boolean" ? { solvent: src.solvent } : {}),
   };
   return { board: row.board as FlowSeedResult["board"], tier: row.tier as FlowSeedResult["tier"], every: Number(row.every), seedIndex: Number(row.seedIndex), result, ok: row.ok, error: row.error };
 }
