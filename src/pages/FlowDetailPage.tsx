@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Activity, ArrowLeft, BarChart3, Clock, Code2, Coins, Eye, EyeOff, FileText, FlaskConical, Flag, Layers, Link2, Pencil, Save, ShieldCheck, Sprout, Trash2, X } from "lucide-react";
-import { AuthorLabel, Badge, PriceNote, StatsPanel } from "../components/flows/FlowControls";
+import { AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { EffortBreakdown, FlowWalkthrough, FrequencyChart, ItemBreakdown, ReportDialog, SeedTable, SourceBreakdown, StatTile, StatusBox } from "../components/flows/FlowDetailSections";
 import { useFlowShape } from "../components/flows/flowsDisplay";
 import { FlowMarkdown } from "../components/flows/FlowMarkdown";
@@ -10,6 +10,7 @@ import { formatCoins, formatRate, nameOf } from "../components/simulator/format"
 import { buttonClass, inputClass } from "../components/simulator/styles";
 import { InfoHint, Panel, useToast } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
+import { useFlowLikes } from "../hooks/useFlowLikes";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
 import { valueResult } from "../leaderboard/pricing";
@@ -196,6 +197,14 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const payback = cell ? paybackText(cell.median) : null;
   const owed = cell ? debtLines(cell.median) : [];
 
+  const likes = useFlowLikes();
+  const liked = likes.isLiked(detail.id, detail.liked ?? false);
+  const likeCount = likes.counts[detail.id]?.likes ?? detail.likes ?? 0;
+  const likes30d = likes.counts[detail.id]?.likes30d ?? detail.likes30d ?? 0;
+  const toggleLike = () => {
+    likes.toggle(detail.id, !liked).catch((e: unknown) => toast({ title: "Could not save your like", description: e instanceof Error ? e.message : String(e), variant: "error" }));
+  };
+
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(flowLink(detail.id));
@@ -312,6 +321,16 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                   <ActionButton tone="primary" onClick={() => navigate(`/simulator?flow=${encodeURIComponent(detail.id)}`)}>
                     <FlaskConical className="h-3.5 w-3.5" /> Open in simulator
                   </ActionButton>
+                  {(detail.status === "live" || detail.hidden) && (
+                    <LikeButton
+                      size="md"
+                      count={likeCount}
+                      liked={liked}
+                      busy={likes.busy(detail.id)}
+                      onToggle={owner || detail.status !== "live" ? undefined : toggleLike}
+                      title={owner ? `${likeCount} like${likeCount === 1 ? "" : "s"} (${likes30d} in the last 30 days)` : !user ? "Log in with Discord to like this flow" : undefined}
+                    />
+                  )}
                   <ActionButton onClick={copyLink}>
                     <Link2 className="h-3.5 w-3.5" /> Copy link
                   </ActionButton>

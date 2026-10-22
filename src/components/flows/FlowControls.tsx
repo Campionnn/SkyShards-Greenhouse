@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ChevronDown, Clock, Coins, Copy, Gauge, RefreshCw, RotateCcw, Sprout, Zap } from "lucide-react";
+import { ChevronDown, Clock, Coins, Copy, Gauge, Heart, RefreshCw, RotateCcw, Sprout, Zap } from "lucide-react";
 import type { FlowViewer, ViewerStats } from "../../hooks/useFlowViewer";
 import type { FlowAuthor } from "../../leaderboard/api";
 import { cycleHours, EVERY, TIER_STATS, TIERS, type TierId } from "../../leaderboard/tiers";
@@ -376,6 +376,50 @@ export const AuthorLabel: React.FC<{ author: FlowAuthor; size?: number }> = ({ a
     <span className="min-w-0 break-words">{author.name}</span>
   </span>
 );
+
+/**
+ * Heart + like count. `onToggle` is omitted for a read-only count (own flow); a logged-out click
+ * goes through the login (the caller's toggle handles that).
+ */
+export const LikeButton: React.FC<{
+  count: number;
+  liked: boolean;
+  busy?: boolean;
+  onToggle?: () => void;
+  size?: "sm" | "md";
+  title?: string;
+}> = ({ count, liked, busy = false, onToggle, size = "sm", title }) => {
+  const icon = size === "md" ? "h-3.5 w-3.5" : "h-3 w-3";
+  const box = size === "md" ? "gap-1.5 px-3 py-1.5 text-xs" : "gap-1 px-1.5 py-0.5 text-[11px]";
+  const tone = liked ? "border-rose-500/40 bg-rose-500/15 text-rose-200" : "border-slate-600/50 bg-slate-800/70 text-slate-300";
+  const content = (
+    <>
+      <Heart className={`${icon} transition-transform duration-150 ${liked ? "fill-rose-400 text-rose-400" : ""}`} />
+      <span className="tabular-nums">{count.toLocaleString("en-US")}</span>
+    </>
+  );
+  if (!onToggle)
+    return (
+      <span className={`inline-flex items-center rounded-md border ${box} border-slate-700/50 text-slate-400`} title={title ?? `${count} like${count === 1 ? "" : "s"}`}>
+        {content}
+      </span>
+    );
+  return (
+    <button
+      type="button"
+      aria-pressed={liked}
+      disabled={busy}
+      title={title ?? (liked ? "Remove your like" : "Like this flow")}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={`inline-flex items-center rounded-md border font-medium transition-[background-color,color,transform] duration-150 hover:border-rose-500/40 hover:text-rose-200 active:scale-[0.95] disabled:opacity-60 ${box} ${tone}`}
+    >
+      {content}
+    </button>
+  );
+};
 
 const BADGE_STYLE = {
   stale: "bg-slate-600/30 text-slate-300 border-slate-500/40",

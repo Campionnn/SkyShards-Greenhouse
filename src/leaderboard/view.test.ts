@@ -19,6 +19,7 @@ import {
   maxProfit,
   NEW_FOR_MS,
   sortRows,
+  withLikeCounts,
   profitByEvery,
   rank,
   rankEntries,
@@ -185,6 +186,20 @@ describe("leaderboard view: badges and labels", () => {
     expect(sortRows(rows, "newest")[0].entry.id).toBe("b");
     expect(sortRows(rows, "effort").find((r) => r.entry.id === "a")!.rank).toBe(1);
     expect(maxProfit(rows)).toBe(rows[0].profitPerDay);
+  });
+
+  it("sorts by likes (all time and 30 days); local counts override the list", () => {
+    const listed = [
+      entry("a", "Old favourite", result({ wheat: 9000 }), { likes: 10, likes30d: 1 }),
+      entry("b", "Trending", result({ wheat: 1000 }), { likes: 4, likes30d: 4 }),
+      entry("c", "No likes field", result({ wheat: 500 })),
+    ];
+    const rows = rankEntries(data, listed, ironman);
+    expect(sortRows(rows, "liked").map((r) => r.entry.id)).toEqual(["a", "b", "c"]);
+    expect(sortRows(rows, "liked30d").map((r) => r.entry.id)).toEqual(["b", "a", "c"]);
+    const bumped = rankEntries(data, withLikeCounts(listed, { c: { likes: 20, likes30d: 20 } }), ironman);
+    expect(sortRows(bumped, "liked30d")[0].entry.id).toBe("c");
+    expect(sortRows(bumped, "liked30d").find((r) => r.entry.id === "a")!.rank).toBe(1);
   });
 
   it("avatar URLs and timestamps", () => {

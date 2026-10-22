@@ -85,6 +85,9 @@ export interface FlowListEntry {
   curve?: Record<string, CurvePoint>;
   /** Not in the contract yet: Slack if the API ever precomputes it. */
   slack?: number | null;
+  /** Likes from logged-in users, all time and in the last 30 days (absent on older APIs). */
+  likes?: number;
+  likes30d?: number;
 }
 
 export interface FlowListResponse {
@@ -135,6 +138,10 @@ export interface FlowDetail {
   thumb?: FlowThumb | null;
   cells: FlowCell[];
   seeds?: FlowSeedResult[];
+  likes?: number;
+  likes30d?: number;
+  /** Whether the logged-in viewer liked it (absent when logged out). */
+  liked?: boolean;
   /** Only with the owner's token or the admin key. */
   rejectReason?: string | null;
   hidden?: boolean;

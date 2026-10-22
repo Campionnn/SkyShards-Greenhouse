@@ -47,11 +47,14 @@ interface Spec {
   falloff: number;
   effort: [number, number];
   description: string;
+  /** Likes all time and in the last 30 days. */
+  likes?: [number, number];
 }
 
 const SPECS: Spec[] = [
   {
     id: "mockChloro01",
+    likes: [14, 9],
     title: "Chloronite engine with wheat filler",
     author: { id: MOCK_USER.id, name: "Green Thumb", avatar: null },
     plots: 3,
@@ -68,6 +71,7 @@ const SPECS: Spec[] = [
   },
   {
     id: "mockAloe0002",
+    likes: [31, 2],
     title: "All-in Aloe slow cook (very long title to check that wrapping works on a phone without truncation)",
     author: { id: "175928847299117063", name: "Aloe Vera Enjoyer", avatar: null },
     plots: 2,
@@ -84,6 +88,7 @@ const SPECS: Spec[] = [
   },
   {
     id: "mockGlass003",
+    likes: [6, 0],
     title: "Glasscorn trio",
     author: { id: "228537642583588864", name: "corncob", avatar: null },
     plots: 1,
@@ -99,6 +104,7 @@ const SPECS: Spec[] = [
   },
   {
     id: "mockNoct0006",
+    likes: [3, 3],
     title: "Noctilume night shift",
     author: { id: "312548796201451520", name: "moonlit", avatar: null },
     plots: 3,
@@ -129,6 +135,7 @@ const SPECS: Spec[] = [
   },
   {
     id: "mockVeil0008",
+    likes: [22, 11],
     title: "Veilshroom carpet, zero upkeep",
     author: { id: "512088963174449152", name: "fungi", avatar: null },
     plots: 1,
@@ -250,6 +257,7 @@ export function mockList(board: Board, tier: TierId, every: number, plots?: numb
       summary: summaryOf(s),
       thumb: { plot: 1, step: "step-1", layout: payloadOf(s).plots[s.plots > 1 ? 1 : 0].flow.steps[0].layout, share: 0.72 },
       curve,
+      ...likesOf(s),
     };
   });
   return delay({ engineVersion: "mock", entries });
@@ -285,7 +293,30 @@ export function mockDetail(id: string): Promise<FlowDetail | null> {
     thumb: { plot: 1, step: "step-1", layout: payloadOf(s).plots[s.plots > 1 ? 1 : 0].flow.steps[0].layout, share: 0.72 },
     cells,
     seeds,
+    ...likesOf(s),
+    liked: mockLiked.has(s.id),
   });
+}
+
+/** The mock user's likes this session (the spec counts don't include them). */
+const mockLiked = new Set<string>(["mockVeil0008"]);
+
+function likesOf(s: Spec): { likes: number; likes30d: number } {
+  const [all, recent] = s.likes ?? [0, 0];
+  const mine = mockLiked.has(s.id) ? 1 : 0;
+  return { likes: all + mine, likes30d: recent + mine };
+}
+
+export function mockSetLike(id: string, liked: boolean): Promise<{ id: string; liked: boolean; likes: number; likes30d: number }> {
+  const s = SPECS.find((x) => x.id === id);
+  if (!s) return Promise.reject(new Error("Flow not found"));
+  if (liked) mockLiked.add(id);
+  else mockLiked.delete(id);
+  return delay({ id, liked, ...likesOf(s) }, 150);
+}
+
+export function mockMyLikes(): Promise<string[]> {
+  return delay([...mockLiked], 100);
 }
 
 export function mockStatus(): Promise<FlowStatusResponse> {

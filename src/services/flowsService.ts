@@ -8,7 +8,7 @@ import type { RunResult } from "../leaderboard/result";
 import type { Board } from "../leaderboard/rules";
 import type { TierId } from "../leaderboard/tiers";
 import { ApiError, apiFetch } from "./authService";
-import { flowsMockEnabled, mockAdminDetailExtras, mockDetail, mockList, mockStatus, mockSubmit } from "./flowsMock";
+import { flowsMockEnabled, mockAdminDetailExtras, mockDetail, mockList, mockMyLikes, mockSetLike, mockStatus, mockSubmit } from "./flowsMock";
 
 const mock = () => import.meta.env.DEV && flowsMockEnabled();
 
@@ -137,6 +137,28 @@ export async function reportFlow(id: string, reason: string): Promise<boolean> {
     if (e instanceof ApiError && e.status === 409) return false;
     throw e;
   }
+}
+
+export interface LikeResult {
+  id: string;
+  liked: boolean;
+  likes: number;
+  likes30d: number;
+}
+
+/** Like (or unlike) a live flow; needs the Discord login. Resolves the new counts. */
+export async function setFlowLike(id: string, liked: boolean): Promise<LikeResult> {
+  if (mock()) return mockSetLike(id, liked);
+  const r = await apiFetch(`/flows/${encodeURIComponent(id)}/like`, { method: liked ? "PUT" : "DELETE" });
+  return (await r.json()) as LikeResult;
+}
+
+/** The ids of the flows the logged-in user liked. */
+export async function myLikedFlows(): Promise<string[]> {
+  if (mock()) return mockMyLikes();
+  const r = await apiFetch("/flows/me/likes");
+  const body = (await r.json()) as { ids?: unknown };
+  return Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string") : [];
 }
 
 /** `{origin}/flows/ID`. */

@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowUpRight, Code2, FlaskConical, Layers, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
-import { AuthorLabel, Badge, PriceNote, StatsPanel } from "../components/flows/FlowControls";
+import { AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { EffortMeter, LayoutBoxes, MutationChip, Sparkline, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
 import { formatCoins, nameOf } from "../components/simulator/format";
-import { InfoHint } from "../components/ui";
+import { InfoHint, useToast } from "../components/ui";
+import { useAuth } from "../hooks/useAuth";
+import { useFlowLikes } from "../hooks/useFlowLikes";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowListResponse } from "../leaderboard/api";
-import { BADGE_TITLE, filterRows, maxProfit, percent, rankEntries, SORT_LABEL, sortRows, splitSolvent, suppliesText, type FlowRow, type SortKey } from "../leaderboard/view";
+import { BADGE_TITLE, filterRows, maxProfit, percent, rankEntries, SORT_LABEL, sortRows, splitSolvent, suppliesText, withLikeCounts, type FlowRow, type SortKey } from "../leaderboard/view";
 import { PAYBACK_CYCLES } from "../leaderboard/rules";
 import { listFlows } from "../services/flowsService";
 import { defaultGameData } from "../simulator";
@@ -52,6 +54,8 @@ const SORT_HINT: Record<SortKey, string> = {
   perEffort: "Coins per day for each point of work per login: the best return on your time.",
   effort: "The fewest actions per login first.",
   forgiving: "How much profit survives logging in late.",
+  liked: "The most likes from players, all time.",
+  liked30d: "The most likes given in the last 30 days.",
   newest: "Most recently submitted first.",
 };
 
@@ -65,7 +69,14 @@ const RowBadges: React.FC<{ row: FlowRow }> = ({ row }) => (
 );
 
 /** One ranked flow. */
-const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: boolean; index: number }> = ({ row, top, every, normal, index }) => {
+interface RowLike {
+  liked: boolean;
+  busy: boolean;
+  /** Omitted on the viewer's own flows (count only). */
+  onToggle?: () => void;
+}
+
+const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: boolean; index: number; like: RowLike; sort: SortKey }> = ({ row, top, every, normal, index, like, sort }) => {
   const navigate = useNavigate();
   const { entry } = row;
   const summary = entry.summary ?? null;
@@ -126,6 +137,13 @@ const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: 
               <Code2 className="h-3 w-3" /> scripted
             </span>
           )}
+          <LikeButton
+            count={(sort === "liked30d" ? entry.likes30d : entry.likes) ?? 0}
+            liked={like.liked}
+            busy={like.busy}
+            onToggle={like.onToggle}
+            title={sort === "liked30d" ? `${entry.likes30d ?? 0} likes in the last 30 days (${entry.likes ?? 0} all time)` : undefined}
+          />
         </div>
         {topEarning.length > 0 && (
           <div className="flex flex-wrap items-center gap-1">
@@ -212,6 +230,9 @@ const Legend: React.FC = () => (
 export const FlowsPage: React.FC = () => {
   const viewer = useFlowViewer();
   const now = useMinuteClock();
+  const { user } = useAuth();
+  const likes = useFlowLikes();
+  const { toast } = useToast();
   const [plots, setPlots] = useState<PlotsFilter>("any");
   const [sort, setSort] = useState<SortKey>("profit");
   const [query, setQuery] = useState("");
@@ -236,7 +257,7 @@ export const FlowsPage: React.FC = () => {
   const loading = !result || result.key !== key;
   const all = useMemo(() => (result && !loading ? (result.data?.entries ?? []) : []), [result, loading]);
   // Ironman: cells that don't pay their starting layout back in time are left out of this frequency's ranking.
-  const { solvent: entries, insolvent } = useMemo(() => splitSolvent(all), [all]);
+  const { solvent: entries, insolvent } = useMemo(() => splitSolvent(withLikeCounts(all, likes.counts)), [all, likes.counts]);
   const ranked = useMemo(
     () =>
       rankEntries(
@@ -380,7 +401,26 @@ export const FlowsPage: React.FC = () => {
           ) : (
             <ol className="divide-y divide-slate-700/30" data-testid="flows-list">
               {shown.map((row, i) => (
-                <FlowRowItem key={row.entry.id} row={row} top={top} every={viewer.every} normal={normal} index={i} />
+                <FlowRowItem
+                  key={row.entry.id}
+                  row={row}
+                  top={top}
+                  every={viewer.every}
+                  normal={normal}
+                  index={i}
+                  sort={sort}
+                  like={{
+                    liked: likes.isLiked(row.entry.id),
+                    busy: likes.busy(row.entry.id),
+                    onToggle:
+                      user?.id === row.entry.author.id
+                        ? undefined
+                        : () =>
+                            void likes
+                              .toggle(row.entry.id, !likes.isLiked(row.entry.id))
+                              .catch((e: unknown) => toast({ title: "Could not save your like", description: e instanceof Error ? e.message : String(e), variant: "error" })),
+                  }}
+                />
               ))}
             </ol>
           )}

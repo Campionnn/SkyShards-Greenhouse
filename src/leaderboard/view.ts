@@ -126,15 +126,25 @@ export interface FlowRow {
   unpriced: ItemId[];
 }
 
-export type SortKey = "profit" | "perEffort" | "effort" | "forgiving" | "newest";
+export type SortKey = "profit" | "perEffort" | "effort" | "forgiving" | "liked" | "liked30d" | "newest";
 
 export const SORT_LABEL: Record<SortKey, string> = {
   profit: "Profit",
   perEffort: "Profit per effort",
   effort: "Least effort",
   forgiving: "Most forgiving",
+  liked: "Most liked",
+  liked30d: "Most liked (30 days)",
   newest: "Newest",
 };
+
+/** Like counts the viewer changed locally (server replies), over the possibly cached list. */
+export type LikeCounts = Record<string, { likes: number; likes30d: number }>;
+
+/** Entries with the viewer's fresher like counts applied. */
+export function withLikeCounts<T extends { id: string; likes?: number; likes30d?: number }>(entries: readonly T[], counts: LikeCounts): T[] {
+  return entries.map((e) => (counts[e.id] ? { ...e, ...counts[e.id] } : e));
+}
 
 /** The result as the viewer sees it: scaled to their yield stats when asked and known. */
 export function viewerResult(data: GameData, cell: RunResult, s: Pick<ViewSettings, "viewerStats" | "useMyStats">): { result: RunResult; scaled: boolean } {
@@ -346,6 +356,10 @@ export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
       return out.sort(byKey((r) => (r.profitPerDay === null ? null : r.effortAvg), false));
     case "forgiving":
       return out.sort(byKey((r) => r.slack, true));
+    case "liked":
+      return out.sort(byKey((r) => r.entry.likes ?? 0, true));
+    case "liked30d":
+      return out.sort(byKey((r) => r.entry.likes30d ?? 0, true));
     case "newest":
       return out.sort(byKey((r) => {
         const t = toMillis(r.entry.createdAt);
