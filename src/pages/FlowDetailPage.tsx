@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Activity, ArrowLeft, BarChart3, Clock, Code2, Coins, Eye, EyeOff, FileText, FlaskConical, Flag, Layers, Link2, Pencil, Save, ShieldCheck, Sprout, Trash2, X } from "lucide-react";
-import { AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
+import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { EffortBreakdown, FlowWalkthrough, FrequencyChart, ItemBreakdown, ReportDialog, SeedTable, SourceBreakdown, StatTile, StatusBox } from "../components/flows/FlowDetailSections";
 import { useFlowShape } from "../components/flows/flowsDisplay";
 import { FlowMarkdown } from "../components/flows/FlowMarkdown";
@@ -10,7 +10,7 @@ import { formatCoins, formatRate, nameOf } from "../components/simulator/format"
 import { buttonClass, inputClass } from "../components/simulator/styles";
 import { InfoHint, Panel, useToast } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
-import { useFlowLikes } from "../hooks/useFlowLikes";
+import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
 import { valueResult } from "../leaderboard/pricing";
@@ -201,6 +201,13 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const liked = likes.isLiked(detail.id, detail.liked ?? false);
   const likeCount = likes.counts[detail.id]?.likes ?? detail.likes ?? 0;
   const likes30d = likes.counts[detail.id]?.likes30d ?? detail.likes30d ?? 0;
+  useLikeReplay(
+    useCallback(
+      (_id: string, ok: boolean, error?: string) =>
+        toast(ok ? { title: "Logged in and liked", variant: "success" } : { title: "Logged in, but the like wasn't saved", description: error, variant: "warning" }),
+      [toast]
+    )
+  );
   const toggleLike = () => {
     likes.toggle(detail.id, !liked).catch((e: unknown) => toast({ title: "Could not save your like", description: e instanceof Error ? e.message : String(e), variant: "error" }));
   };
@@ -226,9 +233,12 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
 
   return (
     <div className="space-y-4 py-2 sm:py-4">
-      <Link to="/flows" className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-200">
-        <ArrowLeft className="h-3.5 w-3.5" /> Flow rankings
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link to="/flows" className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-200">
+          <ArrowLeft className="h-3.5 w-3.5" /> Flow rankings
+        </Link>
+        <AccountControl />
+      </div>
 
       {/* Hero: the first layout, the title and the headline number. */}
       <section className="relative overflow-hidden rounded-xl border border-slate-600/30 bg-slate-800/40">

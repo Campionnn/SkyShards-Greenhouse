@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { DiscordIcon } from "../components/ui";
 import { buttonClass } from "../components/simulator/styles";
+import { takePendingLike } from "../hooks/useFlowLikes";
 import { parseAuthHash, setToken, startLogin } from "../services/authService";
 
 /**
@@ -19,6 +20,11 @@ export const AuthCallbackPage: React.FC = () => {
     setToken(result.token);
     navigate(result.returnPath, { replace: true });
   }, [result, navigate]);
+
+  useEffect(() => {
+    // A like clicked before this failed login isn't replayed by a later one.
+    if (result?.kind === "error") takePendingLike();
+  }, [result]);
 
   useEffect(() => {
     // Never leave a token (or an error code) in the address bar or history.
@@ -40,13 +46,13 @@ export const AuthCallbackPage: React.FC = () => {
         </div>
         <p className="text-slate-300">{result?.kind === "error" ? result.message : "This page finishes a Discord login. Start one from the leaderboard or the simulator."}</p>
         <div className="flex flex-wrap gap-2">
-          {result?.kind === "error" && result.code !== "account_too_new" && (
-            <button type="button" className={buttonClass.primary} onClick={() => startLogin("/flows")}>
+          {result?.kind === "error" && !["account_too_new", "banned", "name_blocked"].includes(result.code) && (
+            <button type="button" className={buttonClass.primary} onClick={() => startLogin(result.returnPath)}>
               <DiscordIcon className="w-3.5 h-3.5" /> Try again
             </button>
           )}
-          <Link to="/flows" className={buttonClass.neutral}>
-            Go to the leaderboard
+          <Link to={result?.kind === "error" ? result.returnPath : "/flows"} className={buttonClass.neutral}>
+            {result?.kind === "error" && result.returnPath !== "/flows" ? "Go back" : "Go to the leaderboard"}
           </Link>
         </div>
       </div>

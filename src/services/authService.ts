@@ -38,20 +38,23 @@ export function loginUrl(returnPath: string, origin: string | null = typeof wind
   return `${REMOTE_API_BASE}/auth/discord/login?${params}`;
 }
 
+/** The API's `auth_error` codes (SkyShards-API leaderboard/auth.py discord_callback). */
 export const AUTH_ERROR_TEXT: Record<string, string> = {
-  account_too_new: "Your Discord account must be at least 30 days old to submit flows.",
-  denied: "Discord login was cancelled.",
-  failed: "Discord login failed. Please try again.",
+  account_too_new: "Your Discord account must be at least 30 days old to submit or like flows.",
+  cancelled: "Discord login was cancelled.",
+  discord_error: "Discord login failed. Please try again.",
+  invalid_state: "The login link expired. Please try again.",
+  name_blocked: "Your Discord name contains a word that isn't allowed on the leaderboard.",
   banned: "This account is banned from the leaderboard.",
 };
 
-export type AuthHash = { kind: "token"; token: string; returnPath: string } | { kind: "error"; code: string; message: string } | null;
+export type AuthHash = { kind: "token"; token: string; returnPath: string } | { kind: "error"; code: string; message: string; returnPath: string } | null;
 
-/** Read `#token=…&return=…` or `#auth_error=…` from the callback URL's fragment. */
+/** Read `#token=…&return=…` or `#auth_error=…&return=…` from the callback URL's fragment. */
 export function parseAuthHash(hash: string): AuthHash {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const error = params.get("auth_error");
-  if (error) return { kind: "error", code: error, message: AUTH_ERROR_TEXT[error] ?? `Login failed (${error}).` };
+  if (error) return { kind: "error", code: error, message: AUTH_ERROR_TEXT[error] ?? `Login failed (${error}).`, returnPath: safeReturnPath(params.get("return")) };
   const token = params.get("token");
   if (token) return { kind: "token", token, returnPath: safeReturnPath(params.get("return")) };
   return null;

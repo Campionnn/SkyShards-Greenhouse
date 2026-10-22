@@ -1,14 +1,15 @@
 import React, { useMemo, useState } from "react";
-import { ChevronDown, Clock, Coins, Copy, Gauge, Heart, RefreshCw, RotateCcw, Sprout, Zap } from "lucide-react";
+import { ChevronDown, Clock, Coins, Copy, Gauge, Heart, LogOut, RefreshCw, RotateCcw, Sprout, Zap } from "lucide-react";
+import { useAuth } from "../../hooks/useAuth";
 import type { FlowViewer, ViewerStats } from "../../hooks/useFlowViewer";
 import type { FlowAuthor } from "../../leaderboard/api";
 import { cycleHours, EVERY, TIER_STATS, TIERS, type TierId } from "../../leaderboard/tiers";
-import { avatarUrl, TIER_LABEL } from "../../leaderboard/view";
+import { avatarUrl, TIER_LABEL, userName } from "../../leaderboard/view";
 import { ARMOR_SET_LABEL, ARMOR_SETS, BAZAAR_PRODUCTS, type ArmorSet } from "../../simulator";
 import { BazaarPriceControls, BazaarPriceDialog } from "../simulator/BazaarPanels";
 import { priceAge } from "../simulator/bazaarFormat";
 import { formatDuration } from "../simulator/format";
-import { InfoHint, SegmentedControl } from "../ui";
+import { DiscordIcon, InfoHint, SegmentedControl } from "../ui";
 
 /**
  * Leaderboard controls shared by /flows and /flows/:id: the board toggle, the "Your stats" panel
@@ -376,6 +377,46 @@ export const AuthorLabel: React.FC<{ author: FlowAuthor; size?: number }> = ({ a
     <span className="min-w-0 break-words">{author.name}</span>
   </span>
 );
+
+/**
+ * The leaderboard login: "Log in with Discord" when logged out, the avatar, name and a log-out
+ * button when logged in. Login returns to the current page.
+ */
+export const AccountControl: React.FC = () => {
+  const { user, loading, banned, login, logout } = useAuth();
+  if (loading) return <span className="inline-flex h-7 w-24 animate-pulse rounded-md bg-slate-700/40" aria-label="Checking your login" />;
+  if (user)
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-600/40 bg-slate-800/60 py-1 pl-1.5 pr-1 text-xs text-slate-200" data-testid="account-control">
+        <Avatar id={user.id} avatar={user.avatar} size={20} />
+        <span className="max-w-[9rem] truncate" title={`Logged in with Discord as ${userName(user)}`}>
+          {userName(user)}
+        </span>
+        <button
+          type="button"
+          onClick={logout}
+          className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-700/60 hover:text-slate-100"
+          title="Log out"
+          aria-label="Log out"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+        </button>
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-2" data-testid="account-control">
+      {banned && <span className="text-[11px] text-red-300">This account is banned from the leaderboard.</span>}
+      <button
+        type="button"
+        onClick={() => login()}
+        title="Log in to like and submit flows. Only your Discord name and avatar are used."
+        className="inline-flex items-center gap-1.5 rounded-md bg-[#5865F2]/80 px-3 py-1.5 text-xs font-medium text-white transition-[background-color,transform] duration-150 hover:bg-[#5865F2] active:scale-[0.97]"
+      >
+        <DiscordIcon className="h-3.5 w-3.5" /> Log in with Discord
+      </button>
+    </span>
+  );
+};
 
 /**
  * Heart + like count. `onToggle` is omitted for a read-only count (own flow); a logged-out click

@@ -30,14 +30,66 @@ const subscribe = (l: () => void) => {
 const snapshot = () => state;
 const SERVER: LikesState = { liked: null, counts: {}, busy: new Set() };
 
+/**
+ * A like clicked while logged out, kept across the Discord redirect (sessionStorage, this tab
+ * only) and applied once the login is back. Older than PENDING_MAX_MS = abandoned.
+ */
+const PENDING_KEY = "skyshards-pending-like";
+const PENDING_MAX_MS = 15 * 60_000;
+
+export function savePendingLike(id: string, now = Date.now()): void {
+  try {
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ id, at: now }));
+  } catch {
+    // storage unavailable: the like is just not replayed
+  }
+}
+
+/** Read and clear the pending like; null when none, malformed or stale. */
+export function takePendingLike(now = Date.now()): string | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(PENDING_KEY);
+    const p = JSON.parse(raw) as { id?: unknown; at?: unknown };
+    if (typeof p.id !== "string" || typeof p.at !== "number" || now - p.at > PENDING_MAX_MS || now < p.at) return null;
+    return p.id;
+  } catch {
+    return null;
+  }
+}
+
+/** Apply the server's reply to the store. */
+function applyLike(id: string, liked: boolean, likes: number, likes30d: number): void {
+  const next = new Set(state.liked ?? []);
+  if (liked) next.add(id);
+  else next.delete(id);
+  emit({ liked: next, counts: { ...state.counts, [id]: { likes, likes30d } } });
+}
+
+/** Listeners for "a like clicked before logging in was saved" (the pages show a toast). */
+const replayListeners = new Set<(id: string, ok: boolean, error?: string) => void>();
+
 function loadFor(userId: string | null): void {
   if (loadedFor === userId) return;
   loadedFor = userId;
   emit({ liked: null });
   if (!userId) return;
   myLikedFlows()
-    .then((ids) => loadedFor === userId && emit({ liked: new Set(ids) }))
-    .catch(() => loadedFor === userId && emit({ liked: new Set() }));
+    .catch(() => [] as string[])
+    .then(async (ids) => {
+      if (loadedFor !== userId) return;
+      emit({ liked: new Set(ids) });
+      const pending = takePendingLike();
+      if (!pending || ids.includes(pending)) return;
+      try {
+        const r = await setFlowLike(pending, true);
+        if (loadedFor === userId) applyLike(pending, r.liked, r.likes, r.likes30d);
+        for (const l of replayListeners) l(pending, true);
+      } catch (e) {
+        for (const l of replayListeners) l(pending, false, e instanceof Error ? e.message : String(e));
+      }
+    });
 }
 
 export interface FlowLikes {
@@ -63,6 +115,8 @@ export function useFlowLikes(): FlowLikes {
   const toggle = useCallback(
     async (id: string, liked: boolean) => {
       if (!userId) {
+        // Liked again right after the login comes back.
+        if (liked) savePendingLike(id);
         login();
         return;
       }
@@ -70,10 +124,7 @@ export function useFlowLikes(): FlowLikes {
       emit({ busy: new Set([...state.busy, id]) });
       try {
         const r = await setFlowLike(id, liked);
-        const next = new Set(state.liked ?? []);
-        if (r.liked) next.add(id);
-        else next.delete(id);
-        emit({ liked: next, counts: { ...state.counts, [id]: { likes: r.likes, likes30d: r.likes30d } } });
+        applyLike(id, r.liked, r.likes, r.likes30d);
       } finally {
         const b = new Set(state.busy);
         b.delete(id);
@@ -83,4 +134,14 @@ export function useFlowLikes(): FlowLikes {
     [userId, login]
   );
   return { isLiked, counts: s.counts, busy, toggle, loggedIn: !!userId };
+}
+
+/** Call `onReplay` when a like clicked before logging in is saved (or fails) after the login. */
+export function useLikeReplay(onReplay: (id: string, ok: boolean, error?: string) => void): void {
+  useEffect(() => {
+    replayListeners.add(onReplay);
+    return () => {
+      replayListeners.delete(onReplay);
+    };
+  }, [onReplay]);
 }

@@ -41,8 +41,22 @@ describe("authService: token handling", () => {
     expect(parseAuthHash("#token=t1&return=https%3A%2F%2Fevil.example")).toMatchObject({ returnPath: "/flows" });
     expect(parseAuthHash("#token=t1&return=%2F%2Fevil.example")).toMatchObject({ returnPath: "/flows" });
     expect(parseAuthHash("#auth_error=account_too_new")).toMatchObject({ kind: "error", code: "account_too_new", message: expect.stringContaining("30 days") });
-    expect(parseAuthHash("#auth_error=weird")).toMatchObject({ kind: "error", message: "Login failed (weird)." });
+    expect(parseAuthHash("#auth_error=weird")).toMatchObject({ kind: "error", message: "Login failed (weird).", returnPath: "/flows" });
+    expect(parseAuthHash("#auth_error=cancelled&return=%2Fflows%2Fabc")).toMatchObject({ message: "Discord login was cancelled.", returnPath: "/flows/abc" });
+    expect(parseAuthHash("#auth_error=name_blocked&return=%2F%2Fevil.example")).toMatchObject({ message: expect.stringContaining("isn't allowed"), returnPath: "/flows" });
     expect(parseAuthHash("")).toBeNull();
+  });
+
+  it("keeps a like clicked before login across the redirect, once and only while fresh", async () => {
+    vi.stubGlobal("sessionStorage", new MemoryStorage());
+    const { savePendingLike, takePendingLike } = await import("../hooks/useFlowLikes");
+    savePendingLike("abc", 1_000);
+    expect(takePendingLike(2_000)).toBe("abc");
+    expect(takePendingLike(2_000)).toBeNull();
+    savePendingLike("abc", 1_000);
+    expect(takePendingLike(1_000 + 16 * 60_000)).toBeNull();
+    sessionStorage.setItem("skyshards-pending-like", "not json");
+    expect(takePendingLike()).toBeNull();
   });
 
   it("builds the login URL with the return path", async () => {

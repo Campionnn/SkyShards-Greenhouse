@@ -1,12 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowUpRight, Code2, FlaskConical, Layers, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
-import { AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
+import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { EffortMeter, LayoutBoxes, MutationChip, Sparkline, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
 import { formatCoins, nameOf } from "../components/simulator/format";
 import { InfoHint, useToast } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
-import { useFlowLikes } from "../hooks/useFlowLikes";
+import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowListResponse } from "../leaderboard/api";
 import { BADGE_TITLE, filterRows, maxProfit, percent, rankEntries, SORT_LABEL, sortRows, splitSolvent, suppliesText, withLikeCounts, type FlowRow, type SortKey } from "../leaderboard/view";
@@ -233,6 +233,13 @@ export const FlowsPage: React.FC = () => {
   const { user } = useAuth();
   const likes = useFlowLikes();
   const { toast } = useToast();
+  useLikeReplay(
+    useCallback(
+      (_id: string, ok: boolean, error?: string) =>
+        toast(ok ? { title: "Logged in and liked", variant: "success" } : { title: "Logged in, but the like wasn't saved", description: error, variant: "warning" }),
+      [toast]
+    )
+  );
   const [plots, setPlots] = useState<PlotsFilter>("any");
   const [sort, setSort] = useState<SortKey>("profit");
   const [query, setQuery] = useState("");
@@ -288,12 +295,15 @@ export const FlowsPage: React.FC = () => {
           </h1>
           <p className="mt-0.5 text-xs text-slate-400">Greenhouse flows from the community, ranked for how you play.</p>
         </div>
-        <Link
-          to="/simulator"
-          className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-[background-color,transform] duration-150 hover:bg-emerald-500/25 active:scale-[0.97]"
-        >
-          <Sprout className="h-3.5 w-3.5" /> Submit a flow <ArrowUpRight className="h-3 w-3 opacity-70" />
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <AccountControl />
+          <Link
+            to="/simulator"
+            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-[background-color,transform] duration-150 hover:bg-emerald-500/25 active:scale-[0.97]"
+          >
+            <Sprout className="h-3.5 w-3.5" /> Submit a flow <ArrowUpRight className="h-3 w-3 opacity-70" />
+          </Link>
+        </div>
       </header>
 
       <StatsPanel viewer={viewer} />
