@@ -80,6 +80,11 @@ export interface ScriptMetric {
 
 /** Everything the scripts keep between cycles. Plain data (lives in SimulationState). */
 export interface ScriptsState {
+  /**
+   * `heap`, `scopes` and `shared` are immutable once written: `ScriptRuntime.save` replaces all
+   * three and nothing may change them in place, because `run` shares them between its input and
+   * output states instead of copying them (sim/clone.ts `cloneState`).
+   */
   heap: HeapEntry[];
   /** Script key -> top-level variable -> [kind, value]. */
   scopes: Record<ScriptKey, Record<string, [ScriptVarKind, EncodedValue]>>;

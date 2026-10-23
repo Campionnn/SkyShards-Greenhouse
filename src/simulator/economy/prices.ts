@@ -37,12 +37,30 @@ export function defaultNpcPrice(data: GameData, item: ItemId): number {
   return 0;
 }
 
+/** `defaultNpcPrice` per game data, memoised by item (game data and the table never change). */
+const npcPriceCache = new WeakMap<GameData, Map<ItemId, number>>();
+
 export function npcPriceSource(data: GameData): PriceSource {
-  return { price: (item) => defaultNpcPrice(data, item) };
+  let cache = npcPriceCache.get(data);
+  if (!cache) {
+    cache = new Map();
+    npcPriceCache.set(data, cache);
+  }
+  const prices = cache;
+  return {
+    price: (item) => {
+      let p = prices.get(item);
+      if (p === undefined) {
+        p = defaultNpcPrice(data, item);
+        prices.set(item, p);
+      }
+      return p;
+    },
+  };
 }
 
 export function valueOf(drops: Record<ItemId, number>, prices: PriceSource): number {
   let total = 0;
-  for (const [item, qty] of Object.entries(drops)) total += qty * prices.price(item);
+  for (const item in drops) total += drops[item] * prices.price(item);
   return total;
 }

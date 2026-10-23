@@ -47,27 +47,33 @@ export function runOne(flow: FlowsFile, input: GuideInput, seed: number, guideEn
   const injected: Record<string, number> = {};
   const lowest: Record<string, number> = {};
   const shortAt: Record<string, number | null> = {};
-  const track = () => {
+  const track = (s: SimulationState) => {
     for (const item of SUPPLY_ITEMS) {
-      const without = (state.inventory[item] ?? 0) - (injected[item] ?? 0);
+      const without = (s.inventory[item] ?? 0) - (injected[item] ?? 0);
       lowest[item] = Math.min(lowest[item] ?? Infinity, without);
       // When the player's own stock would have gone below zero: when they need more on hand.
-      if (without < 0) shortAt[item] ??= state.elapsedSeconds;
-
+      if (without < 0) shortAt[item] ??= s.elapsedSeconds;
     }
   };
-  track();
+  track(state);
   // Seconds elapsed at the start of each cycle, to turn cycle spans into real time.
   const secondsAt: number[] = [0];
-  while (!state.flows.every((f) => f.finished) && state.cycle < maxCycles && !state.scripts?.halt) {
+  const finished = (s: SimulationState) => s.flows.every((f) => f.finished);
+  // Cycle by cycle, as far as the result goes (onCycle sees every cycle), but many cycles per
+  // run() call: a call ends where this loop must step in (a supplies top-up before the next cycle)
+  // or at the end. Identical to calling run(state, 1) per cycle (run is splittable).
+  const onCycle = (s: SimulationState): boolean => {
+    secondsAt[s.cycle] = s.elapsedSeconds;
+    if (s.lastCycleActive) logins += 1;
+    track(s);
+    return finished(s) || s.cycle >= maxCycles || !!s.scripts?.halt || onSupplies(s);
+  };
+  while (!finished(state) && state.cycle < maxCycles && !state.scripts?.halt) {
     if (onSupplies(state)) {
       state = guideEnv.engine.addItems(state, SUPPLY_TOP_UP);
       for (const [item, qty] of Object.entries(SUPPLY_TOP_UP)) injected[item] = (injected[item] ?? 0) + qty;
     }
-    state = guideEnv.engine.run(state, 1, { retainEvents: "none" }).state;
-    secondsAt[state.cycle] = state.elapsedSeconds;
-    if (state.lastCycleActive) logins += 1;
-    track();
+    state = guideEnv.engine.run(state, maxCycles - state.cycle, { retainEvents: "none", onCycle }).state;
   }
   const at = (cycle: number) => secondsAt[Math.min(cycle, secondsAt.length - 1)] ?? state.elapsedSeconds;
 

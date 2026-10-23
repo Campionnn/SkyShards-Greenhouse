@@ -11,11 +11,12 @@ export function farmingFortuneMultiplier(ff: number): number {
 }
 
 /** Additive greenhouse yield sum; improved harvest boost overrides the base one. `effective` is post-immunity. */
-export function greenhouseYieldSum(effective: ReadonlySet<EffectId>, plantYieldUpgrade: number, uniqueCropBonus: number): number {
+export function greenhouseYieldSum(effective: ReadonlySet<EffectId> | readonly EffectId[], plantYieldUpgrade: number, uniqueCropBonus: number): number {
+  const has = Array.isArray(effective) ? (e: EffectId) => effective.includes(e) : (e: EffectId) => (effective as ReadonlySet<EffectId>).has(e);
   let sum = 1 + plantYieldUpgrade + uniqueCropBonus;
-  if (effective.has("improved_harvest_boost")) sum += 0.3;
-  else if (effective.has("harvest_boost")) sum += 0.2;
-  if (effective.has("harvest_loss")) sum -= 0.2;
+  if (has("improved_harvest_boost")) sum += 0.3;
+  else if (has("harvest_boost")) sum += 0.2;
+  if (has("harvest_loss")) sum -= 0.2;
   return sum;
 }
 
@@ -23,8 +24,8 @@ export function greenhouseYieldSum(effective: ReadonlySet<EffectId>, plantYieldU
 export function harvestYield(baseDrops: Record<string, number>, ffMultiplier: number, yieldSum: number, evergreen: number): Record<string, number> {
   const factor = ffMultiplier * yieldSum * (1 + evergreen);
   const out: Record<string, number> = {};
-  for (const [item, qty] of Object.entries(baseDrops)) {
-    const n = Math.floor(qty * factor + 1e-9);
+  for (const item in baseDrops) {
+    const n = Math.floor(baseDrops[item] * factor + 1e-9);
     if (n > 0) out[item] = n;
   }
   return out;

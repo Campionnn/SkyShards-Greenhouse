@@ -42,7 +42,7 @@ import { EVENT_HOOKS, SCRIPT_PHASES } from "./docs";
 import { compile, compileExpression, Interpreter, ScriptError, Scope, type Program } from "./interpreter";
 import { ScriptSyntaxError } from "./lexer";
 import { enabledScripts, forcedEffectsOf } from "./overrides";
-import { Decoder, Encoder, PersistError } from "./persist";
+import { Decoder, Encoder, isPersistable, PersistError } from "./persist";
 import { coreGlobals } from "./stdlib";
 import {
   GLOBAL_SCRIPT,
@@ -202,13 +202,32 @@ export class ScriptRuntime {
     }
   }
 
-  /** Encode every script's top-level variables and `shared` into state.scripts. */
-  save(): void {
+  /**
+   * Encode every script's top-level variables and `shared` into state.scripts.
+   * `full: false` (run() between two cycles of one call, where nothing reads the encoding before
+   * the next save replaces it): only check that everything could be encoded and skip writing it;
+   * if something couldn't, do the real save, which records the error exactly as always.
+   */
+  save(full = true): void {
     const ss = this.scriptsState;
-    const enc = new Encoder({
-      closureOwner: (c) => this.scripts.find((s) => s.scope === c.scope)?.key ?? null,
-      hostRef: (v) => (v instanceof HostObject ? v.ref() : null),
-    });
+    const encodeEnv = {
+      closureOwner: (c: Closure) => this.scripts.find((s) => s.scope === c.scope)?.key ?? null,
+      hostRef: (v: HostObject | HostFn) => (v instanceof HostObject ? v.ref() : null),
+    };
+    if (!full) {
+      const roots: unknown[] = [this.shared];
+      for (const inst of this.scripts) {
+        for (const name of inst.declared.keys()) {
+          const b = inst.scope.vars.get(name);
+          if (b) roots.push(b.value);
+        }
+      }
+      if (isPersistable(roots, encodeEnv)) {
+        this.forgetGoneProtections();
+        return;
+      }
+    }
+    const enc = new Encoder(encodeEnv);
     const keep = (value: unknown, path: string, key: ScriptKey): EncodedValue => {
       try {
         return enc.encode(value, path);
@@ -231,7 +250,12 @@ export class ScriptRuntime {
     ss.heap = enc.heap;
     ss.shared = shared;
     ss.scopes = scopes;
-    // Forget protections of plants that are gone.
+    this.forgetGoneProtections();
+  }
+
+  /** Forget protections of plants that are gone (part of every save). */
+  private forgetGoneProtections(): void {
+    const ss = this.scriptsState;
     for (const [id, sp] of Object.entries(ss.plots)) {
       if (!sp.protected) continue;
       const plot = this.state.plots.find((p) => String(p.id) === id);

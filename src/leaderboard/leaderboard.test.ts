@@ -304,7 +304,9 @@ describe("verify", () => {
     expect(o.error).toMatch(/CPU time/);
     const fine = runOnce(engine, submission, "ironman", "max", 1, 5, 400, { wallMs: 1e9, cpuMs: 1e9 });
     expect(fine.ok).toBe(true);
-    expect(fine.cpuMs).toBeGreaterThan(0);
+    // Measured (the run can finish within one tick of a coarse OS CPU clock, so it may read 0).
+    expect(fine.cpuMs).not.toBeNull();
+    expect(fine.cpuMs).toBeGreaterThanOrEqual(0);
   });
 
   it("fails a run over the script step cap, independent of the machine", () => {

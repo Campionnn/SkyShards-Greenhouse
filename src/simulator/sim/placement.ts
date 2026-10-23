@@ -74,12 +74,29 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
 const matches = (p: PlantState, d: ResolvedLayout["plants"][number]) =>
   p.kindId === d.kindId && p.row === d.row && p.col === d.col && p.size === d.size && p.origin === d.origin;
 
+/** Layout plants by anchor cell (a later plant wins a shared anchor, like `new Map(...)` over the list). Resolved layouts are immutable. */
+const anchorMaps = new WeakMap<ResolvedLayout, Map<number, ResolvedLayout["plants"][number]>>();
+function layoutAnchors(layout: ResolvedLayout): Map<number, ResolvedLayout["plants"][number]> {
+  let m = anchorMaps.get(layout);
+  if (!m) {
+    m = new Map(layout.plants.map((d) => [cellIndex(d.row, d.col), d]));
+    anchorMaps.set(layout, m);
+  }
+  return m;
+}
+
 /**
  * Hybrid flows (`spawnsFillLayoutInputs`): a spawn standing exactly where the
  * layout places the same mutation serves as that input, at any stage.
  */
 export function layoutInputAt(p: PlantState, layout: ResolvedLayout, config: SimConfig): boolean {
   if (!config.spawnsFillLayoutInputs || p.origin !== "spawned" || p.isDeadPlant) return false;
+  const anchors = layoutAnchors(layout);
+  const anchored = anchors.get(cellIndex(p.row, p.col));
+  if (anchored && anchored.kindId === p.kindId && anchored.size === p.size) return true;
+  // With one layout plant per anchor (resolved layouts never overlap) the anchor lookup is the
+  // whole answer; otherwise an earlier plant on the same anchor could still match.
+  if (anchors.size === layout.plants.length) return false;
   return layout.plants.some((d) => d.kindId === p.kindId && d.row === p.row && d.col === p.col && d.size === p.size);
 }
 
@@ -97,7 +114,7 @@ export function applyStepLayout(
   mode: "setup" | "step" = "step"
 ): void {
   const keepIdentical = ctx.config.keepIdenticalOnStepChange && !fullClear;
-  const desiredAt = new Map(layout.plants.map((d) => [cellIndex(d.row, d.col), d]));
+  const desiredAt = layoutAnchors(layout);
   const desiredCells = new Set(layout.plants.flatMap((d) => footprint(d.row, d.col, d.size)));
 
   for (const p of [...plot.plants]) {
@@ -193,7 +210,7 @@ export function replacePlacedBeforeDecay(
  */
 export function maintainLayout(plot: PlotState, fullLayout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch, onlyForEmptyTargets = false): void {
   let layout = fullLayout;
-  const desiredAt = new Map(fullLayout.plants.map((d) => [cellIndex(d.row, d.col), d]));
+  const desiredAt = layoutAnchors(fullLayout);
   // Plants a script protected (`plant.protect()`) are left alone; no scripts, none.
   const kept = (p: PlantState) => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
   for (const p of [...plot.plants]) {

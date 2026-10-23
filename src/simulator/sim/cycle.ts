@@ -3,20 +3,28 @@ import { countStepEvent } from "../flow/runner";
 import { npcPriceSource } from "../economy/prices";
 import { cyclesUntilNextActive } from "../growth/activity";
 import type { ScriptRuntime } from "../script/runtime";
+import type { Policies } from "../flow/types";
 import type { CycleCtx, Env } from "./context";
-import type { PlotId, ScenarioPlot, SimulationState, TickEvent, TimedEvent } from "./state";
+import type { PlotId, ScenarioPlot, SimulationState, TickEvent, TickEventKind, TimedEvent } from "./state";
 
-/** Build the context for one cycle over the run's working state. */
+/**
+ * Build the context for one cycle over the run's working state. Events go to `sink`; with
+ * `sink: null` they are only counted by kind into `counts` (run() with `retainEvents: "none"`),
+ * which skips building an event object per emit.
+ */
 export function makeCycleCtx(
   env: Env,
   state: SimulationState,
   opts: { cycle: number; active: boolean; cycleSeconds: number; firesAt: number; uniqueCropCount: number },
-  sink: TimedEvent[],
-  scripts: ScriptRuntime | null = null
+  sink: TimedEvent[] | null,
+  scripts: ScriptRuntime | null = null,
+  counts?: Partial<Record<TickEventKind, number>>
 ): CycleCtx {
   const { settings } = state.scenario;
   const defs = new Map<PlotId, ScenarioPlot>(state.scenario.plots.map((p) => [p.id, p]));
-  const runnerOf = (id: PlotId) => state.flows.find((r) => r.plotId === id);
+  // state.flows is fixed for a cycle (runners are mutated in place, never replaced).
+  const runners = new Map(state.flows.map((r) => [r.plotId, r]));
+  const runnerOf = (id: PlotId) => runners.get(id);
   const flowOf = (id: PlotId) => {
     const def = defs.get(id);
     const runner = runnerOf(id);
@@ -29,6 +37,10 @@ export function makeCycleCtx(
   };
   // Script overrides (state.scripts.plots): absent without scripts.
   const scriptPlot = (id: PlotId) => state.scripts?.plots[String(id)];
+  // Merged policies, memoised per plot on the identity of the four layers: a step change, a script
+  // setPolicy (which replaces its overrides object) or anything else that swaps a layer recomputes.
+  // Callers only read the result (phases, and fromData copies it for scripts).
+  const policyCache = new Map<PlotId, { layers: readonly unknown[]; merged: Policies }>();
 
   const ctx: CycleCtx = {
     env,
@@ -43,14 +55,20 @@ export function makeCycleCtx(
     uniqueCropCount: opts.uniqueCropCount,
     scripts,
     emit(plotId: PlotId, event: TickEvent) {
-      sink.push({ ...event, cycle: opts.cycle, plotId });
+      if (sink) sink.push({ ...event, cycle: opts.cycle, plotId });
+      else if (counts) counts[event.kind] = (counts[event.kind] ?? 0) + 1;
       const runner = runnerOf(plotId);
       if (runner) countStepEvent(runner, event);
       scripts?.onEvent(plotId, event);
     },
     policiesFor(plotId) {
       const { def } = flowOf(plotId);
-      return mergePolicies(settings.policies, def.policies, stepOf(plotId).policies, scriptPlot(plotId)?.policies);
+      const layers = [settings.policies, def.policies, stepOf(plotId).policies, scriptPlot(plotId)?.policies] as const;
+      const hit = policyCache.get(plotId);
+      if (hit && hit.layers.every((l, i) => l === layers[i])) return hit.merged;
+      const merged = mergePolicies(...layers);
+      policyCache.set(plotId, { layers, merged });
+      return merged;
     },
     layoutFor(plotId) {
       return env.resolveLayout(scriptPlot(plotId)?.layout ?? stepOf(plotId).layout);

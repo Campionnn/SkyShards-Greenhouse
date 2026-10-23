@@ -111,14 +111,22 @@ export function own<T>(rec: Readonly<Record<string, T>> | undefined | null, key:
   return rec && Object.hasOwn(rec, key) ? rec[key] : undefined;
 }
 
+/**
+ * The prototype of every script object: empty, frozen, and itself without a prototype, so a script
+ * object still inherits nothing ("constructor", "toString"... are absent). Objects made with
+ * `Object.create(null)` start in V8's slow dictionary mode; inheriting from this object instead
+ * keeps them fast. Script objects are only ever read through own-property checks.
+ */
+const SCRIPT_OBJECT_PROTO: object = Object.freeze(Object.create(null) as object);
+
 export function newObject(): PlainObject {
-  return Object.create(null) as PlainObject;
+  return Object.create(SCRIPT_OBJECT_PROTO) as PlainObject;
 }
 
-/** A null-prototype copy of a host-made record, so scripts can read and change it like their own objects. */
+/** A script-object copy of a host-made record, so scripts can read and change it like their own objects. */
 export function plain(src: Record<string, unknown>): PlainObject {
   const o = newObject();
-  for (const [k, v] of Object.entries(src)) o[k] = v;
+  for (const k in src) setOwn(o, k, src[k]);
   return o;
 }
 

@@ -1,8 +1,10 @@
+import { carryEffects } from "../effects/adapter";
 import { endStepOrHold } from "../flow/runner";
 import { isActive } from "../growth/activity";
 import { cycleSeconds, effectiveUniqueCrops } from "../growth/clock";
 import { forcedEffectsOf } from "../script/overrides";
 import { ScriptRuntime } from "../script/runtime";
+import { cloneState } from "./clone";
 import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
 import { closeSession, effort, effortOf } from "./effort";
@@ -38,7 +40,8 @@ const now = () => globalThis.performance?.now() ?? 0;
  * every run until the scenario changes.
  */
 export function run(env: Env, input: SimulationState, ticks: number, opts: RunOptions = {}): BatchResult {
-  const state: SimulationState = structuredClone(input);
+  // Plain-data deep copy (sim/clone.ts): same result as structuredClone, several times faster.
+  const state: SimulationState = cloneState(input);
   const retain = opts.retainEvents ?? "all";
   const { settings } = state.scenario;
   const order: PlotId[] = settings.config.plotOrder.filter((id) => state.plots.some((p) => p.id === id));
@@ -59,6 +62,11 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
   if (state.scripts?.halt?.kind === "error") {
     return { state, events, eventCounts, cyclesRun, truncated: total > 0, summary: state.summary };
   }
+  /** Each plot's scratch from the previous cycle of this call (effects carried over, see carryEffects). */
+  const lastScratch = new Map<PlotId, TickScratch>();
+  const mayStopEarly = !!scripts || !!opts.signal || !!opts.onCycle;
+  /** Script variables changed since they were last encoded into state (see step 6). */
+  let unsaved = false;
 
   for (let i = 0; i < total; i++) {
     if (opts.signal?.aborted) {
@@ -76,13 +84,21 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     // playerActions === false: never online.
     const active = settings.playerActions !== false && isActive(settings.activity, cycle, firesAt, settings.playerStats.startTimeOfDay);
 
-    const cycleEvents: TimedEvent[] = [];
-    const ctx = makeCycleCtx(env, state, { cycle, active, cycleSeconds: seconds, firesAt, uniqueCropCount }, cycleEvents, scripts);
+    // Events are only built where they can be kept: every cycle for "all"; for "summary" the cycle
+    // that may turn out to be the call's last (every cycle when scripts could halt or a signal abort
+    // the call, else just the final one); otherwise they are only counted.
+    const cycleEvents: TimedEvent[] | null = retain === "all" || (retain === "summary" && (i === total - 1 || mayStopEarly)) ? [] : null;
+    const ctx = makeCycleCtx(env, state, { cycle, active, cycleSeconds: seconds, firesAt, uniqueCropCount }, cycleEvents, scripts, eventCounts);
 
     const plots: { plot: PlotState; scratch: TickScratch }[] = [];
     for (const id of order) {
       const plot = state.plots.find((p) => p.id === id);
-      if (plot) plots.push({ plot, scratch: newScratch(forcedEffectsOf(state)) });
+      if (!plot) continue;
+      const scratch = newScratch(forcedEffectsOf(state));
+      // The effect simulation is a pure function of the plot; reuse last cycle's while it still matches.
+      carryEffects(lastScratch.get(id), scratch);
+      lastScratch.set(id, scratch);
+      plots.push({ plot, scratch });
     }
     scripts?.setCycle(ctx, new Map(plots.map(({ plot, scratch }) => [plot.id, scratch])));
 
@@ -120,7 +136,12 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     }
     if (scripts) {
       scripts.callHook("onCycleEnd");
-      scripts.save();
+      // Nothing reads the encoded variables before the next save replaces them, so between cycles
+      // only check they can be kept (an unkeepable value still stops the run on this cycle); the
+      // full encoding is written on the call's last cycle (or after the loop if it stops early).
+      const last = i === total - 1;
+      scripts.save(last);
+      unsaved = !last;
     }
 
     // 7. Clock.
@@ -133,9 +154,11 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     finalizeSummary(state.summary, state.cycle, state.elapsedSeconds);
     cyclesRun += 1;
 
-    for (const e of cycleEvents) eventCounts[e.kind] = (eventCounts[e.kind] ?? 0) + 1;
-    if (retain === "all") events.push(...cycleEvents);
-    else if (retain === "summary") events = cycleEvents;
+    if (cycleEvents) {
+      for (const e of cycleEvents) eventCounts[e.kind] = (eventCounts[e.kind] ?? 0) + 1;
+      if (retain === "all") for (const e of cycleEvents) events.push(e);
+      else events = cycleEvents;
+    }
 
     if (opts.onProgress) {
       const t = now();
@@ -145,13 +168,16 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
       }
     }
 
+    const stop = opts.onCycle?.(state) === true;
+
     // A script error or pause() stops the run after the cycle it happened in.
     const halt = state.scripts?.halt;
-    if (halt && !(halt.kind === "pause" && opts.ignorePauses)) {
+    if (stop || (halt && !(halt.kind === "pause" && opts.ignorePauses))) {
       truncated = i < total - 1;
       break;
     }
   }
 
+  if (scripts && unsaved) scripts.save();
   return { state, events, eventCounts, cyclesRun, truncated, summary: state.summary };
 }

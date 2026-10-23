@@ -452,6 +452,13 @@ export interface RunOptions {
   signal?: AbortSignal;
   /** Don't stop at a script's pause() (replays). Script errors always stop. */
   ignorePauses?: boolean;
+  /**
+   * Called after every completed cycle with the run's working state, to read it (never change it;
+   * the scripts' encoded variables may not be written yet). Returning true ends the call after
+   * that cycle (`truncated` if cycles were left). Lets a caller that looks at every cycle run many
+   * per call instead of one: run(s, n) equals n calls of run(s, 1).
+   */
+  onCycle?: (state: SimulationState) => boolean | void;
 }
 
 export interface BatchResult {

@@ -1,5 +1,5 @@
 import type { MutationDef } from "../data/types";
-import { cellKey, footprint, footprintFits, GRID_SIZE, ringCells } from "../grid/cells";
+import { cellIndex, footprint, footprintFits, indexKey, KEY_INDEX, ringCells, TOTAL_CELLS } from "../grid/cells";
 import { isDry, isFootprintFree, type Occupancy } from "../sim/plants";
 import type { PlotState } from "../sim/state";
 
@@ -27,12 +27,41 @@ export function ringCounts(occ: Occupancy, row: number, col: number, size: numbe
   return { counts, ringOccupied };
 }
 
+/** Ground under a cell: the override (Chorus End Stone, fixed ground) if any, else the painted tile. */
+const groundAt = (plot: PlotState, idx: number): string | undefined => {
+  const key = indexKey(idx);
+  return plot.groundOverrides[key] ?? plot.groundTiles[key];
+};
+
+/**
+ * Painted ground per cell of a `groundTiles` record. The engine replaces a plot's `groundTiles`
+ * (at a step change), never changes one in place, so the record's identity is the cache key.
+ */
+const paintedGround = new WeakMap<Record<string, string>, readonly (string | undefined)[]>();
+
+/** `groundAt` for every cell, into `out` (returned): what hot loops read instead of the records. */
+export function groundGrid(plot: PlotState, out: (string | undefined)[]): (string | undefined)[] {
+  let painted = paintedGround.get(plot.groundTiles);
+  if (!painted) {
+    const list: (string | undefined)[] = [];
+    for (let i = 0; i < TOTAL_CELLS; i++) list.push(plot.groundTiles[indexKey(i)]);
+    painted = list;
+    paintedGround.set(plot.groundTiles, painted);
+  }
+  for (let i = 0; i < TOTAL_CELLS; i++) out[i] = painted[i];
+  const overrides = plot.groundOverrides;
+  for (const key in overrides) {
+    const i = KEY_INDEX.get(key);
+    if (i !== undefined && overrides[key] != null) out[i] = overrides[key];
+  }
+  return out;
+}
+
 /** Every footprint cell must have the required ground. Overrides (Chorus) win over painted tiles. */
 export function groundFits(plot: PlotState, row: number, col: number, m: MutationDef): boolean {
-  return footprint(row, col, m.size).every((c) => {
-    const key = cellKey(Math.floor(c / GRID_SIZE), c % GRID_SIZE);
-    return (plot.groundOverrides[key] ?? plot.groundTiles[key]) === m.ground;
-  });
+  if (m.size === 1) return groundAt(plot, cellIndex(row, col)) === m.ground;
+  for (const c of footprint(row, col, m.size)) if (groundAt(plot, c) !== m.ground) return false;
+  return true;
 }
 
 /** Footprint fits on the plot, is empty, and stands on the right ground. */

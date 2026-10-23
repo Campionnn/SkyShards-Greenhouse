@@ -18,7 +18,20 @@ export const RING8: ReadonlyArray<readonly [number, number]> = [
 export const cellIndex = (row: number, col: number): number => row * GRID_SIZE + col;
 export const cellRow = (index: number): number => Math.floor(index / GRID_SIZE);
 export const cellCol = (index: number): number => index % GRID_SIZE;
-export const cellKey = (row: number, col: number): string => `${row},${col}`;
+// Read back as property names, so V8 hands them out internalized: a lookup like
+// `plot.groundTiles[cellKey(r, c)]` then needs no string-table lookup or hashing.
+const ON_GRID_KEYS: readonly string[] = Object.keys(
+  Object.fromEntries(Array.from({ length: GRID_SIZE * GRID_SIZE }, (_, i) => [`${Math.floor(i / GRID_SIZE)},${i % GRID_SIZE}`, i]))
+);
+/** `cellKey` string -> cell index, for on-grid keys. */
+export const KEY_INDEX: ReadonlyMap<string, number> = new Map(ON_GRID_KEYS.map((k, i) => [k, i]));
+
+/** "row,col" (interned for on-grid cells, so hot loops don't build strings). */
+export const cellKey = (row: number, col: number): string =>
+  row >= 0 && col >= 0 && row < GRID_SIZE && col < GRID_SIZE && Number.isInteger(row) && Number.isInteger(col) ? ON_GRID_KEYS[row * GRID_SIZE + col] : `${row},${col}`;
+
+/** `cellKey` of a cell index. */
+export const indexKey = (index: number): string => ON_GRID_KEYS[index];
 
 export const inBounds = (row: number, col: number): boolean =>
   row >= 0 && col >= 0 && row < GRID_SIZE && col < GRID_SIZE;
@@ -29,9 +42,21 @@ export function footprintFits(row: number, col: number, size: number): boolean {
 }
 
 const footprintCache = new Map<number, number[]>();
+/** Footprints and rings of on-grid anchors with sizes 0-3, by `cellIndex * 4 + size` (no hashing). */
+const footprintFast: (number[] | undefined)[] = [];
+const ringFast: (number[] | undefined)[] = [];
+const fastKey = (row: number, col: number, size: number): number =>
+  row >= 0 && col >= 0 && row < GRID_SIZE && col < GRID_SIZE && size >= 0 && size <= 3 && (row | 0) === row && (col | 0) === col && (size | 0) === size
+    ? (row * GRID_SIZE + col) * 4 + size
+    : -1;
 
 /** Cell indices of a footprint anchored at its top-left. Caller checks it fits. */
 export function footprint(row: number, col: number, size: number): number[] {
+  const fast = fastKey(row, col, size);
+  if (fast >= 0) {
+    const hit = footprintFast[fast];
+    if (hit) return hit;
+  }
   const k = cellIndex(row, col) * 4 + size;
   let out = footprintCache.get(k);
   if (!out) {
@@ -41,6 +66,7 @@ export function footprint(row: number, col: number, size: number): number[] {
     }
     footprintCache.set(k, out);
   }
+  if (fast >= 0) footprintFast[fast] = out;
   return out;
 }
 
@@ -48,8 +74,14 @@ const ringCache = new Map<number, number[]>();
 
 /** On-plot cells 8-way adjacent to a footprint. Requirements count cells here, not entities. */
 export function ringCells(row: number, col: number, size: number): number[] {
+  const fast = fastKey(row, col, size);
+  if (fast >= 0) {
+    const hit = ringFast[fast];
+    if (hit) return hit;
+  }
   const k = cellIndex(row, col) * 4 + size;
   let out = ringCache.get(k);
+  if (out && fast >= 0) ringFast[fast] = out;
   if (!out) {
     const own = new Set(footprint(row, col, size));
     const seen = new Set<number>();
@@ -69,6 +101,7 @@ export function ringCells(row: number, col: number, size: number): number[] {
     }
     out.sort((a, b) => a - b);
     ringCache.set(k, out);
+    if (fast >= 0) ringFast[fast] = out;
   }
   return out;
 }

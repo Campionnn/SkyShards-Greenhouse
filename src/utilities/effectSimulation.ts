@@ -103,14 +103,16 @@ export function getEffectDescriptionText(id: string): string {
   return EFFECTS[id]?.description || "";
 }
 
+const EFFECT_ORDER: ReadonlyMap<string, number> = new Map(EFFECT_IDS.map((e, i) => [e, i]));
+const IMPROVED_PAIRS: ReadonlyArray<readonly [string, string]> = Object.entries(IMPROVED_OF);
+
 /** Stable display order: positives (data.json order) then negatives. */
 export function sortEffects(effects: Iterable<string>): string[] {
-  const order = new Map(EFFECT_IDS.map((e, i) => [e, i]));
   return [...new Set(effects)].sort((a, b) => {
     const na = NEGATIVE_EFFECTS.has(a) ? 1 : 0;
     const nb = NEGATIVE_EFFECTS.has(b) ? 1 : 0;
     if (na !== nb) return na - nb;
-    return (order.get(a) ?? 99) - (order.get(b) ?? 99);
+    return (EFFECT_ORDER.get(a) ?? 99) - (EFFECT_ORDER.get(b) ?? 99);
   });
 }
 
@@ -120,10 +122,116 @@ export function effectiveEffects(raw: Iterable<string>): Set<string> {
   if (eff.has("immunity")) {
     for (const n of NEGATIVE_EFFECTS) eff.delete(n);
   }
-  for (const [base, improved] of Object.entries(IMPROVED_OF)) {
+  for (const [base, improved] of IMPROVED_PAIRS) {
     if (eff.has(improved)) eff.delete(base);
   }
   return eff;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Bitmask representation. Every effect any crop or mutation can give gets one bit, assigned in
+// display order (`sortEffects`), so a mask's set bits read low to high are already sorted.
+// The simulation below runs on masks; the Set/array API around it is unchanged.
+
+const ALL_EFFECTS: readonly string[] = sortEffects([
+  ...EFFECT_IDS,
+  ...[...Object.values(CROPS), ...Object.values(MUTATIONS)].flatMap((e) => [...(e.positive_buffs || []), ...(e.negative_buffs || [])]),
+]);
+if (ALL_EFFECTS.length > 31) throw new Error(`effectSimulation: ${ALL_EFFECTS.length} effects do not fit a 31-bit mask`);
+const EFFECT_BIT: ReadonlyMap<string, number> = new Map(ALL_EFFECTS.map((e, i) => [e, 1 << i]));
+const RELAY_BIT = EFFECT_BIT.get(RELAY_EFFECT) ?? 0;
+const IMMUNITY_BIT = EFFECT_BIT.get("immunity") ?? 0;
+const NEGATIVE_MASK = ALL_EFFECTS.reduce((m, e, i) => (NEGATIVE_EFFECTS.has(e) ? m | (1 << i) : m), 0);
+const IMPROVED_BITS: ReadonlyArray<readonly [number, number]> = IMPROVED_PAIRS.filter(([b, i]) => EFFECT_BIT.has(b) && EFFECT_BIT.has(i)).map(
+  ([b, i]) => [EFFECT_BIT.get(b)!, EFFECT_BIT.get(i)!] as const
+);
+
+/** Mask of a list of effect ids, or null if one of them has no bit (not a known effect). */
+export function effectMask(effects: Iterable<string>): number | null {
+  let mask = 0;
+  for (const e of effects) {
+    const bit = EFFECT_BIT.get(e);
+    if (bit === undefined) return null;
+    mask |= bit;
+  }
+  return mask;
+}
+
+const listCache = new Map<number, readonly string[]>();
+/** `listCache` for masks below 2^12 (every set when there are at most 12 effects), by index. */
+const smallLists: (readonly string[] | undefined)[] = [];
+const SMALL_MASKS = 1 << 12;
+/** `effectList` arrays back to their mask, so those lists convert without a lookup per id. */
+const maskOfList = new WeakMap<readonly string[], number>();
+
+/** The effects in a mask, sorted (`sortEffects` order). Shared and frozen: copy before changing it. */
+export function effectList(mask: number): readonly string[] {
+  const small = mask >= 0 && mask < SMALL_MASKS;
+  let out = small ? smallLists[mask] : listCache.get(mask);
+  if (!out) {
+    const list: string[] = [];
+    for (let i = 0; i < ALL_EFFECTS.length; i++) if (mask & (1 << i)) list.push(ALL_EFFECTS[i]);
+    out = Object.freeze(list);
+    if (small) smallLists[mask] = out;
+    else listCache.set(mask, out);
+    maskOfList.set(out, mask);
+  }
+  return out;
+}
+
+/** `effectMask`, without a lookup per id for lists made by `effectList`. */
+function listMask(raw: Iterable<string>): number | null {
+  const known = maskOfList.get(raw as readonly string[]);
+  return known !== undefined ? known : effectMask(raw);
+}
+
+/** `effectiveEffects` on a mask: immunity strips negatives, improved hides base. */
+export function effectiveMask(mask: number): number {
+  let m = mask;
+  if (m & IMMUNITY_BIT) m &= ~NEGATIVE_MASK;
+  for (const [base, improved] of IMPROVED_BITS) if (m & improved) m &= ~base;
+  return m;
+}
+
+const effectiveListCache = new Map<number, readonly string[]>();
+
+/**
+ * `sortEffects(effectiveEffects(raw))`, via masks when every id is a known effect. The result may
+ * be a shared, frozen list (one per distinct set): copy it before changing it.
+ */
+export function effectiveSortedList(raw: Iterable<string>): readonly string[] {
+  const mask = listMask(raw);
+  if (mask === null) return sortEffects(effectiveEffects(raw));
+  let out = effectiveListCache.get(mask);
+  if (!out) {
+    out = effectList(effectiveMask(mask));
+    effectiveListCache.set(mask, out);
+  }
+  return out;
+}
+
+const intrinsicMaskCache = new Map<string, number>();
+
+/** Mask of what a kind gives its neighbours (0 for unknown kinds and inert scenery). */
+function intrinsicMask(id: string): number {
+  let m = intrinsicMaskCache.get(id);
+  if (m === undefined) {
+    const b = getPlantBuffs(id);
+    m = b ? (effectMask(b.intrinsic) ?? 0) : 0;
+    intrinsicMaskCache.set(id, m);
+  }
+  return m;
+}
+
+const specialMaskCache = new Map<string, number | null>();
+/** Mask of a special mutation's required effects; null if one has no bit (can never be held). */
+function specialMask(mutationId: string): number | null {
+  let m = specialMaskCache.get(mutationId);
+  if (m === undefined) {
+    m = effectMask(SPECIAL_EFFECT_SETS[mutationId] ?? []);
+    specialMaskCache.set(mutationId, m);
+  }
+  return m;
 }
 
 export interface SimPlacement {
@@ -134,20 +242,11 @@ export interface SimPlacement {
   isSlot?: boolean;
 }
 
-interface SimPlant {
-  id: string;
-  position: [number, number];
-  cells: string[];
-  buffs: PlantBuffs;
-  has: Set<string>;
-  isSlot: boolean;
-  /** Inert scenery (Fire): holds nothing it is given, so never relays. */
-  isInert: boolean;
-}
-
 export interface EffectSimulation {
   /** Raw held set of the plant covering the cell (whole entity), or what an empty cell received. */
   heldAt(row: number, col: number): Set<string>;
+  /** `heldAt` as a mask (`effectList` turns it into the sorted list). Off the grid: 0. */
+  heldMaskAt(row: number, col: number): number;
   /** heldAt after immunity / improved-override rules. */
   effectiveAt(row: number, col: number): Set<string>;
   /** Union of what the given cells hold / received (a candidate multi-cell spot). */
@@ -158,126 +257,252 @@ export interface EffectSimulation {
   missingSpecialEffects(mutationId: string, position: [number, number], size: number): string[];
 }
 
-const CARDINAL: Array<[number, number]> = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+/**
+ * Plants for `computeEffectMasks`, as parallel arrays (index = plant). Callers may reuse one
+ * instance between calls; only the first `count` entries are read.
+ */
+export interface EffectInput {
+  count: number;
+  /** Kind id (crop or mutation id). */
+  kinds: string[];
+  rows: Int32Array;
+  cols: Int32Array;
+  sizes: Int32Array;
+  /** 1 = a slot or dried-out plant: receives effects but never gives or relays any. */
+  slots: Uint8Array;
+  /**
+   * Optional, per plant: what it gives (`kindEffectInfo(kind).gives`) and whether it is inert
+   * scenery (1). Filled by callers that know them; otherwise looked up from `kinds`.
+   */
+  gives?: Int32Array;
+  inert?: Uint8Array;
+}
 
-export function simulateEffects(
-  placements: SimPlacement[],
-  gridSize = 10
-): EffectSimulation {
-  const cellToPlant = new Map<string, SimPlant>();
-  const received = new Map<string, Set<string>>();
-  const plants: SimPlant[] = [];
+/** An `EffectInput` with room for `capacity` plants (grow with `growEffectInput`). */
+export function newEffectInput(capacity = 128): EffectInput {
+  return {
+    count: 0,
+    kinds: [],
+    rows: new Int32Array(capacity),
+    cols: new Int32Array(capacity),
+    sizes: new Int32Array(capacity),
+    slots: new Uint8Array(capacity),
+    gives: new Int32Array(capacity),
+    inert: new Uint8Array(capacity),
+  };
+}
 
-  for (const p of placements) {
-    const buffs = getPlantBuffs(p.id) || { intrinsic: new Set<string>(), spreads: false };
-    const cells: string[] = [];
-    for (let dr = 0; dr < p.size; dr++) {
-      for (let dc = 0; dc < p.size; dc++) {
-        const r = p.position[0] + dr;
-        const c = p.position[1] + dc;
-        if (r < 0 || c < 0 || r >= gridSize || c >= gridSize) continue;
-        cells.push(`${r},${c}`);
+/** Make sure `input` can hold `n` plants (keeps nothing: call before filling it). */
+export function growEffectInput(input: EffectInput, n: number): void {
+  if (input.rows.length >= n) return;
+  const cap = Math.max(n, input.rows.length * 2);
+  input.rows = new Int32Array(cap);
+  input.cols = new Int32Array(cap);
+  input.sizes = new Int32Array(cap);
+  input.slots = new Uint8Array(cap);
+  if (input.gives) input.gives = new Int32Array(cap);
+  if (input.inert) input.inert = new Uint8Array(cap);
+}
+
+/** What one kind contributes to the effect simulation, looked up once per kind id. */
+export interface KindEffectInfo {
+  /** Mask of what it gives its neighbours (0 for unknown kinds and inert scenery). */
+  gives: number;
+  /** Inert scenery (fire): never holds or relays anything. */
+  inert: boolean;
+}
+const kindInfoCache = new Map<string, KindEffectInfo>();
+export function kindEffectInfo(id: string): KindEffectInfo {
+  let info = kindInfoCache.get(id);
+  if (!info) {
+    info = { gives: intrinsicMask(id), inert: isEffectInert(id) };
+    kindInfoCache.set(id, info);
+  }
+  return info;
+}
+
+// Working buffers of `computeEffectMasks` (synchronous, so one set is enough).
+let cellPlantBuf = new Int32Array(0);
+let receivedBuf = new Int32Array(0);
+let hasBuf = new Int32Array(0);
+let flagBuf = new Uint8Array(0);
+const queueBuf: number[] = [];
+const FLAG_SLOT = 1;
+const FLAG_INERT = 2;
+const FLAG_RELAY = 4;
+const FLAG_QUEUED = 8;
+
+/**
+ * The core of the effect simulation, on bitmasks: per cell of a `gridSize` x `gridSize` grid, the
+ * raw held mask of the plant covering it (the whole entity), or what an empty cell received.
+ * A later plant wins a shared cell. `out` (length >= gridSize^2) is filled and returned.
+ *
+ * Rules (port of solver/effects.py):
+ * 1. Every plant that isn't a slot gives its intrinsic effects to each cardinal neighbour: other
+ *    plants (whole entity, never itself; inert scenery receives nothing) and empty cells.
+ * 2. Plants holding effect_spread (not slots) relay everything else they hold the same way, until
+ *    nothing changes. A worklist: a relay takes another turn only when a neighbouring relay just
+ *    gave it something new. Every give is a union and the set of relays can't change during the
+ *    pass, so any order ends at the same fixed point.
+ * Gives go cell by cell; giving the same plant or cell twice changes nothing (a union).
+ */
+export function computeEffectMasks(input: EffectInput, gridSize: number, out: Int32Array): Int32Array {
+  const n = input.count;
+  const total = gridSize * gridSize;
+  if (cellPlantBuf.length < total) {
+    cellPlantBuf = new Int32Array(total);
+    receivedBuf = new Int32Array(total);
+  }
+  if (hasBuf.length < n) {
+    hasBuf = new Int32Array(Math.max(n, hasBuf.length * 2, 64));
+    flagBuf = new Uint8Array(hasBuf.length);
+  }
+  const cellPlant = cellPlantBuf;
+  const received = receivedBuf;
+  const has = hasBuf;
+  const flags = flagBuf;
+  cellPlant.fill(0, 0, total);
+  received.fill(0, 0, total);
+  const { kinds, rows, cols, sizes, slots } = input;
+  // Per-plant gives / inert: from the caller when given, else looked up by kind.
+  const givesIn = input.gives;
+  const inertIn = input.inert;
+  const known = givesIn !== undefined && inertIn !== undefined;
+
+  for (let i = 0; i < n; i++) {
+    has[i] = 0;
+    const inert = known ? inertIn[i] === 1 : isEffectInert(kinds[i]);
+    flags[i] = (slots[i] ? FLAG_SLOT : 0) | (inert ? FLAG_INERT : 0);
+    const r0 = rows[i];
+    const c0 = cols[i];
+    const size = sizes[i];
+    for (let dr = 0; dr < size; dr++) {
+      const r = r0 + dr;
+      if (r < 0 || r >= gridSize) continue;
+      for (let dc = 0; dc < size; dc++) {
+        const c = c0 + dc;
+        if (c < 0 || c >= gridSize) continue;
+        cellPlant[r * gridSize + c] = i + 1;
       }
     }
-    const plant: SimPlant = {
-      id: p.id,
-      position: p.position,
-      cells,
-      buffs,
-      has: new Set(),
-      isSlot: !!p.isSlot,
-      isInert: isEffectInert(p.id),
-    };
-    plants.push(plant);
-    for (const cell of cells) cellToPlant.set(cell, plant);
   }
 
-  /** Neighbouring tiles of a whole plant: other plants, and empty tile keys. */
-  const neighbours = (plant: SimPlant): { plants: SimPlant[]; empty: string[] } => {
-    const out = { plants: [] as SimPlant[], empty: [] as string[] };
-    for (const cell of plant.cells) {
-      const [r, c] = cell.split(",").map(Number);
-      for (const [dr, dc] of CARDINAL) {
-        const nr = r + dr;
-        const nc = c + dc;
-        if (nr < 0 || nc < 0 || nr >= gridSize || nc >= gridSize) continue;
-        const key = `${nr},${nc}`;
-        const q = cellToPlant.get(key);
-        if (q) {
-          if (q !== plant && !out.plants.includes(q)) out.plants.push(q);
-        } else if (!out.empty.includes(key)) {
-          out.empty.push(key);
+  /** Give `payload` from plant `i` to its cardinal neighbours. `relayTurn`: queue relays that gained something. */
+  const give = (i: number, payload: number, relayTurn: boolean) => {
+    const r0 = rows[i];
+    const c0 = cols[i];
+    const size = sizes[i];
+    for (let dr = 0; dr < size; dr++) {
+      const r = r0 + dr;
+      if (r < 0 || r >= gridSize) continue;
+      for (let dc = 0; dc < size; dc++) {
+        const c = c0 + dc;
+        if (c < 0 || c >= gridSize) continue;
+        for (let d = 0; d < 4; d++) {
+          const nr = d === 0 ? r - 1 : d === 1 ? r + 1 : r;
+          const nc = d === 2 ? c - 1 : d === 3 ? c + 1 : c;
+          if (nr < 0 || nc < 0 || nr >= gridSize || nc >= gridSize) continue;
+          const key = nr * gridSize + nc;
+          const q = cellPlant[key] - 1;
+          if (q < 0) {
+            received[key] |= payload;
+            continue;
+          }
+          if (q === i || flags[q] & FLAG_INERT) continue;
+          const before = has[q];
+          const after = before | payload;
+          if (after === before) continue;
+          has[q] = after;
+          if (relayTurn && (flags[q] & (FLAG_RELAY | FLAG_QUEUED)) === FLAG_RELAY) {
+            flags[q] |= FLAG_QUEUED;
+            queueBuf.push(q);
+          }
         }
       }
-    }
-    return out;
-  };
-
-  const give = (plant: SimPlant, payload: Set<string>) => {
-    const { plants: near, empty } = neighbours(plant);
-    for (const q of near) {
-      if (q.isInert) continue;
-      for (const e of payload) q.has.add(e);
-    }
-    for (const key of empty) {
-      let set = received.get(key);
-      if (!set) {
-        set = new Set();
-        received.set(key, set);
-      }
-      for (const e of payload) set.add(e);
     }
   };
 
   // 1. Direct effects, all at once. Slots give nothing.
-  for (const plant of plants) {
-    if (plant.isSlot || plant.buffs.intrinsic.size === 0) continue;
-    give(plant, plant.buffs.intrinsic);
+  for (let i = 0; i < n; i++) {
+    if (flags[i] & FLAG_SLOT) continue;
+    const mask = known ? givesIn[i] : intrinsicMask(kinds[i]);
+    if (mask) give(i, mask, false);
   }
 
-  // 2. Plants holding effect_spread relay everything else they hold until nothing changes.
-  // Worklist: a relay takes another turn only when a neighbouring relay just gave it something new.
-  // (A Set visits entries added while iterating, so re-queued relays are picked up.)
-  const relays = new Set(plants.filter((p) => !p.isSlot && p.has.has(RELAY_EFFECT)));
-  const queue = new Set(relays);
-  for (const plant of queue) {
-    queue.delete(plant);
-    const near = neighbours(plant).plants.filter((q) => relays.has(q));
-    const sizes = near.map((q) => q.has.size);
-    give(plant, new Set([...plant.has].filter((e) => e !== RELAY_EFFECT)));
-    near.forEach((q, i) => q.has.size !== sizes[i] && queue.add(q));
+  // 2. Relays.
+  queueBuf.length = 0;
+  for (let i = 0; i < n; i++) {
+    if (flags[i] & FLAG_SLOT || !(has[i] & RELAY_BIT)) continue;
+    flags[i] |= FLAG_RELAY | FLAG_QUEUED;
+    queueBuf.push(i);
   }
+  for (let head = 0; head < queueBuf.length; head++) {
+    const i = queueBuf[head];
+    flags[i] &= ~FLAG_QUEUED;
+    give(i, has[i] & ~RELAY_BIT, true);
+  }
+  queueBuf.length = 0;
 
-  const heldAt = (row: number, col: number): Set<string> => {
-    const key = `${row},${col}`;
-    const plant = cellToPlant.get(key);
-    if (plant) return new Set(plant.has);
-    return new Set(received.get(key) || []);
+  for (let key = 0; key < total; key++) {
+    const q = cellPlant[key] - 1;
+    out[key] = q >= 0 ? has[q] : received[key];
+  }
+  return out;
+}
+
+/** The effect simulation of a list of placements (later placements win a shared cell). */
+export function simulateEffects(placements: SimPlacement[], gridSize = 10): EffectSimulation {
+  const input = newEffectInput(Math.max(1, placements.length));
+  delete input.gives; // looked up from the kinds
+  delete input.inert;
+  input.count = placements.length;
+  for (let i = 0; i < placements.length; i++) {
+    const p = placements[i];
+    input.kinds.push(p.id);
+    input.rows[i] = p.position[0];
+    input.cols[i] = p.position[1];
+    input.sizes[i] = p.size;
+    input.slots[i] = p.isSlot ? 1 : 0;
+  }
+  return effectSimulationOf(computeEffectMasks(input, gridSize, new Int32Array(gridSize * gridSize)), gridSize);
+}
+
+/** The `EffectSimulation` view over per-cell held masks (`computeEffectMasks`). Keeps `cellMasks`: don't reuse it. */
+export function effectSimulationOf(cellMasks: Int32Array, gridSize = 10): EffectSimulation {
+  const heldMaskAt = (row: number, col: number): number => {
+    if (row < 0 || col < 0 || row >= gridSize || col >= gridSize) return 0;
+    return cellMasks[row * gridSize + col];
   };
 
-  const heldOver = (position: [number, number], size: number): Set<string> => {
-    const out = new Set<string>();
+  const heldMaskOver = (position: [number, number], size: number): number => {
+    let out = 0;
     for (let dr = 0; dr < size; dr++) {
-      for (let dc = 0; dc < size; dc++) {
-        for (const e of heldAt(position[0] + dr, position[1] + dc)) out.add(e);
-      }
+      for (let dc = 0; dc < size; dc++) out |= heldMaskAt(position[0] + dr, position[1] + dc);
     }
     return out;
   };
 
+  const heldAt = (row: number, col: number): Set<string> => new Set(effectList(heldMaskAt(row, col)));
+
+  const heldOver = (position: [number, number], size: number): Set<string> => new Set(effectList(heldMaskOver(position, size)));
+
   const missingSpecialEffects = (mutationId: string, position: [number, number], size: number): string[] => {
     const required = SPECIAL_EFFECT_SETS[mutationId];
     if (!required) return [];
-    const held = heldOver(position, size);
-    return required.filter((e) => !held.has(e));
+    const held = heldMaskOver(position, size);
+    return required.filter((e) => !(held & (EFFECT_BIT.get(e) ?? 0)));
   };
 
   return {
     heldAt,
+    heldMaskAt,
     effectiveAt: (row, col) => effectiveEffects(heldAt(row, col)),
     heldOver,
-    isSpecialEligible: (mutationId, position, size) =>
-      !!SPECIAL_EFFECT_SETS[mutationId] && missingSpecialEffects(mutationId, position, size).length === 0,
+    isSpecialEligible: (mutationId, position, size) => {
+      if (!SPECIAL_EFFECT_SETS[mutationId]) return false;
+      const req = specialMask(mutationId);
+      return req !== null && (heldMaskOver(position, size) & req) === req;
+    },
     missingSpecialEffects,
   };
 }

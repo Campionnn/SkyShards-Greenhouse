@@ -1,6 +1,7 @@
 import type { PriceSource } from "../economy/prices";
 import type { ItemId } from "../data/types";
 import { ALOE_FRAGMENT, FRAGMENTS_PER_ALOE } from "../growth/aloe";
+import { cloneState } from "./clone";
 import { canBuy, countProduced } from "./market";
 import { bump } from "./summary";
 import type { LedgerRow, PlotId, SimulationState, TickEvent } from "./state";
@@ -148,7 +149,7 @@ export function spend(
  * (a stock already below 0 from mutation debt is never pushed further down).
  */
 export function injectItems(input: SimulationState, items: Record<ItemId, number>): SimulationState {
-  const state = structuredClone(input);
+  const state = cloneState(input);
   for (const [item, raw] of Object.entries(items)) {
     const qty = Math.trunc(raw);
     if (!Number.isFinite(qty) || qty === 0) continue;

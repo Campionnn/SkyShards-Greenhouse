@@ -2,6 +2,7 @@ import { MAX_WATER } from "../config";
 import { ensureEffects } from "../effects/adapter";
 import { endStepOrHold } from "../flow/runner";
 import { aloeHarvestStageFor } from "../growth/aloe";
+import { groundGrid } from "../spawn/eligibility";
 import { respawnChance } from "../spawn/respawn";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import type { CycleCtx, Phase, TickScratch } from "./context";
@@ -12,6 +13,9 @@ import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLY
 import { layoutInputAt, maintainLayout, neededLayout, removeByPlayer, replacePlacedBeforeDecay } from "./placement";
 import type { PlantState, PlotState } from "./state";
 import { isProtected, phaseDisabled } from "../script/overrides";
+
+/** Reused buffer of `fixGround` (synchronous). */
+const groundNow: (string | undefined)[] = [];
 
 /** A script protected this plant from the built-in phases (`plant.protect()`). No scripts: never. */
 const guarded = (plot: PlotState, p: PlantState, ctx: CycleCtx): boolean => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
@@ -190,11 +194,13 @@ function fixGround(plot: PlotState, ctx: CycleCtx): void {
   if (ctx.policiesFor(plot.id).fixGround === false) return;
   const { data } = ctx.env;
   const occ = buildOccupancy(plot);
+  // Ground under every cell (override, else painted tile), kept up to date as cells are fixed.
+  const ground = groundGrid(plot, groundNow);
   for (const slot of plot.slots) {
     const m = data.mutations[slot.mutationId];
     if (!m || !footprintFits(slot.row, slot.col, slot.size)) continue;
     for (const idx of footprint(slot.row, slot.col, slot.size)) {
-      if (occ[idx]) continue;
+      if (occ[idx] || ground[idx] === m.ground) continue;
       const row = Math.floor(idx / GRID_SIZE);
       const col = idx % GRID_SIZE;
       const key = cellKey(row, col);
@@ -202,6 +208,7 @@ function fixGround(plot: PlotState, ctx: CycleCtx): void {
       if (current === m.ground) continue;
       if (plot.groundTiles[key] === m.ground) delete plot.groundOverrides[key];
       else plot.groundOverrides[key] = m.ground;
+      ground[idx] = m.ground;
       effort(ctx.state, "ground");
       ctx.emit(plot.id, { kind: "groundFixed", row, col, from: current, to: m.ground, mutationId: m.id });
     }

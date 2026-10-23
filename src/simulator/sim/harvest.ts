@@ -1,5 +1,5 @@
 import { HARVEST_BOUNTY_ROLLS } from "../config";
-import { effectiveList, ensureEffects } from "../effects/adapter";
+import { effectiveListShared, ensureEffects } from "../effects/adapter";
 import { bountyFromRoll, ETHEREAL_VINE_BY_RARITY } from "../economy/bounty";
 import { valueOf } from "../economy/prices";
 import { armorRareCrops, GREENHOUSE_RARE_CROP_CHANCE, overbloomMultiplier, rollRareCount } from "../economy/rareCrops";
@@ -38,7 +38,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const locked = yieldEffectsLocked(p) ? p.lockedEffects : null;
   // Unlocked: the effects it holds right now, after whatever the player did earlier this session.
   if (!locked) ensureEffects(plot, scratch);
-  const effective = new Set(locked ?? effectiveList(p.held));
+  const effective: readonly string[] = locked ?? effectiveListShared(p.held);
   const sum = greenhouseYieldSum(effective, ctx.stats.plantYieldUpgrade, uniqueCropYieldBonus(ctx.uniqueCropCount));
   const def = isMutation ? data.mutations[p.kindId] : data.crops[p.kindId];
   // Jellybean: data.json bundle is the stage-12 (x1) amount; the stage multiplier scales bundle and item count.
@@ -88,7 +88,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
 
   // Harvest Bounty (bonus_drops): own table, not boosted by Overbloom.
   const rareDrops: Record<string, number> = {};
-  if (effective.has("bonus_drops")) {
+  if (effective.includes("bonus_drops")) {
     for (let i = 0; i < HARVEST_BOUNTY_ROLLS; i++) {
       const item = bountyFromRoll(nextFloat(rng));
       if (item) bump(rareDrops, item);
@@ -113,19 +113,24 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   };
   if (isMutation && p.origin === "spawned") rollRare("ethereal_vine", ETHEREAL_VINE_BY_RARITY[data.mutations[p.kindId].rarity], !!ctx.config.legacyMutationYield);
   for (const item of armorRareCrops(ctx.stats.armorSet, ctx.config.armorRareCropBug)) rollRare(item, GREENHOUSE_RARE_CROP_CHANCE[item], false);
-  for (const [item, qty] of Object.entries(rareDrops)) drops[item] = (drops[item] ?? 0) + qty;
-  for (const [item, qty] of Object.entries(rareCrops)) drops[item] = (drops[item] ?? 0) + qty;
+  for (const item in rareDrops) drops[item] = (drops[item] ?? 0) + rareDrops[item];
+  for (const item in rareCrops) drops[item] = (drops[item] ?? 0) + rareCrops[item];
 
-  for (const [item, qty] of Object.entries(drops)) credit(ctx.state, item, qty);
+  // One pass over the drops: credit them, book them by source (which plant kind earned them, for
+  // "money by source" views; fragments that become All-in Aloe count as aloe items of this plant)
+  // and value them. Same order and sums as separate passes.
+  const source = ((ctx.state.summary.bySource ??= {})[p.kindId] ??= {});
+  let coinValue = 0;
+  for (const item in drops) {
+    const qty = drops[item];
+    credit(ctx.state, item, qty);
+    if (item !== ALOE_FRAGMENT && qty > 0) bump(source, item, qty);
+    coinValue += qty * ctx.prices.price(item);
+  }
   const converted = convertAloeFragments(ctx.state);
   if (converted > 0) ctx.emit(plot.id, { kind: "converted", from: ALOE_FRAGMENT, to: "all_in_aloe", count: converted });
-  // Where the drops came from (which plant kind earned them), for "money by source" views.
-  // Fragments that just became All-in Aloe count as aloe items of this plant.
-  const source = ((ctx.state.summary.bySource ??= {})[p.kindId] ??= {});
-  for (const [item, qty] of Object.entries(drops)) if (item !== ALOE_FRAGMENT && qty > 0) bump(source, item, qty);
   if (converted > 0) bump(source, "all_in_aloe", converted);
 
-  const coinValue = valueOf(drops, ctx.prices);
   const rareValue = valueOf(rareDrops, ctx.prices);
   const rareCropValue = valueOf(rareCrops, ctx.prices);
   const itemValue = mutationItems > 0 ? mutationItems * ctx.prices.price(p.kindId) : 0;
@@ -134,7 +139,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   summary.revenue.rareCrops += rareCropValue;
   summary.revenue.mutationItems += itemValue;
   summary.revenue.crops += coinValue - rareValue - rareCropValue - itemValue;
-  for (const [item, qty] of Object.entries(rareCrops)) bump(summary.rareCrops, item, qty);
+  for (const item in rareCrops) bump(summary.rareCrops, item, rareCrops[item]);
   bump(summary.harvested, p.kindId);
   effortHarvest(ctx.state, p.kindId);
   const pp = perPlot(summary, plot.id);

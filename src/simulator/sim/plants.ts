@@ -2,7 +2,7 @@ import { FLESHTRAP_INITIAL_HUNGER, HALT_WATER, type SimConfig } from "../config"
 import { kindDef } from "../data/load";
 import { ALOE_OPTIMAL_STAGE } from "../growth/aloe";
 import type { GameData, KindDef, KindId, MinimumMutations, MutationDef, Size } from "../data/types";
-import { footprint, TOTAL_CELLS } from "../grid/cells";
+import { footprint, GRID_SIZE, TOTAL_CELLS } from "../grid/cells";
 import type { Origin, PlantState, PlotState, SimulationState } from "./state";
 
 export const DEAD_PLANT = "dead_plant";
@@ -165,13 +165,23 @@ export function convertToDeadPlant(state: SimulationState, data: GameData, plant
   plant.gate = {};
 }
 
+const plantOrder = (a: PlantState, b: PlantState): number => a.row - b.row || a.col - b.col || a.id - b.id;
+
 export function sortPlants(plot: PlotState): void {
-  plot.plants.sort((a, b) => a.row - b.row || a.col - b.col || a.id - b.id);
+  plot.plants.sort(plantOrder);
 }
 
+/** Insert keeping `plot.plants` sorted (row, col, id); the list is always sorted already. */
 export function insertPlant(plot: PlotState, plant: PlantState): void {
-  plot.plants.push(plant);
-  sortPlants(plot);
+  const plants = plot.plants;
+  let lo = 0;
+  let hi = plants.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (plantOrder(plants[mid], plant) <= 0) lo = mid + 1;
+    else hi = mid;
+  }
+  plants.splice(lo, 0, plant);
 }
 
 export function removePlant(plot: PlotState, plant: PlantState): void {
@@ -182,16 +192,22 @@ export function removePlant(plot: PlotState, plant: PlantState): void {
 export type Occupancy = (PlantState | null)[];
 
 /** Cell index -> plant covering it (every footprint cell). */
+/** An empty occupancy, copied by `buildOccupancy` (copying a packed array beats allocating and filling one). */
+const EMPTY_OCCUPANCY: Occupancy = Array.from({ length: TOTAL_CELLS }, () => null);
+
 export function buildOccupancy(plot: PlotState): Occupancy {
-  const occ: Occupancy = new Array(TOTAL_CELLS).fill(null);
+  const occ: Occupancy = EMPTY_OCCUPANCY.slice();
   for (const p of plot.plants) {
-    for (const idx of footprint(p.row, p.col, p.size)) occ[idx] = p;
+    if (p.size === 1) occ[p.row * GRID_SIZE + p.col] = p;
+    else for (const idx of footprint(p.row, p.col, p.size)) occ[idx] = p;
   }
   return occ;
 }
 
 export function isFootprintFree(occ: Occupancy, row: number, col: number, size: number): boolean {
-  return footprint(row, col, size).every((idx) => occ[idx] === null);
+  if (size === 1) return occ[row * GRID_SIZE + col] === null;
+  for (const idx of footprint(row, col, size)) if (occ[idx] !== null) return false;
+  return true;
 }
 
 /**

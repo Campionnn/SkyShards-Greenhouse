@@ -38,6 +38,8 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
     growRoot(plot, src, ctx);
   }
 
+  // Nothing below happens without a growing Chorus Fruit (no RNG either).
+  if (!plot.plants.some((p) => p.kindId === "chorus_fruit" && willGrow(p))) return;
   let occ = buildOccupancy(plot);
   let moved = false;
   // Chorus Overflow (emptyOnly only): all growing chorus jump at once, each to

@@ -19,7 +19,9 @@ describe("worker driver (time-sliced run)", () => {
   it("stop leaves a consistent state that continues like an uninterrupted run", async () => {
     const s = busy();
     let checks = 0;
-    const stopped = await drive(engine, s, 400, { retainEvents: "none", shouldStop: () => ++checks > 3, yieldToEventLoop: noYield });
+    // Stop after the first slice (one cycle): later slices are sized from the measured speed and
+    // can reach the end within a few slices on a fast machine.
+    const stopped = await drive(engine, s, 400, { retainEvents: "none", shouldStop: () => ++checks > 1, yieldToEventLoop: noYield });
     expect(stopped.truncated).toBe(true);
     expect(stopped.cyclesRun).toBeLessThan(400);
     const rest = engine.run(stopped.state, 400 - stopped.cyclesRun);

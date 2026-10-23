@@ -145,30 +145,39 @@ function orderCandidates(list: Candidate[], order: MutationCreditOrder, ctx: Cyc
  * Surplus neighbours are chosen by `config.mutationCreditOrder`. RNG: only "random", and only when
  * candidates cover more than `count` cells. Emits no event.
  */
-export function creditInputs(plot: PlotState, occ: Occupancy, spawned: PlantState, mutation: MutationDef, ctx: CycleCtx): void {
-  // Plots never read each other.
-  if (mutation.requirements.length === 0 || !plot.plants.includes(spawned)) return;
+export function creditInputs(plot: PlotState, occ: Occupancy, spawned: PlantState, mutation: MutationDef, ctx: CycleCtx, inserted = false): void {
+  // Plots never read each other. (`inserted`: the caller just put `spawned` on this plot.)
+  if (mutation.requirements.length === 0 || (!inserted && !plot.plants.includes(spawned))) return;
   const ring = ringCells(spawned.row, spawned.col, spawned.size);
-  const credited = new Set<PlantState>();
+  // A ring has at most 16 cells: candidates and credited plants are short lists (first-seen order,
+  // exactly what the Map / Set this replaces iterated in).
+  const credited: PlantState[] = [];
   for (const req of mutation.requirements) {
-    const byPlant = new Map<PlantState, Candidate>();
+    const list: Candidate[] = [];
+    let total = 0;
     for (const idx of ring) {
       const q = occ[idx];
-      if (!q || q === spawned || q.kindId !== req.crop || credited.has(q) || isDry(q)) continue;
-      const c = byPlant.get(q);
+      if (!q || q === spawned || q.kindId !== req.crop || credited.includes(q) || isDry(q)) continue;
+      total += 1;
+      let c: Candidate | undefined;
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].plant === q) {
+          c = list[i];
+          break;
+        }
+      }
       if (c) c.cells += 1;
-      else byPlant.set(q, { plant: q, cells: 1, first: idx });
+      else list.push({ plant: q, cells: 1, first: idx });
     }
-    let list = [...byPlant.values()];
-    const total = list.reduce((n, c) => n + c.cells, 0);
-    if (total > req.count) list = orderCandidates(list, ctx.config.mutationCreditOrder, ctx);
+    if (list.length === 0) continue;
+    const ordered = total > req.count ? orderCandidates(list, ctx.config.mutationCreditOrder, ctx) : list;
     let covered = 0;
-    for (const c of list) {
+    for (const c of ordered) {
       if (covered >= req.count) break;
       const q = c.plant;
       q.timesMutated = (q.timesMutated ?? 0) + 1;
       if (typeof q.mutatesRemaining === "number") q.mutatesRemaining -= 1;
-      credited.add(q);
+      credited.push(q);
       covered += c.cells;
     }
   }
