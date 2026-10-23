@@ -20,11 +20,24 @@ export function greenhouseYieldSum(effective: ReadonlySet<EffectId> | readonly E
   return sum;
 }
 
-/** Crop-bundle drops of one harvest, floored per item. Evergreen Chip is the only multiplicative term. */
-export function harvestYield(baseDrops: Record<string, number>, ffMultiplier: number, yieldSum: number, evergreen: number): Record<string, number> {
-  const factor = ffMultiplier * yieldSum * (1 + evergreen);
+/**
+ * Crop-bundle drops of one harvest, floored per item. Evergreen Chip is the only multiplicative
+ * term. `ffMultiplier` is one Farming Fortune multiplier for every item, or a per-item lookup
+ * (per-crop fortune, economy/fortune.ts).
+ */
+export function harvestYield(baseDrops: Record<string, number>, ffMultiplier: number | ((item: string) => number), yieldSum: number, evergreen: number): Record<string, number> {
   const out: Record<string, number> = {};
+  if (typeof ffMultiplier === "number") {
+    const factor = ffMultiplier * yieldSum * (1 + evergreen);
+    for (const item in baseDrops) {
+      const n = Math.floor(baseDrops[item] * factor + 1e-9);
+      if (n > 0) out[item] = n;
+    }
+    return out;
+  }
   for (const item in baseDrops) {
+    // Same factor and grouping as the number form, so a constant lookup floors identically.
+    const factor = ffMultiplier(item) * yieldSum * (1 + evergreen);
     const n = Math.floor(baseDrops[item] * factor + 1e-9);
     if (n > 0) out[item] = n;
   }

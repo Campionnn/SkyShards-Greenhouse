@@ -5,7 +5,7 @@ import { DEFAULT_POLICIES } from "../simulator/flow/policies";
 import { defaultSettings } from "../simulator/scenario";
 import { flow, layout, scenario, step } from "../simulator/testHelpers";
 import { handle } from "./cli";
-import { scaleProduced, slack, valueResult, yieldStatsDiffer } from "./pricing";
+import { scaleProduced, scaleResult, slack, valueResult, yieldStatsDiffer } from "./pricing";
 import { cellSolvent, median, medianResult, spreadRatio, type RunResult } from "./result";
 import {
   applyRules,
@@ -223,6 +223,53 @@ describe("pricing", () => {
     expect(none.ethereal_vine).toBeCloseTo(1 / 2.86);
     expect(yieldStatsDiffer(YIELD_STATS)).toBe(false);
     expect(yieldStatsDiffer({ ...YIELD_STATS, evergreenChip: 0 })).toBe(true);
+  });
+
+  it("scales per crop: crop bonus, best tool per source, mutation items untouched", () => {
+    const ff = YIELD_STATS.farmingFortune;
+    const m = (x: number) => 1 + x / 100;
+    const produced = { wheat: 1000, seeds: 50, carrot: 400, chloronite: 2, red_mushroom: 10 };
+    // No per-crop terms: identical to the single-multiplier path.
+    expect(scaleProduced(engine.data, produced, { ...YIELD_STATS, cropFortune: {}, tools: [] })).toEqual(produced);
+    expect(yieldStatsDiffer({ ...YIELD_STATS, cropFortune: {}, tools: [] })).toBe(false);
+    expect(yieldStatsDiffer({ ...YIELD_STATS, cropFortune: { wheat: 0 } })).toBe(false);
+    expect(yieldStatsDiffer({ ...YIELD_STATS, cropFortune: { wheat: 100 } })).toBe(true);
+    expect(yieldStatsDiffer({ ...YIELD_STATS, tools: [{ name: "Hoe", fortune: { wheat: 1 } }] })).toBe(true);
+    expect(yieldStatsDiffer({ ...YIELD_STATS, tools: [{ name: "Hoe", fortune: { wheat: 1 } }] }, { ...YIELD_STATS, tools: [{ name: "Hoe", fortune: { wheat: 1 } }] })).toBe(false);
+
+    // Crop bonus: wheat and seeds (Wheat Fortune) and mushrooms (Mushroom Fortune), nothing else.
+    const bonus = scaleProduced(engine.data, produced, { ...YIELD_STATS, cropFortune: { wheat: 100, mushroom: 50 } });
+    expect(bonus.wheat).toBeCloseTo((1000 * m(ff + 100)) / m(ff));
+    expect(bonus.seeds).toBeCloseTo((50 * m(ff + 100)) / m(ff));
+    expect(bonus.red_mushroom).toBeCloseTo((10 * m(ff + 50)) / m(ff));
+    expect(bonus.carrot).toBeCloseTo(400);
+    expect(bonus.chloronite).toBe(2);
+
+    // Tools without bySource: each item gets the tool with the most fortune on its crop.
+    const tools = [
+      { name: "Wheat Hoe", fortune: { wheat: 300 } },
+      { name: "Carrot Hoe", fortune: { carrot: 200, wheat: 10 } },
+    ];
+    const noSource = scaleProduced(engine.data, produced, { ...YIELD_STATS, tools });
+    expect(noSource.wheat).toBeCloseTo((1000 * m(ff + 300)) / m(ff));
+    expect(noSource.carrot).toBeCloseTo((400 * m(ff + 200)) / m(ff));
+    expect(noSource.chloronite).toBe(2);
+
+    // With bySource: one tool per source bundle. The chloronite harvests drop wheat and carrots;
+    // carrots are worth more there, so that source uses the Carrot Hoe for its wheat too.
+    const bySource = { wheat: { wheat: 800, seeds: 50 }, chloronite: { wheat: 200, carrot: 400, chloronite: 2 } };
+    const priced = { ...YIELD_STATS, tools };
+    const price = (item: string) => (item === "carrot" ? 100 : 1);
+    const per = scaleProduced(engine.data, produced, priced, YIELD_STATS, { bySource, price });
+    const wheatScaled = (800 * m(ff + 300)) / m(ff) + (200 * m(ff + 10)) / m(ff);
+    expect(per.wheat).toBeCloseTo((1000 * wheatScaled) / 1000);
+    expect(per.carrot).toBeCloseTo((400 * m(ff + 200)) / m(ff));
+    expect(per.seeds).toBeCloseTo((50 * m(ff + 300)) / m(ff)); // seeds count as wheat
+    expect(per.chloronite).toBe(2);
+    // scaleResult scales bySource with the same tools, and its totals match produced.
+    const r = scaleResult(engine.data, result(produced, { bySource }), priced, YIELD_STATS, { price });
+    expect(r.bySource!.chloronite.carrot).toBeCloseTo(per.carrot);
+    expect(r.bySource!.wheat.wheat + r.bySource!.chloronite.wheat).toBeCloseTo(per.wheat);
   });
 
   it("slack weights the points just after k the most and ignores points outside (k, 2k]", () => {

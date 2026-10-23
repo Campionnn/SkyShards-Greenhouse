@@ -672,6 +672,13 @@ describe("selectable flow export / import", () => {
     { label: "string policy toggle", section: "policies", extras: { settings: { policies: { replaceDecayed: "false" } } } },
     { label: "string interval count", section: "activity", extras: { settings: { activity: { kind: "everyN", n: "5", offset: 0 } } } },
     { label: "null online window", section: "activity", extras: { settings: { activity: { kind: "windows", windows: [null] } } } },
+    { label: "array crop fortune", section: "playerStats", extras: { settings: { playerStats: { cropFortune: [1, 2] } } } },
+    { label: "string crop fortune value", section: "playerStats", extras: { settings: { playerStats: { cropFortune: { wheat: "85" } } } } },
+    { label: "null crop fortune", section: "playerStats", extras: { settings: { playerStats: { cropFortune: null } } } },
+    { label: "object tools", section: "playerStats", extras: { settings: { playerStats: { tools: { name: "Hoe" } } } } },
+    { label: "nameless tool", section: "playerStats", extras: { settings: { playerStats: { tools: [{ fortune: { wheat: 1 } }] } } } },
+    { label: "tool without fortune", section: "playerStats", extras: { settings: { playerStats: { tools: [{ name: "Hoe" }] } } } },
+    { label: "tool with a string fortune", section: "playerStats", extras: { settings: { playerStats: { tools: [{ name: "Hoe", fortune: { wheat: "1" } }] } } } },
   ])("rejects $label while identifying $section", ({ extras, section }) => {
     const mine = current();
     const before = structuredClone(mine);
@@ -687,6 +694,62 @@ describe("selectable flow export / import", () => {
     };
     expect(() => importFlows(mine, JSON.stringify(v2(extras)))).toThrow(sectionNames[section]);
     expect(mine).toEqual(before);
+  });
+});
+
+describe("per-crop fortune and tools in flow export / import", () => {
+  const withFortune = (): Scenario => {
+    const sc = withPlots(LAYOUT_A_CODE);
+    sc.settings.playerStats = {
+      ...sc.settings.playerStats,
+      cropFortune: { wheat: 85, mushroom: 60 },
+      tools: [
+        { name: "Euclid's Wheat Hoe", fortune: { wheat: 310, carrot: 120 } },
+        { name: "Melon Dicer", fortune: { melon: 250 } },
+      ],
+    };
+    return sc;
+  };
+  const file = (playerStats: unknown) => JSON.stringify({ kind: "skyshards-greenhouse-flows", version: 2, plots: withPlots(LAYOUT_A_CODE).plots, settings: { playerStats } });
+
+  it("round-trips crop fortune and tools with the player settings", () => {
+    const sc = withFortune();
+    const exported = exportFlows(sc, { playerSettings: true });
+    expect(exported.settings?.playerStats?.cropFortune).toEqual(sc.settings.playerStats.cropFortune);
+    expect(exported.settings?.playerStats?.tools).toEqual(sc.settings.playerStats.tools);
+    const next = importFlows(withPlots(LAYOUT_B_CODE), JSON.stringify(exported));
+    expect(next.settings.playerStats.cropFortune).toEqual(sc.settings.playerStats.cropFortune);
+    expect(next.settings.playerStats.tools).toEqual(sc.settings.playerStats.tools);
+  });
+
+  it("imported crop fortune and tools replace the current ones instead of merging", () => {
+    const mine = withFortune();
+    const next = importFlows(mine, file({ cropFortune: { cactus: 5 }, tools: [] }));
+    expect(next.settings.playerStats.cropFortune).toEqual({ cactus: 5 });
+    expect(next.settings.playerStats.tools).toEqual([]);
+    expect(next.settings.playerStats.farmingFortune).toBe(mine.settings.playerStats.farmingFortune);
+  });
+
+  it("drops unknown crop keys and keeps the current fields when the file omits them", () => {
+    const mine = withFortune();
+    const next = importFlows(mine, file({ farmingFortune: 7, cropFortune: { wheat: 1, starfruit: 9 }, tools: [{ name: "Hoe", fortune: { wheat: 2, starfruit: 3 }, extra: true }] }));
+    expect(next.settings.playerStats.cropFortune).toEqual({ wheat: 1 });
+    expect(next.settings.playerStats.tools).toEqual([{ name: "Hoe", fortune: { wheat: 2 } }]);
+    const kept = importFlows(mine, file({ farmingFortune: 7 }));
+    expect(kept.settings.playerStats.cropFortune).toEqual(mine.settings.playerStats.cropFortune);
+    expect(kept.settings.playerStats.tools).toEqual(mine.settings.playerStats.tools);
+  });
+
+  it("old saves and old exported player settings without the fields load without them", () => {
+    const old = withPlots(LAYOUT_A_CODE);
+    expect(old.settings.playerStats).not.toHaveProperty("cropFortune");
+    expect(old.settings.playerStats).not.toHaveProperty("tools");
+    const migrated = migrateScenario(structuredClone(old));
+    expect(migrated.settings.playerStats).not.toHaveProperty("cropFortune");
+    expect(migrated.settings.playerStats).not.toHaveProperty("tools");
+    const imported = importFlows(withPlots(LAYOUT_B_CODE), JSON.stringify(exportFlows(old, { playerSettings: true })));
+    expect(imported.settings.playerStats).not.toHaveProperty("cropFortune");
+    expect(imported.settings.playerStats).not.toHaveProperty("tools");
   });
 });
 

@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from "react";
-import { ChevronDown, Clock, Coins, Copy, Gauge, Heart, LogOut, RefreshCw, RotateCcw, Sprout, Zap } from "lucide-react";
+import { ChevronDown, Clock, Coins, Copy, Gauge, Heart, LogOut, RefreshCw, RotateCcw, Sprout, Wrench, X, Zap } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import type { FlowViewer, ViewerStats } from "../../hooks/useFlowViewer";
 import type { FlowAuthor } from "../../leaderboard/api";
 import { cycleHours, EVERY, TIER_STATS, TIERS, type TierId } from "../../leaderboard/tiers";
 import { avatarUrl, TIER_LABEL, userName } from "../../leaderboard/view";
-import { ARMOR_SET_LABEL, ARMOR_SETS, BAZAAR_PRODUCTS, type ArmorSet } from "../../simulator";
+import { ARMOR_SET_LABEL, ARMOR_SETS, BAZAAR_PRODUCTS, FORTUNE_CROPS, type ArmorSet, type FarmingToolStats, type FortuneCrop } from "../../simulator";
+import { PlayerImportBox } from "../playerImport/PlayerImportBox";
 import { BazaarPriceControls, BazaarPriceDialog } from "../simulator/BazaarPanels";
 import { priceAge } from "../simulator/bazaarFormat";
 import { formatDuration } from "../simulator/format";
@@ -32,10 +33,10 @@ export const BoardToggle: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
 
 // ---- Stat inputs ---------------------------------------------------------------------------------
 
-type NumKey = Exclude<keyof ViewerStats, "armorSet">;
+type NumKey = Exclude<keyof ViewerStats, "armorSet" | "cropFortune" | "tools">;
 
-interface FieldSpec {
-  key: NumKey;
+interface FieldSpec<K extends string = NumKey> {
+  key: K;
   label: string;
   min: number;
   max: number;
@@ -67,7 +68,7 @@ const YIELD_FIELDS: FieldSpec[] = [
 const fieldInput =
   "w-full bg-slate-900/70 border border-slate-600/40 rounded-md px-2 py-1.5 text-sm text-slate-100 tabular-nums focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors";
 
-const NumberStat: React.FC<{ spec: FieldSpec; value: number; onChange: (v: number) => void }> = ({ spec, value, onChange }) => {
+const NumberStat: React.FC<{ spec: FieldSpec<string>; value: number; onChange: (v: number) => void }> = ({ spec, value, onChange }) => {
   const [text, setText] = useState<string | null>(null);
   const commit = (raw: string) => {
     const n = Number(raw);
@@ -246,16 +247,113 @@ const BazaarPricing: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
   );
 };
 
+const CROP_LABEL: Record<FortuneCrop, string> = {
+  wheat: "Wheat",
+  carrot: "Carrot",
+  potato: "Potato",
+  pumpkin: "Pumpkin",
+  melon: "Melon",
+  sugar_cane: "Sugar Cane",
+  cactus: "Cactus",
+  cocoa_beans: "Cocoa Beans",
+  nether_wart: "Nether Wart",
+  mushroom: "Mushroom",
+  sunflower: "Sunflower",
+  moonflower: "Moonflower",
+  wild_rose: "Wild Rose",
+};
+
+const cropBonusCount = (s: ViewerStats) => FORTUNE_CROPS.filter((c) => (s.cropFortune[c] ?? 0) !== 0).length;
+
+/** A tool's highest per-crop fortunes, "Wheat 310 · Carrot 120 · +3". */
+function toolText(t: FarmingToolStats): string {
+  const rows = FORTUNE_CROPS.map((c) => [c, t.fortune[c] ?? 0] as const)
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+  if (!rows.length) return "no crop fortune";
+  const shown = rows.slice(0, 2).map(([c, v]) => `${CROP_LABEL[c]} ${Math.round(v)}`);
+  return rows.length > 2 ? `${shown.join(" · ")} · +${rows.length - 2}` : shown.join(" · ");
+}
+
+/** Crop-specific fortune (collapsible, 13 inputs) and the imported tools, under Farming Fortune. */
+const PerCropFortune: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
+  const s = viewer.stats;
+  const count = cropBonusCount(s);
+  const [open, setOpen] = useState(false);
+  const setCrop = (c: FortuneCrop) => (v: number) => viewer.setStats({ cropFortune: { ...s.cropFortune, [c]: v } });
+  return (
+    <div className="col-span-2 space-y-2">
+      <div className="rounded-md border border-slate-700/50 bg-slate-900/30">
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs text-slate-400 transition-colors hover:text-slate-200">
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
+          Per-crop fortune
+          <span className="ml-auto text-[11px] text-slate-500">{count ? `${count} crop${count === 1 ? "" : "s"} set` : "none"}</span>
+        </button>
+        {open && (
+          <div className="space-y-2 border-t border-slate-700/50 px-2.5 py-2">
+            <p className="text-[11px] text-slate-500">Crop bonus on top of Farming Fortune (Wheat Fortune, Mushroom Fortune, ...). Leave tools out; they are added per harvest below.</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {FORTUNE_CROPS.map((c) => (
+                <NumberStat key={c} spec={{ key: c, label: CROP_LABEL[c], min: 0, max: 2000, step: 5 }} value={s.cropFortune[c] ?? 0} onChange={setCrop(c)} />
+              ))}
+            </div>
+            {count > 0 && (
+              <button type="button" onClick={() => viewer.setStats({ cropFortune: {} })} className="text-[11px] text-slate-400 transition-colors hover:text-slate-200">
+                Clear crop bonuses
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {s.tools.length > 0 && (
+        <div className="rounded-md border border-slate-700/50 bg-slate-900/30 px-2.5 py-1.5" data-testid="viewer-tools">
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
+            <Wrench className="h-3.5 w-3.5 text-emerald-400" />
+            Tools
+            <InfoHint title="Tools" width={260}>
+              Each crop bundle is scaled with the tool that earns the most on it, as the simulator does per harvest.
+            </InfoHint>
+            <button type="button" onClick={() => viewer.setStats({ tools: [] })} className="ml-auto text-[11px] text-slate-500 transition-colors hover:text-slate-200">
+              Clear
+            </button>
+          </div>
+          <ul className="space-y-0.5">
+            {s.tools.map((t, i) => (
+              <li key={`${t.name}-${i}`} className="flex items-center gap-2 text-xs">
+                <span className="min-w-0 truncate text-slate-200" title={t.name}>
+                  {t.name}
+                </span>
+                <span className="ml-auto whitespace-nowrap text-[11px] tabular-nums text-slate-500">{toolText(t)}</span>
+                <button
+                  type="button"
+                  onClick={() => viewer.setStats({ tools: s.tools.filter((_, j) => j !== i) })}
+                  className="rounded p-0.5 text-slate-500 transition-colors hover:bg-slate-700/60 hover:text-slate-200"
+                  title={`Remove ${t.name}`}
+                  aria-label={`Remove ${t.name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /** "Your stats": granular inputs, the tier they snap to, and the board. */
 export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }> = ({ viewer, defaultOpen = true }) => {
   // Phones start collapsed so the rankings are on screen; the summary line says what is set.
   const [open, setOpen] = useState(() => defaultOpen && (typeof window === "undefined" || window.matchMedia?.("(min-width: 1024px)").matches !== false));
   const s = viewer.stats;
   const set = (key: NumKey) => (v: number) => viewer.setStats({ [key]: v } as Partial<ViewerStats>);
-  const summary = useMemo(
-    () => `${TIER_LABEL[viewer.tier]} tier · every ${viewer.every} cycle${viewer.every === 1 ? "" : "s"} · ${Math.round(s.farmingFortune)} FF · ${ARMOR_SET_LABEL[s.armorSet]}`,
-    [viewer.tier, viewer.every, s.farmingFortune, s.armorSet]
-  );
+  const crops = cropBonusCount(s);
+  const toolCount = s.tools.length;
+  const summary = useMemo(() => {
+    const perCrop = [crops ? `+${crops} crop bonus${crops === 1 ? "" : "es"}` : "", toolCount ? `${toolCount} tool${toolCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
+    return `${TIER_LABEL[viewer.tier]} tier · every ${viewer.every} cycle${viewer.every === 1 ? "" : "s"} · ${Math.round(s.farmingFortune)} FF${perCrop ? ` (${perCrop})` : ""} · ${ARMOR_SET_LABEL[s.armorSet]}`;
+  }, [viewer.tier, viewer.every, s.farmingFortune, s.armorSet, crops, toolCount]);
   return (
     <section className="rounded-lg border border-slate-600/30 bg-slate-800/40" data-testid="stats-panel">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
@@ -296,18 +394,23 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
             <TierMeter viewer={viewer} />
           </div>
           <div className="space-y-5 min-w-0">
+            <PlayerImportBox compact onImport={(patch) => viewer.setStats(patch)} />
             <Group
               icon={<Sprout />}
               title="Yield"
               hint={
                 <InfoHint title="Yield stats" width={300}>
-                  The server runs every flow at the wiki maxima. These scale the stored crop and rare-crop counts to you; mutation items aren't affected. An
-                  estimate, marked as such.
+                  The server runs every flow at the wiki maxima, with no crop bonus or tools. These scale the stored crop and rare-crop counts to you; mutation
+                  items aren't affected. An estimate, marked as such.
                 </InfoHint>
               }
             >
               <div className="grid grid-cols-2 gap-3">
-                {YIELD_FIELDS.map((f) => (
+                {YIELD_FIELDS.slice(0, 2).map((f) => (
+                  <NumberStat key={f.key} spec={f} value={s[f.key]} onChange={set(f.key)} />
+                ))}
+                <PerCropFortune viewer={viewer} />
+                {YIELD_FIELDS.slice(2).map((f) => (
                   <NumberStat key={f.key} spec={f} value={s[f.key]} onChange={set(f.key)} />
                 ))}
                 <label className="col-span-2 block">

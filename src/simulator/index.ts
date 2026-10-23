@@ -67,6 +67,7 @@ export {
 export { marketCategory, unitPrices, valueMarket, valueRun, type MarketCategory, type MarketValuation, type PriceSourceKind, type UnitPrices } from "./economy/valuation";
 export { reservePlan, type ReservePlan } from "./sim/market";
 export { jellybeanMultiplier } from "./economy/yield";
+export { bestTool, FORTUNE_CROPS, fortuneCropOf, hasPerCropFortune, itemFortune, type CropFortune, type FarmingToolStats, type FortuneCrop, type FortuneStats } from "./economy/fortune";
 export {
   ARMOR_SET_DROPS,
   ARMOR_SET_LABEL,

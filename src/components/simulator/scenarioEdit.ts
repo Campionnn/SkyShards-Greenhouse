@@ -6,12 +6,16 @@ import {
   DEFAULT_PLAYER_STATS,
   DEFAULT_POLICIES,
   defaultGameData,
+  FORTUNE_CROPS,
   kindDef,
   mergePolicies,
   MAX_PLOTS,
   migrateScenario,
   withForcedEffects,
+  type CropFortune,
+  type FarmingToolStats,
   type FlowStep,
+  type PlayerStats,
   type LayoutSpec,
   type Scenario,
   type ScenarioPlot,
@@ -259,6 +263,33 @@ function readSettingsSection<T extends object>(value: unknown, defaults: T, sect
   return Object.fromEntries(entries) as Partial<T>;
 }
 
+/** A per-crop fortune record: finite numbers on known crops; unknown (future) crop keys are dropped. */
+function readCropFortune(value: unknown, section: string): CropFortune {
+  if (!isRecord(value)) throw new Error(`${section} must be an object.`);
+  const out: CropFortune = {};
+  for (const crop of FORTUNE_CROPS) {
+    if (!(crop in value)) continue;
+    const v = value[crop];
+    if (!finiteNumber(v)) throw new Error(`${section}: invalid ${crop}.`);
+    out[crop] = v;
+  }
+  return out;
+}
+
+/** Per-crop fortune and farming tools: optional `PlayerStats` fields that `DEFAULT_PLAYER_STATS` doesn't list. */
+function readFortuneFields(raw: Record<string, unknown>): Pick<PlayerStats, "cropFortune" | "tools"> {
+  const out: Pick<PlayerStats, "cropFortune" | "tools"> = {};
+  if ("cropFortune" in raw) out.cropFortune = readCropFortune(raw.cropFortune, "Player settings: cropFortune");
+  if ("tools" in raw) {
+    if (!Array.isArray(raw.tools)) throw new Error("Player settings: tools must be a list.");
+    out.tools = raw.tools.map((tool, i): FarmingToolStats => {
+      if (!isRecord(tool) || typeof tool.name !== "string") throw new Error(`Player settings: tools[${i}] needs a name.`);
+      return { name: tool.name, fortune: readCropFortune(tool.fortune, `Player settings: tools[${i}].fortune`) };
+    });
+  }
+  return out;
+}
+
 function importOptionalSections(sc: Scenario, file: Record<string, unknown>): Scenario {
   let next = sc;
   if ("startingInventory" in file) {
@@ -274,7 +305,7 @@ function importOptionalSections(sc: Scenario, file: Record<string, unknown>): Sc
   if ("playerStats" in raw) {
     const stats = readSettingsSection(raw.playerStats, DEFAULT_PLAYER_STATS, "Player settings");
     if (stats.armorSet !== undefined && !ARMOR_SETS.includes(stats.armorSet)) throw new Error("Player settings: invalid armorSet.");
-    settings.playerStats = { ...settings.playerStats, ...stats };
+    settings.playerStats = { ...settings.playerStats, ...stats, ...readFortuneFields(raw.playerStats as Record<string, unknown>) };
   }
   if ("activity" in raw) {
     const activity = sectionRecord(raw.activity, "Online schedule");

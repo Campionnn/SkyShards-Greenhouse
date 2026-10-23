@@ -1,6 +1,7 @@
 import type { SimConfig } from "../config";
 import type { EffectId, ItemId, KindId, MutationId, Size } from "../data/types";
 import type { Flow, Policies, PolicyOverrides } from "../flow/types";
+import type { CropFortune, FarmingToolStats } from "../economy/fortune";
 import type { ArmorSet } from "../economy/rareCrops";
 import type { RngState } from "../rng";
 import type { ScriptDef, ScriptsState } from "../script/types";
@@ -163,7 +164,19 @@ export interface PlayerStats {
   speedAttribute: number;
   /** Greenhouse Growth Speed Upgrade tier 0..9 (tier 9 jumps to +50%). */
   growthUpgradeTier: number;
+  /** General Farming Fortune: applies to every base-crop drop (not to mutation items). */
   farmingFortune: number;
+  /**
+   * Crop-specific fortune per crop (economy/fortune.ts), added on top of `farmingFortune` for that
+   * crop's drops. Optional; missing (old saves) or a missing crop = 0.
+   */
+  cropFortune?: CropFortune;
+  /**
+   * Farming tools. Each harvest uses the one that makes its crop bundle worth the most coins (ties:
+   * first listed); its per-crop fortune adds to that harvest's drops. Optional; missing/empty = no
+   * tool term (enter tool fortune in `cropFortune` instead).
+   */
+  tools?: FarmingToolStats[];
   /** Plant Yield Greenhouse Upgrade, 0 .. 0.20. */
   plantYieldUpgrade: number;
   /** Evergreen Chip, 0 .. 0.60; multiplies all crop-bundle drops (base crops and mutations). */

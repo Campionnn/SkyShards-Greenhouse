@@ -51,7 +51,7 @@ const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/&#x27;/g, 
 describe("leaderboard pages render", () => {
   it("/flows renders the stats panel, sorting, filters and a loading state", () => {
     const html = text(wrap(<FlowsPage />));
-    for (const s of ["Flow rankings", "Your stats", "How often you log in", "Crop Growth", "Farming Fortune", "Farming armor", "Scored at", "Profit per effort", "Most forgiving", "Search title or author", "Loading the rankings..."]) {
+    for (const s of ["Flow rankings", "Your stats", "How often you log in", "Crop Growth", "Farming Fortune", "Per-crop fortune", "Import from Hypixel", "Farming armor", "Scored at", "Profit per effort", "Most forgiving", "Search title or author", "Loading the rankings..."]) {
       expect(html).toContain(s);
     }
     expect(html).toContain('data-testid="tier-meter"');

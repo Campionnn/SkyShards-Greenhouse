@@ -27,7 +27,9 @@ import {
   type SimConfig,
 } from "../../simulator";
 import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui";
+import { PlayerImportBox } from "../playerImport/PlayerImportBox";
 import { CheckboxField, IdSelect, NumberField, NumberInput, SelectField } from "./controls";
+import { CropFortuneEditor } from "./CropFortuneEditor";
 import { formatDuration, nameOf } from "./format";
 import { PolicyDefaultsEditor } from "./FlowEditor";
 import { FlowExportDialog } from "./FlowExportDialog";
@@ -277,7 +279,8 @@ export const ScenarioPanel: React.FC<{
 
 type SettingsTab = "player" | "schedule" | "policies" | "advanced";
 
-type NumericStat = { [K in keyof PlayerStats]: PlayerStats[K] extends number ? K : never }[keyof PlayerStats];
+/** PlayerStats keys holding a number (`-?` so the optional object fields map to never, not undefined). */
+type NumericStat = { [K in keyof PlayerStats]-?: PlayerStats[K] extends number ? K : never }[keyof PlayerStats];
 
 const STAT_FIELDS: { key: NumericStat; label: string; min: number; max: number; step?: number; hint?: string }[] = [
   { key: "cropGrowth", label: "Crop Growth", min: 0, max: 210 },
@@ -450,6 +453,7 @@ export const SettingsPanel: React.FC<{
 
       {tab === "player" && (
         <div className="space-y-1.5">
+          <PlayerImportBox compact className="mb-2" onImport={(patch) => setSettings({ playerStats: { ...settings.playerStats, ...patch } })} />
           {STAT_FIELDS.map((f) => (
             <NumberField
               key={f.key}
@@ -476,6 +480,7 @@ export const SettingsPanel: React.FC<{
             options={ARMOR_SETS.map((s) => ({ value: s, label: ARMOR_SET_LABEL[s] }))}
             onChange={(armorSet) => setSettings({ playerStats: { ...settings.playerStats, armorSet } })}
           />
+          <CropFortuneEditor stats={settings.playerStats} onChange={(playerStats) => setSettings({ playerStats })} />
         </div>
       )}
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { defaultViewerStats, readViewerStats, yieldOf } from "../hooks/useFlowViewer";
 import { defaultGameData } from "../simulator/data/default";
 import { DEFAULT_BAZAAR_PRICING } from "../simulator/economy/bazaar";
 import type { FlowCell, FlowListEntry } from "./api";
@@ -127,6 +128,33 @@ describe("leaderboard view: badges and labels", () => {
     expect(on.scaled).toBe(true);
     expect(same.scaled).toBe(false);
     expect(on.profitPerDay!).toBeLessThan(off.profitPerDay!);
+  });
+
+  it("per-crop fortune and tools scale the row, its money by source and mark it scaled", () => {
+    const cell = result({ wheat: 1000, carrot: 500, chloronite: 5 }, { bySource: { wheat: { wheat: 1000 }, carrot: { carrot: 500 }, chloronite: { chloronite: 5 } } });
+    const base = flowRow(data, entry("a", "A", cell), { ...ironman, viewerStats: { ...YIELD_STATS }, useMyStats: true });
+    const bonus = flowRow(data, entry("a", "A", cell), { ...ironman, viewerStats: { ...YIELD_STATS, cropFortune: { wheat: 200 } }, useMyStats: true });
+    const tool = flowRow(data, entry("a", "A", cell), { ...ironman, viewerStats: { ...YIELD_STATS, tools: [{ name: "Carrot Hoe", fortune: { carrot: 300 } }] }, useMyStats: true });
+    expect(base.scaled).toBe(false);
+    expect(bonus.scaled).toBe(true);
+    expect(tool.scaled).toBe(true);
+    const ff = YIELD_STATS.farmingFortune;
+    const wheatGain = 1000 * data.crops.wheat.sellPrice * ((1 + (ff + 200) / 100) / (1 + ff / 100) - 1);
+    expect(bonus.profitPerDay! - base.profitPerDay!).toBeCloseTo(wheatGain, 3);
+    expect(tool.profitPerDay!).toBeGreaterThan(base.profitPerDay!);
+    expect(bonus.mutationsPerDay).toBe(5);
+  });
+
+  it("readViewerStats keeps valid crop fortune and tools and drops the rest", () => {
+    const s = readViewerStats({ cropFortune: { wheat: 50, nope: 3, carrot: "x", melon: 0, cactus: 12 }, tools: [{ name: " Hoe ", fortune: { wheat: 100, bad: 1 } }, { fortune: {} }, "x"] });
+    expect(s.cropFortune).toEqual({ wheat: 50, cactus: 12 });
+    expect(s.tools).toEqual([{ name: "Hoe", fortune: { wheat: 100 } }]);
+    const old = readViewerStats({ farmingFortune: 1200 });
+    expect(old.cropFortune).toEqual({});
+    expect(old.tools).toEqual([]);
+    // No per-crop terms: the server's yield shape, so nothing is marked scaled.
+    expect(yieldOf(defaultViewerStats())).toEqual(YIELD_STATS);
+    expect(yieldOf(s).cropFortune).toEqual({ wheat: 50, cactus: 12 });
   });
 
   it("ironman supplies text from consumed dead plants and fermento", () => {

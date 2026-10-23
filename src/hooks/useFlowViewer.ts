@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ARMOR_SETS, type ArmorSet, type PlayerStats, type Scenario } from "../simulator";
+import { ARMOR_SETS, FORTUNE_CROPS, type ArmorSet, type CropFortune, type FarmingToolStats, type PlayerStats, type Scenario } from "../simulator";
 import type { Board } from "../leaderboard/rules";
 import type { Quotes, YieldStats } from "../leaderboard/pricing";
 import { yieldStatsDiffer } from "../leaderboard/pricing";
@@ -29,6 +29,10 @@ export interface ViewerStats {
   evergreenChip: number;
   overbloom: number;
   armorSet: ArmorSet;
+  /** Crop-specific fortune on top of `farmingFortune` (missing crop = 0). Empty = none. */
+  cropFortune: CropFortune;
+  /** Farming tools; the best one per harvest adds its fortune on that crop. Empty = none. */
+  tools: FarmingToolStats[];
   /** Online every N cycles (any number; the list uses the nearest grid frequency). */
   every: number;
 }
@@ -47,11 +51,38 @@ export function defaultViewerStats(): ViewerStats {
     evergreenChip: s.evergreenChip,
     overbloom: s.overbloom,
     armorSet: s.armorSet,
+    cropFortune: {},
+    tools: [],
     every: 1,
   };
 }
 
 const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+
+/** Crop fortune: FORTUNE_CROPS keys with finite non-zero numbers only. */
+export function readCropFortune(raw: unknown): CropFortune {
+  const out: CropFortune = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const r = raw as Record<string, unknown>;
+  for (const c of FORTUNE_CROPS) {
+    const v = r[c];
+    if (typeof v === "number" && Number.isFinite(v) && v !== 0) out[c] = v;
+  }
+  return out;
+}
+
+/** Tools: `{name: string, fortune: CropFortune}` entries; anything else is dropped. */
+export function readTools(raw: unknown): FarmingToolStats[] {
+  if (!Array.isArray(raw)) return [];
+  const out: FarmingToolStats[] = [];
+  for (const t of raw) {
+    if (!t || typeof t !== "object") continue;
+    const { name, fortune } = t as { name?: unknown; fortune?: unknown };
+    if (typeof name !== "string" || !name.trim()) continue;
+    out.push({ name: name.trim().slice(0, 80), fortune: readCropFortune(fortune) });
+  }
+  return out;
+}
 
 /** Merge anything stat-shaped over the defaults, keeping only valid values. */
 export function readViewerStats(raw: unknown): ViewerStats {
@@ -70,6 +101,8 @@ export function readViewerStats(raw: unknown): ViewerStats {
     evergreenChip: num(r.evergreenChip, d.evergreenChip),
     overbloom: num(r.overbloom, d.overbloom),
     armorSet: ARMOR_SETS.includes(r.armorSet as ArmorSet) ? (r.armorSet as ArmorSet) : d.armorSet,
+    cropFortune: readCropFortune(r.cropFortune),
+    tools: readTools(r.tools),
     every: Math.max(1, Math.round(num(r.every, d.every))),
   };
 }
@@ -94,12 +127,15 @@ function loadViewerStats(): { stats: ViewerStats; source: "saved" | "simulator" 
   return sim ? { stats: sim, source: "simulator" } : { stats: defaultViewerStats(), source: "default" };
 }
 
+/** The yield part of the viewer's stats; the per-crop terms only when set, so none = the server's shape. */
 export const yieldOf = (s: ViewerStats): YieldStats => ({
   farmingFortune: s.farmingFortune,
   plantYieldUpgrade: s.plantYieldUpgrade,
   evergreenChip: s.evergreenChip,
   overbloom: s.overbloom,
   armorSet: s.armorSet,
+  ...(Object.keys(s.cropFortune).length ? { cropFortune: s.cropFortune } : {}),
+  ...(s.tools.length ? { tools: s.tools } : {}),
 });
 
 export interface FlowViewer {

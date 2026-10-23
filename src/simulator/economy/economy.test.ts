@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { defaultGameData } from "../data/default";
 import { cycleSeconds, effectiveUniqueCrops, uniqueCropYieldBonus, upgradeTerm } from "../growth/clock";
+import { bestTool, FORTUNE_CROPS, fortuneCropOf, hasPerCropFortune, itemFortune, type FarmingToolStats } from "./fortune";
 import { npcPriceSource, valueOf } from "./prices";
 import { chloroniteDropCount, farmingFortuneMultiplier, greenhouseYieldSum, harvestYield, jellybeanMultiplier, yieldScaledCount } from "./yield";
 
@@ -73,6 +74,74 @@ describe("yield", () => {
   it("yieldScaledCount at yield 1 (no bonuses) reproduces the base count exactly, no roll", () => {
     expect(yieldScaledCount(1, 1)).toEqual({ whole: 1, frac: 0 });
     expect(yieldScaledCount(4, 1)).toEqual({ whole: 4, frac: 0 });
+  });
+});
+
+describe("per-crop fortune", () => {
+  const hoe: FarmingToolStats = { name: "Wheat Hoe", fortune: { wheat: 300, carrot: 50 } };
+  const dicer: FarmingToolStats = { name: "Melon Dicer", fortune: { melon: 250, pumpkin: 250 } };
+  const price = (item: string) => prices.price(item);
+
+  it("fortuneCropOf maps mushrooms and seeds, keeps base crops, and returns null for anything else", () => {
+    expect(fortuneCropOf("red_mushroom")).toBe("mushroom");
+    expect(fortuneCropOf("brown_mushroom")).toBe("mushroom");
+    expect(fortuneCropOf("seeds")).toBe("wheat");
+    for (const c of FORTUNE_CROPS) if (c !== "mushroom") expect(fortuneCropOf(c)).toBe(c);
+    expect(fortuneCropOf("mushroom")).toBe("mushroom");
+    expect(fortuneCropOf("chloronite")).toBeNull();
+    expect(fortuneCropOf("all_in_aloe_fragment")).toBeNull();
+  });
+
+  it("itemFortune = general + crop-specific + the tool's fortune on that crop; non-crops get the general value", () => {
+    const stats = { farmingFortune: 1000, cropFortune: { wheat: 85, mushroom: 60 }, tools: [hoe] };
+    expect(itemFortune(stats, "wheat", hoe)).toBe(1385);
+    expect(itemFortune(stats, "seeds", hoe)).toBe(1385);
+    expect(itemFortune(stats, "wheat", null)).toBe(1085);
+    expect(itemFortune(stats, "red_mushroom", hoe)).toBe(1060);
+    expect(itemFortune(stats, "carrot", hoe)).toBe(1050);
+    expect(itemFortune(stats, "melon", dicer)).toBe(1250);
+    expect(itemFortune(stats, "chloronite", hoe)).toBe(1000);
+    expect(itemFortune({ farmingFortune: 500 }, "wheat", null)).toBe(500);
+  });
+
+  it("bestTool picks the tool adding the most coins for the bundle; ties keep the first; no tools -> null", () => {
+    expect(bestTool({ wheat: 10 }, [dicer, hoe], price)).toBe(hoe);
+    expect(bestTool({ pumpkin: 34, melon: 160 }, [hoe, dicer], price)).toBe(dicer);
+    // No crop the tools cover: all-zero gain keeps the first listed tool.
+    expect(bestTool({ cactus: 10 }, [dicer, hoe], price)).toBe(dicer);
+    const twin = { ...hoe, name: "Twin" };
+    expect(bestTool({ wheat: 10 }, [hoe, twin], price)).toBe(hoe);
+    expect(bestTool({ wheat: 10 }, [], price)).toBeNull();
+    expect(bestTool({ wheat: 10 }, undefined, price)).toBeNull();
+  });
+
+  it("bestTool weighs coins, not drop counts: few valuable drops beat many cheap ones", () => {
+    const cheap: FarmingToolStats = { name: "cheap", fortune: { melon: 100 } }; // melon 2 coins
+    const dear: FarmingToolStats = { name: "dear", fortune: { pumpkin: 100 } }; // pumpkin 10 coins
+    expect(bestTool({ melon: 40, pumpkin: 10 }, [cheap, dear], price)).toBe(dear); // 40*2 = 80 < 10*10 = 100
+  });
+
+  it("hasPerCropFortune: only a non-zero crop value or a tool turns the per-crop path on", () => {
+    expect(hasPerCropFortune({ farmingFortune: 100 })).toBe(false);
+    expect(hasPerCropFortune({ farmingFortune: 100, cropFortune: {} })).toBe(false);
+    expect(hasPerCropFortune({ farmingFortune: 100, cropFortune: { wheat: 0 } })).toBe(false);
+    expect(hasPerCropFortune({ farmingFortune: 100, tools: [] })).toBe(false);
+    expect(hasPerCropFortune({ farmingFortune: 100, cropFortune: { wheat: 5 } })).toBe(true);
+    expect(hasPerCropFortune({ farmingFortune: 100, tools: [{ name: "x", fortune: {} }] })).toBe(true);
+  });
+
+  it("harvestYield with a per-item multiplier scales each item by its own fortune", () => {
+    const stats = { farmingFortune: 100, cropFortune: { pumpkin: 100 } };
+    const ff = (item: string) => farmingFortuneMultiplier(itemFortune(stats, item, null));
+    // pumpkin: 34 x 3 x 1.5 = 153; melon: 160 x 2 x 1.5 = 480.
+    expect(harvestYield({ pumpkin: 34, melon: 160 }, ff, 1.5, 0)).toEqual({ pumpkin: 153, melon: 480 });
+  });
+
+  it("harvestYield: a constant per-item function gives the number form's result on the reference bundle", () => {
+    // Floating-point grouping differs between the two forms, so only pinned values are compared;
+    // the engine keeps the number form whenever no per-crop term is set (sim/fortune.test.ts).
+    const drops = data.mutations.gloomgourd.drops;
+    expect(harvestYield(drops, () => 2.6, 1.86, 0.6)).toEqual(harvestYield(drops, 2.6, 1.86, 0.6));
   });
 });
 

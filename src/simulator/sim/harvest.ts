@@ -3,6 +3,7 @@ import { effectiveListShared, ensureEffects } from "../effects/adapter";
 import { bountyFromRoll, ETHEREAL_VINE_BY_RARITY } from "../economy/bounty";
 import { valueOf } from "../economy/prices";
 import { armorRareCrops, GREENHOUSE_RARE_CROP_CHANCE, overbloomMultiplier, rollRareCount } from "../economy/rareCrops";
+import { bestTool, hasPerCropFortune, itemFortune } from "../economy/fortune";
 import { chloroniteDropCount, farmingFortuneMultiplier, greenhouseYieldSum, harvestYield, jellybeanMultiplier, yieldScaledCount } from "../economy/yield";
 import { chance, nextFloat } from "../rng";
 import { ALOE_FRAGMENT, aloeRow, FRAGMENTS_PER_ALOE } from "../growth/aloe";
@@ -47,7 +48,17 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const aloeMult = p.kindId === "all_in_aloe" && p.origin === "spawned" ? aloeRow(p.stage).multiplier : 1;
   const bundleMult = jellyMult * aloeMult;
   const baseDrops = bundleMult === 1 ? def.drops : scaleDrops(def.drops, bundleMult);
-  const drops = harvestYield(baseDrops, farmingFortuneMultiplier(ctx.stats.farmingFortune), sum, ctx.stats.evergreenChip);
+  // Per-crop fortune (crop-specific stat + the best tool for this bundle) only when set, so a
+  // scenario without it keeps the single-multiplier path byte for byte.
+  const stats = ctx.stats;
+  let ff: number | ((item: string) => number);
+  if (hasPerCropFortune(stats)) {
+    const tool = bestTool(baseDrops, stats.tools, (item) => ctx.prices.price(item));
+    ff = (item) => farmingFortuneMultiplier(itemFortune(stats, item, tool));
+  } else {
+    ff = farmingFortuneMultiplier(stats.farmingFortune);
+  }
+  const drops = harvestYield(baseDrops, ff, sum, stats.evergreenChip);
   // Patch fix: Plant Yield bonuses no longer apply to mutation items or Ethereal Vine.
   // `legacyMutationYield` restores the old behaviour (yield sum scales them too).
   const itemSum = ctx.config.legacyMutationYield ? sum : 1;
