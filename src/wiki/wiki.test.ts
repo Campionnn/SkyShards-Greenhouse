@@ -11,7 +11,10 @@ import {
   wikiPath,
 } from "./slugs";
 import { buildUsedInMap, collectBaseIngredients, collectExpandablePaths, getRecipeSource, isLeaf } from "./recipes";
-import { addToSitemap, buildWikiStaticPages } from "./staticPages";
+import { addToSitemap, buildNotFoundPage, buildRoutePages, buildSitemap, buildWikiStaticPages } from "./staticPages";
+import { HOME_TITLE, SITE_ROUTES, buildRedirects, titleForPath } from "../seo/routes";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 
 const data = greenhouseData as unknown as GreenhouseDataJSON;
 const index = buildWikiIndex(data);
@@ -149,6 +152,67 @@ describe("wiki static pages", () => {
     expect(page.html).toContain("<h2>Requires</h2><ul><li>1x Pumpkin</li><li>1x Melon</li></ul>");
     expect(page.html).toContain('<script type="module" src="/assets/app.js"></script>');
     expect(page.html).toContain('<a href="https://example.com/wiki/soggybud">Soggybud</a>');
+  });
+
+  it("writes a page per app route with its own title and canonical URL", () => {
+    const routePages = buildRoutePages(template, "https://example.com");
+    const designer = routePages.find((p) => p.file === "designer.html")!;
+    expect(routePages.map((p) => p.file)).not.toContain(".html");
+    expect(designer.url).toBe("https://example.com/designer");
+    expect(designer.html.match(/<title>/g)).toHaveLength(1);
+    expect(designer.html).toContain("<title>Greenhouse Layout Designer | SkyShards</title>");
+    expect(designer.html).toContain('<link rel="canonical" href="https://example.com/designer" />');
+    expect(designer.html).toContain('<meta property="og:type" content="website" />');
+    expect(designer.html).toContain('<script type="module" src="/assets/app.js"></script>');
+  });
+
+  it("covers every navigable app route", () => {
+    const routePaths = SITE_ROUTES.map((route) => route.path);
+    for (const path of ["/", "/designer", "/simulator", "/flows", "/guide", "/about", "/contact", "/privacy-policy"]) {
+      expect(routePaths).toContain(path);
+    }
+    // A wiki short link must never shadow a route page.
+    for (const route of SITE_ROUTES.filter((r) => r.path !== "/")) {
+      expect(index.entries.map((entry) => entry.slug), route.path).not.toContain(route.path.slice(1));
+    }
+  });
+
+  it("keeps the home title in step with index.html", () => {
+    const indexHtml = readFileSync(resolve(__dirname, "../../index.html"), "utf-8");
+    const titles = [...indexHtml.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => m[1].replace(/&amp;/g, "&"));
+    expect(titles).toContain(HOME_TITLE);
+    expect(titleForPath("/")).toBe(HOME_TITLE);
+    expect(titleForPath("/flows/abc123")).toBe(titleForPath("/flows"));
+    expect(titleForPath("/simulator/")).toBe(titleForPath("/simulator"));
+  });
+
+  it("makes the 404 page noindex without a canonical URL", () => {
+    const html = buildNotFoundPage(
+      `<head><meta name="robots" content="index, follow" /><meta name="googlebot" content="index, follow" /><link rel="canonical" href="https://example.com/" /></head>`,
+    );
+    expect(html).toContain('<meta name="robots" content="noindex" />');
+    expect(html).not.toContain("canonical");
+    expect(html).not.toContain("googlebot");
+  });
+
+  it("redirects short links and old URLs, and serves flow details with a 200", () => {
+    const lines = buildRedirects(index.entries)
+      .trim()
+      .split("\n")
+      .filter((line) => !line.startsWith("#"));
+    expect(lines).toContain("/gloomgourd /wiki/gloomgourd 301");
+    expect(lines).toContain("/all_in_aloe /wiki/all-in-aloe 301");
+    expect(lines).toContain("/calculator / 301");
+    expect(lines[lines.length - 1]).toBe("/flows/* /flows 200");
+    expect(lines.length).toBeLessThanOrEqual(2000);
+    const sources = lines.map((line) => line.split(" ")[0]);
+    expect(new Set(sources).size).toBe(sources.length);
+  });
+
+  it("builds a valid sitemap", () => {
+    const sitemap = buildSitemap(["https://example.com/", "https://example.com/designer"], "2026-01-01T00:00:00+00:00");
+    expect(sitemap).toContain('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"');
+    expect(sitemap.match(/<loc>/g)).toHaveLength(2);
   });
 
   it("adds missing URLs to the sitemap once", () => {
