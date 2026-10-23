@@ -96,6 +96,18 @@ describe("statsPatchFromImport", () => {
   it("survives a missing stats object", () => {
     expect(statsPatchFromImport(normalizeResponse({}))).toEqual({});
   });
+
+  it("normalises the item counts", () => {
+    const r = normalizeResponse({
+      items: { godseed: 6, dead_plant: 210.9, bad: -1, worse: "x" } as unknown as Record<string, number>,
+      itemSources: { dead_plant: { sacks: 64, inventory: 146, junk: Number.NaN } },
+    });
+    expect(r.items).toEqual({ godseed: 6, dead_plant: 210 });
+    expect(r.itemSources).toEqual({ dead_plant: { sacks: 64, inventory: 146 } });
+    // Inventory API off (null) vs an older server (no key).
+    expect(normalizeResponse({ items: null }).items).toBeNull();
+    expect(normalizeResponse({}).items).toBeUndefined();
+  });
 });
 
 describe("fetchGreenhouseStats", () => {

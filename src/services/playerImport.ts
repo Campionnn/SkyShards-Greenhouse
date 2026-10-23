@@ -36,6 +36,32 @@ export interface GreenhouseStatsResponse {
   stats: Record<string, unknown>;
   breakdown?: ImportBreakdown;
   missing?: string[];
+  /**
+   * Greenhouse items owned (every mutation, Dead Plants, Fermento, Aloe fragments), summed over
+   * sacks, ender chest, backpacks and inventory: item id -> count. Null when the player's
+   * Inventory API is off; missing on an older server.
+   */
+  items?: Record<string, number> | null;
+  /** Where each item was found: item id -> source ("sacks", "enderChest", "backpacks", "inventory") -> count. */
+  itemSources?: Record<string, Record<string, number>>;
+}
+
+const MODE_LABEL: Record<string, string> = { ironman: "Ironman", island: "Stranded", bingo: "Bingo" };
+
+/** "Raspberry" / "Banana (Ironman)". */
+export const profileLabel = (p: ImportProfile): string => `${p.cuteName}${p.gameMode ? ` (${MODE_LABEL[p.gameMode] ?? p.gameMode})` : ""}`;
+
+/** Readable names of the `itemSources` keys. */
+export const ITEM_SOURCE_LABEL: Record<string, string> = { sacks: "sacks", enderChest: "ender chest", backpacks: "backpacks", inventory: "inventory" };
+
+/** Whole, non-negative counts only; anything else is dropped. */
+function cleanCounts(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) out[k] = Math.floor(v);
+  }
+  return out;
 }
 
 export class PlayerImportError extends Error {
@@ -48,6 +74,25 @@ export class PlayerImportError extends Error {
 }
 
 export const USERNAME_RE = /^[A-Za-z0-9_]{1,25}$/;
+
+/** The last username imported, shared by every import box (simulator, leaderboard, Guide). */
+export const USERNAME_KEY = "skyshards-import-username";
+
+export function rememberedUsername(): string {
+  try {
+    return localStorage.getItem(USERNAME_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function rememberUsername(name: string): void {
+  try {
+    localStorage.setItem(USERNAME_KEY, name);
+  } catch {
+    // localStorage unavailable: the name is not remembered.
+  }
+}
 
 export const isValidUsername = (name: string): boolean => USERNAME_RE.test(name.trim());
 
@@ -107,6 +152,11 @@ export function normalizeResponse(data: Partial<GreenhouseStatsResponse>, fallba
     stats: data.stats && typeof data.stats === "object" && !Array.isArray(data.stats) ? (data.stats as Record<string, unknown>) : {},
     breakdown: data.breakdown && typeof data.breakdown === "object" ? data.breakdown : undefined,
     missing: Array.isArray(data.missing) ? data.missing.filter((m): m is string => typeof m === "string") : [],
+    items: data.items === null ? null : data.items && typeof data.items === "object" ? cleanCounts(data.items) : undefined,
+    itemSources:
+      data.itemSources && typeof data.itemSources === "object" && !Array.isArray(data.itemSources)
+        ? Object.fromEntries(Object.entries(data.itemSources).map(([k, v]) => [k, cleanCounts(v)]))
+        : {},
   };
 }
 

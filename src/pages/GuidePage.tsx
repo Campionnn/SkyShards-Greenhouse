@@ -10,7 +10,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Backpack, Compass, FlaskConical, Loader2, PartyPopper, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
+import { Backpack, Compass, Download, FlaskConical, Loader2, PartyPopper, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
 import { InfoHint } from "../components/ui/InfoHint";
 import { SegmentedControl } from "../components/ui/Panel";
 import { LocalStorageManager, type StoredGuideState } from "../utilities/localStorageManager";
@@ -18,6 +18,7 @@ import type { SimulatorScenarioHandoff } from "../utilities/layoutHandoff";
 import {
   STORAGE_VERSION,
   allActed,
+  applyImportedItems,
   buildCatalog,
   buildPlan,
   confirmPlot,
@@ -59,6 +60,7 @@ import { ForecastCancelled, GuidePool } from "../guide/worker/pool";
 import { PlotCard } from "../components/guide/PlotCard";
 import { FarmGallery } from "../components/guide/FarmGallery";
 import { InventoryDialog, type InventoryMode } from "../components/guide/InventoryDialog";
+import { ImportDialog } from "../components/guide/ImportDialog";
 import { ForecastStrip } from "../components/guide/ForecastStrip";
 import { SettingsDialog } from "../components/guide/SettingsDialog";
 import { ItemChip } from "../components/guide/primitives";
@@ -78,7 +80,7 @@ function useDebounced<T>(value: T, ms: number): T {
   return settled;
 }
 
-type Open = { kind: "inventory"; mode: InventoryMode } | { kind: "settings" } | { kind: "farm"; plotId: number } | null;
+type Open = { kind: "inventory"; mode: InventoryMode } | { kind: "import" } | { kind: "settings" } | { kind: "farm"; plotId: number } | null;
 
 interface Loaded {
   flow: FlowsFile;
@@ -336,9 +338,14 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
               farms that cost nothing.
             </p>
           </div>
-          <button type="button" className={buttonClass.primary} onClick={() => setOpen({ kind: "inventory", mode: "set" })}>
-            <Backpack className="h-4 w-4" /> Enter what I own
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
+            <button type="button" className={buttonClass.secondary} onClick={() => setOpen({ kind: "import" })} title="Count what's in your sacks, ender chest and backpacks">
+              <Download className="h-4 w-4" /> Import from Hypixel
+            </button>
+            <button type="button" className={buttonClass.primary} onClick={() => setOpen({ kind: "inventory", mode: "set" })}>
+              <Backpack className="h-4 w-4" /> Enter what I own
+            </button>
+          </div>
         </section>
       ) : (
         <section className="flex flex-col gap-3 rounded-lg border border-slate-600/30 bg-slate-800/40 px-4 py-3 sm:flex-row sm:items-center" aria-label="What you own">
@@ -355,7 +362,15 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
               Rose Dragon legendaries · {tracked} item{tracked === 1 ? "" : "s"} tracked
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
+            <button
+              type="button"
+              className={buttonClass.secondary}
+              onClick={() => setOpen({ kind: "import" })}
+              title="Set your totals from your sacks, ender chest and backpacks"
+            >
+              <Download className="h-3.5 w-3.5" /> Import
+            </button>
             <button
               type="button"
               className={buttonClass.secondary}
@@ -481,6 +496,14 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
           commit((s) => s);
           setOpen(null);
         }}
+      />
+      <ImportDialog
+        open={open?.kind === "import"}
+        inventory={state.inventory}
+        catalog={catalog}
+        data={data}
+        onApply={(changes) => commit((s) => applyImportedItems(s, changes))}
+        onClose={() => setOpen(null)}
       />
       <SettingsDialog
         open={open?.kind === "settings"}

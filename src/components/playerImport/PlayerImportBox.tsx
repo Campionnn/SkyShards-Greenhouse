@@ -5,6 +5,9 @@ import {
   importedFields,
   isValidUsername,
   PlayerImportError,
+  profileLabel,
+  rememberedUsername,
+  rememberUsername,
   statsPatchFromImport,
   type GreenhouseStatsResponse,
   type ImportBreakdown,
@@ -25,27 +28,8 @@ export interface PlayerImportBoxProps {
   className?: string;
 }
 
-const USERNAME_KEY = "skyshards-import-username";
-
-function loadUsername(): string {
-  try {
-    return localStorage.getItem(USERNAME_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function saveUsername(name: string): void {
-  try {
-    localStorage.setItem(USERNAME_KEY, name);
-  } catch {
-    // localStorage unavailable: the name is not remembered.
-  }
-}
-
-const MODE_LABEL: Record<string, string> = { ironman: "Ironman", island: "Stranded", bingo: "Bingo" };
-
-const profileLabel = (p: ImportProfile) => `${p.cuteName}${p.gameMode ? ` (${MODE_LABEL[p.gameMode] ?? p.gameMode})` : ""}`;
+const loadUsername = rememberedUsername;
+const saveUsername = rememberUsername;
 
 const cropLabel = (c: string) => c.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 

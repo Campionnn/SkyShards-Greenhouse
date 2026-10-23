@@ -20,6 +20,7 @@ import {
 import { FarmPicture } from "./FarmPicture";
 import { PlotCard } from "./PlotCard";
 import { ForecastStrip } from "./ForecastStrip";
+import { ImportDialog } from "./ImportDialog";
 import { formatDuration, scheduleText } from "./format";
 
 // Server-render the Guide's panels against real decisions (no browser, no workers).
@@ -140,6 +141,17 @@ describe("ForecastStrip", () => {
   it("streams, fails and stalls honestly", () => {
     expect(strip({ error: "boom" })).toContain("Forecast failed: boom");
     expect(strip({ forecast: { ...forecast, seconds: null, logins: null, completed: 0 } })).toContain("reached Done");
+  });
+});
+
+describe("ImportDialog", () => {
+  it("asks for a username and names where it looks, never shopping words", () => {
+    const html = text(renderToString(<ImportDialog open inventory={state.inventory} catalog={catalog} data={data} onApply={noop} onClose={noop} />));
+    expect(html).toContain("Import from Hypixel");
+    expect(html).toContain("Minecraft username");
+    expect(html).toMatch(/sacks, ender chest, backpacks/);
+    expect(html).not.toMatch(/\b(buy|bought|bazaar|shopping)\b/i);
+    expect(renderToString(<ImportDialog open={false} inventory={state.inventory} catalog={catalog} data={data} onApply={noop} onClose={noop} />)).toBe("");
   });
 });
 
