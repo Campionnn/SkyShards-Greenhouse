@@ -20,6 +20,7 @@ import { closestBlocked, hoveredCellOffset } from "./sanityFormat";
 import { describeEvent, formatCoins, formatCount, nameOf, plantIconOf } from "./format";
 import { BazaarMoneyPanel, BazaarPricePanel } from "./BazaarPanels";
 import { bazaarProfit, priceAge } from "./bazaarFormat";
+import { FrequencyPanel } from "./frequency/FrequencyPanel";
 
 // Server-render every simulator panel against a real simulation, to catch
 // render-time errors (no browser needed).
@@ -340,6 +341,13 @@ describe("simulator panels render", () => {
     expect(renderToString(<PlotMarkLegend />)).toContain("checked target blocked by something else");
     expect(html).toContain("✦");
     expect(html).toContain("harvested (last cycle)");
+  });
+
+  it("the frequency panel waits for Compute before simulating", () => {
+    const text = wrap(<FrequencyPanel scenario={sc} />).replace(/<!-- -->/g, "");
+    expect(text).toContain("Profit by online frequency");
+    expect(text).toContain("Compute");
+    expect(text).toContain("21 runs (7 frequencies × 3 seeds)");
   });
 
   it("report panels", () => {

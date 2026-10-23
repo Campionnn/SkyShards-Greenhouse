@@ -5,6 +5,7 @@ import { InfoHint, SegmentedControl, useToast } from "../components/ui";
 import { LayoutPickerDialog } from "../components/simulator/LayoutPicker";
 import { MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
 import { EarningsPanel } from "../components/simulator/EarningsPanel";
+import { FrequencyPanel } from "../components/simulator/frequency/FrequencyPanel";
 import { EventLog, RunControls, FlowTimeline } from "../components/simulator/RunPanels";
 import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
 import { buttonClass } from "../components/simulator/styles";
@@ -398,6 +399,7 @@ export const SimulatorPage: React.FC = () => {
                 )}
                 <SustainabilityPanel report={snapshot.report} summary={state.summary} />
               </div>
+              <FrequencyPanel scenario={engineScenario} priceSummary={priceSummary} />
               <EarningsPanel summary={state.summary} quotes={state.summary.market ? quotes : null} pricing={state.summary.market ? bazaar.pricing : null} />
               {/* One inventory table for both profiles; normal adds the Bazaar to it. */}
               <InventoryTable
