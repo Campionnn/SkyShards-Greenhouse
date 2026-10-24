@@ -20,6 +20,7 @@ import {
   type ManualValue,
 } from "../../services/playerImport";
 import type { PlayerStats } from "../../simulator/sim/state";
+import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 import { ManualSources } from "./ManualSources";
 
 /**
@@ -30,7 +31,7 @@ import { ManualSources } from "./ManualSources";
 export interface PlayerImportBoxProps {
   /** The checked fields as a PlayerStats patch (cropFortune / tools replace, they are not merged). */
   onImport: (patch: Partial<PlayerStats>, info: { username: string; profile: ImportProfile | null }) => void;
-  /** Tighter spacing for narrow columns. */
+  /** Unused since the import moved into a modal; kept so callers don't break. */
   compact?: boolean;
   className?: string;
 }
@@ -78,7 +79,7 @@ const BreakdownDetails: React.FC<{ breakdown?: ImportBreakdown; missing: string[
         <ChevronDown className="h-3.5 w-3.5 -rotate-90 transition-transform group-open:rotate-0" />
         Sources{missing.length > 0 && <span className="text-amber-300/80">· {missing.length} couldn't be read</span>}
       </summary>
-      <div className="max-h-72 space-y-3 overflow-y-auto border-t border-slate-700/50 px-2.5 py-2">
+      <div className="space-y-3 border-t border-slate-700/50 px-2.5 py-2">
         {general && (
           <Group title="Farming Fortune">
             <SourceList rows={general} />
@@ -119,7 +120,50 @@ const BreakdownDetails: React.FC<{ breakdown?: ImportBreakdown; missing: string[
   );
 };
 
-export const PlayerImportBox: React.FC<PlayerImportBoxProps> = ({ onImport, compact = false, className = "" }) => {
+/**
+ * A compact "Import from Hypixel" button; the whole import (username, profile, fields, manual
+ * sources, sources breakdown) opens in a modal so the stats panels stay short.
+ */
+export const PlayerImportBox: React.FC<PlayerImportBoxProps> = ({ onImport, className = "" }) => {
+  const [open, setOpen] = useState(false);
+  const remembered = useMemo(loadUsername, [open]);
+  return (
+    <div className={className} data-testid="player-import">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-left text-sm text-emerald-200 transition-colors hover:bg-emerald-500/20"
+      >
+        <UserRound className="h-4 w-4 shrink-0 text-emerald-400" />
+        <span className="font-medium">Import from Hypixel</span>
+        <span className="ml-auto truncate text-xs text-emerald-300/60">{remembered ? remembered : "fill in your stats from a username"}</span>
+      </button>
+      {open && (
+        <ModalDialog labelledBy="player-import-title" onClose={() => setOpen(false)} maxWidth="max-w-xl">
+          <DialogFrame
+            id="player-import-title"
+            title={
+              <>
+                <UserRound className="h-4 w-4 text-emerald-400" /> Import from Hypixel
+              </>
+            }
+            onClose={() => setOpen(false)}
+          >
+            <PlayerImportPanel
+              onImport={(patch, info) => {
+                onImport(patch, info);
+                setOpen(false);
+              }}
+            />
+          </DialogFrame>
+        </ModalDialog>
+      )}
+    </div>
+  );
+};
+
+/** The import itself (kept outside the portal so SSR tests can render it). */
+export const PlayerImportPanel: React.FC<Pick<PlayerImportBoxProps, "onImport">> = ({ onImport }) => {
   const [username, setUsername] = useState(loadUsername);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -198,14 +242,12 @@ export const PlayerImportBox: React.FC<PlayerImportBoxProps> = ({ onImport, comp
   };
 
   const checkedCount = fields.filter((f) => selected.has(f.field.key)).length;
-  const pad = compact ? "p-2.5 space-y-2" : "p-3 space-y-2.5";
 
   return (
-    <div className={`rounded-lg border border-slate-600/30 bg-slate-800/40 ${pad} ${className}`} data-testid="player-import">
-      <div className="flex items-center gap-1.5 text-xs font-medium text-slate-300">
-        <UserRound className="h-3.5 w-3.5 text-emerald-400" />
-        Import from Hypixel
-      </div>
+    <div className="space-y-3">
+      <p className="text-xs text-slate-400">
+        Reads your SkyBlock profile from Hypixel and fills in your Greenhouse stats. Tick what to use, set what Hypixel doesn't show, then apply.
+      </p>
       <form
         className="flex gap-1.5"
         onSubmit={(e) => {

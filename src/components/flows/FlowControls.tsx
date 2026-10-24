@@ -13,6 +13,7 @@ import { BazaarPriceControls, BazaarPriceDialog } from "../simulator/BazaarPanel
 import { priceAge } from "../simulator/bazaarFormat";
 import { formatDuration } from "../simulator/format";
 import { DiscordIcon, InfoHint, SegmentedControl } from "../ui";
+import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 
 /**
  * Leaderboard controls shared by /flows and /flows/:id: the board toggle, the "Your stats" panel
@@ -268,37 +269,65 @@ function toolText(t: FarmingToolStats): string {
   return rows.length > 2 ? `${shown.join(" · ")} · +${rows.length - 2}` : shown.join(" · ");
 }
 
-/** Crop-specific fortune (collapsible, 13 inputs) and the imported tools, under Farming Fortune. */
+/** Crop-specific fortune and tools: a one-line summary with an Edit button; the 13 inputs and the tool list open in a modal. */
 const PerCropFortune: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
   const s = viewer.stats;
   const count = cropBonusCount(s);
   const [open, setOpen] = useState(false);
+  const text = [count ? `${count} crop bonus${count === 1 ? "" : "es"}` : "", s.tools.length ? `${s.tools.length} tool${s.tools.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") || "none set";
+  return (
+    <div className="col-span-2">
+      <div className="flex items-center gap-2 rounded-md border border-slate-700/50 bg-slate-900/30 px-2.5 py-1.5 text-xs">
+        <Wrench className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+        <span className="text-slate-300">Per-crop fortune &amp; tools</span>
+        <span className="ml-auto truncate text-[11px] text-slate-500">{text}</span>
+        <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded-md border border-slate-600/40 bg-slate-800/60 px-2 py-0.5 text-[11px] text-slate-300 transition-colors hover:bg-slate-700/60">
+          Edit
+        </button>
+      </div>
+      {open && (
+        <ModalDialog labelledBy="viewer-crop-fortune-title" onClose={() => setOpen(false)} maxWidth="max-w-xl">
+          <DialogFrame
+            id="viewer-crop-fortune-title"
+            title="Per-crop fortune & tools"
+            onClose={() => setOpen(false)}
+            footer={
+              <button type="button" onClick={() => setOpen(false)} className="rounded-md bg-emerald-500/80 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500">
+                Done
+              </button>
+            }
+          >
+            <PerCropFortuneBody viewer={viewer} />
+          </DialogFrame>
+        </ModalDialog>
+      )}
+    </div>
+  );
+};
+
+/** The editor inside the per-crop modal (kept outside the portal for SSR tests). */
+export const PerCropFortuneBody: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
+  const s = viewer.stats;
+  const count = cropBonusCount(s);
   const setCrop = (c: FortuneCrop) => (v: number) => viewer.setStats({ cropFortune: { ...s.cropFortune, [c]: v } });
   return (
-    <div className="col-span-2 space-y-2">
-      <div className="rounded-md border border-slate-700/50 bg-slate-900/30">
-        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs text-slate-400 transition-colors hover:text-slate-200">
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "" : "-rotate-90"}`} />
-          Per-crop fortune
-          <span className="ml-auto text-[11px] text-slate-500">{count ? `${count} crop${count === 1 ? "" : "s"} set` : "none"}</span>
-        </button>
-        {open && (
-          <div className="space-y-2 border-t border-slate-700/50 px-2.5 py-2">
-            <p className="text-[11px] text-slate-500">Crop bonus on top of Farming Fortune (Wheat Fortune, Mushroom Fortune, ...). Leave tools out; they are added per harvest below.</p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {FORTUNE_CROPS.map((c) => (
-                <NumberStat key={c} spec={{ key: c, label: CROP_LABEL[c], min: 0, max: 2000, step: 5 }} value={s.cropFortune[c] ?? 0} onChange={setCrop(c)} />
-              ))}
-            </div>
-            {count > 0 && (
-              <button type="button" onClick={() => viewer.setStats({ cropFortune: {} })} className="text-[11px] text-slate-400 transition-colors hover:text-slate-200">
-                Clear crop bonuses
-              </button>
-            )}
-          </div>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <p className="text-xs text-slate-400">Crop bonus on top of Farming Fortune (Wheat Fortune, Mushroom Fortune, ...). Leave tools out; they are added per harvest below.</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {FORTUNE_CROPS.map((c) => (
+            <NumberStat key={c} spec={{ key: c, label: CROP_LABEL[c], min: 0, max: 2000, step: 5 }} value={s.cropFortune[c] ?? 0} onChange={setCrop(c)} />
+          ))}
+        </div>
+        {count > 0 && (
+          <button type="button" onClick={() => viewer.setStats({ cropFortune: {} })} className="text-[11px] text-slate-400 transition-colors hover:text-slate-200">
+            Clear crop bonuses
+          </button>
         )}
       </div>
-      {s.tools.length > 0 && (
+      {s.tools.length === 0 ? (
+        <p className="text-xs text-slate-500">No tools. Import from Hypixel to fill in your farming tools.</p>
+      ) : (
         <div className="rounded-md border border-slate-700/50 bg-slate-900/30 px-2.5 py-1.5" data-testid="viewer-tools">
           <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
             <Wrench className="h-3.5 w-3.5 text-emerald-400" />

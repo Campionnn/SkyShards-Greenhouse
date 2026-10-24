@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { FORTUNE_CROPS, type CropFortune, type FarmingToolStats, type FortuneCrop, type PlayerStats } from "../../simulator";
 import { InfoHint, SectionLabel } from "../ui";
+import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 import { NumberInput } from "./controls";
 import { nameOf } from "./format";
 import { buttonClass, inputClass } from "./styles";
@@ -90,6 +91,53 @@ const ToolRow: React.FC<{
 };
 
 /**
+ * The Player tab's one-line summary of crop fortune and tools, with an Edit button that opens the
+ * full editor in a modal (13 crop inputs plus a tool list don't fit the settings column).
+ */
+export const CropFortuneSummary: React.FC<{
+  stats: PlayerStats;
+  onChange?: (next: PlayerStats) => void;
+}> = ({ stats, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const cropCount = FORTUNE_CROPS.filter((c) => stats.cropFortune?.[c]).length;
+  const toolCount = stats.tools?.length ?? 0;
+  const text = [cropCount ? `${cropCount} crop bonus${cropCount === 1 ? "" : "es"}` : "", toolCount ? `${toolCount} tool${toolCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") || "none set";
+  return (
+    <div className="flex items-center justify-between gap-2 pt-1 text-xs" data-testid="crop-fortune-summary">
+      <span className="flex min-w-0 items-center gap-1 text-slate-300">
+        Crop fortune &amp; tools
+        <InfoHint title="Per-crop Farming Fortune and tools" width={280}>
+          Crop bonus on top of Farming Fortune (Wheat Fortune, Mushroom Fortune, ...) and your farming tools. Every harvest uses the tool that earns the most on
+          it.
+        </InfoHint>
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        <span className="text-slate-500">{text}</span>
+        <button type="button" className={buttonClass.neutral} onClick={() => setOpen(true)}>
+          {onChange ? "Edit" : "View"}
+        </button>
+      </span>
+      {open && (
+        <ModalDialog labelledBy="crop-fortune-title" onClose={() => setOpen(false)} maxWidth="max-w-xl">
+          <DialogFrame
+            id="crop-fortune-title"
+            title="Crop fortune & tools"
+            onClose={() => setOpen(false)}
+            footer={
+              <button type="button" className={buttonClass.primary} onClick={() => setOpen(false)}>
+                Done
+              </button>
+            }
+          >
+            <CropFortuneEditor stats={stats} onChange={onChange} />
+          </DialogFrame>
+        </ModalDialog>
+      )}
+    </div>
+  );
+};
+
+/**
  * Crop-specific fortune and the tool list. `onChange` gets the new stats; without it the editor is
  * read-only. Empty records/lists are removed so a scenario without them simulates as before.
  */
@@ -99,7 +147,6 @@ export const CropFortuneEditor: React.FC<{
 }> = ({ stats, onChange }) => {
   const crop = stats.cropFortune ?? {};
   const tools = stats.tools ?? [];
-  const [showCrops, setShowCrops] = useState(() => Object.values(crop).some((v) => !!v));
   // Empty values remove the key entirely (no `undefined` left behind), as in a save without them.
   const setCrop = (cropFortune: CropFortune) => {
     const next: PlayerStats = { ...stats, cropFortune };
@@ -125,11 +172,8 @@ export const CropFortuneEditor: React.FC<{
             </InfoHint>
           </span>
         </SectionLabel>
-        <button className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 mb-1" onClick={() => setShowCrops(!showCrops)} aria-expanded={showCrops}>
-          {showCrops ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-          Crop bonus on top of Farming Fortune {cropCount ? `(${cropCount} set)` : "(none)"}
-        </button>
-        {showCrops && <CropFortuneGrid value={crop} label="Crop fortune" onChange={onChange && setCrop} />}
+        <p className="mb-1 text-[11px] text-slate-400">Crop bonus on top of Farming Fortune {cropCount ? `(${cropCount} set)` : "(none)"}</p>
+        <CropFortuneGrid value={crop} label="Crop fortune" onChange={onChange && setCrop} />
       </div>
       <div>
         <SectionLabel>

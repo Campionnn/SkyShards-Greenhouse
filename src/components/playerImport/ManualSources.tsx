@@ -127,7 +127,7 @@ export const ManualSources: React.FC<{
           </button>
         )}
       </div>
-      <div className="max-h-80 overflow-y-auto">
+      <div>
         {MANUAL_GROUPS.map((g) => {
           const rows = sources.filter((s) => s.group === g);
           if (!rows.length) return null;

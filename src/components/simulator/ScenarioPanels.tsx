@@ -30,7 +30,7 @@ import { PlayerImportBox } from "../playerImport/PlayerImportBox";
 import { StatInput } from "../playerStats/StatInput";
 import { STAT_FIELDS, type NumericStatKey } from "../playerStats/statFields";
 import { CheckboxField, IdSelect, NumberField, NumberInput, SelectField } from "./controls";
-import { CropFortuneEditor } from "./CropFortuneEditor";
+import { CropFortuneSummary } from "./CropFortuneEditor";
 import { formatDuration, nameOf } from "./format";
 import { PolicyDefaultsEditor } from "./FlowEditor";
 import { FlowExportDialog } from "./FlowExportDialog";
@@ -469,7 +469,7 @@ export const SettingsPanel: React.FC<{
             options={ARMOR_SETS.map((s) => ({ value: s, label: ARMOR_SET_LABEL[s] }))}
             onChange={(armorSet) => setSettings({ playerStats: { ...settings.playerStats, armorSet } })}
           />
-          <CropFortuneEditor stats={settings.playerStats} onChange={(playerStats) => setSettings({ playerStats })} />
+          <CropFortuneSummary stats={settings.playerStats} onChange={(playerStats) => setSettings({ playerStats })} />
         </div>
       )}
 

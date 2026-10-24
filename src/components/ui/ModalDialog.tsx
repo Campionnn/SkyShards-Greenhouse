@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { buttonClass } from "../simulator/styles";
-import { Portal } from "../ui";
+import { Portal } from "./Portal";
 
 /**
  * A native modal `<dialog>` in a portal (Escape, inert background, backdrop click closes), like

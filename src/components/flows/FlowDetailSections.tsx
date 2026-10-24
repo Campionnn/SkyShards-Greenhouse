@@ -18,7 +18,7 @@ import { useToast } from "../ui";
 import { Badge } from "./FlowControls";
 import { EFFORT_LABEL } from "./flowsDisplay";
 import { LayoutThumb, MutationChip } from "./FlowVisuals";
-import { DialogFrame, ModalDialog } from "./ModalDialog";
+import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 
 const DATA = defaultGameData();
 

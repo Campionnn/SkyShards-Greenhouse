@@ -15,7 +15,7 @@ import { defaultGameData, type Scenario } from "../../simulator";
 import { Avatar } from "../flows/FlowControls";
 import { StatusBox } from "../flows/FlowDetailSections";
 import { FlowMarkdown } from "../flows/FlowMarkdown";
-import { DialogFrame, ModalDialog } from "../flows/ModalDialog";
+import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 import { DiscordIcon, useToast } from "../ui";
 import { NumberInput } from "./controls";
 import { formatCoins } from "./format";
