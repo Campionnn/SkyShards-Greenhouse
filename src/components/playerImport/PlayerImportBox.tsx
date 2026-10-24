@@ -2,18 +2,25 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Download, Loader2, UserRound } from "lucide-react";
 import {
   fetchGreenhouseStats,
+  IMPORT_FIELDS,
   importedFields,
   isValidUsername,
+  loadManualChoices,
   PlayerImportError,
   profileLabel,
   rememberedUsername,
   rememberUsername,
+  saveManualChoices,
   statsPatchFromImport,
+  validChoices,
   type GreenhouseStatsResponse,
   type ImportBreakdown,
   type ImportProfile,
+  type ManualChoices,
+  type ManualValue,
 } from "../../services/playerImport";
 import type { PlayerStats } from "../../simulator/sim/state";
+import { ManualSources } from "./ManualSources";
 
 /**
  * Import Greenhouse stats from a Minecraft username (SkyShards-API reads Hypixel). Two steps: Import
@@ -69,7 +76,7 @@ const BreakdownDetails: React.FC<{ breakdown?: ImportBreakdown; missing: string[
     <details className="group rounded-md border border-slate-700/50 bg-slate-900/40 text-xs">
       <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 px-2.5 py-1.5 text-slate-400 hover:text-slate-200 [&::-webkit-details-marker]:hidden">
         <ChevronDown className="h-3.5 w-3.5 -rotate-90 transition-transform group-open:rotate-0" />
-        Sources{missing.length > 0 && <span className="text-amber-300/80">· {missing.length} not readable</span>}
+        Sources{missing.length > 0 && <span className="text-amber-300/80">· {missing.length} couldn't be read</span>}
       </summary>
       <div className="max-h-72 space-y-3 overflow-y-auto border-t border-slate-700/50 px-2.5 py-2">
         {general && (
@@ -99,7 +106,7 @@ const BreakdownDetails: React.FC<{ breakdown?: ImportBreakdown; missing: string[
           </Group>
         ))}
         {missing.length > 0 && (
-          <Group title="Not readable (counted as 0)">
+          <Group title="Couldn't be read">
             <ul className="list-disc space-y-0.5 pl-4 text-slate-400">
               {missing.map((m) => (
                 <li key={m}>{m}</li>
@@ -119,11 +126,26 @@ export const PlayerImportBox: React.FC<PlayerImportBoxProps> = ({ onImport, comp
   const [resp, setResp] = useState<GreenhouseStatsResponse | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [applied, setApplied] = useState(false);
+  const [stored, setStored] = useState<ManualChoices>(loadManualChoices);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const fields = useMemo(() => (resp ? importedFields(resp) : []), [resp]);
+  const sources = useMemo(() => resp?.manual ?? [], [resp]);
+  const choices = useMemo(() => validChoices(sources, stored), [sources, stored]);
+  const fields = useMemo(() => (resp ? importedFields(resp, choices) : []), [resp, choices]);
+
+  const updateStored = (next: ManualChoices) => {
+    setStored(next);
+    saveManualChoices(next);
+    setApplied(false);
+  };
+  const setChoice = (id: string, value: ManualValue) => updateStored({ ...stored, [id]: value });
+  const resetChoices = () => {
+    const next = { ...stored };
+    for (const s of sources) delete next[s.id];
+    updateStored(next);
+  };
   const profile = resp?.profiles.find((p) => p.profileId === resp.profileId) ?? null;
   const valid = isValidUsername(username);
 
@@ -145,7 +167,7 @@ export const PlayerImportBox: React.FC<PlayerImportBoxProps> = ({ onImport, comp
       saveUsername(r.username || name);
       if (r.username) setUsername(r.username);
       setResp(r);
-      setSelected(new Set(importedFields(r).map((f) => f.field.key)));
+      setSelected(new Set(IMPORT_FIELDS.map((f) => f.key)));
     } catch (e) {
       if (controller.signal.aborted) return;
       setError(e instanceof PlayerImportError ? e.message : "Import failed.");
@@ -169,7 +191,7 @@ export const PlayerImportBox: React.FC<PlayerImportBoxProps> = ({ onImport, comp
 
   const apply = () => {
     if (!resp) return;
-    const patch = statsPatchFromImport(resp, selected);
+    const patch = statsPatchFromImport(resp, selected, choices);
     if (!Object.keys(patch).length) return;
     onImport(patch, { username: resp.username, profile });
     setApplied(true);
@@ -257,6 +279,7 @@ export const PlayerImportBox: React.FC<PlayerImportBoxProps> = ({ onImport, comp
                   );
                 })}
               </ul>
+              <ManualSources sources={sources} choices={choices} onChange={setChoice} onReset={resetChoices} />
               <BreakdownDetails breakdown={resp.breakdown} missing={resp.missing ?? []} />
               <button
                 type="button"

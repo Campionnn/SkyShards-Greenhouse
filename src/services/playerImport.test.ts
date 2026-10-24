@@ -1,5 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanCropFortune, cleanTools, fetchGreenhouseStats, IMPORT_FIELDS, importedFields, isValidUsername, normalizeResponse, PlayerImportError, statsPatchFromImport } from "./playerImport";
+import {
+  applyManual,
+  cleanCropFortune,
+  cleanManual,
+  cleanTools,
+  fetchGreenhouseStats,
+  IMPORT_FIELDS,
+  importedFields,
+  isValidUsername,
+  loadManualChoices,
+  MANUAL_KEY,
+  manualAddAt,
+  normalizeResponse,
+  PlayerImportError,
+  saveManualChoices,
+  statsPatchFromImport,
+  validChoices,
+  type ManualSource,
+} from "./playerImport";
 import { REMOTE_API_BASE } from "./solverEndpoint";
 
 const field = (key: string) => IMPORT_FIELDS.find((f) => f.key === key)!;
@@ -89,7 +107,7 @@ describe("statsPatchFromImport", () => {
   it("lists imported fields in registry order with readable values", () => {
     const rows = importedFields(resp);
     expect(rows.map((r) => r.field.key)).toEqual(["farmingFortune", "cropFortune", "tools", "floraShard", "growthUpgradeTier"]);
-    expect(rows.find((r) => r.field.key === "growthUpgradeTier")!.display).toBe("Tier 7");
+    expect(rows.find((r) => r.field.key === "growthUpgradeTier")!.display).toBe("Tier 7 · +35%");
     expect(rows.find((r) => r.field.key === "tools")!.display).toBe("Hoe");
   });
 
@@ -107,6 +125,195 @@ describe("statsPatchFromImport", () => {
     // Inventory API off (null) vs an older server (no key).
     expect(normalizeResponse({ items: null }).items).toBeNull();
     expect(normalizeResponse({}).items).toBeUndefined();
+  });
+});
+
+describe("friendly registry values", () => {
+  const display = (stats: Record<string, unknown>, key: string) => importedFields({ stats }).find((r) => r.field.key === key)?.display;
+
+  it("uses the shared stat option labels", () => {
+    expect(display({ mutationChanceBonus: 0.1 }, "mutationChanceBonus")).toBe("Ring · +10%");
+    expect(display({ growthUpgradeTier: 7 }, "growthUpgradeTier")).toBe("Tier 7 · +35%");
+    expect(display({ growthUpgradeTier: 9 }, "growthUpgradeTier")).toBe("Tier 9 · +50%");
+    expect(display({ evergreenChip: 0.375 }, "evergreenChip")).toBe("Epic 15 · +37.5%");
+    expect(display({ evergreenChip: 0.6 }, "evergreenChip")).toBe("Legendary 20 · +60%");
+    expect(display({ evergreenChip: 0 }, "evergreenChip")).toBe("None");
+    expect(display({ plantYieldUpgrade: 0.14 }, "plantYieldUpgrade")).toBe("Tier 7 · +14%");
+    expect(display({ floraShard: 10 }, "floraShard")).toBe("Level 10 · +10 unique");
+  });
+});
+
+// A hand-made `manual` list per MANUAL_SOURCES.md (the API builds the real one).
+const MANUAL = [
+  {
+    id: "gardenFortuneUpgrade",
+    label: "Garden Farming Fortune upgrade",
+    group: "permanent",
+    input: "select",
+    options: Array.from({ length: 11 }, (_, t) => ({ value: t, label: `Tier ${t}`, add: { farmingFortune: 4 * t } })),
+    default: 10,
+  },
+  {
+    id: "mooshroomStrength",
+    label: "Mooshroom Cow Strength",
+    group: "permanent",
+    input: "number",
+    number: { min: 0, max: 1780, step: 10, unit: "Strength", rate: { farmingFortune: 0.035 }, floor: true },
+    default: 1780,
+  },
+  {
+    id: "hyperchargeRarity",
+    label: "Hypercharge Chip rarity",
+    group: "chips",
+    input: "select",
+    options: [
+      { value: "rare", label: "Rare 10", add: { hyperchargeMultiplier: 1.3 } },
+      { value: "legendary", label: "Legendary 10", add: { hyperchargeMultiplier: 1.5 } },
+    ],
+    default: "legendary",
+  },
+  {
+    id: "evergreenRarity",
+    label: "Evergreen Chip rarity",
+    group: "chips",
+    input: "select",
+    options: [
+      { value: "rare", label: "Rare 10", add: { evergreenChip: 0.2 } },
+      { value: "legendary", label: "Legendary 10", add: { evergreenChip: 0.3 } },
+    ],
+    default: "legendary",
+  },
+  {
+    id: "overdriveRarity",
+    label: "Overdrive Chip",
+    group: "chips",
+    input: "select",
+    options: [
+      { value: "none", label: "Not in a contest", add: {} },
+      { value: "rare", label: "Rare 4", add: { cropFortune: { wheat: 20, carrot: 20 } } },
+      { value: "legendary", label: "Legendary 4", add: { cropFortune: { wheat: 28, carrot: 28 } } },
+    ],
+    default: "legendary",
+  },
+  {
+    id: "masonJar",
+    label: "Celestial Mason Jar",
+    group: "temporary",
+    condition: "Mixin active",
+    input: "select",
+    options: [
+      { value: 0, label: "Off", add: {} },
+      { value: 1, label: "On", add: { farmingFortune: 15 } },
+    ],
+    default: 1,
+    hypercharged: true,
+  },
+  {
+    id: "cropFever",
+    label: "Crop Fever",
+    group: "temporary",
+    input: "select",
+    options: [
+      { value: 0, label: "Off", add: {} },
+      { value: 1, label: "On", add: { farmingFortune: 100, overbloom: 15 } },
+    ],
+    default: 1,
+    hypercharged: true,
+  },
+];
+
+describe("manual sources", () => {
+  // Server stats at the defaults: FF = base 1000 + 40 + floor(1780 × 0.035)=62 + (15 + 100) × 1.5 = 1274.5.
+  const resp = normalizeResponse({
+    stats: { farmingFortune: 1274.5, overbloom: 115, evergreenChip: 0.3, cropFortune: { wheat: 78, carrot: 28, potato: 10 } },
+    manual: MANUAL as unknown as ManualSource[],
+  });
+
+  it("keeps well-formed sources and drops malformed ones", () => {
+    const cleaned = cleanManual([
+      ...MANUAL,
+      { id: "noOptions", label: "x", group: "permanent", input: "select", options: [], default: 0 },
+      { id: "badDefault", label: "x", group: "permanent", input: "select", options: [{ value: 1, label: "a", add: {} }], default: 5 },
+      { id: "badGroup", label: "x", group: "weird", input: "select", options: [{ value: 1, label: "a", add: {} }], default: 1 },
+      { id: "badNumber", label: "x", group: "permanent", input: "number", number: { min: 5, max: 1 }, default: 1 },
+      { id: "gardenFortuneUpgrade", label: "duplicate", group: "permanent", input: "select", options: [{ value: 1, label: "a", add: {} }], default: 1 },
+      { label: "no id" },
+      null,
+      "junk",
+    ]);
+    expect(cleaned.map((s) => s.id)).toEqual(MANUAL.map((s) => s.id));
+    expect(cleanManual("nope")).toEqual([]);
+    expect(normalizeResponse({}).manual).toEqual([]);
+  });
+
+  it("is the identity at the defaults (or with no choices)", () => {
+    expect(applyManual(resp, {})).toEqual(resp.stats);
+    expect(applyManual(resp)).toEqual(resp.stats);
+    expect(applyManual(resp, { gardenFortuneUpgrade: 10, masonJar: 1 })).toEqual(resp.stats);
+  });
+
+  it("swaps a select source's add", () => {
+    expect(applyManual(resp, { gardenFortuneUpgrade: 3 }).farmingFortune).toBe(1274.5 - 28);
+  });
+
+  it("floors a number source per stat", () => {
+    // floor(1000 × 0.035) = 35 vs 62 at max.
+    expect(applyManual(resp, { mooshroomStrength: 1000 }).farmingFortune).toBe(1274.5 - 27);
+    // floor(15 × 0.035 = 0.525) = 0.
+    expect(applyManual(resp, { mooshroomStrength: 15 }).farmingFortune).toBe(1274.5 - 62);
+    expect(manualAddAt(cleanManual(MANUAL)[1], 1780)).toEqual({ farmingFortune: 62 });
+  });
+
+  it("scales hypercharged FF by the chosen multiplier", () => {
+    // (15 + 100) × (1.3 − 1.5) = −23.
+    expect(applyManual(resp, { hyperchargeRarity: "rare" }).farmingFortune).toBeCloseTo(1274.5 - 23, 6);
+    // Mason Jar off: −15 × 1.5.
+    expect(applyManual(resp, { masonJar: 0 }).farmingFortune).toBeCloseTo(1274.5 - 22.5, 6);
+    // Both: only Crop Fever stays hypercharged, at the lower multiplier: 100 × 1.3 − 115 × 1.5.
+    expect(applyManual(resp, { masonJar: 0, hyperchargeRarity: "rare" }).farmingFortune).toBeCloseTo(1274.5 + 130 - 172.5, 6);
+  });
+
+  it("adjusts overbloom and clamps evergreen to 0..0.6", () => {
+    const off = applyManual(resp, { cropFever: 0 });
+    expect(off.overbloom).toBe(100);
+    expect(off.farmingFortune).toBeCloseTo(1274.5 - 150, 6);
+    expect(applyManual(resp, { evergreenRarity: "rare" }).evergreenChip).toBeCloseTo(0.2, 9);
+    const high = normalizeResponse({ stats: { evergreenChip: 0.6 }, manual: MANUAL as unknown as ManualSource[] });
+    const custom = { ...high, manual: high.manual!.map((s) => (s.id === "evergreenRarity" ? { ...s, default: "rare" } : s)) };
+    expect(applyManual(custom, { evergreenRarity: "legendary" }).evergreenChip).toBe(0.6);
+  });
+
+  it("adjusts crop fortune per crop and drops crops at or below 0", () => {
+    const cf = applyManual(resp, { overdriveRarity: "none" }).cropFortune;
+    expect(cf).toEqual({ wheat: 50, potato: 10 });
+    expect(applyManual(resp, { overdriveRarity: "rare" }).cropFortune).toEqual({ wheat: 70, carrot: 20, potato: 10 });
+  });
+
+  it("ignores invalid or stale choices", () => {
+    expect(applyManual(resp, { gardenFortuneUpgrade: 99, hyperchargeRarity: "mythic", unknownSource: 3 })).toEqual(resp.stats);
+    expect(applyManual(resp, { mooshroomStrength: 99999 }).farmingFortune).toBe(1274.5);
+    expect(validChoices(resp.manual!, { gardenFortuneUpgrade: 3, mooshroomStrength: 99999, stale: 1, hyperchargeRarity: "rare" })).toEqual({
+      gardenFortuneUpgrade: 3,
+      hyperchargeRarity: "rare",
+    });
+  });
+
+  it("feeds the patch and the imported list", () => {
+    const patch = statsPatchFromImport(resp, ["farmingFortune", "cropFortune"], { gardenFortuneUpgrade: 0, overdriveRarity: "none" });
+    expect(patch).toEqual({ farmingFortune: 1234.5, cropFortune: { wheat: 50, potato: 10 } });
+    expect(importedFields(resp, { evergreenRarity: "rare" }).find((r) => r.field.key === "evergreenChip")!.display).toBe("Rare 10 · +20%");
+  });
+
+  it("remembers choices in localStorage, valid values only", () => {
+    const map = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => map.set(k, v) });
+    saveManualChoices({ gardenFortuneUpgrade: 3, hyperchargeRarity: "rare", bad: NaN });
+    expect(JSON.parse(map.get(MANUAL_KEY)!)).toEqual({ gardenFortuneUpgrade: 3, hyperchargeRarity: "rare" });
+    map.set(MANUAL_KEY, JSON.stringify({ a: 1, b: { x: 1 }, c: "on" }));
+    expect(loadManualChoices()).toEqual({ a: 1, c: "on" });
+    map.set(MANUAL_KEY, "not json");
+    expect(loadManualChoices()).toEqual({});
+    vi.unstubAllGlobals();
   });
 });
 

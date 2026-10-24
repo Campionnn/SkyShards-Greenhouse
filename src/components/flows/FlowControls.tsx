@@ -7,6 +7,8 @@ import { cycleHours, EVERY, TIER_STATS, TIERS, type TierId } from "../../leaderb
 import { avatarUrl, TIER_LABEL, userName } from "../../leaderboard/view";
 import { ARMOR_SET_LABEL, ARMOR_SETS, BAZAAR_PRODUCTS, FORTUNE_CROPS, type ArmorSet, type FarmingToolStats, type FortuneCrop } from "../../simulator";
 import { PlayerImportBox } from "../playerImport/PlayerImportBox";
+import { StatInput } from "../playerStats/StatInput";
+import { STAT_FIELDS, type NumericStatKey } from "../playerStats/statFields";
 import { BazaarPriceControls, BazaarPriceDialog } from "../simulator/BazaarPanels";
 import { priceAge } from "../simulator/bazaarFormat";
 import { formatDuration } from "../simulator/format";
@@ -35,8 +37,9 @@ export const BoardToggle: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
 
 type NumKey = Exclude<keyof ViewerStats, "armorSet" | "cropFortune" | "tools">;
 
-interface FieldSpec<K extends string = NumKey> {
-  key: K;
+/** A plain number input (online frequency, per-crop fortune). */
+interface FieldSpec {
+  key: string;
   label: string;
   min: number;
   max: number;
@@ -46,29 +49,19 @@ interface FieldSpec<K extends string = NumKey> {
   suffix?: string;
 }
 
+/** A viewer stat with a shared friendly definition (statFields.ts): the stat keys both types have. */
+type StatKey = NumKey & NumericStatKey;
+
 /** Stats that change the simulation itself: these decide the tier. */
-const SPEED_FIELDS: FieldSpec[] = [
-  { key: "cropGrowth", label: "Crop Growth", min: 0, max: 210, hint: "0 to 210." },
-  { key: "growthUpgradeTier", label: "Growth upgrade", min: 0, max: 9, hint: "Greenhouse Growth Speed upgrade, tier 0 to 9 (tier 9 jumps to +50%)." },
-  { key: "speedAttribute", label: "Speed attribute", min: 0, max: 10, hint: "Greenhouse Speed attribute, 0 to 10." },
-  { key: "floraShard", label: "Flora shard", min: 0, max: 10, hint: "Flora attribute shard, 0 to 10. Counts toward the Unique Crop Bonus." },
-];
-const SPAWN_FIELDS: FieldSpec[] = [
-  { key: "mutationChanceBonus", label: "Bioanalysis", min: 0, max: 0.15, step: 0.05, hint: "0, 0.05 Talisman, 0.10 Ring, 0.15 Artifact." },
-  { key: "miningFortune", label: "Mining Fortune", min: 0, max: 3000, step: 50, hint: "Chloronite drops (capped at 4 from 2000)." },
-];
-/** Yield-only stats: these scale the stored counts directly. */
-const YIELD_FIELDS: FieldSpec[] = [
-  { key: "farmingFortune", label: "Farming Fortune", min: 0, max: 4000, step: 10, hint: "Wiki theoretical maximum: 3059.2." },
-  { key: "plantYieldUpgrade", label: "Plant Yield", min: 0, max: 0.2, step: 0.02, hint: "Greenhouse upgrade, 0 to 0.20." },
-  { key: "evergreenChip", label: "Evergreen Chip", min: 0, max: 0.6, step: 0.02, hint: "0 to 0.60; multiplies crop-bundle drops." },
-  { key: "overbloom", label: "Overbloom", min: 0, max: 1000, step: 1, hint: "Rare Crop chance × (1 + Overbloom/100)." },
-];
+const SIM_FIELDS: StatKey[] = ["cropGrowth", "growthUpgradeTier", "speedAttribute", "floraShard", "mutationChanceBonus", "miningFortune"];
+/** Yield-only stats: these scale the stored counts directly. Per-crop fortune goes after Farming Fortune. */
+const YIELD_FIELDS_TOP: StatKey[] = ["farmingFortune"];
+const YIELD_FIELDS_REST: StatKey[] = ["plantYieldUpgrade", "overbloom", "evergreenChip"];
 
 const fieldInput =
   "w-full bg-slate-900/70 border border-slate-600/40 rounded-md px-2 py-1.5 text-sm text-slate-100 tabular-nums focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors";
 
-const NumberStat: React.FC<{ spec: FieldSpec<string>; value: number; onChange: (v: number) => void }> = ({ spec, value, onChange }) => {
+const NumberStat: React.FC<{ spec: FieldSpec; value: number; onChange: (v: number) => void }> = ({ spec, value, onChange }) => {
   const [text, setText] = useState<string | null>(null);
   const commit = (raw: string) => {
     const n = Number(raw);
@@ -385,9 +378,9 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
                 </InfoHint>
               }
             >
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {[...SPEED_FIELDS, ...SPAWN_FIELDS].map((f) => (
-                  <NumberStat key={f.key} spec={f} value={s[f.key]} onChange={set(f.key)} />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {SIM_FIELDS.map((k) => (
+                  <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" value={s[k]} onChange={set(k)} />
                 ))}
               </div>
             </Group>
@@ -406,12 +399,12 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
               }
             >
               <div className="grid grid-cols-2 gap-3">
-                {YIELD_FIELDS.slice(0, 2).map((f) => (
-                  <NumberStat key={f.key} spec={f} value={s[f.key]} onChange={set(f.key)} />
+                {YIELD_FIELDS_TOP.map((k) => (
+                  <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" className="col-span-2" value={s[k]} onChange={set(k)} />
                 ))}
                 <PerCropFortune viewer={viewer} />
-                {YIELD_FIELDS.slice(2).map((f) => (
-                  <NumberStat key={f.key} spec={f} value={s[f.key]} onChange={set(f.key)} />
+                {YIELD_FIELDS_REST.map((k) => (
+                  <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" className={STAT_FIELDS[k].kind === "chip" ? "col-span-2" : "col-span-2 sm:col-span-1"} value={s[k]} onChange={set(k)} />
                 ))}
                 <label className="col-span-2 block">
                   <span className="text-xs text-slate-400">Farming armor</span>

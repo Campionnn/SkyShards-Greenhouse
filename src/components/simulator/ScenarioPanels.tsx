@@ -21,13 +21,14 @@ import {
   type AloeSession,
   type ArmorSet,
   type ConfigGroup,
-  type PlayerStats,
   type Scenario,
   type ScenarioIssue,
   type SimConfig,
 } from "../../simulator";
 import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui";
 import { PlayerImportBox } from "../playerImport/PlayerImportBox";
+import { StatInput } from "../playerStats/StatInput";
+import { STAT_FIELDS, type NumericStatKey } from "../playerStats/statFields";
 import { CheckboxField, IdSelect, NumberField, NumberInput, SelectField } from "./controls";
 import { CropFortuneEditor } from "./CropFortuneEditor";
 import { formatDuration, nameOf } from "./format";
@@ -279,26 +280,18 @@ export const ScenarioPanel: React.FC<{
 
 type SettingsTab = "player" | "schedule" | "policies" | "advanced";
 
-/** PlayerStats keys holding a number (`-?` so the optional object fields map to never, not undefined). */
-type NumericStat = { [K in keyof PlayerStats]-?: PlayerStats[K] extends number ? K : never }[keyof PlayerStats];
-
-const STAT_FIELDS: { key: NumericStat; label: string; min: number; max: number; step?: number; hint?: string }[] = [
-  { key: "cropGrowth", label: "Crop Growth", min: 0, max: 210 },
-  { key: "speedAttribute", label: "Greenhouse Speed attribute", min: 0, max: 10 },
-  { key: "growthUpgradeTier", label: "Growth Speed upgrade tier", min: 0, max: 9, hint: "Tier 9 jumps to +50%." },
-  { key: "farmingFortune", label: "Farming Fortune", min: 0, max: 4000, hint: "Wiki theoretical max: 3059.2." },
-  { key: "plantYieldUpgrade", label: "Plant Yield upgrade", min: 0, max: 0.2, step: 0.02, hint: "0 to 0.20 (+20%)." },
-  { key: "evergreenChip", label: "Evergreen Chip", min: 0, max: 0.6, step: 0.02, hint: "0 to 0.60. Applies to all crop-bundle drops, base crops and mutation bundles alike." },
-  { key: "mutationChanceBonus", label: "Bioanalysis accessory", min: 0, max: 0.15, step: 0.05, hint: "0 / 0.05 Talisman / 0.10 Ring / 0.15 Artifact. Multiplies the chance for a crop to mutate." },
-  { key: "floraShard", label: "Flora attribute", min: 0, max: 10, hint: "Grants 1-10 Unique Crop Bonus; adds to the unique crops standing (10 max in total)." },
-  { key: "miningFortune", label: "Mining Fortune", min: 0, max: 3000, hint: "Chloronite item count (caps at 4 from 2000)." },
-  {
-    key: "overbloom",
-    label: "Overbloom",
-    min: 0,
-    max: 1000,
-    hint: "Uncapped. Rare Crop chance x (1 + Overbloom/100): armor drops and mutation Ethereal Vine, not Harvest Bounty. Wiki maxima: 186 with a tool (201 with Crop Fever), 338 with Sun's Grasp (368).",
-  },
+/** Player tab stats, in display order (definitions shared with the Guide and leaderboard: playerStats/statFields.ts). */
+const PLAYER_STAT_KEYS: NumericStatKey[] = [
+  "cropGrowth",
+  "speedAttribute",
+  "growthUpgradeTier",
+  "farmingFortune",
+  "plantYieldUpgrade",
+  "evergreenChip",
+  "mutationChanceBonus",
+  "floraShard",
+  "miningFortune",
+  "overbloom",
 ];
 
 // ---- Debug: forced effects ---------------------------------------------------
@@ -454,16 +447,12 @@ export const SettingsPanel: React.FC<{
       {tab === "player" && (
         <div className="space-y-1.5">
           <PlayerImportBox compact className="mb-2" onImport={(patch) => setSettings({ playerStats: { ...settings.playerStats, ...patch } })} />
-          {STAT_FIELDS.map((f) => (
-            <NumberField
-              key={f.key}
-              label={f.label}
-              title={f.hint}
-              value={settings.playerStats[f.key]}
-              min={f.min}
-              max={f.max}
-              step={f.step}
-              onChange={(v) => setSettings({ playerStats: { ...settings.playerStats, [f.key]: v } })}
+          {PLAYER_STAT_KEYS.map((key) => (
+            <StatInput
+              key={key}
+              def={STAT_FIELDS[key]}
+              value={settings.playerStats[key]}
+              onChange={(v) => setSettings({ playerStats: { ...settings.playerStats, [key]: v } })}
             />
           ))}
           <SelectField<ArmorSet>

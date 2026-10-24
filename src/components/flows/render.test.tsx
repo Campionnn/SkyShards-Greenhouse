@@ -55,6 +55,8 @@ describe("leaderboard pages render", () => {
       expect(html).toContain(s);
     }
     expect(html).toContain('data-testid="tier-meter"');
+    // Friendly inputs: Bioanalysis is a dropdown of the accessories, the upgrades are tier lists.
+    for (const s of ["Bioanalysis", "Artifact · +15%", "Talisman · +5%", "Tier 9 · +50%", "Evergreen Chip"]) expect(html).toContain(s);
   });
 
   it("/flows/:id renders every section from a full entry", async () => {

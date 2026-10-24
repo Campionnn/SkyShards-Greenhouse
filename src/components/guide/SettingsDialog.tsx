@@ -8,17 +8,20 @@ import type { Settings } from "../../simulator/sim/state";
 import { PRECISION_SEEDS, hoursPerCycle, hoursToCycles } from "../../guide";
 import { SectionLabel, SegmentedControl } from "../ui/Panel";
 import { PRECISIONS, buttonClass, scheduleText, type Precision } from "./format";
+import { StatInput } from "../playerStats/StatInput";
+import { STAT_FIELDS, type NumericStatKey } from "../playerStats/statFields";
 import { ConfirmButton, Dialog, NumberField } from "./primitives";
 
-const STAT_FIELDS: { key: keyof Settings["playerStats"]; label: string; step?: number; max?: number }[] = [
-  { key: "floraShard", label: "Flora shard (0–10)", max: 10 },
-  { key: "cropGrowth", label: "Crop Growth Speed", step: 25 },
-  { key: "growthUpgradeTier", label: "Growth Speed upgrade tier (0–9)", max: 9 },
-  { key: "plantYieldUpgrade", label: "Plant Yield upgrade (0–0.20)", step: 0.05, max: 0.2 },
-  { key: "mutationChanceBonus", label: "Bioanalysis (0 / 0.05 / 0.10 / 0.15)", step: 0.05, max: 0.15 },
-  { key: "miningFortune", label: "Mining Fortune", step: 25 },
-  { key: "farmingFortune", label: "Farming Fortune", step: 25 },
-  { key: "evergreenChip", label: "Evergreen Chip (0–0.60)", step: 0.05, max: 0.6 },
+/** The stats the forecast reads, in display order (shared definitions: playerStats/statFields.ts). */
+const GUIDE_STAT_KEYS: NumericStatKey[] = [
+  "floraShard",
+  "cropGrowth",
+  "growthUpgradeTier",
+  "plantYieldUpgrade",
+  "mutationChanceBonus",
+  "miningFortune",
+  "farmingFortune",
+  "evergreenChip",
 ];
 
 type ScheduleKind = "hours" | "windows";
@@ -35,7 +38,7 @@ export const SettingsDialog: React.FC<{
 }> = ({ open, settings, checkEvery, precision, onChange, onPrecision, onReset, onClose }) => {
   const schedule = settings.activity;
   const cycleHours = hoursPerCycle(settings.playerStats);
-  const setStat = (key: keyof Settings["playerStats"], value: number) => onChange({ ...settings, playerStats: { ...settings.playerStats, [key]: value } }, checkEvery);
+  const setStat = (key: NumericStatKey, value: number) => onChange({ ...settings, playerStats: { ...settings.playerStats, [key]: value } }, checkEvery);
   const setWindows = (windows: { from: number; to: number }[]) => onChange({ ...settings, activity: { kind: "windows", windows } }, null);
   const cycles = checkEvery === null ? null : hoursToCycles(checkEvery, settings.playerStats);
   const kind: ScheduleKind = checkEvery !== null ? "hours" : "windows";
@@ -113,11 +116,8 @@ export const SettingsDialog: React.FC<{
         <section>
           <SectionLabel>Your stats</SectionLabel>
           <div className="space-y-1.5">
-            {STAT_FIELDS.map((f) => (
-              <label key={f.key} className="flex items-center justify-between gap-3 text-xs text-slate-300">
-                <span className="min-w-0">{f.label}</span>
-                <NumberField label={f.label} value={Number(settings.playerStats[f.key]) || 0} step={f.step ?? 1} max={f.max} onChange={(v) => setStat(f.key, v)} className="w-24 shrink-0" />
-              </label>
+            {GUIDE_STAT_KEYS.map((key) => (
+              <StatInput key={key} def={STAT_FIELDS[key]} value={settings.playerStats[key]} commitOn="blur" onChange={(v) => setStat(key, v)} />
             ))}
           </div>
         </section>
