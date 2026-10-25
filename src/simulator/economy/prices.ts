@@ -11,7 +11,7 @@ export interface PriceSource {
 /**
  * Wiki NPC sell prices of non-crop items (base crops use data.json
  * `sell_price`). Non-sellable items (Iridium) are 0; Evergreen and Synthesis
- * Chips are 50,000.
+ * Chips are 150,000.
  */
 export const WIKI_NPC_PRICES: Record<string, number> = {
   seeds: 3,
@@ -24,8 +24,8 @@ export const WIKI_NPC_PRICES: Record<string, number> = {
   overclocker_3000: 250_000,
   burrowing_spores: 1,
   overgrown_grass: 1,
-  evergreen_chip: 50_000,
-  synthesis_chip: 50_000,
+  evergreen_chip: 150_000,
+  synthesis_chip: 150_000,
   iridium: 0,
 };
 
