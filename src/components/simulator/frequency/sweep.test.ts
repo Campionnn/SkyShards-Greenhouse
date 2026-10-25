@@ -9,14 +9,7 @@ import type { SweepRequest, SweepResponse } from "./protocol";
 const base = () => scenario([flow([step("step-1", { code: LAYOUT_A_CODE })])]);
 
 const fakeSummary = (profit: number, days = 1): RunSummary => ({ profit, elapsedSeconds: days * 86400, cyclesRun: 100 }) as RunSummary;
-const ok = (every: number, seed: number, profit: number, solvent?: boolean): SweepRun => ({
-  every,
-  seed,
-  ok: true,
-  error: null,
-  summary: fakeSummary(profit),
-  ...(solvent === undefined ? {} : { solvent }),
-});
+const ok = (every: number, seed: number, profit: number): SweepRun => ({ every, seed, ok: true, error: null, summary: fakeSummary(profit) });
 
 describe("frequency sweep", () => {
   it("replaces only the online schedule and the seed", () => {
@@ -64,11 +57,6 @@ describe("frequency sweep", () => {
     expect(slackFrom(pts, 1)).toBeCloseTo(0.25);
   });
 
-  it("a frequency whose borrowed starting layouts are mostly not paid back is insolvent", () => {
-    const pts = sweepPoints([ok(3, 1, 10, false), ok(3, 2, 10, false), ok(3, 3, 10, true)]);
-    expect(pts.find((p) => p.every === 3)).toMatchObject({ profitPerDay: null, insolvent: true });
-  });
-
   it("points carry the median effort per login of runs with logins", () => {
     const runs = [1, 2, 3].map((seed) => runSweepCell(engine, base(), 2, seed, 30));
     const want = runs.map((r) => r.summary!.effort!.total / r.summary!.effort!.sessions).sort((a, b) => a - b)[1];
@@ -80,7 +68,6 @@ describe("frequency sweep", () => {
     const r = runSweepCell(engine, base(), 2, 7, 50);
     expect(r.ok).toBe(true);
     expect(r.summary?.cyclesRun).toBe(50);
-    expect(r.solvent).toBeUndefined();
     // Same as running the swept scenario directly.
     const direct = engine.run(engine.initState(sweepScenario(base(), 2, 7)).state, 50).state.summary;
     expect(r.summary?.profit).toBe(direct.profit);

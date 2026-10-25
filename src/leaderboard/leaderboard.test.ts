@@ -3,24 +3,32 @@ import { createEngine } from "../simulator/engine";
 import { DEFAULT_CONFIG } from "../simulator/config";
 import { DEFAULT_POLICIES } from "../simulator/flow/policies";
 import { defaultSettings } from "../simulator/scenario";
-import { flow, layout, scenario, step } from "../simulator/testHelpers";
+import { flow, layout, scenario, step, TIMER_ONLY } from "../simulator/testHelpers";
 import { handle } from "./cli";
 import { scaleProduced, scaleResult, slack, valueResult, yieldStatsDiffer } from "./pricing";
-import { cellSolvent, median, medianResult, spreadRatio, type RunResult } from "./result";
+import { cellResult, median, RunRecorder, runResult, seedSlowing, spreadRatio, trailResult, type RunResult } from "./result";
 import {
   applyRules,
+  boardFrom,
   checkSubmission,
   clampCycles,
+  CUT_STEP,
+  debugApiErrors,
+  END_WINDOW,
+  endCycles,
   IRONMAN_FREE_ITEMS,
-  PAYBACK_CYCLES,
   parseSubmission,
+  ruleConfig,
   ruleDifferences,
   ruleScenario,
+  runKindFrom,
   submissionFile,
   submissionFromScenario,
+  TRAIL_MIN,
+  TRAIL_SHARE,
 } from "./rules";
 import { EVERY, nearestEvery, nearestTier, TIER_STATS, tierStats, YIELD_STATS } from "./tiers";
-import { outlierCheck, runOnce, verifyJob } from "./verify";
+import { outlierCheck, referenceValue, runOnce, verifyJob } from "./verify";
 
 const engine = createEngine();
 
@@ -58,7 +66,7 @@ describe("rules: parse and normalise a submission", () => {
     };
     const parsed = parseSubmission(raw);
     expect(parsed.submission).not.toBeNull();
-    const sc = ruleScenario(parsed.submission!, { board: "ironman", tier: "max", every: 1, seed: 123 });
+    const sc = ruleScenario(parsed.submission!, { runKind: "strict", tier: "max", every: 1, seed: 123 });
     expect(sc.startingInventory).toEqual({});
     expect(sc.settings.seed).toBe(123);
     expect(sc.settings.playerStats.cropGrowth).toBe(210);
@@ -78,20 +86,55 @@ describe("rules: parse and normalise a submission", () => {
 
   it("ironman runs get free dead plants and fermento; normal runs get the Bazaar profile", () => {
     const s = submissionFromScenario(twoStep());
-    const iron = ruleScenario(s, { board: "ironman", tier: "max", every: 2, seed: 1 });
-    expect(iron.settings.config.freePlacedItems).toEqual([...IRONMAN_FREE_ITEMS]);
-    expect(iron.settings.profile).toBeUndefined();
-    expect(iron.settings.activity).toEqual({ kind: "everyN", n: 2, offset: 0 });
-    const normal = ruleScenario(s, { board: "normal", tier: "low", every: 1, seed: 1 });
+    const strict = ruleScenario(s, { runKind: "strict", tier: "max", every: 2, seed: 1 });
+    expect(strict.settings.config.freePlacedItems).toEqual([...IRONMAN_FREE_ITEMS]);
+    expect(strict.settings.profile).toBeUndefined();
+    expect(strict.settings.activity).toEqual({ kind: "everyN", n: 2, offset: 0 });
+    const normal = ruleScenario(s, { runKind: "normal", tier: "low", every: 1, seed: 1 });
     expect(normal.settings.config.freePlacedItems).toBeUndefined();
     expect(normal.settings.profile).toBe("normal");
     expect(normal.settings.playerStats).toEqual(tierStats("low"));
-    // Only the free items and the starting layout on credit differ between the boards' configs.
-    expect(iron.settings.config.bootstrapDebt).toBe(true);
-    expect(normal.settings.config.bootstrapDebt).toBe(false);
-    const ironRest = { ...iron.settings.config, bootstrapDebt: false };
-    delete ironRest.freePlacedItems;
-    expect(ironRest).toEqual({ ...DEFAULT_CONFIG });
+  });
+
+  it("run kinds: strict pays the setup from stock, borrow may owe, normal is today's normal board", () => {
+    // Strict: from nothing. The setup is paid from the empty stock and nothing is ever borrowed.
+    expect(ruleConfig("strict")).toEqual({ ...DEFAULT_CONFIG, freePlacedItems: [...IRONMAN_FREE_ITEMS], setupFromStock: true, leaderboardRules: true });
+    // Borrow: with starting items. Any mutation item may be placed before it is owned.
+    expect(ruleConfig("borrow")).toEqual({ ...DEFAULT_CONFIG, freePlacedItems: [...IRONMAN_FREE_ITEMS], bootstrapDebt: true, allowMutationDebt: true, leaderboardRules: true });
+    // Normal: exactly the pre-v2 normal-board config, plus only the rules flag (the debug APIs and hidden credit settings).
+    expect(ruleConfig("normal")).toEqual({ ...DEFAULT_CONFIG, leaderboardRules: true });
+    expect(Object.keys(ruleConfig("normal"))).toEqual([...Object.keys(DEFAULT_CONFIG), "leaderboardRules"]);
+    const normal = ruleScenario(submissionFromScenario(twoStep()), { runKind: "normal", tier: "max", every: 1, seed: 9 }).settings;
+    expect(normal.profile).toBe("normal");
+    expect(normal.reserve).toBeUndefined();
+  });
+
+  it("board names: the old 'ironman' is from nothing; requests may send a board or a run kind", () => {
+    expect(boardFrom("ironman")).toBe("ironman_strict");
+    expect(boardFrom("ironman_borrow")).toBe("ironman_borrow");
+    expect(boardFrom("normal")).toBe("normal");
+    expect(boardFrom("nope")).toBeNull();
+    expect(runKindFrom("borrow")).toBe("borrow");
+    expect(runKindFrom("ironman")).toBe("strict");
+    expect(runKindFrom("ironman_borrow")).toBe("borrow");
+    expect(runKindFrom(undefined)).toBeNull();
+  });
+
+  it("the end window constants are the API's (leaderboard/config.py)", () => {
+    expect({ END_WINDOW, CUT_STEP, TRAIL_SHARE, TRAIL_MIN }).toEqual({ END_WINDOW: 1.25, CUT_STEP: 25, TRAIL_SHARE: 0.2, TRAIL_MIN: 0.6 });
+    expect(endCycles(2000)).toBe(2500);
+    expect(endCycles(4999)).toBe(6249);
+    expect(endCycles(5000)).toBe(6250);
+  });
+
+  it("step-level policies are cleaned like plot policies", () => {
+    const sc = twoStep();
+    sc.plots[0].flow.steps[0].policies = { spawnedHarvest: "beforeDecay", watering: "sometimes", evil: 1, gateInteractions: { vacuumRat: false, nope: true } } as never;
+    sc.plots[0].flow.steps[1].policies = { bogus: 2 } as never;
+    const parsed = parseSubmission(submissionFile(submissionFromScenario(sc)));
+    const [a, b] = parsed.submission!.plots[0].flow.steps;
+    expect(a.policies).toEqual({ spawnedHarvest: "beforeDecay", gateInteractions: { vacuumRat: false } });
+    expect(b.policies).toBeUndefined();
   });
 
   it("checkSubmission passes a valid flow and reports validation errors", () => {
@@ -105,15 +148,48 @@ describe("rules: parse and normalise a submission", () => {
     expect(bad.errors.length).toBeGreaterThan(0);
   });
 
+  it("checkSubmission refuses the debug script APIs, naming the script and line", () => {
+    const sc = twoStep();
+    sc.script = { source: "// tech\nfor (const k of CROPS) forceEffects(k, ['immunity'])" };
+    const bad = checkSubmission(submissionFromScenario(sc), engine.data);
+    expect(bad.ok).toBe(false);
+    expect(bad.errors.join(" ")).toMatch(/Controller script, line 2: forceEffects\(\) is a debugging tool and isn't allowed on the leaderboard/);
+    const plot = twoStep();
+    plot.plots[0].script = { source: "function onSession() { unforceEffects(); resetForcedEffects() }" };
+    expect(debugApiErrors(submissionFromScenario(plot))).toEqual([expect.stringMatching(/^Plot 1 script, line 1: unforceEffects\(\), resetForcedEffects\(\) are debugging tools/)]);
+    // In an exit condition too; a disabled script and a property of the same name are fine.
+    const cond = twoStep();
+    cond.plots[0].flow.steps[0].exits = [{ when: [{ kind: "script", expr: "forceEffects('wheat', []) || true" }] }];
+    expect(debugApiErrors(submissionFromScenario(cond))[0]).toMatch(/step 1 \(one\) exit condition/);
+    const off = twoStep();
+    off.plots[0].script = { source: "forceEffects('wheat', [])", enabled: false };
+    off.script = { source: "let o = { forceEffects: 1 }; log(o.forceEffects)" };
+    expect(checkSubmission(submissionFromScenario(off), engine.data).ok).toBe(true);
+  });
+
+  it("must-fix: the red team's forceEffects attack ('fxall') is refused at check and gains nothing at run time", () => {
+    const sc = twoStep();
+    sc.script = { source: 'for (const k of [...CROPS, ...MUTATIONS]) forceEffects(k, ["immunity", "improved_harvest_boost", "bonus_drops"]);' };
+    const sub = submissionFromScenario(sc);
+    expect(checkSubmission(sub, engine.data).errors.some((e) => /forceEffects\(\) is a debugging tool/.test(e))).toBe(true);
+    const r = handle({ mode: "check", payload: submissionFile(sub) }) as { ok: boolean; errors: string[] };
+    expect(r.ok).toBe(false);
+    // Even if it got past the check, the run fails instead of scoring the forced effects.
+    const o = runOnce(engine, sub, "borrow", "max", 1, 5, 40, { wallMs: 60_000 });
+    expect(o.ok).toBe(false);
+    expect(o.error).toMatch(/debugging tool/);
+  });
+
   it("applyRules and ruleDifferences agree", () => {
     const sc = twoStep();
-    expect(ruleDifferences(sc, "ironman").length).toBeGreaterThan(0);
-    const ruled = applyRules(sc, "ironman", 3, 42);
-    expect(ruleDifferences(ruled, "ironman")).toEqual([]);
+    expect(ruleDifferences(sc, "strict").length).toBeGreaterThan(0);
+    const ruled = applyRules(sc, "strict", 3, 42);
+    expect(ruleDifferences(ruled, "strict")).toEqual([]);
     expect(ruled.plots).toBe(sc.plots);
     expect(ruled.settings.seed).toBe(42);
     expect(ruled.settings.activity).toEqual({ kind: "everyN", n: 3, offset: 0 });
-    expect(ruleDifferences(ruled, "normal")).toEqual(["advanced setting \"bootstrapDebt\" differs", "advanced setting \"freePlacedItems\" differs", "profile is not normal"]);
+    expect(ruleDifferences(ruled, "normal")).toEqual(["advanced setting \"freePlacedItems\" differs", "advanced setting \"setupFromStock\" differs", "profile is not normal"]);
+    expect(ruleDifferences(applyRules(sc, "borrow", 1, 1), "borrow")).toEqual([]);
   });
 
   it("clamps the cycle count", () => {
@@ -165,25 +241,41 @@ describe("results: median and spread", () => {
     expect(median([])).toBe(0);
   });
 
-  it("medianResult is component-wise, so one lucky seed never defines a count", () => {
-    const m = medianResult([result({ wheat: 10, cropie: 1 }), result({ wheat: 12 }), result({ wheat: 11, cropie: 1000 }, { sustainable: false, halted: true })]);
-    expect(m.produced).toEqual({ wheat: 11, cropie: 1 });
-    expect(m.sustainable).toBe(false);
-    expect(m.halted).toBe(true);
-    expect(m.effort.byKind.harvest).toBe(3);
+  const npc = (r: RunResult) => valueResult(engine.data, r, "ironman_strict").profitPerDay;
+
+  it("must-fix: a cell is its median seed's counts, never a per-item mix of seeds", () => {
+    // Disjoint farms per seed (the "Frankenstein median" attack): per-item medians would give
+    // wheat 1000 and potato 1000, more than any real seed.
+    const a = result({ wheat: 1000, potato: 10 });
+    const b = result({ wheat: 10, potato: 1000 });
+    const c = result({ wheat: 600, potato: 600 });
+    const cell = cellResult([a, b, c], npc);
+    const values = [a, b, c].map(npc).sort((x, y) => x - y);
+    expect(npc(cell)).toBe(values[1]);
+    expect([a, b, c].map((r) => JSON.stringify(r.produced))).toContain(JSON.stringify(cell.produced));
+    // Lower middle for an even count; ties keep the earlier seed.
+    const tie = cellResult([result({ wheat: 5 }, { uptime: 0.1 }), result({ wheat: 5 }, { uptime: 0.2 }), result({ wheat: 9 }), result({ wheat: 1 })], npc);
+    expect(tie.uptime).toBe(0.1);
+    expect(() => cellResult([], npc)).toThrow();
   });
 
-  it("a cell is solvent when most seeds paid back; payback medians count 'never' as infinite", () => {
-    const paid = (cycle: number | null) => result({}, { peakDebt: { chloronite: 4 }, paybackCycle: cycle, solvent: cycle !== null && cycle <= PAYBACK_CYCLES });
-    expect(cellSolvent([paid(400), paid(900), paid(null)])).toBe(true);
-    expect(cellSolvent([paid(400), paid(null), paid(1200)])).toBe(false);
-    expect(cellSolvent([result({}), result({})])).toBe(true); // no debt data: solvent
-    const m = medianResult([paid(400), paid(null), paid(null)]);
-    expect(m.paybackCycle).toBeNull();
-    expect(m.solvent).toBe(false);
-    expect(m.peakDebt).toEqual({ chloronite: 4 });
-    expect(medianResult([paid(400), paid(600), paid(null)]).paybackCycle).toBe(600);
-    expect(medianResult([result({})]).solvent).toBeUndefined();
+  it("still producing: a cell whose seeds mostly slow down is scored at the median seed's trailing rate", () => {
+    const trail = (wheat: number) => ({ from: 4000, produced: { wheat }, consumed: {}, bought: {}, shortfall: {}, bySource: {} });
+    const steady = result({ wheat: 100 }, { trail: trail(95) });
+    expect(seedSlowing(steady, npc)).toBe(false);
+    const collapse = (w: number, t: number) => result({ wheat: w }, { trail: trail(t) });
+    expect(seedSlowing(collapse(100, 59), npc)).toBe(true);
+    expect(seedSlowing(collapse(100, 60), npc)).toBe(false);
+    expect(seedSlowing(result({ wheat: 100 }), npc)).toBe(false); // no trail data
+    const cell = cellResult([collapse(100, 20), collapse(110, 30), steady], npc);
+    expect(cell.slowing).toBe(true);
+    expect(cell.produced).toEqual({ wheat: 30 });
+    expect(cell.trail).toBeUndefined();
+    // A minority of slowing seeds doesn't change the cell.
+    const fine = cellResult([collapse(100, 20), steady, result({ wheat: 120 }, { trail: trail(118) })], npc);
+    expect(fine.slowing).toBeUndefined();
+    expect(fine.produced).toEqual({ wheat: 100 });
+    expect(trailResult(collapse(100, 20)).produced).toEqual({ wheat: 20 });
   });
 
   it("spreadRatio is best over median", () => {
@@ -197,7 +289,7 @@ describe("results: median and spread", () => {
 describe("pricing", () => {
   it("values ironman at NPC prices (mutation items 0) and normal at Bazaar prices minus purchases", () => {
     const r = result({ wheat: 100, chloronite: 2 }, { bought: { dead_plant: 4 }, built: { fermento: 2 } });
-    const iron = valueResult(engine.data, r, "ironman");
+    const iron = valueResult(engine.data, r, "ironman_strict");
     expect(iron.profitPerDay).toBe(100 * engine.data.crops.wheat.sellPrice);
     expect(iron.boughtPerDay).toBe(0);
     const quotes = {
@@ -287,69 +379,133 @@ describe("verify", () => {
   const submission = submissionFromScenario(twoStep());
 
   it("results record money by source and each step's share of the run", () => {
-    const o = runOnce(engine, submission, "ironman", "max", 1, 5, 40, { wallMs: 60_000 });
+    const o = runOnce(engine, submission, "strict", "max", 1, 5, 40, { wallMs: 60_000 });
     const st = o.result!.stepTime!;
     const shares = Object.values(st["1"]);
     expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 5);
     expect(Object.keys(st["1"]).sort()).toEqual(["one", "two"]);
     const sc = twoStep();
     sc.settings.policies = { ...sc.settings.policies, baseCropUpkeep: "harvestWhenGrown" };
-    const r = runOnce(engine, submissionFromScenario(sc), "ironman", "max", 1, 5, 40, { wallMs: 60_000 }).result!;
+    const r = runOnce(engine, submissionFromScenario(sc), "strict", "max", 1, 5, 40, { wallMs: 60_000 }).result!;
     expect(r.bySource!.potato.potato).toBeGreaterThan(0);
-    // The medians keep both nested maps.
-    const m = medianResult([r, r, r]);
-    expect(m.bySource!.potato.potato).toBeCloseTo(r.bySource!.potato.potato);
+    // A cell keeps both nested maps (it is one seed's result).
+    const m = cellResult([r, r, r], (x) => valueResult(engine.data, x, "ironman_strict").profitPerDay);
+    expect(m.bySource).toEqual(r.bySource);
     expect(m.stepTime).toEqual(r.stepTime);
   });
 
-  it("runOnce produces a result with per-day counts and effort", () => {
+  it("runOnce runs the author's length plus the end window and scores the window mean", () => {
     const sc = twoStep();
     sc.settings.policies = { ...sc.settings.policies, baseCropUpkeep: "harvestWhenGrown" };
-    const o = runOnce(engine, submissionFromScenario(sc), "ironman", "max", 1, 5, 40, { wallMs: 60_000 });
+    const sub = submissionFromScenario(sc);
+    const o = runOnce(engine, sub, "strict", "max", 1, 5, 40, { wallMs: 60_000 });
     expect(o.ok).toBe(true);
-    expect(o.result!.cycles).toBe(40);
+    expect(o.result!.cycles).toBe(50);
+    expect(o.result!.window).toEqual({ from: 40, to: 50, cuts: 1 });
     expect(o.result!.days).toBeGreaterThan(0);
-    expect(o.result!.effort.sessions).toBe(40);
+    expect(o.result!.effort.sessions).toBe(50);
     // Step one leaves after 5 cycles for the potato step, which stays: potatoes are harvested and replanted.
     expect(o.result!.produced.potato).toBeGreaterThan(0);
     expect(o.result!.effort.byKind.harvest).toBeGreaterThan(0);
     expect(o.result!.effort.byKind.replant).toBeGreaterThan(0);
+
+    // The window mean, by hand: cut points every CUT_STEP cycles from C to the end.
+    const C = 100;
+    const res = runOnce(engine, sub, "strict", "max", 1, 5, C, { wallMs: 60_000 }).result!;
+    expect(res.window).toEqual({ from: 100, to: 125, cuts: 2 });
+    let state = engine.initState(ruleScenario(sub, { runKind: "strict", tier: "max", every: 1, seed: 5 })).state;
+    const rates: number[] = [];
+    for (const t of [100, 125]) {
+      state = engine.run(state, t - state.cycle).state;
+      rates.push(state.ledger.potato.produced / (state.elapsedSeconds / 86400));
+    }
+    expect(res.produced.potato).toBeCloseTo((rates[0] + rates[1]) / 2, 9);
+    // The trailing 20% rates are measured over [100, 125].
+    expect(res.trail!.from).toBe(100);
   });
 
-  it("ironman results carry the starting layout's debt; normal ones don't", () => {
-    // A placed chloronite with nothing that grows it back: borrowed at setup, never paid back.
+  it("strict runs pay the starting layout from the empty stock; borrow runs record what they owe; normal runs neither", () => {
+    // A placed chloronite with nothing that grows it back.
     const sc = scenario([flow([step("one", layout([["chloronite", 5, 5], ["wheat", 0, 0]]))], false)]);
-    const iron = runOnce(engine, submissionFromScenario(sc), "ironman", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
-    expect(iron.peakDebt).toEqual({ chloronite: 1 });
-    expect(iron.paybackCycle).toBeNull();
-    expect(iron.solvent).toBe(false);
-    const normal = runOnce(engine, submissionFromScenario(sc), "normal", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
-    expect(normal.paybackCycle).toBeUndefined();
-    expect(normal.solvent).toBeUndefined();
-    // Base crops only: nothing borrowed, paid back at cycle 0.
-    const free = runOnce(engine, submission, "ironman", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
-    expect(free).toMatchObject({ peakDebt: {}, paybackCycle: 0, solvent: true });
+    const sub = submissionFromScenario(sc);
+    const strict = runOnce(engine, sub, "strict", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
+    expect(strict.startItems).toBeUndefined();
+    expect(strict.consumed.chloronite).toBeUndefined();
+    expect(strict.shortfall.chloronite).toBeGreaterThan(0);
+    expect(strict.starved).toEqual([{ plot: 1, step: "one", item: "chloronite", cells: 1 }]);
+    expect(strict.ramp!.complete).toBeNull();
+    const borrow = runOnce(engine, sub, "borrow", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
+    expect(borrow.startItems).toEqual({ chloronite: 1 });
+    expect(borrow.usedUp).toEqual({ chloronite: 1 });
+    expect(borrow.sessionOnly).toEqual([]);
+    expect(borrow.starved).toEqual([]);
+    expect(borrow.ramp!.complete).toBe(0);
+    const normal = runOnce(engine, sub, "normal", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
+    expect(normal.startItems).toBeUndefined();
+    expect(normal.built).toEqual({ chloronite: 1 });
+    expect(normal.starved).toEqual([]);
+    // Base crops only: nothing owed, nothing starved.
+    const free = runOnce(engine, submission, "borrow", "max", 1, 5, 20, { wallMs: 60_000 }).result!;
+    expect(free).toMatchObject({ startItems: {}, usedUp: {}, upkeep: {}, starved: [] });
+  });
+
+  it("upkeep: debt that keeps growing over the second half of the run, per day", () => {
+    // A chloronite that decays and is re-placed on credit every time: the owed amount keeps growing.
+    const sc = scenario([flow([step("one", layout([["chloronite", 5, 5], ["wheat", 0, 0]]))], false)]);
+    const o = runOnce(TIMER_ONLY, submissionFromScenario(sc), "borrow", "max", 1, 5, 400, { wallMs: 60_000 });
+    const r = o.result!;
+    expect(r.usedUp!.chloronite).toBeGreaterThan(1);
+    expect(r.upkeep!.chloronite).toBeGreaterThan(0);
+    expect(r.startItems!.chloronite).toBe(r.usedUp!.chloronite);
+  });
+
+  it("startItems counts an item borrowed and given back within one session ('returned each session')", () => {
+    const sc = scenario([flow([step("one", layout([["wheat", 0, 0]]))], false)]);
+    sc.plots[0].script = { source: "function onSession() { if (plot.place('blastberry', 5, 5)) plot.breakAt(5, 5) }" };
+    const r = runOnce(engine, submissionFromScenario(sc), "borrow", "max", 1, 5, 40, { wallMs: 60_000 }).result!;
+    expect(r.startItems).toEqual({ blastberry: 1 });
+    expect(r.sessionOnly).toEqual(["blastberry"]);
+    expect(r.usedUp).toEqual({});
+    // Strict: nothing to borrow, so the script places nothing.
+    expect(runOnce(engine, submissionFromScenario(sc), "strict", "max", 1, 5, 40, { wallMs: 60_000 }).result!.startItems).toBeUndefined();
+  });
+
+  it("the recorder reads the state only: a recorded run equals an unrecorded one", () => {
+    const sc = twoStep();
+    sc.settings.policies = { ...sc.settings.policies, baseCropUpkeep: "harvestWhenGrown" };
+    const ruled = ruleScenario(submissionFromScenario(sc), { runKind: "borrow", tier: "max", every: 2, seed: 3 });
+    const plain = engine.run(engine.initState(ruled).state, 120).state;
+    const s0 = engine.initState(ruled).state;
+    const rec = new RunRecorder(engine.data, { from: 100, to: 120 });
+    rec.observe(s0);
+    const watched = engine.run(s0, 120, { onCycle: (s) => rec.observe(s) }).state;
+    expect(JSON.stringify(watched)).toBe(JSON.stringify(plain));
+    expect(rec.result(watched, true).window!.cuts).toBe(1);
+    // Without a recorder (one cut at the end): totals per day.
+    const days = plain.elapsedSeconds / 86400;
+    expect(plain.ledger.potato.produced).toBeGreaterThan(0);
+    expect(runResult(plain, true, engine.data).produced.potato).toBeCloseTo(plain.ledger.potato.produced / days, 9);
   });
 
   it("the same seed gives the same result; a different seed may differ", () => {
-    const a = runOnce(engine, submission, "ironman", "max", 1, 5, 40, { wallMs: 60_000 });
-    const b = runOnce(engine, submission, "ironman", "max", 1, 5, 40, { wallMs: 60_000 });
+    const a = runOnce(engine, submission, "strict", "max", 1, 5, 40, { wallMs: 60_000 });
+    const b = runOnce(engine, submission, "strict", "max", 1, 5, 40, { wallMs: 60_000 });
     expect(JSON.stringify(a.result)).toBe(JSON.stringify(b.result));
   });
 
   it("fails a run over the wall-clock cap", () => {
     let t = 0;
-    const o = runOnce(engine, submission, "ironman", "max", 1, 5, 400, { wallMs: 10, now: () => (t += 100) });
+    const o = runOnce(engine, submission, "strict", "max", 1, 5, 400, { wallMs: 10, now: () => (t += 100) });
     expect(o.ok).toBe(false);
     expect(o.error).toMatch(/took longer/);
   });
 
   it("fails a run over the CPU cap, independent of wall time", () => {
     let cpu = 0;
-    const o = runOnce(engine, submission, "ironman", "max", 1, 5, 400, { wallMs: 1e9, cpuMs: 150, cpuNow: () => (cpu += 100) });
+    const o = runOnce(engine, submission, "strict", "max", 1, 5, 400, { wallMs: 1e9, cpuMs: 150, cpuNow: () => (cpu += 100) });
     expect(o.ok).toBe(false);
     expect(o.error).toMatch(/CPU time/);
-    const fine = runOnce(engine, submission, "ironman", "max", 1, 5, 400, { wallMs: 1e9, cpuMs: 1e9 });
+    const fine = runOnce(engine, submission, "strict", "max", 1, 5, 400, { wallMs: 1e9, cpuMs: 1e9 });
     expect(fine.ok).toBe(true);
     // Measured (the run can finish within one tick of a coarse OS CPU clock, so it may read 0).
     expect(fine.cpuMs).not.toBeNull();
@@ -360,14 +516,14 @@ describe("verify", () => {
     const sc = twoStep();
     sc.script = { source: "function onTick() { let n = 0; for (let i = 0; i < 1000; i++) { n += i } }" };
     const sub = submissionFromScenario(sc);
-    const capped = runOnce(engine, sub, "ironman", "max", 1, 5, 400, { wallMs: 1e9, scriptSteps: 50_000 });
+    const capped = runOnce(engine, sub, "strict", "max", 1, 5, 400, { wallMs: 1e9, scriptSteps: 50_000 });
     expect(capped.ok).toBe(false);
     expect(capped.error).toMatch(/steps/);
     // Deterministic: it fails at the same cycle every time.
-    expect(runOnce(engine, sub, "ironman", "max", 1, 5, 400, { wallMs: 1e9, scriptSteps: 50_000 }).error).toBe(capped.error);
-    expect(runOnce(engine, sub, "ironman", "max", 1, 5, 40, { wallMs: 1e9 }).ok).toBe(true);
+    expect(runOnce(engine, sub, "strict", "max", 1, 5, 400, { wallMs: 1e9, scriptSteps: 50_000 }).error).toBe(capped.error);
+    expect(runOnce(engine, sub, "strict", "max", 1, 5, 40, { wallMs: 1e9 }).ok).toBe(true);
     // The runtime counts steps in the state, the same across a split run.
-    const state = engine.initState(ruleScenario(sub, { board: "ironman", tier: "max", every: 1, seed: 5 })).state;
+    const state = engine.initState(ruleScenario(sub, { runKind: "strict", tier: "max", every: 1, seed: 5 })).state;
     const whole = engine.run(state, 20).state.scripts!.steps!;
     const split = engine.run(engine.run(state, 10).state, 10).state.scripts!.steps!;
     expect(whole).toBeGreaterThan(20_000);
@@ -377,7 +533,7 @@ describe("verify", () => {
   it("fails a run a script halts", () => {
     const sc = twoStep();
     sc.script = { source: "function onTick() { if (cycle >= 3) pause('stop') }" };
-    const o = runOnce(engine, submissionFromScenario(sc), "ironman", "max", 1, 5, 40, { wallMs: 60_000 });
+    const o = runOnce(engine, submissionFromScenario(sc), "strict", "max", 1, 5, 40, { wallMs: 60_000 });
     expect(o.ok).toBe(false);
     expect(o.error).toMatch(/script/);
   });
@@ -385,7 +541,7 @@ describe("verify", () => {
   it("verifyJob runs every cell and the outlier check compares seeds per frequency", () => {
     const outcomes = verifyJob(engine, {
       submission,
-      board: "ironman",
+      runKind: "strict",
       tier: "max",
       cycles: 30,
       runs: [
@@ -397,31 +553,39 @@ describe("verify", () => {
     });
     expect(outcomes.map((o) => o.seedIndex)).toEqual([0, 1, 0]);
     expect(outcomes.every((o) => o.ok)).toBe(true);
-    const check = outlierCheck(engine, outcomes, "ironman", {}, 2);
+    const check = outlierCheck(engine, outcomes, "strict", {}, 2);
     expect(Object.keys(check.ratios).map(Number).sort()).toEqual([1, 3]);
     expect(check.ok).toBe(true);
-    const strict = outlierCheck(engine, outcomes, "ironman", {}, 0.5);
+    const strict = outlierCheck(engine, outcomes, "strict", {}, 0.5);
     expect(strict.ok).toBe(false);
+    expect(referenceValue(engine, outcomes[0].result!, "borrow")).toBe(referenceValue(engine, outcomes[0].result!, "strict"));
   });
 });
 
 describe("cli", () => {
   it("version, check and verify modes", () => {
-    const v = handle({ mode: "version" }) as { every: number[]; tiers: string[] };
+    const v = handle({ mode: "version" }) as { every: number[]; tiers: string[]; runKinds: string[] };
     expect(v.every).toEqual([...EVERY]);
+    expect(v.runKinds).toEqual(["strict", "borrow", "normal"]);
     const file = submissionFile(submissionFromScenario(twoStep()));
     const c = handle({ mode: "check", payload: file }) as { ok: boolean };
     expect(c.ok).toBe(true);
     const lines: string[] = [];
-    const r = handle({ mode: "verify", payload: file, board: "normal", tier: "mid", cycles: 1, runs: [{ every: 2, seed: 9, seedIndex: 0 }] }, (l) => lines.push(l)) as {
+    const r = handle({ mode: "verify", payload: file, runKind: "normal", tier: "mid", cycles: 1, runs: [{ every: 2, seed: 9, seedIndex: 0 }] }, (l) => lines.push(l)) as {
+      runKind: string;
       results: { ok: boolean; result: RunResult }[];
       outlier: { ok: boolean };
     };
-    // cycles are clamped up to the minimum: the run is 2000 cycles... too slow for a unit test? No: 1 plot of 2 crops is fast.
+    // cycles are clamped up to the minimum (2000), then the end window: 2500 simulated cycles.
+    expect(r.runKind).toBe("normal");
     expect(r.results[0].ok).toBe(true);
-    expect(r.results[0].result.cycles).toBe(2000);
+    expect(r.results[0].result.cycles).toBe(2500);
+    expect(r.results[0].result.window).toEqual({ from: 2000, to: 2500, cuts: 21 });
     expect(lines).toEqual(["progress 1/1"]);
-    expect(() => handle({ mode: "verify", payload: file, board: "x" as never, tier: "max", runs: [] })).toThrow(/board/);
+    // Old requests send a board: "ironman" is the strict run.
+    const old = handle({ mode: "verify", payload: file, board: "ironman", tier: "max", cycles: 2000, runs: [] }) as { runKind: string };
+    expect(old.runKind).toBe("strict");
+    expect(() => handle({ mode: "verify", payload: file, runKind: "x" as never, tier: "max", runs: [] })).toThrow(/runKind/);
     expect(() => handle({ mode: "nope" as never })).toThrow(/unknown mode/);
   });
 

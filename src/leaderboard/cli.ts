@@ -1,25 +1,27 @@
 import { parseBazaar, type BazaarQuote } from "../simulator/economy/bazaar";
 import type { ItemId } from "../simulator/data/types";
 import { createEngine } from "../simulator/engine";
-import { checkSubmission, clampCycles, parseSubmission, type Board } from "./rules";
+import { checkSubmission, clampCycles, parseSubmission, RUN_KINDS, runKindFrom, type RunKind } from "./rules";
 import { summarizeSubmission } from "./summary";
 import { EVERY, TIERS, type TierId } from "./tiers";
 import { CPU_MS_BACKSTOP, outlierCheck, verifyJob, WALL_MS_BACKSTOP, type VerifyRun } from "./verify";
 
 /**
- * The verifier CLI (docs/plans/flow-leaderboard.md §5.3, §6.2). One JSON request on stdin, one
- * JSON reply on stdout, progress lines on stderr. Bundled by scripts/build-verify.mjs into a
- * self-contained `verify.mjs` that the API runs as a subprocess; `ENGINE_VERSION` is baked in by
- * the bundler (a hash of the bundle's engine sources).
+ * The verifier CLI (docs/plans/flow-leaderboard.md §5.3, §6.2, docs/plans/leaderboard-boards-v2.md).
+ * One JSON request on stdin, one JSON reply on stdout, progress lines on stderr. Bundled by
+ * scripts/build-verify.mjs into a self-contained `verify.mjs` that the API runs as a subprocess;
+ * `ENGINE_VERSION` is baked in by the bundler (a hash of the bundle's engine sources).
  *
  * Requests:
  *   {mode: "version"}
- *     -> {engineVersion, every, tiers}
+ *     -> {engineVersion, every, tiers, runKinds}
  *   {mode: "check", payload}
  *     -> {ok, errors, warnings, plots, bytes, summary: FlowSummary | null}  (summary.ts)
- *   {mode: "verify", payload, board, tier, cycles, runs: [{every, seed, seedIndex}], wallMsPerRun?, cpuMsPerRun?, scriptStepsPerRun?,
+ *   {mode: "verify", payload, runKind, tier, cycles, runs: [{every, seed, seedIndex}], wallMsPerRun?, cpuMsPerRun?, scriptStepsPerRun?,
  *     bazaar?: {item: {buy, sell}} | raw Hypixel response | null, outlierRatio?}
- *     -> {engineVersion, results: [{every, seedIndex, seed, ok, error, result, wallMs, cpuMs}], outlier?}
+ *     -> {engineVersion, runKind, results: [{every, seedIndex, seed, ok, error, result, wallMs, cpuMs}], outlier?}
+ *   `runKind` is strict | borrow | normal; old requests may send `board` instead (ironman = strict).
+ *   `cycles` is the author's length; each run simulates it plus the secret end window (rules.ts endCycles).
  */
 
 declare const __ENGINE_VERSION__: string | undefined;
@@ -28,7 +30,9 @@ export const ENGINE_VERSION: string = typeof __ENGINE_VERSION__ === "string" ? _
 export interface CliRequest {
   mode: "version" | "check" | "verify";
   payload?: unknown;
-  board?: Board;
+  runKind?: RunKind;
+  /** Old requests: a board name (`ironman` = strict). */
+  board?: string;
   tier?: TierId;
   cycles?: number;
   runs?: VerifyRun[];
@@ -68,7 +72,7 @@ export function handle(req: CliRequest, progress: (line: string) => void = () =>
   const engine = createEngine();
   switch (req.mode) {
     case "version":
-      return { engineVersion: ENGINE_VERSION, every: [...EVERY], tiers: [...TIERS] };
+      return { engineVersion: ENGINE_VERSION, every: [...EVERY], tiers: [...TIERS], runKinds: [...RUN_KINDS] };
     case "check": {
       const parsed = parseSubmission(req.payload);
       if (!parsed.submission) return { ok: false, errors: parsed.errors, warnings: [], plots: 0, bytes: 0, summary: null };
@@ -80,9 +84,9 @@ export function handle(req: CliRequest, progress: (line: string) => void = () =>
       if (!parsed.submission) throw new Error(`invalid payload: ${parsed.errors.join("; ")}`);
       const check = checkSubmission(parsed.submission, engine.data);
       if (!check.ok) throw new Error(`submission fails the rules: ${check.errors.join("; ")}`);
-      const board = req.board;
+      const runKind = runKindFrom(req.runKind ?? req.board);
       const tier = req.tier;
-      if (board !== "ironman" && board !== "normal") throw new Error("board must be ironman or normal");
+      if (!runKind) throw new Error(`runKind must be one of ${RUN_KINDS.join(", ")}`);
       if (!tier || !TIERS.includes(tier)) throw new Error(`tier must be one of ${TIERS.join(", ")}`);
       const runs = Array.isArray(req.runs) ? req.runs : [];
       for (const r of runs) {
@@ -90,7 +94,7 @@ export function handle(req: CliRequest, progress: (line: string) => void = () =>
       }
       const job = {
         submission: parsed.submission,
-        board,
+        runKind,
         tier,
         cycles: clampCycles(req.cycles),
         runs,
@@ -100,8 +104,8 @@ export function handle(req: CliRequest, progress: (line: string) => void = () =>
       };
       const results = verifyJob(engine, job, (done, total) => progress(`progress ${done}/${total}`));
       const quotes = readQuotes(req.bazaar);
-      const outlier = outlierCheck(engine, results, board, quotes, typeof req.outlierRatio === "number" ? req.outlierRatio : DEFAULT_OUTLIER_RATIO);
-      return { engineVersion: ENGINE_VERSION, results, outlier };
+      const outlier = outlierCheck(engine, results, runKind, quotes, typeof req.outlierRatio === "number" ? req.outlierRatio : DEFAULT_OUTLIER_RATIO);
+      return { engineVersion: ENGINE_VERSION, runKind, results, outlier };
     }
     default:
       throw new Error(`unknown mode "${(req as { mode?: unknown }).mode}"`);

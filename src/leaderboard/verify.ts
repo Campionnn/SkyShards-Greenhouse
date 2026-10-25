@@ -1,15 +1,18 @@
 import type { Engine } from "../simulator/engine";
 import { DEFAULT_BAZAAR_PRICING, type BazaarQuote } from "../simulator/economy/bazaar";
 import type { ItemId } from "../simulator/data/types";
+import type { SimulationState } from "../simulator/sim/state";
 import { valueResult } from "./pricing";
-import { runResult, spreadRatio, type RunResult } from "./result";
-import { ruleScenario, type Board, type Submission } from "./rules";
+import { RunRecorder, spreadRatio, type RunResult } from "./result";
+import { endCycles, ruleScenario, RUN_KIND_BOARD, type RunKind, type Submission } from "./rules";
 import type { TierId } from "./tiers";
 
 /**
- * Verification runs (docs/plans/flow-leaderboard.md §6.2, §6.3): simulate a submission under the
- * rules for a list of (every, seed) cells and summarise each as a `RunResult`. Framework-free so
- * the CLI bundle and the page's local test both use it.
+ * Verification runs (docs/plans/flow-leaderboard.md §6.2, §6.3, docs/plans/leaderboard-boards-v2.md
+ * §4.3): simulate a submission under the rules of one run kind for a list of (every, seed) cells
+ * and summarise each as a `RunResult`. Each run goes `endCycles(cycles)` cycles: the author's
+ * length plus the secret end window the score is averaged over. Framework-free so the CLI bundle
+ * and the page's local test both use it.
  */
 
 export interface VerifyRun {
@@ -20,8 +23,9 @@ export interface VerifyRun {
 
 export interface VerifyJob {
   submission: Submission;
-  board: Board;
+  runKind: RunKind;
   tier: TierId;
+  /** The author's length C (already clamped); each run simulates `endCycles(C)`. */
   cycles: number;
   runs: VerifyRun[];
   /** Wall-clock backstop per run (catches a stuck process); a run over it fails. */
@@ -32,7 +36,7 @@ export interface VerifyJob {
    * what decides a normal flow. The deciding limit is the deterministic `scriptStepsPerRun`.
    */
   cpuMsPerRun?: number;
-  /** Interpreter steps all scripts may use in one run (deterministic: same verdict on every machine); default scriptStepCap(cycles). */
+  /** Interpreter steps all scripts may use in one run (deterministic: same verdict on every machine); default scriptStepCap(endCycles(cycles)). */
   scriptStepsPerRun?: number;
 }
 
@@ -46,7 +50,7 @@ export interface VerifyJob {
 // cycles) is ~15 s of script work on the VPS, and 500M (5000 cycles) stays well inside the CPU
 // backstop even on Cloud Run.
 export const SCRIPT_STEPS_PER_CYCLE = 100_000;
-/** The step cap of a run of `cycles` cycles. */
+/** The step cap of a run of `cycles` simulated cycles. */
 export const scriptStepCap = (cycles: number): number => SCRIPT_STEPS_PER_CYCLE * Math.max(1, Math.floor(cycles));
 /** CPU-time backstop (ms) for anything the step cap doesn't cover. */
 export const CPU_MS_BACKSTOP = 300_000;
@@ -87,61 +91,74 @@ export interface RunOnceOptions {
   wallMs: number;
   /** CPU-time cap; ignored when there is no CPU clock. */
   cpuMs?: number;
-  /** Script step cap (ScriptsState.steps); defaults to scriptStepCap(cycles). */
+  /** Script step cap (ScriptsState.steps); defaults to scriptStepCap(endCycles(cycles)). */
   scriptSteps?: number;
   now?: () => number;
   /** CPU clock in ms (defaults to the process's, where available). */
   cpuNow?: () => number;
-  /** Called after every slice with the cycles done. */
+  /** Called after every slice with the cycles done (of `endCycles(cycles)`). */
   onProgress?: (done: number, total: number) => void;
 }
 
-/** Simulate one cell to completion (or the cap). Never throws for a scenario the engine rejects: returns the error. */
-export function runOnce(engine: Engine, submission: Submission, board: Board, tier: TierId, every: number, seed: number, cycles: number, opts: RunOnceOptions): VerifyRunOutcome {
+/**
+ * Simulate one cell to the end of its window (or the cap). `cycles` is the author's length C.
+ * Never throws for a scenario the engine rejects: returns the error.
+ */
+export function runOnce(engine: Engine, submission: Submission, runKind: RunKind, tier: TierId, every: number, seed: number, cycles: number, opts: RunOnceOptions): VerifyRunOutcome {
   const now = opts.now ?? (() => globalThis.performance?.now() ?? Date.now());
   const cpuNow = opts.cpuNow ?? processCpuClock();
   const t0 = now();
   const c0 = cpuNow?.() ?? 0;
   const cpuUsed = () => (cpuNow ? cpuNow() - c0 : null);
   const out = (ok: boolean, error: string | null, result: RunResult | null): VerifyRunOutcome => ({ every, seedIndex: -1, seed, ok, error, result, wallMs: now() - t0, cpuMs: cpuUsed() });
-  let state;
+  const total = endCycles(cycles);
+  let state: SimulationState;
   try {
-    state = engine.initState(ruleScenario(submission, { board, tier, every, seed })).state;
+    state = engine.initState(ruleScenario(submission, { runKind, tier, every, seed })).state;
   } catch (e) {
     return out(false, `invalid scenario: ${e instanceof Error ? e.message : String(e)}`, null);
   }
+  const recorder = new RunRecorder(engine.data, { from: Math.max(1, Math.floor(cycles)), to: total });
+  recorder.observe(state);
+  const onCycle = (s: SimulationState) => recorder.observe(s);
+  const stepCap = opts.scriptSteps ?? scriptStepCap(total);
   let done = 0;
-  while (done < cycles) {
-    const n = Math.min(SLICE, cycles - done);
-    const r = engine.run(state, n, { retainEvents: "summary" });
+  while (done < total) {
+    const n = Math.min(SLICE, total - done);
+    // "none": the run reads only the state; events are counted, never built.
+    const r = engine.run(state, n, { retainEvents: "none", onCycle });
     state = r.state;
     done += r.cyclesRun;
-    opts.onProgress?.(done, cycles);
+    opts.onProgress?.(done, total);
     if (r.truncated || state.scripts?.halt) {
       const halt = state.scripts?.halt;
       const why = halt ? `script ${halt.kind}${halt.message ? `: ${halt.message}` : ""} at cycle ${state.cycle}` : `run stopped at cycle ${state.cycle}`;
-      return out(false, why, runResult(state, engine.analyse(state).sustainable));
+      return out(false, why, recorder.result(state, engine.analyse(state).sustainable));
     }
-    const stepCap = opts.scriptSteps ?? scriptStepCap(cycles);
     const steps = state.scripts?.steps ?? 0;
-    if (steps > stepCap) return out(false, `scripts used more than ${stepCap.toLocaleString("en-US")} steps (${done} of ${cycles} cycles)`, null);
+    if (steps > stepCap) return out(false, `scripts used more than ${stepCap.toLocaleString("en-US")} steps (${done} of ${total} cycles)`, null);
     const cpu = cpuUsed();
-    if (opts.cpuMs !== undefined && cpu !== null && cpu > opts.cpuMs) return out(false, `used more than ${seconds(opts.cpuMs)} s of CPU time (${done} of ${cycles} cycles)`, null);
-    if (now() - t0 > opts.wallMs) return out(false, `took longer than ${seconds(opts.wallMs)} s (${done} of ${cycles} cycles)`, null);
+    if (opts.cpuMs !== undefined && cpu !== null && cpu > opts.cpuMs) return out(false, `used more than ${seconds(opts.cpuMs)} s of CPU time (${done} of ${total} cycles)`, null);
+    if (now() - t0 > opts.wallMs) return out(false, `took longer than ${seconds(opts.wallMs)} s (${done} of ${total} cycles)`, null);
   }
-  return out(true, null, runResult(state, engine.analyse(state).sustainable));
+  return out(true, null, recorder.result(state, engine.analyse(state).sustainable));
 }
 
 /** Run every cell of a job in order. */
 export function verifyJob(engine: Engine, job: VerifyJob, onProgress?: (done: number, total: number) => void): VerifyRunOutcome[] {
   const outcomes: VerifyRunOutcome[] = [];
   job.runs.forEach((r, i) => {
-    const o = runOnce(engine, job.submission, job.board, job.tier, r.every, r.seed, job.cycles, { wallMs: job.wallMsPerRun, cpuMs: job.cpuMsPerRun, scriptSteps: job.scriptStepsPerRun });
+    const o = runOnce(engine, job.submission, job.runKind, job.tier, r.every, r.seed, job.cycles, { wallMs: job.wallMsPerRun, cpuMs: job.cpuMsPerRun, scriptSteps: job.scriptStepsPerRun });
     o.seedIndex = r.seedIndex;
     outcomes.push(o);
     onProgress?.(i + 1, job.runs.length);
   });
   return outcomes;
+}
+
+/** A run kind's reference valuation of a result (coins per day): NPC for the ironman kinds, the given Bazaar quotes for normal. */
+export function referenceValue(engine: Engine, r: RunResult, runKind: RunKind, quotes: Readonly<Record<ItemId, BazaarQuote>> = {}): number {
+  return valueResult(engine.data, r, RUN_KIND_BOARD[runKind], quotes, DEFAULT_BAZAAR_PRICING).profitPerDay;
 }
 
 export interface OutlierCheck {
@@ -159,14 +176,14 @@ export interface OutlierCheck {
 export function outlierCheck(
   engine: Engine,
   outcomes: readonly VerifyRunOutcome[],
-  board: Board,
+  runKind: RunKind,
   quotes: Readonly<Record<ItemId, BazaarQuote>>,
   ratio: number
 ): OutlierCheck {
   const byEvery = new Map<number, number[]>();
   for (const o of outcomes) {
     if (!o.ok || !o.result) continue;
-    const v = valueResult(engine.data, o.result, board, quotes, DEFAULT_BAZAAR_PRICING).profitPerDay;
+    const v = referenceValue(engine, o.result, runKind, quotes);
     (byEvery.get(o.every) ?? byEvery.set(o.every, []).get(o.every)!).push(v);
   }
   const ratios: Record<number, number> = {};

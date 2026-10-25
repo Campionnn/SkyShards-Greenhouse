@@ -6,22 +6,55 @@ import { MAX_PLOTS, validateScenario, type ScenarioIssue } from "../simulator/fl
 import { migrateScenario } from "../simulator/migrate";
 import { defaultSettings } from "../simulator/scenario";
 import type { Scenario, ScenarioPlot, Settings } from "../simulator/sim/state";
+import { identifierUses } from "../simulator/script/check";
+import { DEBUG_SCRIPT_APIS } from "../simulator/script/overrides";
 import type { ScriptDef } from "../simulator/script/types";
 import { activityEvery, tierStats, type TierId } from "./tiers";
 
 /**
- * The leaderboard rules (docs/plans/flow-leaderboard.md §4): what a submission may contain and
- * the settings every verification run uses. Shared by the server CLI (which enforces them) and
- * the page (which previews them and applies them locally with "Apply leaderboard rules").
+ * The leaderboard rules (docs/plans/flow-leaderboard.md §4, docs/plans/leaderboard-boards-v2.md):
+ * what a submission may contain and the settings every verification run uses. Shared by the
+ * server CLI (which enforces them) and the page (which previews them and applies them locally
+ * with "Apply leaderboard rules").
  *
  * A submission is a flows file (`skyshards-greenhouse-flows`, v1 or v2): `plots` (flows, steps,
  * layouts, triggers, watch lists, policy overrides, plot scripts), the controller `script` and
  * `settings.policies` (action defaults). Everything else in the file is ignored: the server sets
  * the seed, online schedule, player stats, starting inventory, config and profile per run.
+ *
+ * Every flow is verified under three run kinds, one per board, and appears on all three boards:
+ * - `strict` ("Ironman · from nothing"): empty inventory, the starting layouts paid from it, no
+ *   borrowing ever; a missing item leaves its cell empty.
+ * - `borrow` ("Ironman · with starting items"): empty inventory, but any mutation item can be
+ *   placed before it is owned (the stock goes negative). Results show the starting items it needs.
+ * - `normal` ("Normal"): the normal profile; free starting layouts (their cost shown as the build
+ *   cost), shortfalls bought on the Bazaar, surplus sold.
  */
 
-export type Board = "ironman" | "normal";
-export const BOARDS: readonly Board[] = ["ironman", "normal"];
+export type RunKind = "strict" | "borrow" | "normal";
+export const RUN_KINDS: readonly RunKind[] = ["strict", "borrow", "normal"];
+
+/** The three boards, one per run kind. */
+export type Board = "ironman_strict" | "ironman_borrow" | "normal";
+export const BOARDS: readonly Board[] = ["ironman_strict", "ironman_borrow", "normal"];
+export const BOARD_RUN_KIND: Readonly<Record<Board, RunKind>> = { ironman_strict: "strict", ironman_borrow: "borrow", normal: "normal" };
+export const RUN_KIND_BOARD: Readonly<Record<RunKind, Board>> = { strict: "ironman_strict", borrow: "ironman_borrow", normal: "normal" };
+
+/** A board from a URL, an old client or an old entry: `ironman` (the one ironman board before v2) is `ironman_strict`. */
+export function boardFrom(raw: unknown): Board | null {
+  if (raw === "ironman") return "ironman_strict";
+  return BOARDS.includes(raw as Board) ? (raw as Board) : null;
+}
+
+/** A run kind from a request: a run kind, or a board name (old clients send `board`). */
+export function runKindFrom(raw: unknown): RunKind | null {
+  if (RUN_KINDS.includes(raw as RunKind)) return raw as RunKind;
+  const board = boardFrom(raw);
+  return board ? BOARD_RUN_KIND[board] : null;
+}
+
+/** Ironman boards are priced at NPC prices (mutation items 0); normal at the Bazaar. */
+export const isIronmanBoard = (b: Board): boolean => b !== "normal";
 
 export const MIN_CYCLES = 2000;
 export const MAX_CYCLES = 5000;
@@ -30,12 +63,24 @@ export const DEFAULT_CYCLES = 2000;
 export const MAX_PAYLOAD_BYTES = 256 * 1024;
 /** Ironman: placed supplies with an unlimited supply. */
 export const IRONMAN_FREE_ITEMS: readonly string[] = ["dead_plant", "fermento"];
+
 /**
- * Ironman: the starting layouts are bought on credit (`config.bootstrapDebt`) and every item's
- * debt must be paid back by this cycle. A grid cell whose seeds mostly miss it is insolvent: left
- * out of that frequency's ranking. Missing it at max stats, online every cycle, rejects the entry.
+ * The secret end window (plan §4.3). Each seed runs to `endCycles(C) = ceil(C × END_WINDOW)`
+ * cycles, C being the author's length. The score is the mean of the per-day rates at the cut
+ * points C, C + CUT_STEP, ... (up to the end): scripts can't see where the run is judged.
+ * Mirrored in SkyShards-API leaderboard/config.py.
  */
-export const PAYBACK_CYCLES = 1000;
+export const END_WINDOW = 1.25;
+export const CUT_STEP = 25;
+/**
+ * "Still producing": a seed whose rate over the last TRAIL_SHARE of the run is below TRAIL_MIN ×
+ * its window-mean rate is slowing down; a cell where most seeds are is scored at the trailing rate.
+ */
+export const TRAIL_SHARE = 0.2;
+export const TRAIL_MIN = 0.6;
+
+/** Cycles one verification run simulates for a scored length of `cycles` (the author's, clamped by the caller). */
+export const endCycles = (cycles: number): number => Math.ceil(Math.max(1, Math.floor(cycles)) * END_WINDOW);
 
 export const FLOWS_FILE_KIND = "skyshards-greenhouse-flows";
 
@@ -130,10 +175,18 @@ export function parseSubmission(raw: unknown): ParsedSubmission {
       }
     }
     const f = flow as Record<string, unknown>;
+    const cleanSteps = structuredClone(steps) as ScenarioPlot["flow"]["steps"];
+    // Step-level policy overrides get the same cleaning as the plot's and the defaults.
+    for (const s of cleanSteps) {
+      if (!("policies" in s)) continue;
+      const policies = sanitizePolicies(s.policies);
+      if (Object.keys(policies).length) s.policies = policies;
+      else delete s.policies;
+    }
     const plot: ScenarioPlot = {
       id: id as number,
       flow: {
-        steps: structuredClone(steps) as ScenarioPlot["flow"]["steps"],
+        steps: cleanSteps,
         loop: !!f.loop,
         startIndex: Math.min(Math.max(0, Math.floor(Number(f.startIndex) || 0)), steps.length - 1),
       },
@@ -174,19 +227,30 @@ export function submissionFile(s: Submission): SubmissionFile {
 
 /** A run's settings under the rules: everything except the submission's policies is fixed. */
 export interface RunSpec {
-  board: Board;
+  runKind: RunKind;
   tier: TierId;
   every: number;
   seed: number;
 }
 
-/** The config every verification run uses: defaults; ironman adds free supplies and a starting layout bought on credit. */
-export function ruleConfig(board: Board): SimConfig {
+/**
+ * The config every verification run of a run kind uses: the defaults, plus
+ * - ironman kinds: unlimited Dead Plants and Fermento; strict pays the starting layouts from the
+ *   (empty) stock, borrow may place any mutation item before it is owned;
+ * - normal: nothing else (the normal profile buys and sells instead).
+ * `leaderboardRules` refuses the debug script APIs and hides the credit settings from scripts.
+ */
+export function ruleConfig(runKind: RunKind): SimConfig {
   const config: SimConfig = structuredClone(DEFAULT_CONFIG);
   delete config.forcedEffects;
-  if (board === "ironman") {
+  config.leaderboardRules = true;
+  if (runKind === "strict") {
+    config.freePlacedItems = [...IRONMAN_FREE_ITEMS];
+    config.setupFromStock = true;
+  } else if (runKind === "borrow") {
     config.freePlacedItems = [...IRONMAN_FREE_ITEMS];
     config.bootstrapDebt = true;
+    config.allowMutationDebt = true;
   }
   return config;
 }
@@ -198,8 +262,8 @@ export function ruleSettings(policies: Policies, spec: RunSpec): Settings {
   settings.activity = activityEvery(spec.every);
   settings.playerActions = true;
   settings.policies = structuredClone(policies);
-  settings.config = ruleConfig(spec.board);
-  if (spec.board === "normal") settings.profile = "normal";
+  settings.config = ruleConfig(spec.runKind);
+  if (spec.runKind === "normal") settings.profile = "normal";
   else delete settings.profile;
   delete settings.reserve;
   return settings;
@@ -217,18 +281,18 @@ export function ruleScenario(s: Submission, spec: RunSpec): Scenario {
  * leaderboard rules" button. `seed` and `every` are the user's own test values (the server's
  * seeds are secret).
  */
-export function applyRules(sc: Scenario, board: Board, every: number, seed: number, tier: TierId = "max"): Scenario {
+export function applyRules(sc: Scenario, runKind: RunKind, every: number, seed: number, tier: TierId = "max"): Scenario {
   return {
     ...sc,
     startingInventory: {},
-    settings: ruleSettings(mergePolicies(DEFAULT_POLICIES, sanitizePolicies(sc.settings.policies)), { board, tier, every, seed }),
+    settings: ruleSettings(mergePolicies(DEFAULT_POLICIES, sanitizePolicies(sc.settings.policies)), { runKind, tier, every, seed }),
   };
 }
 
 /** Which rule settings a scenario differs in (for the page's "your settings differ" note). */
-export function ruleDifferences(sc: Scenario, board: Board): string[] {
+export function ruleDifferences(sc: Scenario, runKind: RunKind): string[] {
   const diffs: string[] = [];
-  const rules = ruleSettings(sc.settings.policies, { board, tier: "max", every: 1, seed: sc.settings.seed });
+  const rules = ruleSettings(sc.settings.policies, { runKind, tier: "max", every: 1, seed: sc.settings.seed });
   if (Object.values(sc.startingInventory).some((n) => n > 0)) diffs.push("starting inventory is not empty");
   const stats = sc.settings.playerStats;
   const ruleStats = rules.playerStats;
@@ -239,8 +303,49 @@ export function ruleDifferences(sc: Scenario, board: Board): string[] {
   const ruleCfg = rules.config as unknown as Record<string, unknown>;
   const keys = new Set([...Object.keys(cfg), ...Object.keys(ruleCfg)]);
   for (const k of keys) if (JSON.stringify(cfg[k]) !== JSON.stringify(ruleCfg[k])) diffs.push(`advanced setting "${k}" differs`);
-  if ((sc.settings.profile === "normal") !== (board === "normal")) diffs.push(`profile is not ${board}`);
+  if ((sc.settings.profile === "normal") !== (runKind === "normal")) diffs.push(`profile is not ${runKind === "normal" ? "normal" : "ironman"}`);
   return diffs;
+}
+
+/** Every script of a submission with its place in the flow, for messages. */
+function submissionScripts(s: Submission): { where: string; source: string }[] {
+  const out: { where: string; source: string }[] = [];
+  const add = (where: string, def: ScriptDef | undefined) => {
+    if (def && def.enabled !== false && def.source.trim()) out.push({ where, source: def.source });
+  };
+  add("Controller script", s.script);
+  for (const p of s.plots) {
+    add(`Plot ${p.id} script`, p.script);
+    for (const [i, step] of p.flow.steps.entries()) {
+      for (const exit of step.exits) {
+        const exprs: string[] = [];
+        const walk = (conds: readonly unknown[]) => {
+          for (const c of conds as { kind?: string; expr?: unknown; of?: unknown[] }[]) {
+            if (c?.kind === "script" && typeof c.expr === "string") exprs.push(c.expr);
+            else if (c?.kind === "group" && Array.isArray(c.of)) walk(c.of);
+          }
+        };
+        walk(exit.when ?? []);
+        for (const expr of exprs) out.push({ where: `Plot ${p.id}, step ${i + 1} (${step.label || step.id}) exit condition`, source: expr });
+      }
+    }
+  }
+  return out;
+}
+
+/** The submission's uses of the debug script APIs (`forceEffects` and friends), as error messages. */
+export function debugApiErrors(s: Submission): string[] {
+  const errors: string[] = [];
+  for (const { where, source } of submissionScripts(s)) {
+    const uses = identifierUses(source, DEBUG_SCRIPT_APIS);
+    if (!uses.length) continue;
+    const names = [...new Set(uses.map((u) => `${u.name}()`))].join(", ");
+    errors.push(
+      `${where}, line ${uses[0].line}: ${names} ${uses.length > 1 && names.includes(",") ? "are debugging tools" : "is a debugging tool"} and isn't allowed on the leaderboard. ` +
+        "Forced effects give plants effects no layout earns. Remove it, or do the real thing in the script (e.g. place a Blastberry next to the plant, harvest, and pick the Blastberry back up before the next tick)."
+    );
+  }
+  return errors;
 }
 
 export interface SubmissionCheck {
@@ -263,11 +368,12 @@ export function checkSubmission(s: Submission, data: GameData): SubmissionCheck 
   if (!errors.length) {
     let issues: ScenarioIssue[];
     try {
-      issues = validateScenario(ruleScenario(s, { board: "ironman", tier: "max", every: 1, seed: 1 }), data);
+      issues = validateScenario(ruleScenario(s, { runKind: "strict", tier: "max", every: 1, seed: 1 }), data);
     } catch (e) {
       issues = [{ level: "error", path: "Scenario", message: e instanceof Error ? e.message : String(e) }];
     }
     for (const i of issues) (i.level === "error" ? errors : warnings).push(`${i.path}: ${i.message}`);
+    errors.push(...debugApiErrors(s));
   }
   return { ok: errors.length === 0, errors, warnings, plots: s.plots.length, bytes };
 }

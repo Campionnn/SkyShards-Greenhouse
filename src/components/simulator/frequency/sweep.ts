@@ -1,7 +1,6 @@
 import type { Engine } from "../../../simulator/engine";
 import { effortPerSession, type ActivitySchedule, type RunSummary, type Scenario } from "../../../simulator";
-import { cellSolvent, debtOf, median, paidBackBy } from "../../../leaderboard/result";
-import { PAYBACK_CYCLES } from "../../../leaderboard/rules";
+import { median } from "../../../leaderboard/result";
 import { EVERY } from "../../../leaderboard/tiers";
 import type { FrequencyPoint } from "../../../leaderboard/view";
 
@@ -34,8 +33,6 @@ export interface SweepRun {
   error: string | null;
   /** The finished run's summary (null when the scenario failed to start). */
   summary: RunSummary | null;
-  /** Starting layouts on credit (`config.bootstrapDebt`): paid back by PAYBACK_CYCLES. Missing when the scenario doesn't borrow. */
-  solvent?: boolean;
 }
 
 /** The scenario with its online schedule replaced by "every `every` cycles" and the given seed. */
@@ -107,15 +104,7 @@ export function runSweepCell(
     }
     if (r.cyclesRun === 0) break;
   }
-  const borrows = state.scenario.settings.config.bootstrapDebt === true;
-  return {
-    every,
-    seed,
-    ok: error === null,
-    error,
-    summary: state.summary,
-    ...(borrows ? { solvent: paidBackBy(debtOf(state).paybackCycle, PAYBACK_CYCLES) } : {}),
-  };
+  return { every, seed, ok: error === null, error, summary: state.summary };
 }
 
 /** Profit per simulated day of a summary (ironman: the money panel's profit). */
@@ -131,8 +120,7 @@ export interface SweepPoint extends FrequencyPoint {
 
 /**
  * The chart's points: per frequency, the median profit per day over the finished seeds, priced by
- * `price` (the page passes Bazaar pricing in normal profile). A frequency whose seeds mostly don't
- * pay their borrowed starting layouts back in time is insolvent, as on the leaderboard.
+ * `price` (the page passes Bazaar pricing in normal profile).
  */
 export function sweepPoints(runs: readonly SweepRun[], price: (s: RunSummary) => number = summaryProfitPerDay, grid: readonly number[] = SWEEP_EVERY): SweepPoint[] {
   return grid.map((every) => {
@@ -140,7 +128,6 @@ export function sweepPoints(runs: readonly SweepRun[], price: (s: RunSummary) =>
     const ok = at.filter((r): r is SweepRun & { summary: RunSummary } => r.ok && r.summary !== null);
     const base = { every, runs: at.length, failed: at.length - ok.length };
     if (!ok.length) return { ...base, profitPerDay: null };
-    if (ok.some((r) => r.solvent !== undefined) && !cellSolvent(ok)) return { ...base, profitPerDay: null, insolvent: true };
     const logged = ok.filter((r) => (r.summary.effort?.sessions ?? 0) > 0);
     return {
       ...base,

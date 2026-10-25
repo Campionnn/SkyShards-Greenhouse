@@ -14,7 +14,7 @@ self.onmessage = (event: MessageEvent<LocalTestRequest>) => {
   const r = event.data;
   let lastPost = 0;
   try {
-    const o = runOnce(engine, r.submission, r.board, r.tier, r.every, r.seed, r.cycles, {
+    const o = runOnce(engine, r.submission, r.runKind, r.tier, r.every, r.seed, r.cycles, {
       wallMs: r.wallMs,
       onProgress: (done, total) => {
         const now = performance.now();

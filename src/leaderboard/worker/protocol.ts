@@ -1,15 +1,16 @@
 import type { RunResult } from "../result";
-import type { Board, Submission } from "../rules";
+import type { RunKind, Submission } from "../rules";
 import type { TierId } from "../tiers";
 
-/** The submit dialog's "Test with 5 random seeds": one seed per request. */
+/** The submit dialog's local test with random seeds: one seed of one run kind per request. */
 export interface LocalTestRequest {
   reqId: number;
   submission: Submission;
-  board: Board;
+  runKind: RunKind;
   tier: TierId;
   every: number;
   seed: number;
+  /** The author's length; the run goes on through the end window (rules.ts endCycles). */
   cycles: number;
   /** Wall-clock cap (the server's is 60 s per run). */
   wallMs: number;
