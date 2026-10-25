@@ -204,7 +204,26 @@ export interface SimConfig {
    * free. Read as `=== true`, so saved scenarios without the key are unchanged.
    */
   bootstrapDebt: boolean;
+  /**
+   * The starting layouts are paid from the starting inventory (the leaderboard's "from nothing"
+   * rules): setup spends like a later step does, without opening a loan, and an item the stock
+   * doesn't cover leaves its cell empty (a shortfall, re-placed once the stock has it). Ignored
+   * when `bootstrapDebt` is on (that buys the setup on credit). Absent or false = setup is free.
+   * Optional, so scenarios without it are unchanged.
+   */
+  setupFromStock?: boolean;
+  /**
+   * Set by the leaderboard rules (`ruleConfig`). Scripts can't use the debug APIs
+   * (`forceEffects`, `unforceEffects`, `resetForcedEffects`: they throw), and the scripts' `config`
+   * copy leaves out the credit settings (`allowMutationDebt`, `bootstrapDebt`, `setupFromStock`,
+   * this flag), so a script can't branch on the board it is measured for. Absent = the simulator's
+   * normal behaviour.
+   */
+  leaderboardRules?: boolean;
 }
+
+/** Config keys a script doesn't see under `leaderboardRules`. */
+export const RULES_HIDDEN_CONFIG_KEYS: readonly (keyof SimConfig)[] = ["allowMutationDebt", "bootstrapDebt", "setupFromStock", "leaderboardRules"];
 
 /** A copy of `config` with `forcedEffects` set, or the key removed when nothing is forced. */
 export function withForcedEffects(config: SimConfig, forced: Record<string, readonly string[]> | undefined): SimConfig {
@@ -285,7 +304,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "keepIdenticalOnStepChange", label: "Keep identical plants on step change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a step change untouched." },
   { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid flows work: grow Magic Jellybeans in one step, then use them as inputs in the next while they finish growing." },
   { key: "allowMutationDebt", label: "Allow mutation debt", group: "model", input: { type: "boolean" }, description: "The player places mutation items even when the inventory has none: the stock goes negative (shown in red in the Inventory) and later harvests pay it back. Useful to see what a flow produces before you have the items. Fermento and dead plants still need stock. Off: a missing item leaves the cell empty and is recorded as a shortfall." },
-  { key: "bootstrapDebt", label: "Starting layouts on credit", group: "model", input: { type: "boolean" }, description: "The leaderboard's ironman rule. The starting layouts are not free: every mutation item they place is spent from the inventory, borrowing what it doesn't hold (the stock goes negative). Until an item's stock is back at 0 the player may keep borrowing it; after that, a missing item leaves the cell empty as usual. On the leaderboard every item must be paid back by cycle 1000. Off: the starting layouts are placed free." },
+  { key: "bootstrapDebt", label: "Starting layouts on credit", group: "model", input: { type: "boolean" }, description: "The leaderboard's ironman rule. The starting layouts are not free: every mutation item they place is spent from the inventory, borrowing what it doesn't hold (the stock goes negative). Until an item's stock is back at 0 the player may keep borrowing it; after that, a missing item leaves the cell empty as usual. Off: the starting layouts are placed free (or paid from stock, under the leaderboard's \"from nothing\" rules)." },
   { key: "legacyMutationYield", label: "Legacy: yield scales mutation items", group: "model", input: { type: "boolean" }, description: "The behaviour before the game update that \"Fixed Plant Yield bonuses incorrectly applying to mutation items and Ethereal Vine drops\". On: the greenhouse yield sum (Plant Yield upgrade, Unique Crop Bonus, Harvest Boost/Loss) also scales a harvested mutation's own item count and its Ethereal Vine count (e.g. a Duskbloom at +30% yield drops 1, with a 30% chance of a 2nd). Off (current game): mutations drop their base count (1, or Chloronite's Mining Fortune ladder, the Jellybean / All-in Aloe stage multiplier) and Ethereal Vine drops as rolled. Crop bundles are yield-scaled either way." },
 ];
 

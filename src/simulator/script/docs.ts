@@ -78,7 +78,7 @@ export const API: ApiSection[] = [
       { name: "getPlot", signature: "getPlot(id)", description: "The plot with that id (1-3), or null." },
       { name: "plot", signature: "plot", description: "In a plot script: this script's plot. Not defined in the controller script (use plots / getPlot)." },
       { name: "stats", signature: "stats", description: "A copy of the player stats (farmingFortune, floraShard, ...)." },
-      { name: "config", signature: "config", description: "A copy of the Advanced settings." },
+      { name: "config", signature: "config", description: "A copy of the Advanced settings. Under the leaderboard rules the credit settings (allowMutationDebt, bootstrapDebt, setupFromStock) are left out." },
     ],
   },
   {
@@ -91,7 +91,7 @@ export const API: ApiSection[] = [
       { name: "fail", signature: "fail(message)", description: "Stop the run with an error at this line." },
       { name: "metric", signature: "metric(name, value)", description: "Record a number; the Variables panel shows its latest value and a sparkline." },
       { name: "send", signature: "send(to, message)", description: "Deliver a message to another script's onMessage(msg, from) later this cycle. `to`: a plot id or \"controller\"." },
-      { name: "random", signature: "random()", description: "Random number in [0, 1) from the run's seed: same seed, same results. Doesn't change the game's own dice." },
+      { name: "random", signature: "random()", description: "Random number in [0, 1) from a stream derived from the run's seed: same seed, same results. Doesn't change the game's own dice and doesn't reveal the seed." },
       { name: "randomInt", signature: "randomInt(min, max)", description: "Random whole number from min to max (inclusive)." },
       { name: "chance", signature: "chance(p)", description: "True with probability p." },
     ],
@@ -100,7 +100,7 @@ export const API: ApiSection[] = [
     title: "Debug: forced effects",
     prefix: "",
     intro:
-      "For debugging and testing. Every plant of a kind always holds the forced effects on top of what its neighbours give it (held only, never given or relayed). They start as the Advanced setting; a script's changes apply to every plot at once and last until changed again. Not allowed in exit conditions.",
+      "For debugging and testing. Every plant of a kind always holds the forced effects on top of what its neighbours give it (held only, never given or relayed). They start as the Advanced setting; a script's changes apply to every plot at once and last until changed again. Not allowed in exit conditions, and not allowed under the leaderboard rules (the flow is refused at submit and the functions stop the script with an error).",
     entries: [
       { name: "forceEffects", signature: 'forceEffects(kind, effects)', description: 'Force effects on every plant of a kind, replacing what was forced on it: forceEffects("all_in_aloe", ["immunity", "improved_harvest_boost"]). An empty list turns it off for that kind.' },
       { name: "unforceEffects", signature: "unforceEffects(...kinds)", description: "Stop forcing effects on these kinds; with no kinds, turn every forced effect off." },

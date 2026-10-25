@@ -92,6 +92,41 @@ function freeUse(body: A.Stmt[], name: string): A.Pos | null {
   return visit(body, false);
 }
 
+/**
+ * Every use of one of `names` as a variable (a call, or the function passed around), in source
+ * order. Scripts have no global object, so this finds every way to reach a built-in by name. A
+ * script with a syntax error has none (its error is reported elsewhere).
+ */
+export function identifierUses(source: string, names: readonly string[]): { name: string; line: number; col: number }[] {
+  let program;
+  try {
+    program = compile(source);
+  } catch (err) {
+    if (err instanceof ScriptSyntaxError) return [];
+    throw err;
+  }
+  const out: { name: string; line: number; col: number }[] = [];
+  // Iterative walk: the parser bounds nesting, but keep it stack-safe anyway.
+  const stack: unknown[] = [program.body];
+  while (stack.length) {
+    const node = stack.pop();
+    if (!node || typeof node !== "object") continue;
+    if (Array.isArray(node)) {
+      for (let i = node.length - 1; i >= 0; i--) stack.push(node[i]);
+      continue;
+    }
+    const n = node as A.Node;
+    if (n.type === "Ident" && names.includes(n.name)) out.push({ name: n.name, line: n.line, col: n.col });
+    // `a.forceEffects` is a property name, not the built-in.
+    if (n.type === "Member" && !n.computed) {
+      stack.push(n.object);
+      continue;
+    }
+    for (const [k, v] of Object.entries(n)) if (k !== "line" && k !== "col" && k !== "type" && v && typeof v === "object") stack.push(v);
+  }
+  return out.sort((a, b) => a.line - b.line || a.col - b.col);
+}
+
 /** An error message for a broken exit-condition expression, or null. */
 export function checkScriptExpression(expr: string): string | null {
   if (!expr.trim()) return "The script condition is empty. Write an expression, like plot.count(\"chorus_fruit\") >= 4.";

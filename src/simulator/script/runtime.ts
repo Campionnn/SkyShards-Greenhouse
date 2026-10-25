@@ -16,7 +16,7 @@
 // completes and run() stops after it. After an error, no more script code runs that cycle.
 
 import { cellKey, footprintFits, GRID_SIZE, inBounds } from "../grid/cells";
-import { isFreePlacedItem, MAX_WATER } from "../config";
+import { isFreePlacedItem, MAX_WATER, RULES_HIDDEN_CONFIG_KEYS, type SimConfig } from "../config";
 import { isHarvestableCrop, kindDef } from "../data/load";
 import { dueTarget, transition } from "../flow/runner";
 import { collectedOf, conditionHolds, stepVisits, type TriggerView } from "../flow/triggers";
@@ -24,7 +24,7 @@ import type { Condition, PolicyOverrides, StepLayout } from "../flow/types";
 import { hourOfDay } from "../growth/clock";
 import { effectiveList, ensureEffects } from "../effects/adapter";
 import { effectsGivenBy } from "../../utilities/effectSimulation";
-import { intInclusive, nextFloat, seedRng } from "../rng";
+import { derivedSeed, intInclusive, nextFloat, seedRng } from "../rng";
 import { sanityCheck } from "../analysis/sanityCheck";
 import { newScratch, type CycleCtx, type Env, type TickScratch } from "../sim/context";
 import { wouldDecayWithin } from "../sim/decay";
@@ -69,8 +69,17 @@ const MAX_MESSAGES_PER_CYCLE = 1000;
 const KNOWN_GROUND = ["farmland", "sand", "soul_sand", "mycelium", "netherrack", "end_stone"];
 
 export function emptyScriptsState(seed: number): ScriptsState {
-  // A stream of its own: scripts calling random() never shift the game's dice.
-  return { heap: [], scopes: {}, shared: { u: 1 }, rng: seedRng((Math.trunc(seed) ^ 0x5c41b7) >>> 0), plots: {}, logs: [], metrics: {}, halt: null };
+  // A stream of its own: scripts calling random() never shift the game's dice. Seeded one way from
+  // the scenario seed, so a script's random() output doesn't reveal the game's (secret) seed.
+  return { heap: [], scopes: {}, shared: { u: 1 }, rng: seedRng(derivedSeed(seed, "script")), plots: {}, logs: [], metrics: {}, halt: null };
+}
+
+/** The scripts' copy of the config: under the leaderboard rules, without the credit settings. */
+function scriptConfig(config: SimConfig): Record<string, unknown> {
+  if (config.leaderboardRules !== true) return { ...config };
+  const out: Record<string, unknown> = { ...config };
+  for (const k of RULES_HIDDEN_CONFIG_KEYS) delete out[k];
+  return out;
 }
 
 interface ScriptInstance {
@@ -552,13 +561,20 @@ export class ScriptRuntime {
     set("CROPS", [...this.env.data.cropIds]);
     set("inventory", new InventoryHost(this));
 
-    // Debug: forced effects (config.forcedEffects), switchable from scripts.
+    // Debug: forced effects (config.forcedEffects), switchable from scripts. Refused under the
+    // leaderboard rules: they give effects no layout earns.
     const kindArg = (v: unknown, info: CallInfo, what: string): string => {
       const id = toStr(v);
       if (!own(this.env.data.crops, id) && !own(this.env.data.mutations, id)) info.fail(`${what}: "${id}" isn't a crop or mutation id`);
       return id;
     };
+    const debugOnly = (info: CallInfo, what: string) => {
+      if (this.state.scenario.settings.config.leaderboardRules === true) {
+        info.fail(`${what} is a debugging tool and isn't allowed under the leaderboard rules. Place the real items instead (e.g. a Blastberry next to the plant, picked back up before the next tick).`);
+      }
+    };
     set("forceEffects", fn("forceEffects", (a, info) => {
+      debugOnly(info, "forceEffects()");
       this.notInCondition(info, "forceEffects()");
       const kind = kindArg(a[0], info, "forceEffects");
       const list = Array.isArray(a[1]) ? a[1] : a.slice(1);
@@ -576,6 +592,7 @@ export class ScriptRuntime {
       return true;
     }));
     set("unforceEffects", fn("unforceEffects", (a, info) => {
+      debugOnly(info, "unforceEffects()");
       this.notInCondition(info, "unforceEffects()");
       if (a.length === 0) {
         this.setForced({});
@@ -587,6 +604,7 @@ export class ScriptRuntime {
       return true;
     }));
     set("resetForcedEffects", fn("resetForcedEffects", (_a, info) => {
+      debugOnly(info, "resetForcedEffects()");
       this.notInCondition(info, "resetForcedEffects()");
       this.setForced(undefined);
       return true;
@@ -602,7 +620,7 @@ export class ScriptRuntime {
     live("plots", () => this.orderedPlots().map((p) => this.plotHost(p.id)));
     live("summary", () => fromData(this.state.summary));
     live("stats", () => fromData(this.state.scenario.settings.playerStats));
-    live("config", () => fromData(this.state.scenario.settings.config));
+    live("config", () => fromData(scriptConfig(this.state.scenario.settings.config)));
   }
 
   private orderedPlots(): PlotState[] {

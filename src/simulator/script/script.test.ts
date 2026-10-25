@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { validateScenario } from "../flow/validate";
 import type { Scenario, SimulationState } from "../sim/state";
 import { engine, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, start, step } from "../testHelpers";
-import { diagnoseScript } from "./check";
+import { derivedSeed, seedRng } from "../rng";
+import { diagnoseScript, identifierUses } from "./check";
 import { SCRIPT_EXAMPLES } from "./examples";
 import { inspectScriptVariables } from "./inspect";
 
@@ -83,6 +84,32 @@ describe("scripts: variables and determinism", () => {
     const b = engine.run(start(withScripts("function onTick() {}")), 30).state;
     expect(a.rng).toEqual(b.rng);
     expect(json(a.plots)).toBe(json(b.plots));
+  });
+
+  it("the script stream is seeded one way from the seed: it is neither the game's stream nor the old seed ^ constant", () => {
+    const seed = 123456789;
+    const s = start({ ...withScripts("function onTick() {}"), settings: { ...withScripts(null).settings, seed } });
+    expect(s.scripts!.rng).toEqual(seedRng(derivedSeed(seed, "script")));
+    expect(s.scripts!.rng).not.toEqual(seedRng(seed));
+    expect(s.scripts!.rng).not.toEqual(seedRng((seed ^ 0x5c41b7) >>> 0));
+    // Neighbouring seeds give unrelated streams (no simple offset to undo).
+    expect(derivedSeed(seed + 1, "script") - derivedSeed(seed, "script")).not.toBe(1);
+    expect(derivedSeed(seed, "script")).toBe(derivedSeed(seed, "script"));
+  });
+
+  it("under the leaderboard rules the script's config copy hides the credit settings", () => {
+    const sc = withScripts("let seen = []; let debt = 1; let listed = []; function onTick() { debt = config.allowMutationDebt; seen = [config.bootstrapDebt, config.setupFromStock, config.leaderboardRules, config.waterLossMin]; listed = keys(config).filter((k) => k.includes('Debt') || k === 'leaderboardRules') }");
+    sc.settings.config = { ...sc.settings.config, allowMutationDebt: true, bootstrapDebt: true, leaderboardRules: true };
+    const r = engine.run(start(sc), 2).state;
+    expect(r.scripts?.halt).toBeNull();
+    const v = vars(r);
+    expect(v["plot:1.debt"]).toBeUndefined();
+    expect(v["plot:1.seen"]).toEqual([undefined, undefined, undefined, sc.settings.config.waterLossMin]);
+    expect(v["plot:1.listed"]).toEqual([]);
+    // Outside the rules the simulator shows the whole config.
+    const free = withScripts("let debt = 0; function onTick() { debt = config.allowMutationDebt }");
+    free.settings.config = { ...free.settings.config, allowMutationDebt: true };
+    expect(vars(engine.run(start(free), 1).state)["plot:1.debt"]).toBe(true);
   });
 
   it("shared references and cycles survive saving", () => {
@@ -411,6 +438,15 @@ describe("scripts: errors, pause, conditions", () => {
     const cond = withScripts(null);
     cond.plots[0].flow.steps[0].exits = [{ when: [{ kind: "script", expr: "a b" }] }];
     expect(validateScenario(cond, engine.data).some((i) => i.level === "error")).toBe(true);
+  });
+
+  it("identifierUses finds a built-in however it is reached, but not property names", () => {
+    const names = ["forceEffects", "unforceEffects"];
+    expect(identifierUses("forceEffects('a', [])", names)).toEqual([{ name: "forceEffects", line: 1, col: 1 }]);
+    expect(identifierUses("const f = forceEffects;\nfunction onTick() { f() }", names).map((u) => u.line)).toEqual([1]);
+    expect(identifierUses("function onTick() { if (x) { [1].map(() => unforceEffects()) } }", names).map((u) => u.name)).toEqual(["unforceEffects"]);
+    expect(identifierUses("let o = { forceEffects: 1 }; o.forceEffects; o['x']", names)).toEqual([]);
+    expect(identifierUses("let x = ;", names)).toEqual([]);
   });
 
   it("storing a function made inside a function is reported", () => {

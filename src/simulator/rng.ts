@@ -24,6 +24,20 @@ export function seedRng(seed: number): RngState {
   return s;
 }
 
+/**
+ * A seed derived one way from another seed and a label: FNV-1a over the text `"<seed>:<label>"`,
+ * then the murmur3 finaliser. Used for streams that scripts can read (their `random()`), so one
+ * output doesn't give away the game's own seed. Undoing it means trying every 32-bit seed.
+ */
+export function derivedSeed(seed: number, label: string): number {
+  const text = `${Math.trunc(seed) >>> 0}:${label}`;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
 const rotl = (x: number, k: number) => ((x << k) | (x >>> (32 - k))) >>> 0;
 
 /** Next uint32. Mutates `s` in place. */
