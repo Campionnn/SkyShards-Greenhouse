@@ -156,7 +156,7 @@ describe("rules: parse and normalise a submission", () => {
     expect(bad.errors.join(" ")).toMatch(/Controller script, line 2: forceEffects\(\) is a debugging tool and isn't allowed on the leaderboard/);
     const plot = twoStep();
     plot.plots[0].script = { source: "function onSession() { unforceEffects(); resetForcedEffects() }" };
-    expect(debugApiErrors(submissionFromScenario(plot))).toEqual([expect.stringMatching(/^Plot 1 script, line 1: unforceEffects\(\), resetForcedEffects\(\) are debugging tools/)]);
+    expect(debugApiErrors(submissionFromScenario(plot))).toEqual([expect.stringMatching(/^Plot 1 script, line 1: unforceEffects\(\), resetForcedEffects\(\) are debugging tools and aren't allowed on the leaderboard/)]);
     // In an exit condition too; a disabled script and a property of the same name are fine.
     const cond = twoStep();
     cond.plots[0].flow.steps[0].exits = [{ when: [{ kind: "script", expr: "forceEffects('wheat', []) || true" }] }];

@@ -339,9 +339,10 @@ export function debugApiErrors(s: Submission): string[] {
   for (const { where, source } of submissionScripts(s)) {
     const uses = identifierUses(source, DEBUG_SCRIPT_APIS);
     if (!uses.length) continue;
-    const names = [...new Set(uses.map((u) => `${u.name}()`))].join(", ");
+    const distinct = [...new Set(uses.map((u) => `${u.name}()`))];
+    const many = distinct.length > 1;
     errors.push(
-      `${where}, line ${uses[0].line}: ${names} ${uses.length > 1 && names.includes(",") ? "are debugging tools" : "is a debugging tool"} and isn't allowed on the leaderboard. ` +
+      `${where}, line ${uses[0].line}: ${distinct.join(", ")} ${many ? "are debugging tools and aren't" : "is a debugging tool and isn't"} allowed on the leaderboard. ` +
         "Forced effects give plants effects no layout earns. Remove it, or do the real thing in the script (e.g. place a Blastberry next to the plant, harvest, and pick the Blastberry back up before the next tick)."
     );
   }
