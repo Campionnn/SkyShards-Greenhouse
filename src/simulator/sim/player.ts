@@ -7,7 +7,7 @@ import { respawnChance } from "../spawn/respawn";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import type { CycleCtx, Phase, TickScratch } from "./context";
 import { wouldDecayWithin } from "./decay";
-import { effort } from "./effort";
+import { effort, effortPut, effortWater } from "./effort";
 import { harvestPlant } from "./harvest";
 import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
 import { layoutInputAt, maintainLayout, neededLayout, removeByPlayer, replacePlacedBeforeDecay } from "./placement";
@@ -26,8 +26,11 @@ function decaysBeforeNextSession(plot: PlotState, p: PlantState, ctx: CycleCtx):
   return wouldDecayWithin(plot, p, Number.isFinite(k) ? k * ctx.cycleSeconds : Infinity);
 }
 
-/** Water every plant to max. Effort: once per plot, only if some plant actually needed water. */
-function water(plot: PlotState, ctx: CycleCtx): void {
+/**
+ * Water every plant to max. Effort: once per plot per session, only if some plant actually needed
+ * water (`waterNew` topping up what the session planted is the same visit with the watering can).
+ */
+function water(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   if (ctx.policiesFor(plot.id).watering !== "toMax") return;
   let watered = false;
   for (const p of plot.plants) {
@@ -35,7 +38,7 @@ function water(plot: PlotState, ctx: CycleCtx): void {
     if (p.water < MAX_WATER) watered = true;
     p.water = MAX_WATER;
   }
-  if (watered) effort(ctx.state, "water");
+  if (watered) effortWater(ctx.state, scratch);
 }
 
 /** Wake Snoozling, vacuum the Cheesebite rat, discharge Thunderling, feed Fleshtrap. */
@@ -132,7 +135,7 @@ function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
     harvestPlant(plot, p, ctx, scratch);
     const replant = newPlant(ctx.state, ctx.env.data, ctx.config, kindId, row, col, "planted", ctx.cycle);
     insertPlant(plot, replant);
-    effort(ctx.state, "replant");
+    effortPut(ctx.state, scratch, replant.id, "replant");
     ctx.emit(plot.id, { kind: "placed", plantId: replant.id, kindId, row, col, origin: "planted", replacement: false });
   }
 }
@@ -157,12 +160,12 @@ function maintain(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
  * the current step's layout (also right after a step change, for plants kept with their timers).
  * With `onlyReplaceForEmptyTargets`, requirement inputs whose targets are all full are left to decay.
  */
-function tendPlacedItems(plot: PlotState, ctx: CycleCtx): void {
+function tendPlacedItems(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const policies = ctx.policiesFor(plot.id);
   if (policies.placedUpkeep !== "replaceBeforeDecay") return;
   let layout = ctx.layoutFor(plot.id);
   if (policies.onlyReplaceForEmptyTargets === true) layout = neededLayout(plot, layout, ctx.env.data, ctx.config);
-  replacePlacedBeforeDecay(plot, layout, ctx, (p) => decaysBeforeNextSession(plot, p, ctx));
+  replacePlacedBeforeDecay(plot, layout, ctx, scratch, (p) => decaysBeforeNextSession(plot, p, ctx));
 }
 
 /**
@@ -255,9 +258,9 @@ export const PLAYER_PHASES: readonly Phase[] = [
   {
     id: "waterNew",
     summary: "Water what this session planted or placed (a new step's layout, replanted base crops, re-placed plants) to max. Off when a script disabled `water`.",
-    run: (plot, ctx) => {
+    run: (plot, ctx, scratch) => {
       if (ctx.state.scripts && phaseDisabled(ctx.state, plot.id, "water")) return;
-      water(plot, ctx);
+      water(plot, ctx, scratch);
     },
   },
 ];

@@ -5,6 +5,7 @@ import { InfoHint, SegmentedControl, useToast } from "../components/ui";
 import { LayoutPickerDialog } from "../components/simulator/LayoutPicker";
 import { MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
 import { EarningsPanel } from "../components/simulator/EarningsPanel";
+import { EffortPanel } from "../components/simulator/EffortPanel";
 import { FrequencyPanel } from "../components/simulator/frequency/FrequencyPanel";
 import { EventLog, RunControls, FlowTimeline } from "../components/simulator/RunPanels";
 import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
@@ -386,17 +387,20 @@ export const SimulatorPage: React.FC = () => {
           {snapshot && state && (
             <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                {state.summary.market ? (
-                  <BazaarMoneyPanel
-                    summary={state.summary}
-                    previous={view.previousSummary}
-                    quotes={quotes}
-                    pricing={bazaar.pricing}
-                    cycleSeconds={state.lastCycleSeconds}
-                  />
-                ) : (
-                  <MoneyPanel summary={state.summary} previous={view.previousSummary} cycleSeconds={state.lastCycleSeconds} />
-                )}
+                <div className="space-y-4 min-w-0">
+                  {state.summary.market ? (
+                    <BazaarMoneyPanel
+                      summary={state.summary}
+                      previous={view.previousSummary}
+                      quotes={quotes}
+                      pricing={bazaar.pricing}
+                      cycleSeconds={state.lastCycleSeconds}
+                    />
+                  ) : (
+                    <MoneyPanel summary={state.summary} previous={view.previousSummary} cycleSeconds={state.lastCycleSeconds} />
+                  )}
+                  <EffortPanel summary={state.summary} />
+                </div>
                 <SustainabilityPanel report={snapshot.report} summary={state.summary} />
               </div>
               <FrequencyPanel scenario={engineScenario} priceSummary={priceSummary} />

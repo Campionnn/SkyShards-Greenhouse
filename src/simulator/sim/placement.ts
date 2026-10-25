@@ -2,7 +2,7 @@ import { isFreePlacedItem, type SimConfig } from "../config";
 import type { GameData } from "../data/types";
 import { cellIndex, footprint, footprintFits, ringCells } from "../grid/cells";
 import type { CycleCtx, ResolvedLayout, TickScratch } from "./context";
-import { effort } from "./effort";
+import { effortBreak, effortPut } from "./effort";
 import { destroyPlant, isPrimedBlastberry } from "./explosion";
 import { harvestPlant } from "./harvest";
 import { closePlotDebts, credit, refundPlacement, spend } from "./inventory";
@@ -18,14 +18,14 @@ import { isProtected } from "../script/overrides";
  */
 export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch, why: string): void {
   if (p.gate.pickup) {
-    pickUp(plot, p, ctx);
+    pickUp(plot, p, ctx, scratch);
     return;
   }
   if (isHarvestable(p)) {
     harvestPlant(plot, p, ctx, scratch);
     return;
   }
-  effort(ctx.state, "remove");
+  effortBreak(ctx.state, scratch, p.id);
   if (p.isDeadPlant) {
     removePlant(plot, p);
     credit(ctx.state, DEAD_PLANT, p.size * p.size);
@@ -41,8 +41,8 @@ export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, sc
  * (e.g. a Blastberry's Immunity and Improved Harvest Boost on an All-in Aloe or Magic Jellybean
  * harvested in the same session), and a placed Blastberry is not primed yet, so it doesn't explode.
  */
-function pickUp(plot: PlotState, p: PlantState, ctx: CycleCtx): void {
-  effort(ctx.state, "remove");
+function pickUp(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): void {
+  effortBreak(ctx.state, scratch, p.id);
   removePlant(plot, p);
   refundPlacement(ctx.state, p.kindId, p.gate.pickup === "replacement", ctx.prices);
   ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "picked up (no tick since placed)" });
@@ -70,7 +70,7 @@ export type PlacementMode = "setup" | "step" | "replace";
  * (cell stays empty, retried next session). With `config.allowMutationDebt`, a mutation item is placed anyway and its
  * stock goes below 0 (borrowed).
  */
-export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, mode: PlacementMode): void {
+export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch, mode: PlacementMode): void {
   const replacement = mode === "replace";
   const occ = buildOccupancy(plot);
   for (const d of layout.plants) {
@@ -97,7 +97,7 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
     insertPlant(plot, p);
     for (const idx of footprint(d.row, d.col, d.size)) occ[idx] = p;
     // Setup is built before the run; everything after is the player's work.
-    if (mode !== "setup") effort(ctx.state, d.origin === "planted" ? "replant" : "place");
+    if (mode !== "setup") effortPut(ctx.state, scratch, p.id, d.origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, origin: p.origin, replacement });
   }
 }
@@ -166,7 +166,7 @@ export function applyStepLayout(
   closePlotDebts(ctx.state, plot.id);
   // A later step (never setup) skips requirement inputs of targets already holding their mutation.
   const onlyNeeded = mode === "step" && ctx.policiesFor(plot.id).onlyReplaceForEmptyTargets === true;
-  placeLayoutPlants(plot, onlyNeeded ? neededLayout(plot, layout, ctx.env.data, ctx.config) : layout, ctx, mode);
+  placeLayoutPlants(plot, onlyNeeded ? neededLayout(plot, layout, ctx.env.data, ctx.config) : layout, ctx, scratch, mode);
 }
 
 type LayoutPlant = ResolvedLayout["plants"][number];
@@ -214,6 +214,7 @@ export function replacePlacedBeforeDecay(
   plot: PlotState,
   layout: ResolvedLayout,
   ctx: CycleCtx,
+  scratch: TickScratch,
   due: (p: PlantState) => boolean
 ): void {
   const kept = (p: PlantState) => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
@@ -227,11 +228,11 @@ export function replacePlacedBeforeDecay(
     const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `replace ${d.kindId} before decay`, replacement: true };
     if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
     removePlant(plot, p);
-    effort(ctx.state, "replace");
     ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "replaced before decay" });
     const fresh = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, "placed", ctx.cycle);
     markPickup(fresh, ctx, true);
     insertPlant(plot, fresh);
+    effortPut(ctx.state, scratch, fresh.id, "replace");
     ctx.emit(plot.id, { kind: "placed", plantId: fresh.id, kindId: fresh.kindId, row: fresh.row, col: fresh.col, origin: "placed", replacement: true });
   }
 }
@@ -264,5 +265,5 @@ export function maintainLayout(plot: PlotState, fullLayout: ResolvedLayout, ctx:
       removeByPlayer(plot, q, ctx, scratch, "blocking layout");
     }
   }
-  placeLayoutPlants(plot, layout, ctx, "replace");
+  placeLayoutPlants(plot, layout, ctx, scratch, "replace");
 }

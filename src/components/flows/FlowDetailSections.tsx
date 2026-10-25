@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowRight, Code2, Flag, Loader2, Repeat } from "lucide-react";
 import type { FlowDetail, FlowSeedResult, FlowStatusResponse } from "../../leaderboard/api";
-import type { RunResult } from "../../leaderboard/result";
 import type { Board } from "../../leaderboard/rules";
 import { valueResult, type Quotes } from "../../leaderboard/pricing";
 import { spreadRatio } from "../../leaderboard/result";
@@ -16,14 +15,10 @@ import { formatCoins, formatRate, nameOf } from "../simulator/format";
 import { buttonClass, inputClass } from "../simulator/styles";
 import { useToast } from "../ui";
 import { Badge } from "./FlowControls";
-import { EFFORT_LABEL } from "./flowsDisplay";
 import { LayoutThumb, MutationChip } from "./FlowVisuals";
 import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 
 const DATA = defaultGameData();
-
-/** Weight of each action kind (config.ts EFFORT_WEIGHTS), for the "share of the work" bars. */
-const EFFORT_WEIGHT: Record<string, number> = { water: 1, harvest: 1, minigame: 2, replant: 1, place: 3, remove: 3, replace: 3, roots: 2, ground: 2, gate: 1, noctilume: 1, stepChange: 2, bazaar: 2 };
 
 /** A labelled stat tile. */
 export const StatTile: React.FC<{ label: React.ReactNode; value: React.ReactNode; sub?: React.ReactNode; tone?: string; title?: string }> = ({ label, value, sub, tone = "text-slate-100", title }) => (
@@ -33,30 +28,6 @@ export const StatTile: React.FC<{ label: React.ReactNode; value: React.ReactNode
     {sub && <div className="mt-0.5 text-[11px] text-slate-500">{sub}</div>}
   </div>
 );
-
-/** Effort per login, broken down by action, weighted by how much work each is. */
-export const EffortBreakdown: React.FC<{ result: RunResult }> = ({ result }) => {
-  const rows = Object.entries(result.effort.byKind)
-    .map(([k, n]) => ({ k, n: n ?? 0, w: (n ?? 0) * (EFFORT_WEIGHT[k] ?? 1) }))
-    .filter((r) => r.n > 0)
-    .sort((a, b) => b.w - a.w);
-  const total = rows.reduce((s, r) => s + r.w, 0);
-  if (!rows.length) return <p className="text-xs text-slate-500">No actions recorded.</p>;
-  return (
-    <ul className="space-y-1.5" aria-label="Effort by action">
-      {rows.map((r) => (
-        <li key={r.k} className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 text-xs">
-          <span className="truncate text-slate-300">{EFFORT_LABEL[r.k] ?? r.k}</span>
-          <span className="h-1.5 overflow-hidden rounded-full bg-slate-700/40">
-            <span className="block h-full rounded-full bg-emerald-400/70" style={{ width: `${total > 0 ? (r.w / total) * 100 : 0}%` }} />
-          </span>
-          <span className="w-24 text-right tabular-nums text-slate-400">{formatRate(r.n)} / login</span>
-        </li>
-      ))}
-    </ul>
-  );
-};
-
 
 /** Rows a breakdown list shows before the rest scrolls (like the simulator's inventory sections). */
 const LIST_ROWS_SHOWN = 8;

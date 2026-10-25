@@ -236,6 +236,9 @@ export const FrequencyChart: React.FC<{
               )}
               {focusPoint.every === selected && <span className="text-amber-200"> · {selectedLabel}</span>}
             </div>
+            {focusPoint.effortAvg != null && (
+              <div className="text-[11px] tabular-nums text-slate-400">effort {Math.round(focusPoint.effortAvg)} / login</div>
+            )}
           </div>
         )}
       </div>

@@ -67,13 +67,16 @@ export const isFreePlacedItem = (kindId: string, config?: Pick<SimConfig, "freeP
   FREE_PLACED_ITEMS.includes(kindId) || (config?.freePlacedItems?.includes(kindId) ?? false);
 
 /**
- * Effort weights: how much work each player action is (`RunSummary.effort`, sim/effort.ts).
- * Per online session the engine counts: watering once per plot (if anything was watered),
- * each harvest (minigame kinds count `minigame` instead), each base crop replanted, each item
- * placed outside setup, each plant the player breaks or clears, each placed item swapped before
- * decay, root clearing once per plot, each ground block fixed, each gate interaction, a Noctilume
- * time change once per plot, each step change (on top of the places and removes it causes), and
- * a Bazaar visit once per session anything was bought or sold.
+ * Effort weights: how much work each player action is (`RunSummary.effort`, sim/effort.ts), so
+ * effort reads as the work a player has to do to run the flow. Per online session the engine
+ * counts: watering once per plot however it is watered (if anything needed water), each harvest
+ * (minigame kinds count `minigame` instead), each base crop replanted, each item placed outside
+ * setup, each plant the player breaks or clears (one click, like a harvest), each placed item
+ * swapped before decay, root clearing once per plot, each ground block fixed, each gate
+ * interaction, a Noctilume time change once per plot, each step change (on top of the places and
+ * breaks it causes; the new step's ground comes with it), and a Bazaar visit once per session
+ * anything was bought or sold. Work a step change undoes in the same session (a crop replanted or
+ * an item placed earlier that session, broken by the step change) counts for neither.
  */
 export const EFFORT_WEIGHTS: Readonly<Record<EffortKind, number>> = {
   water: 1,
@@ -81,10 +84,11 @@ export const EFFORT_WEIGHTS: Readonly<Record<EffortKind, number>> = {
   minigame: 2,
   replant: 1,
   place: 3,
-  remove: 3,
-  replace: 3,
+  remove: 1,
+  // A swap: break the old item and place a new one.
+  replace: 4,
   roots: 2,
-  ground: 2,
+  ground: 1,
   gate: 1,
   noctilume: 1,
   stepChange: 2,

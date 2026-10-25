@@ -406,6 +406,8 @@ export interface FrequencyPoint {
   profitPerDay: number | null;
   /** The cell exists but doesn't pay its starting layout back in time (profit shown as none). */
   insolvent?: boolean;
+  /** Average effort per login at this frequency, when known (shown in the chart's tooltip). */
+  effortAvg?: number | null;
 }
 
 /** Profit per day at every grid frequency of one board / tier (null where no cell exists or it is insolvent). */
@@ -415,7 +417,11 @@ export function profitByEvery(data: GameData, cells: readonly FlowCell[], board:
     if (!cell) return { every, profitPerDay: null };
     if (!isSolvent(cell.median)) return { every, profitPerDay: null, insolvent: true };
     const { result } = viewerResult(data, cell.median, s);
-    return { every, profitPerDay: valueResult(data, result, board, board === "normal" ? s.quotes : {}, s.pricing).profitPerDay };
+    return {
+      every,
+      profitPerDay: valueResult(data, result, board, board === "normal" ? s.quotes : {}, s.pricing).profitPerDay,
+      effortAvg: result.effort?.sessions ? result.effort.avg : null,
+    };
   });
 }
 

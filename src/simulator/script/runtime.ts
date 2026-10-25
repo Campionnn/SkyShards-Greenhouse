@@ -28,7 +28,7 @@ import { intInclusive, nextFloat, seedRng } from "../rng";
 import { sanityCheck } from "../analysis/sanityCheck";
 import { newScratch, type CycleCtx, type Env, type TickScratch } from "../sim/context";
 import { wouldDecayWithin } from "../sim/decay";
-import { effort } from "../sim/effort";
+import { effort, effortBreak, effortPut, effortWater } from "../sim/effort";
 import { destroyPlant } from "../sim/explosion";
 import { harvestPlant } from "../sim/harvest";
 import { spend } from "../sim/inventory";
@@ -1099,7 +1099,14 @@ class PlotHost extends HostObject {
       case "water":
         return fn(key, (_a, info) => {
           if (!rt.canAct(info, "plot.water")) return false;
-          for (const p of this.plot.plants) if (p.kindId !== "soggybud") p.water = MAX_WATER;
+          let watered = false;
+          for (const p of this.plot.plants) {
+            if (p.kindId === "soggybud") continue;
+            if (p.water < MAX_WATER) watered = true;
+            p.water = MAX_WATER;
+          }
+          // Effort: once per plot per session, like the built-in phase.
+          if (watered) effortWater(this.ctx.state, rt.scratchFor(this.id));
           return true;
         });
       case "setGround":
@@ -1239,7 +1246,7 @@ class PlotHost extends HostObject {
     // Broken again before the next tick, it is picked back up (item returned).
     if (paid) markPickup(p, ctx, false);
     insertPlant(plot, p);
-    effort(ctx.state, origin === "planted" ? "replant" : "place");
+    effortPut(ctx.state, rt.scratchFor(plot.id), p.id, origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row, col, origin, replacement: false });
     return true;
   }
@@ -1437,7 +1444,7 @@ class PlantHost extends HostObject {
         });
       case "destroy":
         return fn(key, (_a, info) => this.act(info, key, (plot, q) => {
-          effort(rt.cycleCtx.state, "remove");
+          effortBreak(rt.cycleCtx.state, rt.scratchFor(this.plotId), q.id);
           destroyPlant(plot, q, rt.cycleCtx, "destroyed by script");
         }));
       case "waterIt":
@@ -1445,8 +1452,8 @@ class PlantHost extends HostObject {
           const add = a[0] === undefined ? null : num(a[0], info, "amount");
           return this.act(info, key, (_plot, q) => {
             if (q.kindId === "soggybud") return; // can't be watered
-            // Effort: one per call (the built-in phase counts once per plot instead).
-            if (q.water < MAX_WATER) effort(rt.cycleCtx.state, "water");
+            // Effort: once per plot per session, however many plants are watered (like the built-in phase).
+            if (q.water < MAX_WATER) effortWater(rt.cycleCtx.state, rt.scratchFor(this.plotId));
             q.water = add === null ? MAX_WATER : Math.min(MAX_WATER, q.water + add);
           });
         });

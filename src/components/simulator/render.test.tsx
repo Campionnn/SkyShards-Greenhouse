@@ -21,6 +21,7 @@ import { describeEvent, formatCoins, formatCount, nameOf, plantIconOf } from "./
 import { BazaarMoneyPanel, BazaarPricePanel } from "./BazaarPanels";
 import { bazaarProfit, priceAge } from "./bazaarFormat";
 import { FrequencyPanel } from "./frequency/FrequencyPanel";
+import { EffortPanel } from "./EffortPanel";
 
 // Server-render every simulator panel against a real simulation, to catch
 // render-time errors (no browser needed).
@@ -364,6 +365,18 @@ describe("simulator panels render", () => {
     expect(html).toContain("Started with");
     expect(html).toContain("This is what you start with");
     expect(html).toContain("Sustainab");
+  });
+
+  it("the effort panel shows per-login effort and its breakdown, or waits for the first login", () => {
+    const html = wrap(<EffortPanel summary={state.summary} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("Effort");
+    expect(html).toContain("avg per login");
+    expect(html).toContain("heaviest login");
+    expect(html).toContain(`${formatCount(state.summary.effort!.sessions)} logins`);
+    expect(html).toContain("Harvests");
+    expect(html).toContain("/ login");
+    const empty = wrap(<EffortPanel summary={start.state.summary} />);
+    expect(empty).toContain("No logins yet");
   });
 
   it("ironman inventory: one row per item, made from the ledger in Total, net and NPC values, no Bazaar", () => {

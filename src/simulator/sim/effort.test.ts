@@ -70,6 +70,49 @@ describe("effort counters", () => {
     expect(effortPerSession(e)).toBeCloseTo(e.total / 3);
   });
 
+  it("counts watering once per plot per session, also when the session plants and waters again", () => {
+    // The step change breaks the wheat and plants a carrot; `waterNew` waters the carrot in the same visit.
+    const sc = scenario([flow([step("one", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 1 }]), step("two", layout([["carrot", 0, 0]]))])], {
+      activity: ONLINE,
+      config: NO_WATER,
+    });
+    const r = engine.run(start(sc), 1);
+    const e = r.state.summary.effort!;
+    expect(e.counts.stepChange).toBe(1);
+    expect(plantAt(r.state, 1, 0, 0)?.kindId).toBe("carrot");
+    expect(e.counts.water).toBe(1);
+  });
+
+  it("doesn't count work a step change undoes in the same session (a replant broken again)", () => {
+    // Harvest-and-replant, then a full-clear step change breaks the fresh crop and plants the same crop
+    // back: the player harvests once and plants once.
+    const sc = scenario(
+      [flow([step("one", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 1 }]), step("two", layout([["wheat", 0, 0]]), [], { fullClear: true })])],
+      { activity: ONLINE, config: NO_WATER, policies: { baseCropUpkeep: "harvestWhenGrown" } }
+    );
+    const s = start(sc);
+    const wheat = plantAt(s, 1, 0, 0)!;
+    wheat.stage = wheat.readyStage;
+    wheat.lockedEffects = [];
+    const r = engine.run(s, 1);
+    const e = r.state.summary.effort!;
+    expect(r.events.filter((x) => x.kind === "placed")).toHaveLength(2); // the replant and the step's crop
+    expect(e.counts).toEqual({ water: 1, harvest: 1, replant: 1, stepChange: 1 });
+    expect(e.total).toBe(EFFORT_WEIGHTS.water + EFFORT_WEIGHTS.harvest + EFFORT_WEIGHTS.replant + EFFORT_WEIGHTS.stepChange);
+  });
+
+  it("still counts breaking a plant put down in an earlier session", () => {
+    const sc = scenario([flow([step("one", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 2 }]), step("two", layout([["carrot", 0, 0]]))])], {
+      activity: ONLINE,
+      config: NO_WATER,
+    });
+    const r = engine.run(start(sc), 2);
+    const e = r.state.summary.effort!;
+    expect(e.counts.stepChange).toBe(1);
+    expect(e.counts.remove).toBe(1); // the growing wheat from setup
+    expect(e.counts.replant).toBe(1);
+  });
+
   it("is deterministic and splittable", () => {
     const sc = scenario([flow([step("one", layout([["wheat", 0, 0], ["carrot", 0, 2]]), [{ kind: "cycles", n: 5 }])], true)], { activity: { kind: "everyN", n: 2, offset: 0 } });
     const s = start(sc);

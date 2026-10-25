@@ -69,6 +69,13 @@ describe("frequency sweep", () => {
     expect(pts.find((p) => p.every === 3)).toMatchObject({ profitPerDay: null, insolvent: true });
   });
 
+  it("points carry the median effort per login of runs with logins", () => {
+    const runs = [1, 2, 3].map((seed) => runSweepCell(engine, base(), 2, seed, 30));
+    const want = runs.map((r) => r.summary!.effort!.total / r.summary!.effort!.sessions).sort((a, b) => a - b)[1];
+    expect(sweepPoints(runs).find((p) => p.every === 2)?.effortAvg).toBeCloseTo(want);
+    expect(sweepPoints(runs).find((p) => p.every === 1)?.effortAvg).toBeUndefined();
+  });
+
   it("runs one cell with the engine", () => {
     const r = runSweepCell(engine, base(), 2, 7, 50);
     expect(r.ok).toBe(true);

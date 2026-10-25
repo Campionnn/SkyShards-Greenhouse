@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Coins, ShieldCheck, ShieldAlert } from "lucide-react";
-import { effortPerSession, uptimeRatio, type RunSummary, type SpotReport, type SustainabilityReport, type UptimeCounts } from "../../simulator";
+import { uptimeRatio, type RunSummary, type SpotReport, type SustainabilityReport, type UptimeCounts } from "../../simulator";
 import { InfoHint, Panel, SectionLabel } from "../ui";
 import { CropImage } from "../shared";
 import { debtText, spotFailureText, formatCoins, formatCount, formatDuration, nameOf } from "./format";
@@ -9,12 +9,6 @@ import { Leader, LeadValue, Stat } from "./controls";
 // ---- Money ----------------------------------------------------------------
 
 const perDay = (value: number, summary: RunSummary) => (summary.elapsedSeconds > 0 ? value / (summary.elapsedSeconds / 86400) : 0);
-
-/** "19 avg / 262 peak (2,000 logins)" or "none yet". */
-const effortText = (e: RunSummary["effort"]): string => {
-  if (!e || e.sessions === 0) return "none yet";
-  return `${effortPerSession(e).toFixed(e.sessions < 10 ? 1 : 0)} avg / ${formatCount(e.peak)} peak (${formatCount(e.sessions)} logins)`;
-};
 
 /** Ledger by category: this call's delta, cumulative total and per-day rate. */
 export const MoneyPanel: React.FC<{
@@ -85,15 +79,6 @@ export const MoneyPanel: React.FC<{
         <Stat label="Mutations spawned" value={`${formatCount(spawned)} (${summary.mutationsPerDay.toFixed(1)}/day)`} />
         <Stat label="Rivals" value={`${summary.rivals.spawned} spawned, ${summary.rivals.cleared} cleared`} title="Other mutations that won the roll in a cell labelled for a target." />
         <Stat label="Re-placements" value={formatCount(summary.replacements)} />
-        <Stat
-          label="Effort per login"
-          value={effortText(summary.effort)}
-          title={
-            "How much work the player does each time they are online, as a weighted count of actions: watering a plot 1, a harvest 1 (minigame harvests 2), " +
-            "replanting 1, placing an item 3, breaking or clearing a plant 3, swapping an item before decay 3, clearing roots 2, fixing a ground block 2, " +
-            "gate interactions 1, a step change 2, a Bazaar visit 2. Average over sessions / the heaviest session. The leaderboard shows the same numbers."
-          }
-        />
       </div>
       <button className="mt-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer" onClick={() => setShowPlots((v) => !v)}>
         {showPlots ? "Hide" : "Show"} per-plot breakdown

@@ -3,10 +3,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Activity, ArrowLeft, BarChart3, Clock, Code2, Coins, Eye, EyeOff, FileText, FlaskConical, Flag, Layers, Link2, Pencil, Save, ShieldCheck, Sprout, Trash2, X } from "lucide-react";
 import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { FrequencyChart } from "../components/flows/FrequencyChart";
-import { EffortBreakdown, FlowWalkthrough, ItemBreakdown, ReportDialog, SeedTable, SourceBreakdown, StatTile, StatusBox } from "../components/flows/FlowDetailSections";
+import { FlowWalkthrough, ItemBreakdown, ReportDialog, SeedTable, SourceBreakdown, StatTile, StatusBox } from "../components/flows/FlowDetailSections";
 import { useFlowShape } from "../components/flows/flowsDisplay";
 import { FlowMarkdown } from "../components/flows/FlowMarkdown";
-import { EffortMeter, LayoutThumb, MutationChip, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
+import { EffortBreakdown, EffortMeter, LayoutThumb, MutationChip, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
 import { formatCoins, formatRate, nameOf } from "../components/simulator/format";
 import { buttonClass, inputClass } from "../components/simulator/styles";
 import { InfoHint, Panel, useToast } from "../components/ui";
@@ -469,7 +469,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <Panel title="Work per login" icon={<Activity />} description="Weighted by how much work each action is.">
-          {shown ? <EffortBreakdown result={shown.result} /> : <p className="text-xs text-slate-500">Not verified at this frequency yet.</p>}
+          {shown ? <EffortBreakdown effort={shown.result.effort} /> : <p className="text-xs text-slate-500">Not verified at this frequency yet.</p>}
         </Panel>
         {seeds.length > 0 ? (
           <Panel title="Consistency across seeds" icon={<Clock />}>

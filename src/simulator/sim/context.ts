@@ -5,7 +5,7 @@ import type { PriceSource } from "../economy/prices";
 import type { EffectsKey, EffectsMemo, ForcedEffects } from "../effects/adapter";
 import type { FlowStep, Policies, StepLayout } from "../flow/types";
 import type { ScriptRuntime } from "../script/runtime";
-import type { FlowRunnerState, PlayerStats, PlotId, PlotState, ScenarioPlot, SimulationState, SlotLabel, TickEvent } from "./state";
+import type { EffortKind, FlowRunnerState, PlayerStats, PlotId, PlotState, ScenarioPlot, SimulationState, SlotLabel, TickEvent } from "./state";
 
 /** A step layout resolved against game data: sizes filled in, origin decided. */
 export interface ResolvedLayout {
@@ -36,6 +36,10 @@ export interface TickScratch {
   stepChanged: boolean;
   /** Debug forced effects (script/overrides.ts `forcedEffectsOf`): added to every matching plant's `held`. */
   forcedEffects?: ForcedEffects;
+  /** Effort (sim/effort.ts): this plot's watering is already counted this session. */
+  effortWatered?: boolean;
+  /** Effort (sim/effort.ts): plants the player put down this session, by id, and the action counted for it. */
+  effortPlaced?: Map<number, EffortKind>;
 }
 
 export const newScratch = (forced?: ForcedEffects): TickScratch => ({

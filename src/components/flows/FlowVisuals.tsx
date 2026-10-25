@@ -1,14 +1,16 @@
 import React, { useMemo } from "react";
 import { resolveLayout } from "../../simulator/flow/layout";
 import type { StepLayout } from "../../simulator/flow/types";
-import { defaultGameData } from "../../simulator";
+import { defaultGameData, EFFORT_WEIGHTS } from "../../simulator";
+import type { EffortKind } from "../../simulator/sim/state";
+import type { EffortResult } from "../../leaderboard/result";
 import type { RevenueSplit, FrequencyPoint } from "../../leaderboard/view";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { getCropPreviewColor } from "../../data/cropColors";
 import { FarmPicture } from "../guide/FarmPicture";
 import { CropImage } from "../shared";
-import { formatCoins, nameOf, rarityOf } from "../simulator/format";
-import { effortLevel, SPLIT_STYLE } from "./flowsDisplay";
+import { formatCoins, formatRate, nameOf, rarityOf } from "../simulator/format";
+import { EFFORT_LABEL, effortLevel, SPLIT_STYLE } from "./flowsDisplay";
 
 /**
  * Small visual pieces for the leaderboard: the revenue split bar, the frequency sparkline, layout
@@ -185,5 +187,39 @@ export const EffortMeter: React.FC<{ avg: number | null; peak: number | null; co
       </span>
       {!compact && <span className={`text-[11px] ${lvl.tone}`}>{lvl.label}</span>}
     </span>
+  );
+};
+
+/**
+ * Effort per login, broken down by action: how many of each per login, with a bar for its share of
+ * the work (count × the engine's `EFFORT_WEIGHTS`). Used by the leaderboard detail page and the
+ * simulator's Effort panel, so both read the same.
+ */
+export const EffortBreakdown: React.FC<{ effort: EffortResult }> = ({ effort }) => {
+  const rows = Object.entries(effort.byKind)
+    .map(([k, n]) => ({ k, n: n ?? 0, w: (n ?? 0) * (EFFORT_WEIGHTS[k as EffortKind] ?? 1) }))
+    .filter((r) => r.n > 0)
+    .sort((a, b) => b.w - a.w);
+  const total = rows.reduce((s, r) => s + r.w, 0);
+  if (!rows.length) return <p className="text-xs text-slate-500">No actions recorded.</p>;
+  return (
+    <ul className="space-y-1.5" aria-label="Effort by action">
+      {rows.map((r) => {
+        const share = total > 0 ? r.w / total : 0;
+        return (
+          <li
+            key={r.k}
+            className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 text-xs"
+            title={`${EFFORT_LABEL[r.k] ?? r.k}: ${EFFORT_WEIGHTS[r.k as EffortKind] ?? 1} effort each, ${Math.round(share * 100)}% of the work`}
+          >
+            <span className="truncate text-slate-300">{EFFORT_LABEL[r.k] ?? r.k}</span>
+            <span className="h-1.5 overflow-hidden rounded-full bg-slate-700/40">
+              <span className="block h-full rounded-full bg-emerald-400/70" style={{ width: `${share * 100}%` }} />
+            </span>
+            <span className="w-24 text-right tabular-nums text-slate-400">{formatRate(r.n)} / login</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 };

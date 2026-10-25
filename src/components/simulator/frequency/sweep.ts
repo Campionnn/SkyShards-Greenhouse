@@ -1,5 +1,5 @@
 import type { Engine } from "../../../simulator/engine";
-import type { ActivitySchedule, RunSummary, Scenario } from "../../../simulator";
+import { effortPerSession, type ActivitySchedule, type RunSummary, type Scenario } from "../../../simulator";
 import { cellSolvent, debtOf, median, paidBackBy } from "../../../leaderboard/result";
 import { PAYBACK_CYCLES } from "../../../leaderboard/rules";
 import { EVERY } from "../../../leaderboard/tiers";
@@ -141,7 +141,12 @@ export function sweepPoints(runs: readonly SweepRun[], price: (s: RunSummary) =>
     const base = { every, runs: at.length, failed: at.length - ok.length };
     if (!ok.length) return { ...base, profitPerDay: null };
     if (ok.some((r) => r.solvent !== undefined) && !cellSolvent(ok)) return { ...base, profitPerDay: null, insolvent: true };
-    return { ...base, profitPerDay: median(ok.map((r) => price(r.summary))) };
+    const logged = ok.filter((r) => (r.summary.effort?.sessions ?? 0) > 0);
+    return {
+      ...base,
+      profitPerDay: median(ok.map((r) => price(r.summary))),
+      effortAvg: logged.length ? median(logged.map((r) => effortPerSession(r.summary.effort))) : null,
+    };
   });
 }
 
