@@ -163,11 +163,24 @@ export interface FlowViewer {
   quotes: Quotes;
 }
 
+export interface FlowViewerOptions {
+  /** The boards the flow is entered on (the detail page); the board falls back to one of them. */
+  available?: readonly Board[];
+  /** The board from the page's URL (`?board=`); null/undefined = the site profile's default. */
+  board?: Board | null;
+  /** Called when the viewer picks a board (the page writes it to its URL). */
+  onBoard?: (b: Board) => void;
+  /** Fetch Bazaar prices on any board (the detail page shows the Normal number next to the others). */
+  bazaarAlways?: boolean;
+}
+
 /**
- * Board, stats and prices shared by /flows and /flows/:id (stats persist in localStorage).
- * `available` (the detail page): the boards the flow is entered on; the board falls back to one of them.
+ * Board, stats and prices shared by /flows and /flows/:id (stats persist in localStorage). The
+ * board is the URL's when given, else the last one picked here, else the site profile's default
+ * (ironman → "from nothing", normal → Normal).
  */
-export function useFlowViewer(available?: readonly Board[]): FlowViewer {
+export function useFlowViewer(opts: FlowViewerOptions = {}): FlowViewer {
+  const { available, board: urlBoard, onBoard, bazaarAlways = false } = opts;
   const [profile, setProfile] = useProfileMode();
   const [{ stats }, setLoaded] = useState(loadViewerStats);
   const hasSimulatorStats = useMemo(() => statsFromSimulator() !== null, []);
@@ -178,18 +191,24 @@ export function useFlowViewer(available?: readonly Board[]): FlowViewer {
       /* private mode: keep the session copy */
     }
   }, [stats]);
-  const preferred: Board = profile === "normal" ? "normal" : "ironman";
+  const [picked, setPicked] = useState<Board | null>(null);
+  const preferred: Board = urlBoard ?? picked ?? (profile === "normal" ? "normal" : "ironman_strict");
   // A flow entered on one board only is shown on that board, whatever the site-wide mode is
   // (the saved mode itself is left alone).
   const boardForced = !!available && available.length > 0 && !available.includes(preferred);
   const board: Board = boardForced ? available[0] : preferred;
-  const bazaar = useBazaarPrices(board === "normal");
+  const bazaar = useBazaarPrices(bazaarAlways || board === "normal");
   const snap = useMemo(() => snapToTier(stats), [stats]);
   const viewerStats = useMemo(() => yieldOf(stats), [stats]);
   return {
     board,
     boardForced,
-    setBoard: (b) => setProfile(b),
+    setBoard: (b) => {
+      setPicked(b);
+      onBoard?.(b);
+      // The site-wide mode follows (the simulator opens in it); both ironman boards are "ironman".
+      setProfile(b === "normal" ? "normal" : "ironman");
+    },
     stats,
     setStats: (patch) => setLoaded((cur) => ({ stats: readViewerStats({ ...cur.stats, ...patch }), source: "saved" })),
     resetStats: (to) => setLoaded({ stats: (to === "simulator" && statsFromSimulator()) || defaultViewerStats(), source: "saved" }),

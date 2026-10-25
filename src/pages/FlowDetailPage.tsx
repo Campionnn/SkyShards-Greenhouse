@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { Activity, ArrowLeft, BarChart3, Clock, Code2, Coins, Eye, EyeOff, FileText, FlaskConical, Flag, Layers, Link2, Pencil, Save, ShieldCheck, Sprout, Trash2, X } from "lucide-react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Activity, ArrowLeft, BarChart3, Clock, Code2, Coins, Eye, EyeOff, FileText, FlaskConical, Flag, Layers, Link2, Package, PauseCircle, Pencil, Save, ShieldCheck, Sprout, Trash2, X } from "lucide-react";
+import { KitChip, SlowingBadge, StallChip } from "../components/flows/FlowChips";
 import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { FrequencyChart } from "../components/flows/FrequencyChart";
-import { FlowWalkthrough, ItemBreakdown, ReportDialog, SeedTable, SourceBreakdown, StatTile, StatusBox } from "../components/flows/FlowDetailSections";
+import { BoardNumbers, EmptyCells, FlowWalkthrough, ItemBreakdown, RampLine, ReportDialog, SeedTable, SourceBreakdown, StatTile, StatusBox, WhatYouNeed } from "../components/flows/FlowDetailSections";
 import { useFlowShape } from "../components/flows/flowsDisplay";
 import { FlowMarkdown } from "../components/flows/FlowMarkdown";
 import { EffortBreakdown, EffortMeter, LayoutThumb, MutationChip, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
@@ -15,16 +16,19 @@ import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
 import { valueResult } from "../leaderboard/pricing";
+import { boardFrom, BOARD_RUN_KIND } from "../leaderboard/rules";
 import { cycleHours } from "../leaderboard/tiers";
-import { PAYBACK_CYCLES } from "../leaderboard/rules";
 import {
   BADGE_TITLE,
   BOARD_LABEL,
-  debtLines,
+  boardNumbers,
   DESCRIPTION_MAX,
-  isSolvent,
-  paybackText,
   earningTargets,
+  kitGain,
+  payloadStepNamer,
+  stallInfo,
+  starvedList,
+  steadyRate,
   moneyBySource,
   findCell,
   formatDate,
@@ -161,7 +165,23 @@ const ActionButton: React.FC<{ onClick: () => void; tone?: "primary" | "neutral"
 };
 
 export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDetail) => void; onReload: () => void }> = ({ detail, onChange, onReload }) => {
-  const viewer = useFlowViewer(detail.boards);
+  // The board lives in the URL (?board=, the old "ironman" is "from nothing"), so a link shows the same board.
+  const [search, setSearch] = useSearchParams();
+  const viewer = useFlowViewer({
+    available: detail.boards,
+    board: boardFrom(search.get("board")),
+    onBoard: (b) =>
+      setSearch(
+        (cur) => {
+          const next = new URLSearchParams(cur);
+          next.set("board", b);
+          return next;
+        },
+        { replace: true }
+      ),
+    // The Normal number sits next to the ironman ones, so its prices are needed on every board.
+    bazaarAlways: true,
+  });
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -187,16 +207,26 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const value = shown ? valueResult(DATA, shown.result, viewer.board, quotes, viewer.bazaar.pricing) : null;
   const split = shown ? revenueSplit(DATA, shown.result, viewer.board, quotes, viewer.bazaar.pricing) : null;
   const lines = shown ? itemBreakdown(DATA, shown.result, viewer.board, viewer.quotes, viewer.bazaar.pricing) : [];
-  const seeds = (detail.seeds ?? []).filter((s) => s.board === viewer.board && s.tier === tierShown && s.every === viewer.every);
+  const kind = BOARD_RUN_KIND[viewer.board];
+  const seeds = (detail.seeds ?? []).filter((s) => (s.runKind ? s.runKind === kind : boardFrom(s.board) === viewer.board) && s.tier === tierShown && s.every === viewer.every);
+  const numbers = useMemo(
+    () => boardNumbers(DATA, detail.cells, viewer.tier, viewer.every, { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true }),
+    [detail.cells, viewer.tier, viewer.every, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats]
+  );
+  const stepName = useMemo(() => payloadStepNamer(detail.payload?.plots), [detail.payload]);
+  const steady = cell ? steadyRate(DATA, cell.median, { board: viewer.board, ...settings }) : null;
+  const stall = cell ? stallInfo(cell.median.starved) : null;
+  const strictN = numbers.find((n) => n.board === "ironman_strict")?.profitPerDay ?? null;
+  const borrowN = numbers.find((n) => n.board === "ironman_borrow")?.profitPerDay ?? null;
+  const kit = viewer.board === "ironman_strict" ? kitGain(strictN, borrowN) : null;
+  const needPanel = !!cell && viewer.board === "ironman_borrow";
+  const emptyPanel = !!cell && starvedList(cell.median.starved).length > 0;
   const spread = cell ? spreadAt(cell.spread, viewer.every) : null;
   const sources = shown ? moneyBySource(DATA, shown.result.bySource, viewer.board, quotes, viewer.bazaar.pricing) : [];
   const earning = earningTargets(DATA, detail.summary?.targets ?? [], shown?.result.bySource, viewer.board, quotes, viewer.bazaar.pricing);
   const firstThumb = detail.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
   const heroLayout = detail.thumb?.layout ?? (firstThumb ? { code: firstThumb } : (detail.payload?.plots?.[0]?.flow.steps[0]?.layout ?? null));
   const supplies = shown ? suppliesText(suppliesOf(shown.result)) : "none";
-  const solvent = isSolvent(cell?.median);
-  const payback = cell ? paybackText(cell.median) : null;
-  const owed = cell ? debtLines(cell.median) : [];
 
   const likes = useFlowLikes();
   const liked = likes.isLiked(detail.id, detail.liked ?? false);
@@ -235,7 +265,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   return (
     <div className="space-y-4 py-2 sm:py-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link to="/flows" className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-200">
+        <Link to={`/flows?board=${viewer.board}`} className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-200">
           <ArrowLeft className="h-3.5 w-3.5" /> Flow rankings
         </Link>
         <AccountControl />
@@ -267,11 +297,6 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
               <>
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    {detail.boards.map((b) => (
-                      <Badge key={b} tone={b === "normal" ? "pending" : "new"}>
-                        {BOARD_LABEL[b]}
-                      </Badge>
-                    ))}
                     {detail.stale && (
                       <Badge tone="stale" title={BADGE_TITLE.stale}>
                         re-verifying
@@ -282,6 +307,9 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                         scripted
                       </Badge>
                     )}
+                    {kit && <KitChip kit={kit} />}
+                    {stall && <StallChip stall={stall} stepName={stepName} />}
+                    {cell?.median.slowing && <SlowingBadge />}
                   </div>
                   <h1 className="break-words text-2xl font-bold tracking-tight text-slate-50">{detail.title}</h1>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
@@ -294,21 +322,20 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
-                  <div>
-                    <div className="text-4xl font-bold leading-none tabular-nums text-amber-300">{value ? formatCoins(value.profitPerDay) : "—"}</div>
-                    <div className="mt-1 text-xs text-slate-400">
-                      coins / day · {BOARD_LABEL[viewer.board]}, {TIER_LABEL[tierShown]} tier, online every {viewer.every}
-                      {shown?.scaled ? " · scaled to your yield (est.)" : ""}
-                    </div>
-                  </div>
+                <BoardNumbers numbers={numbers} current={viewer.board} onSelect={viewer.setBoard} tierLabel={TIER_LABEL[tierShown]} every={viewer.every} />
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-400">
+                  <span>
+                    coins / day · {TIER_LABEL[tierShown]} tier, online every {viewer.every}
+                    {shown?.scaled ? " · scaled to your yield (est.)" : ""}
+                  </span>
                   {shown && (
-                    <div className="flex items-center gap-2 pb-1">
+                    <span className="flex items-center gap-2">
                       <EffortMeter avg={shown.result.effort.avg} peak={shown.result.effort.peak} />
-                      {forgiving !== null && <span className="text-xs text-slate-400">· {percent(forgiving)} forgiving</span>}
-                    </div>
+                      {forgiving !== null && <span>· {percent(forgiving)} forgiving</span>}
+                    </span>
                   )}
                 </div>
+                {cell && <RampLine result={cell.median} steadyPerDay={steady} />}
                 {split && value && (
                   <div className="max-w-lg">
                     <SplitBar split={split} fraction={1} className="h-2" />
@@ -329,7 +356,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2 pt-1">
-                  <ActionButton tone="primary" onClick={() => navigate(`/simulator?flow=${encodeURIComponent(detail.id)}`)}>
+                  <ActionButton tone="primary" onClick={() => navigate(`/simulator?flow=${encodeURIComponent(detail.id)}&board=${viewer.board}`)}>
                     <FlaskConical className="h-3.5 w-3.5" /> Open in simulator
                   </ActionButton>
                   {(detail.status === "live" || detail.hidden) && (
@@ -390,27 +417,19 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
           The {TIER_LABEL[viewer.tier]} tier isn't verified yet for this flow; showing the Max tier instead.
         </p>
       )}
-      {boardListed && cell && !solvent && (
-        <p className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-200" data-testid="insolvent">
-          Online every {viewer.every} cycle{viewer.every === 1 ? "" : "s"}, this flow doesn't pay its starting layout back by cycle {PAYBACK_CYCLES.toLocaleString()}, so it isn't
-          ranked at this frequency. The numbers below are what it would make anyway.
-        </p>
-      )}
-      {boardListed && payback && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-slate-600/30 bg-slate-800/40 px-3 py-2 text-xs text-slate-300" data-testid="starting-debt">
-          <span className="flex items-center gap-1 font-medium text-slate-200">
-            Starting layout on credit
-            <InfoHint title="Starting layout on credit" width={300}>
-              On the Ironman board the first layout isn't free: the mutation items it places are borrowed, and the flow has to grow every one of them back by cycle{" "}
-              {PAYBACK_CYCLES.toLocaleString()}. These are the most it owed at once (median over seeds) and when the last item was paid back.
-            </InfoHint>
-          </span>
-          {owed.map((d) => (
-            <span key={d.item} className="tabular-nums text-slate-400">
-              {Math.round(d.units).toLocaleString()} {nameOf(d.item)}
-            </span>
-          ))}
-          <span className={`ml-auto tabular-nums ${solvent ? "text-emerald-300" : "text-red-300"}`}>{payback}</span>
+
+      {cell && (needPanel || emptyPanel) && (
+        <div className={`grid grid-cols-1 items-start gap-4 ${needPanel && emptyPanel ? "lg:grid-cols-2" : ""}`}>
+          {needPanel && (
+            <Panel title="What you need" icon={<Package />} description="The items the layouts use before the flow has grown them, with a margin to be safe.">
+              <WhatYouNeed result={cell.median} />
+            </Panel>
+          )}
+          {emptyPanel && (
+            <Panel title="Empty layout cells" icon={<PauseCircle />} description="Cells the layouts couldn't fill for lack of stock, on average over the run. 5 or more (amber) holds a plot back.">
+              <EmptyCells starved={cell.median.starved} stepName={stepName} />
+            </Panel>
+          )}
         </div>
       )}
 

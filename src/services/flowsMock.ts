@@ -4,9 +4,9 @@
  * checks `flowsMockEnabled()`, which is a constant `false` in production builds, so the data below
  * is tree-shaken out of the bundle.
  */
-import type { AuthUser, FlowCell, FlowDetail, FlowListEntry, FlowListResponse, FlowSeedResult, FlowStatusResponse } from "../leaderboard/api";
+import type { AuthUser, CurvePoint, FlowCell, FlowDetail, FlowListEntry, FlowListResponse, FlowSeedResult, FlowStatusResponse } from "../leaderboard/api";
 import type { RunResult } from "../leaderboard/result";
-import { parseSubmission, PAYBACK_CYCLES, type Board, type SubmissionFile } from "../leaderboard/rules";
+import { BOARD_RUN_KIND, boardFrom, BOARDS, parseSubmission, RUN_KINDS, type Board, type RunKind, type SubmissionFile } from "../leaderboard/rules";
 import { summarizeSubmission, type FlowSummary } from "../leaderboard/summary";
 import { EVERY, TIERS, type TierId } from "../leaderboard/tiers";
 import { defaultGameData } from "../simulator/data/default";
@@ -28,7 +28,21 @@ export const MOCK_USER: AuthUser = { id: "80351110224678912", username: "greenth
 const LAYOUT_A = "RctJDsIwEETRC_0FY4AlhAzXsNs2CeDExICElMNjr_Jq0ypVBzo8RyyODWtGDggrDJE9BSe2fFHs5pFfujwhfUSm-TmG--PmnDE-u1ZVXfuyL33nnLV9prMYhxil0Y0MlxQRLTJkS7fsVKtb9XmfX5PK_g";
 const LAYOUT_B = "q9QxNNQpqjE0rUlKSkwCYj09vSTHRBDUS9ZLTEwEikLEwKIgFkgwCSQLEksCiyVCgB4cJENwsh4qAAA";
 
-const plot = (id: number, code: string) => ({ id, flow: { steps: [{ id: "step-1", layout: { code }, exits: [] }], loop: false, startIndex: 0 } });
+/** What one run kind of a spec produces at every = 1, max tier, plus the v2 diagnostics. */
+interface KindSpec {
+  /** Multiplies the spec's produced counts. */
+  factor: number;
+  startItems?: Record<string, number>;
+  sessionOnly?: string[];
+  usedUp?: Record<string, number>;
+  upkeep?: Record<string, number>;
+  starved?: { plot: number; step: string; item: string; cells: number }[];
+  /** The cycle the layouts were complete from (null: never); missing = from the start. */
+  complete?: number | null;
+  /** The second-half rate as a share of the window rate (a ramp: > 1). */
+  steady?: number;
+  slowing?: boolean;
+}
 
 interface Spec {
   id: string;
@@ -49,6 +63,10 @@ interface Spec {
   description: string;
   /** Likes all time and in the last 30 days. */
   likes?: [number, number];
+  /** Per run kind; missing kinds make the spec's numbers unchanged. */
+  kinds?: Partial<Record<RunKind, KindSpec>>;
+  /** Step ids and labels per plot (the payload; the default is one unlabelled step). */
+  steps?: { id: string; label?: string }[][];
 }
 
 const SPECS: Spec[] = [
@@ -68,8 +86,13 @@ const SPECS: Spec[] = [
     effort: [45, 290],
     description:
       "### How it works\nThree plots of **Chloronite** around a wheat core. Harvest every login, re-place *dead plants* when they decay.\n\n- Plot 1 and 2: Chloronite\n- Plot 3: Jellybean support\n\n> Works best online every 1-3 cycles.\n\n[links are not rendered](https://example.com)",
+    kinds: {
+      strict: { factor: 0.97, complete: 220, steady: 1.04, starved: [{ plot: 3, step: "step-1", item: "magic_jellybean", cells: 0.6 }] },
+      borrow: { factor: 1, startItems: { chloronite: 4, magic_jellybean: 6 }, complete: 0 },
+    },
   },
   {
+    // The owner's aloe flow: deadlocks from nothing (slowing, stalls on Jellybeans), 88.8M with the kit.
     id: "mockAloe0002",
     likes: [31, 2],
     title: "All-in Aloe slow cook (very long title to check that wrapping works on a phone without truncation)",
@@ -78,13 +101,28 @@ const SPECS: Spec[] = [
     cycles: 5000,
     ageDays: 20,
     stale: true,
-    produced: { all_in_aloe: 2.4, potato: 60000, helianthus: 1.2 },
+    produced: { all_in_aloe: 2.4, wheat: 60000, sunflower: 30000, moonflower: 30000, helianthus: 1.2 },
     consumed: {},
     bought: {},
-    built: { all_in_aloe: 2 },
+    built: { all_in_aloe: 2, magic_jellybean: 40 },
     falloff: 0.02,
     effort: [12, 60],
-    description: "Low effort. Log in whenever.",
+    description: "Low effort. Log in whenever. The Jellybean step needs its 53 beans before it moves on.",
+    steps: [[{ id: "s-aloe", label: "All-in Aloe" }, { id: "s-bean", label: "Jellybean" }], [{ id: "step-1" }]],
+    kinds: {
+      strict: {
+        factor: 0,
+        slowing: true,
+        complete: null,
+        steady: 0,
+        starved: [
+          { plot: 1, step: "s-aloe", item: "magic_jellybean", cells: 34.2 },
+          { plot: 1, step: "s-bean", item: "magic_jellybean", cells: 6.1 },
+          { plot: 2, step: "step-1", item: "all_in_aloe", cells: 1.4 },
+        ],
+      },
+      borrow: { factor: 1, startItems: { magic_jellybean: 141, all_in_aloe: 2, blastberry: 1 }, sessionOnly: ["blastberry"], complete: 0 },
+    },
   },
   {
     id: "mockGlass003",
@@ -101,6 +139,32 @@ const SPECS: Spec[] = [
     falloff: 0.15,
     effort: [80, 410],
     description: "",
+    kinds: {
+      // maga-like: a little short of Cindershade all run, never quite complete (below the Stall threshold).
+      strict: { factor: 0.93, complete: null, steady: 1, starved: [{ plot: 1, step: "step-1", item: "cindershade", cells: 0.9 }] },
+      borrow: { factor: 1, startItems: { glasscorn: 1, cindershade: 4 }, upkeep: { cindershade: 0.04 }, complete: 0 },
+    },
+  },
+  {
+    // A chorus flow earning Chorus Fruit: uses up 26 Witherbloom once on the borrow board, no upkeep.
+    id: "mockChorus09",
+    likes: [9, 5],
+    title: "Chorus overflow farm",
+    author: { id: "601238847711002624", name: "endermage", avatar: null },
+    plots: 3,
+    cycles: 4000,
+    ageDays: 5,
+    produced: { chorus_fruit: 48, potato: 50000, carrot: 58000, sugar_cane: 66000, chloronite: 3, magic_jellybean: 2 },
+    consumed: { dead_plant: 6 },
+    bought: { dead_plant: 6 },
+    built: { chloronite: 15, magic_jellybean: 9, witherbloom: 26 },
+    falloff: 0.06,
+    effort: [60, 220],
+    description: "Chorus Fruit teleport-overflow on three plots. Rebuild the Witherbloom ring once.",
+    kinds: {
+      strict: { factor: 0.34, complete: 1500, steady: 1.6, starved: [{ plot: 2, step: "step-1", item: "witherbloom", cells: 3.1 }, { plot: 3, step: "step-1", item: "witherbloom", cells: 2.4 }] },
+      borrow: { factor: 1, startItems: { chloronite: 15, magic_jellybean: 9, witherbloom: 26 }, usedUp: { witherbloom: 26 }, complete: 0 },
+    },
   },
   {
     id: "mockNoct0006",
@@ -117,21 +181,33 @@ const SPECS: Spec[] = [
     falloff: 0.11,
     effort: [22, 140],
     description: "Set the time each login. Three identical plots; nothing to rebuild.",
+    kinds: { strict: { factor: 1, complete: 0 }, borrow: { factor: 1, startItems: {}, complete: 0 } },
   },
   {
+    // Devourer: an infinite-input flow. Huge with borrowing, but ~91 Zombud + Puffercloud a day of upkeep.
     id: "mockDevr0007",
     title: "Devourer root farm",
     author: { id: "443201775698612224", name: "Rooted", avatar: null },
     plots: 2,
     cycles: 2000,
     ageDays: 9,
-    produced: { devourer: 3.2, brown_mushroom: 150000, pumpkin: 70000, cropie: 6 },
+    produced: { devourer: 3.2, brown_mushroom: 150000, red_mushroom: 150000, pumpkin: 70000, cropie: 6 },
     consumed: { fermento: 2 },
-    bought: { fermento: 2 },
+    bought: { fermento: 2, zombud: 91, puffercloud: 90 },
     built: { zombud: 8, puffercloud: 6 },
     falloff: 0.05,
     effort: [140, 620],
     description: "Heavy: clear roots every login and rebuild the Zombud ring after each Devourer.",
+    kinds: {
+      strict: { factor: 0.27, complete: 1400, steady: 1.1, starved: [{ plot: 1, step: "step-1", item: "zombud", cells: 2.2 }] },
+      borrow: {
+        factor: 1,
+        startItems: { zombud: 41720.3, puffercloud: 41377.6 },
+        usedUp: { zombud: 41720.3, puffercloud: 41377.6 },
+        upkeep: { zombud: 91.3, puffercloud: 90.5 },
+        complete: 0,
+      },
+    },
   },
   {
     id: "mockVeil0008",
@@ -148,26 +224,35 @@ const SPECS: Spec[] = [
     falloff: 0.01,
     effort: [8, 30],
     description: "Plant it, forget it. Log in whenever you like.",
+    kinds: { strict: { factor: 1, complete: 0 }, borrow: { factor: 1, startItems: {}, complete: 0 } },
   },
 ];
 
-/** A result for one cell: the spec scaled by tier and frequency, plus a little per-seed noise. */
-function resultFor(s: Spec, board: Board, tier: TierId, every: number, noise = 1): RunResult {
+const KIND_BOARD: Record<RunKind, Board> = { strict: "ironman_strict", borrow: "ironman_borrow", normal: "normal" };
+
+/** A result for one cell: the spec scaled by run kind, tier and frequency, plus a little per-seed noise. */
+function resultFor(s: Spec, runKind: RunKind, tier: TierId, every: number, noise = 1, seed = false): RunResult {
+  const k: KindSpec = s.kinds?.[runKind] ?? { factor: 1 };
   const tierF = { max: 1, high: 0.85, mid: 0.65, low: 0.45 }[tier];
   const everyF = Math.max(0.1, 1 - s.falloff * (every - 1));
-  const f = tierF * everyF * noise;
-  const scale = (m: Record<string, number>, k: number) => Object.fromEntries(Object.entries(m).map(([i, n]) => [i, n * k]));
+  const f = tierF * everyF * noise * k.factor;
+  const scale = (m: Record<string, number>, n: number) => Object.fromEntries(Object.entries(m).filter(([, v]) => v * n > 0).map(([i, v]) => [i, v * n]));
   const sessions = Math.round(2000 / every);
-  return {
-    cycles: s.cycles,
-    days: s.cycles * 1.75 / 24 / tierF,
-    produced: scale(s.produced, f),
+  const end = Math.ceil(s.cycles * 1.25);
+  const days = (end * 1.75) / 24 / tierF;
+  const produced = scale(s.produced, f);
+  const normal = runKind === "normal";
+  const r: RunResult = {
+    cycles: end,
+    days,
+    window: { from: s.cycles, to: end, cuts: Math.floor((end - s.cycles) / 25) + 1 },
+    produced,
     consumed: scale(s.consumed, tierF),
-    bought: board === "normal" ? scale(s.bought, tierF) : {},
-    built: board === "normal" ? s.built : {},
+    bought: normal ? scale(s.bought, tierF) : {},
+    built: normal ? s.built : {},
     shortfall: {},
-    uptime: 0.97 * everyF,
-    sustainable: every <= 6,
+    uptime: 0.97 * everyF * (k.factor > 0 ? 1 : 0.2),
+    sustainable: every <= 6 && k.factor > 0,
     effort: {
       sessions,
       avg: s.effort[0] * Math.sqrt(every),
@@ -175,19 +260,20 @@ function resultFor(s: Spec, board: Board, tier: TierId, every: number, noise = 1
       byKind: { harvest: 20 * every, water: 3, place: 2.5, remove: 1.2, gate: 0.5, stepChange: 0.1 },
     },
     halted: false,
-    bySource: bySourceOf(scale(s.produced, f)),
-    stepTime: Object.fromEntries(Array.from({ length: s.plots }, (_, i) => [String(i + 1), { "step-1": 1 }])),
-    ...(board === "ironman" ? debtFor(s, every) : {}),
+    bySource: bySourceOf(produced),
+    stepTime: Object.fromEntries(stepsOf(s).map((steps, i) => [String(i + 1), Object.fromEntries(steps.map((st) => [st.id, 1 / steps.length]))])),
+    starved: (k.starved ?? []).map((e) => ({ ...e, cells: Math.round(e.cells * (1 + 0.1 * (every - 1)) * 1000) / 1000 })),
+    ramp: { complete: k.complete === undefined ? 0 : k.complete, produced: scale(s.produced, tierF * everyF * noise * (k.steady ?? k.factor)), bought: normal ? scale(s.bought, tierF) : {} },
   };
-}
-
-/** Ironman: the starting layout's mutation items on credit; rarer logins pay back later (fast falloff flows miss the deadline). */
-function debtFor(s: Spec, every: number): Pick<RunResult, "peakDebt" | "paybackCycle" | "solvent"> {
-  const peakDebt = Object.fromEntries(Object.entries(s.built).filter(([item, n]) => n > 0 && defaultGameData().mutations[item]));
-  if (!Object.keys(peakDebt).length) return { peakDebt, paybackCycle: 0, solvent: true };
-  const cycle = Math.round(100 * every * (1 + s.falloff * 10));
-  const paybackCycle = cycle > 1500 ? null : cycle;
-  return { peakDebt, paybackCycle, solvent: paybackCycle !== null && paybackCycle <= PAYBACK_CYCLES };
+  if (runKind === "borrow") {
+    r.startItems = k.startItems ?? {};
+    r.sessionOnly = k.sessionOnly ?? [];
+    r.usedUp = k.usedUp ?? {};
+    r.upkeep = scale(k.upkeep ?? {}, tierF);
+  }
+  if (seed && k.slowing) r.trail = { from: Math.floor(end * 0.8), produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {} };
+  if (!seed && k.slowing) r.slowing = true;
+  return r;
 }
 
 /** Split produced items over plausible sources: each mutation item to itself, crops and rares to the mutations and wheat. */
@@ -205,11 +291,16 @@ function bySourceOf(produced: Record<string, number>): Record<string, Record<str
 
 const ago = (days: number) => new Date(Date.now() - days * 86400_000).toISOString();
 
+const stepsOf = (s: Spec): { id: string; label?: string }[][] => Array.from({ length: s.plots }, (_, i) => s.steps?.[i] ?? [{ id: "step-1" }]);
+
 const payloadOf = (s: Spec): SubmissionFile =>
   ({
     kind: "skyshards-greenhouse-flows",
     version: 2,
-    plots: [plot(1, LAYOUT_A), plot(2, LAYOUT_B), plot(3, LAYOUT_A)].slice(0, s.plots),
+    plots: stepsOf(s).map((steps, i) => ({
+      id: i + 1,
+      flow: { steps: steps.map((st, j) => ({ ...st, layout: { code: (i + j) % 2 ? LAYOUT_B : LAYOUT_A }, exits: steps.length > 1 ? [{ when: [{ kind: "cycles", n: 40 }] }] : [] })), loop: steps.length > 1, startIndex: 0 },
+    })),
     settings: { policies: {} },
   }) as unknown as SubmissionFile;
 
@@ -222,28 +313,26 @@ const summaryOf = (s: Spec): FlowSummary => {
   // The two sample layouts grow Chloronite-ish targets; show the spec's mutations instead, so the
   // mock list looks like the flows it describes.
   const mutations = Object.keys(s.produced).filter((k) => defaultGameData().mutations[k]);
-  return mutations.length ? { ...out, targets: mutations } : out;
+  const inputs = Object.keys(s.built).filter((k) => defaultGameData().mutations[k]);
+  return mutations.length ? { ...out, targets: mutations, inputs } : out;
 };
 
-export function mockList(board: Board, tier: TierId, every: number, plots?: number): Promise<FlowListResponse> {
+const curvePoint = (r: RunResult): CurvePoint => ({ produced: r.produced, bought: r.bought, consumed: r.consumed, effort: { avg: r.effort.avg, peak: r.effort.peak }, ...(r.slowing ? { slowing: true as const } : {}) });
+
+/** The list endpoint (`GET /flows`): one board's cells, its curve, and on `ironman_strict` the borrow cell as `borrowPoint`. */
+export function mockList(rawBoard: Board | "ironman", tier: TierId, every: number, plots?: number): Promise<FlowListResponse> {
+  const board = boardFrom(rawBoard) ?? "ironman_strict";
+  const runKind = BOARD_RUN_KIND[board];
   const entries: FlowListEntry[] = SPECS.filter((s) => !plots || s.plots === plots).map((s) => {
     const used = s.id === "mockGlass003" && tier !== "max" ? "max" : tier;
-    const cell = resultFor(s, board, used, every);
-    const curve = Object.fromEntries(
-      EVERY.map((n) => {
-        const r = resultFor(s, board, used, n);
-        return [
-          String(n),
-          { produced: r.produced, bought: r.bought, consumed: r.consumed, effort: { avg: r.effort.avg, peak: r.effort.peak }, ...(r.solvent === false ? { solvent: false } : {}) },
-        ];
-      })
-    );
+    const cell = resultFor(s, runKind, used, every);
+    const curve = Object.fromEntries(EVERY.map((n) => [String(n), curvePoint(resultFor(s, runKind, used, n))]));
     return {
       id: s.id,
       title: s.title,
       excerpt: s.description.slice(0, 240),
       author: s.author,
-      boards: ["ironman", "normal"],
+      boards: [...BOARDS],
       plots: s.plots,
       cycles: s.cycles,
       createdAt: ago(s.ageDays),
@@ -257,30 +346,32 @@ export function mockList(board: Board, tier: TierId, every: number, plots?: numb
       summary: summaryOf(s),
       thumb: { plot: 1, step: "step-1", layout: payloadOf(s).plots[s.plots > 1 ? 1 : 0].flow.steps[0].layout, share: 0.72 },
       curve,
+      ...(board === "ironman_strict" ? { borrowPoint: curvePoint(resultFor(s, "borrow", used, every)) } : {}),
       ...likesOf(s),
     };
   });
-  return delay({ engineVersion: "mock", entries });
+  return delay({ engineVersion: "mock", board, runKind, tier, every, truncated: false, entries } as FlowListResponse);
 }
 
+/** The detail endpoint (`GET /flows/{id}`): cells and seed rows per run kind, each with its board. */
 export function mockDetail(id: string): Promise<FlowDetail | null> {
   const s = SPECS.find((x) => x.id === id);
   if (!s) return delay(null);
-  const boards: Board[] = ["ironman", "normal"];
   const cells: FlowCell[] = [];
   const seeds: FlowSeedResult[] = [];
-  for (const board of boards)
+  for (const runKind of RUN_KINDS)
     for (const tier of TIERS)
       for (const every of EVERY) {
-        cells.push({ board, tier, every, median: resultFor(s, board, tier, every), spread: { [String(every)]: 1.1 + s.falloff }, seeds: tier === "max" ? 5 : 3, engineVersion: "mock" });
-        if (tier === "max") for (let i = 0; i < 5; i++) seeds.push({ board, tier, every, seedIndex: i, result: resultFor(s, board, tier, every, [1, 0.94, 1.08, 0.97, 1.12][i]) });
+        const board = KIND_BOARD[runKind];
+        cells.push({ runKind, board, tier, every, median: resultFor(s, runKind, tier, every), spread: { seeds: 5, values: [], best: 1, median: 1, worst: 1, ratio: 1.1 + s.falloff }, seeds: tier === "max" ? 5 : 3, engineVersion: "mock" });
+        if (tier === "max") for (let i = 0; i < 5; i++) seeds.push({ runKind, board, tier, every, seedIndex: i, ok: true, error: null, result: resultFor(s, runKind, tier, every, [1, 0.94, 1.08, 0.97, 1.12][i], true) });
       }
   return delay({
     id: s.id,
     title: s.title,
     description: s.description,
     author: s.author,
-    boards,
+    boards: [...BOARDS],
     plots: s.plots,
     cycles: s.cycles,
     status: s.id === "mockChloro01" ? "pending" : "live",
@@ -324,9 +415,9 @@ export function mockStatus(): Promise<FlowStatusResponse> {
     status: "pending",
     rejectReason: null,
     jobs: [
-      { board: "ironman", tier: "max", priority: "A", status: "done", error: null },
-      { board: "normal", tier: "max", priority: "A", status: "running", error: null },
-      { board: "ironman", tier: "high", priority: "B", status: "queued", error: null },
+      { id: 1, runKind: "strict", board: "ironman_strict", tier: "max", priority: "A", status: "done", done: 35, total: 35, queuePosition: null, error: null },
+      { id: 2, runKind: "borrow", board: "ironman_borrow", tier: "max", priority: "A", status: "running", done: 12, total: 35, queuePosition: null, error: null },
+      { id: 3, runKind: "normal", board: "normal", tier: "max", priority: "A", status: "queued", done: 0, total: 35, queuePosition: 2, error: null },
     ],
   });
 }
@@ -353,7 +444,7 @@ const rows = (): MockRow[] =>
       owner_id: s.author.id,
       title: s.title,
       description: s.description,
-      boards: "ironman,normal",
+      boards: "all",
       cycles: s.cycles,
       plots: s.plots,
       status: i === 0 ? "pending" : "live",

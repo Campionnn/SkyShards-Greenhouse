@@ -92,11 +92,7 @@ export const FrequencyChart: React.FC<{
 
   if (!known.length)
     return (
-      <p className="text-xs text-slate-500">
-        {points.some((p) => p.insolvent)
-          ? "Doesn't pay its starting layout back in time at any verified frequency."
-          : emptyText ?? "Not verified at any frequency for this tier yet."}
-      </p>
+      <p className="text-xs text-slate-500">{emptyText ?? "Not verified at any frequency for this tier yet."}</p>
     );
   return (
     <div className="space-y-2">
@@ -177,17 +173,6 @@ export const FrequencyChart: React.FC<{
               </g>
             );
           })}
-
-          {/* Frequencies where the starting layout isn't paid back in time: not ranked. */}
-          {points
-            .filter((p) => p.insolvent)
-            .map((p) => (
-              <g key={`x${p.every}`} stroke="rgb(248 113 113)" strokeWidth={2} strokeLinecap="round">
-                <title>Online every {p.every}: doesn't pay its starting layout back in time, not ranked</title>
-                <line x1={xOf(p.every) - 4} x2={xOf(p.every) + 4} y1={yOf(0) - 4} y2={yOf(0) + 4} />
-                <line x1={xOf(p.every) - 4} x2={xOf(p.every) + 4} y1={yOf(0) + 4} y2={yOf(0) - 4} />
-              </g>
-            ))}
 
           {/* X labels: cycles, and the real time between logins. */}
           {points.map((p) => {

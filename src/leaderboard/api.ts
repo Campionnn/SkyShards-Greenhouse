@@ -1,5 +1,5 @@
 import type { EffortResult, RunResult } from "./result";
-import type { Board, SubmissionFile } from "./rules";
+import type { Board, RunKind, SubmissionFile } from "./rules";
 import type { FlowSummary } from "./summary";
 import type { StepLayout } from "../simulator/flow/types";
 import type { TierId } from "./tiers";
@@ -51,8 +51,8 @@ export interface CurvePoint {
   bought: Record<string, number>;
   consumed: Record<string, number>;
   effort?: { avg: number | null; peak: number | null };
-  /** False when the cell doesn't pay its ironman starting layout back in time (missing = solvent). */
-  solvent?: boolean;
+  /** The cell is scored at its trailing rate (most seeds slowed down at the end). */
+  slowing?: true;
 }
 
 export interface FlowListEntry {
@@ -88,16 +88,26 @@ export interface FlowListEntry {
   /** Likes from logged-in users, all time and in the last 30 days (absent on older APIs). */
   likes?: number;
   likes30d?: number;
+  /**
+   * `ironman_strict` lists only: the same tier / every on the "with starting items" board (the
+   * borrow run), for the "Kit +N%" chip. Null or absent when that cell isn't verified.
+   */
+  borrowPoint?: CurvePoint | null;
 }
 
 export interface FlowListResponse {
   engineVersion: string;
+  /** The canonical board (an alias resolved) and its run kind; absent on older APIs. */
+  board?: Board;
+  runKind?: RunKind;
   entries: FlowListEntry[];
   /** More live entries exist than the API sends (it keeps the most recently updated). */
   truncated?: boolean;
 }
 
 export interface FlowCell {
+  /** The run the cell measured (absent on old cells: use `board`, where `ironman` = ironman_strict). */
+  runKind?: RunKind;
   board: Board;
   tier: TierId;
   every: number;
@@ -108,6 +118,7 @@ export interface FlowCell {
 }
 
 export interface FlowSeedResult {
+  runKind?: RunKind;
   board: Board;
   tier: TierId;
   every: number;
@@ -187,6 +198,9 @@ export interface AdminFlowRow {
 }
 
 export interface FlowJob {
+  id?: number | string;
+  /** Absent on older APIs (they send `board` only). */
+  runKind?: RunKind;
   board: Board;
   tier: TierId;
   priority: "A" | "B";
@@ -205,10 +219,10 @@ export interface FlowStatusResponse {
   jobs: FlowJob[];
 }
 
+/** Every flow is verified for all three boards: the body has no board choice (the API ignores an old client's `boards`). */
 export interface FlowSubmitBody {
   title: string;
   description: string;
-  boards: Board[];
   cycles: number;
   payload: SubmissionFile;
 }

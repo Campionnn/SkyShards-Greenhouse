@@ -3,12 +3,26 @@ import { AlertTriangle, CheckCircle2, Dices, Eye, Link2, LogOut, Pencil, Send, T
 import { useAuth } from "../../hooks/useAuth";
 import { useBazaarPrices } from "../../hooks/useBazaarPrices";
 import { useProfileMode } from "../../hooks/useProfileMode";
-import { valueResult } from "../../leaderboard/pricing";
-import { cellSolvent, spreadRatio } from "../../leaderboard/result";
-import { applyRules, BOARDS, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, PAYBACK_CYCLES, ruleDifferences, submissionFile, submissionFromScenario, type Board } from "../../leaderboard/rules";
+import { applyRules, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, ruleDifferences, RUN_KIND_BOARD, RUN_KINDS, submissionFile, submissionFromScenario, type RunKind } from "../../leaderboard/rules";
 import { nearestEvery } from "../../leaderboard/tiers";
 import { WALL_MS_BACKSTOP } from "../../leaderboard/verify";
-import { BOARD_LABEL, DESCRIPTION_MAX, effortText, OUTLIER_RATIO, ratioText, TITLE_MAX, userName } from "../../leaderboard/view";
+import {
+  DESCRIPTION_MAX,
+  localKindSummary,
+  OUTLIER_RATIO,
+  ratioText,
+  RUN_KIND_LABEL,
+  scenarioRunKind,
+  starvedList,
+  starvedText,
+  startItemsText,
+  STALL_CELLS,
+  TITLE_MAX,
+  upkeepText,
+  usedUpLines,
+  userName,
+  type LocalKindSummary,
+} from "../../leaderboard/view";
 import { LocalTestPool, randomSeeds, type SeedOutcome } from "../../leaderboard/worker/pool";
 import { flowLink, submitFlow } from "../../services/flowsService";
 import { defaultGameData, type Scenario } from "../../simulator";
@@ -17,13 +31,14 @@ import { StatusBox } from "../flows/FlowDetailSections";
 import { FlowMarkdown } from "../flows/FlowMarkdown";
 import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 import { DiscordIcon, useToast } from "../ui";
-import { NumberInput } from "./controls";
-import { formatCoins } from "./format";
+import { CheckboxField, NumberInput } from "./controls";
+import { formatCoins, nameOf } from "./format";
 import { buttonClass, inputClass } from "./styles";
 import { clearSubmitDraft, loadSubmitDraft, saveSubmitDraft } from "./submitDraft";
 
 const DATA = defaultGameData();
-const TEST_SEEDS = 5;
+/** Seeds per run kind in the local test (the server uses 5 at the max tier). */
+const TEST_SEEDS = 3;
 /** The server's wall-clock backstop (the deciding cap is the deterministic script step cap, applied by runOnce). */
 const WALL_MS = WALL_MS_BACKSTOP;
 
@@ -73,17 +88,90 @@ const LoginBox: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
   );
 };
 
-interface TestState {
-  running: boolean;
-  board: Board;
-  every: number;
+/** One run kind of the local test. */
+export interface KindTest {
+  runKind: RunKind;
   progress: number[];
   outcomes: (SeedOutcome | undefined)[];
+}
+
+export interface TestState {
+  running: boolean;
+  every: number;
+  cycles: number;
+  kinds: KindTest[];
   error: string | null;
 }
 
-/** The dialog body (no portal), so SSR tests can render it. */
-export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }) => {
+/** What one run kind of the test found (the server builds its cell the same way). */
+export const KindTestCard: React.FC<{ test: KindTest; summary: LocalKindSummary; noPrices: boolean }> = ({ test, summary, noPrices }) => {
+  const board = RUN_KIND_BOARD[test.runKind];
+  const running = summary.done < summary.total;
+  const progress = test.progress.reduce((s, x) => s + x, 0) / Math.max(1, test.progress.length);
+  const cell = summary.cell;
+  const starved = cell ? starvedList(cell.starved).slice(0, 3) : [];
+  const used = cell ? usedUpLines(cell.usedUp) : [];
+  return (
+    <div className="space-y-1.5 rounded-md border border-slate-700/60 bg-slate-900/40 p-2.5 text-xs" data-testid={`test-${test.runKind}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-medium text-slate-200">{RUN_KIND_LABEL[test.runKind]}</span>
+        {running ? (
+          <span className="text-[11px] text-slate-500 tabular-nums">
+            {summary.done}/{summary.total} seeds
+          </span>
+        ) : summary.profitPerDay !== null ? (
+          <span className={`text-sm font-semibold tabular-nums ${summary.profitPerDay < 0 ? "text-red-300" : "text-amber-300"}`}>
+            {formatCoins(summary.profitPerDay)}
+            <span className="ml-1 text-[11px] font-normal text-slate-500">/ day{board === "normal" && noPrices ? " (no prices)" : ""}</span>
+          </span>
+        ) : (
+          <span className="text-red-300">—</span>
+        )}
+      </div>
+      {running && (
+        <div className="h-1.5 overflow-hidden rounded bg-slate-700/60">
+          <div className="h-full bg-emerald-500/60 transition-[width]" style={{ width: `${Math.round(progress * 100)}%` }} />
+        </div>
+      )}
+      {summary.failed.map((f) => (
+        <p key={f.seed} className="break-words text-red-300">
+          Seed {f.seed} failed: {f.error}
+        </p>
+      ))}
+      {summary.ratio !== null && (
+        <p className={summary.ratio > OUTLIER_RATIO ? "flex items-start gap-1 text-red-300" : "text-slate-400"}>
+          {summary.ratio > OUTLIER_RATIO && <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />}
+          Spread (best / median): {ratioText(summary.ratio)}
+          {summary.ratio > OUTLIER_RATIO ? `: over ${OUTLIER_RATIO}×, the server would reject this as inconsistent across seeds.` : ""}
+        </p>
+      )}
+      {cell && test.runKind === "borrow" && (
+        <div className="space-y-0.5 text-slate-400">
+          <p>
+            Starting items: <span className="text-slate-200">{startItemsText(cell.startItems)}</span>
+          </p>
+          <p>
+            Upkeep: <span className={upkeepText(cell.upkeep) === "None" ? "text-emerald-300" : "text-amber-300"}>{upkeepText(cell.upkeep)}</span>
+          </p>
+          {used.length > 0 && <p>Used up once: {used.map((u) => `${u.units.toLocaleString("en-US")} ${nameOf(u.item)}`).join(", ")}</p>}
+        </div>
+      )}
+      {cell?.slowing && <p className="text-orange-200">Production falls off at the end of the run; the server scores it at its last-20% rate.</p>}
+      {starved.length > 0 && (
+        <ul className="space-y-0.5">
+          {starved.map((e) => (
+            <li key={`${e.plot}|${e.step}|${e.item}`} className={e.cells >= STALL_CELLS ? "text-amber-300" : "text-slate-400"}>
+              {starvedText(e)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+/** The dialog body (no portal), so SSR tests can render it. `initialTest` shows a finished test (SSR tests). */
+export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({ scenario, onChange, onClose, initialTest }) => {
   const { toast } = useToast();
   const { user, loading: authLoading, login } = useAuth();
   const [profile] = useProfileMode();
@@ -93,37 +181,38 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
   const [title, setTitle] = useState(draft?.title ?? "");
   const [description, setDescription] = useState(draft?.description ?? "");
   const [preview, setPreview] = useState(false);
-  const [boards, setBoards] = useState<Board[]>(draft?.boards.length ? draft.boards : [profile === "normal" ? "normal" : "ironman"]);
   const [cycles, setCycles] = useState(draft && Number.isFinite(draft.cycles) ? clampCycles(draft.cycles) : DEFAULT_CYCLES);
-  const [test, setTest] = useState<TestState | null>(null);
+  const [testNormal, setTestNormal] = useState(false);
+  const [test, setTest] = useState<TestState | null>(initialTest ?? null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<{ message: string; errors: string[] } | null>(null);
   const [submitted, setSubmitted] = useState<{ id: string; status: string } | null>(null);
   const pool = useRef<LocalTestPool | null>(null);
   useEffect(() => () => pool.current?.cancel(), []);
   useEffect(() => {
-    if (!submitted) saveSubmitDraft({ title, description, boards, cycles });
-  }, [title, description, boards, cycles, submitted]);
+    if (!submitted) saveSubmitDraft({ title, description, cycles });
+  }, [title, description, cycles, submitted]);
   const startLogin = () => {
-    saveSubmitDraft({ title, description, boards, cycles, reopen: true });
+    saveSubmitDraft({ title, description, cycles, reopen: true });
     login("/simulator");
   };
 
-  const board: Board = boards[0] ?? "ironman";
+  // The rules to compare with and apply: the run kind the simulator looks like now.
+  const [rulesKind, setRulesKind] = useState<RunKind>(() => scenarioRunKind({ ...scenario.settings, profile }));
   const every = scenario.settings.activity.kind === "everyN" ? nearestEvery(scenario.settings.activity.n) : 1;
   const submission = useMemo(() => submissionFromScenario(scenario), [scenario]);
   const check = useMemo(() => checkSubmission(submission, DATA), [submission]);
   // The profile is site-wide (not in the scenario), so the diff compares everything else.
   const differences = useMemo(() => {
-    const withBoard: Scenario = { ...scenario, settings: { ...scenario.settings } };
-    if (board === "normal") withBoard.settings.profile = "normal";
-    else delete withBoard.settings.profile;
-    return ruleDifferences(withBoard, board);
-  }, [scenario, board]);
+    const withKind: Scenario = { ...scenario, settings: { ...scenario.settings } };
+    if (rulesKind === "normal") withKind.settings.profile = "normal";
+    else delete withKind.settings.profile;
+    return ruleDifferences(withKind, rulesKind);
+  }, [scenario, rulesKind]);
 
   const apply = () => {
     const before = scenario;
-    const ruled = applyRules(scenario, board, every, Math.floor(Math.random() * 2 ** 31));
+    const ruled = applyRules(scenario, rulesKind, every, Math.floor(Math.random() * 2 ** 31));
     const next: Scenario = { ...ruled, settings: { ...ruled.settings } };
     if (scenario.settings.profile) next.settings.profile = scenario.settings.profile;
     else delete next.settings.profile;
@@ -131,52 +220,54 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
     toast({
       id: "simulator-rules-applied",
       title: "Applied the leaderboard rules",
-      description: `${BOARD_LABEL[board]} board, online every ${every} cycle${every === 1 ? "" : "s"}, a new random seed.`,
+      description: `${RUN_KIND_LABEL[rulesKind]} board, online every ${every} cycle${every === 1 ? "" : "s"}, a new random seed.`,
       variant: "success",
       duration: 6000,
       action: { label: "Undo", onClick: () => onChange(before) },
     });
   };
 
-  const runTest = () => {
+  const runTest = async () => {
     pool.current?.cancel();
     const p = new LocalTestPool();
     pool.current = p;
-    const seeds = randomSeeds(TEST_SEEDS);
-    setTest({ running: true, board, every, progress: seeds.map(() => 0), outcomes: seeds.map(() => undefined), error: null });
-    p.run({ submission, board, tier: "max", every, cycles: clampCycles(cycles), wallMs: WALL_MS }, seeds, {
-      onProgress: (i, f) => setTest((t) => (t ? { ...t, progress: t.progress.map((x, j) => (j === i ? f : x)) } : t)),
-      onSeed: (i, o) => setTest((t) => (t ? { ...t, outcomes: t.outcomes.map((x, j) => (j === i ? o : x)) } : t)),
-    })
-      .then(() => setTest((t) => (t ? { ...t, running: false } : t)))
-      .catch((e: unknown) => {
-        if (e instanceof Error && e.message === "cancelled") return;
-        setTest((t) => (t ? { ...t, running: false, error: e instanceof Error ? e.message : String(e) } : t));
-      });
+    const kinds = RUN_KINDS.filter((k) => k !== "normal" || testNormal);
+    const seeds = kinds.map(() => randomSeeds(TEST_SEEDS));
+    const len = clampCycles(cycles);
+    setTest({ running: true, every, cycles: len, kinds: kinds.map((runKind, i) => ({ runKind, progress: seeds[i].map(() => 0), outcomes: seeds[i].map(() => undefined) })), error: null });
+    const patch = (k: number, f: (t: KindTest) => KindTest) => setTest((t) => (t ? { ...t, kinds: t.kinds.map((x, j) => (j === k ? f(x) : x)) } : t));
+    try {
+      // One kind after the other: each already uses every worker the machine has.
+      for (const [k, runKind] of kinds.entries()) {
+        await p.run({ submission, runKind, tier: "max", every, cycles: len, wallMs: WALL_MS }, seeds[k], {
+          onProgress: (i, f) => patch(k, (t) => ({ ...t, progress: t.progress.map((x, j) => (j === i ? f : x)) })),
+          onSeed: (i, o) => patch(k, (t) => ({ ...t, outcomes: t.outcomes.map((x, j) => (j === i ? o : x)) })),
+        });
+      }
+      setTest((t) => (t ? { ...t, running: false } : t));
+    } catch (e) {
+      if (e instanceof Error && e.message === "cancelled") return;
+      setTest((t) => (t ? { ...t, running: false, error: e instanceof Error ? e.message : String(e) } : t));
+    }
   };
 
-  const testValues = useMemo(() => {
-    if (!test) return null;
-    const quotes = bazaar.quotes ?? {};
-    const rows = test.outcomes.map((o) => (o?.result ? { o, profit: valueResult(DATA, o.result, test.board, test.board === "normal" ? quotes : {}, bazaar.pricing).profitPerDay } : o ? { o, profit: null } : null));
-    const profits = rows.filter((r): r is { o: SeedOutcome; profit: number } => !!r && r.o.ok && r.profit !== null).map((r) => r.profit);
-    const done = test.outcomes.filter((o): o is SeedOutcome => !!o?.ok && !!o.result);
-    const insolvent = done.length === test.outcomes.length && !cellSolvent(done.map((o) => o.result!));
-    return { rows, ratio: profits.length === test.outcomes.length ? spreadRatio(profits) : null, failed: rows.some((r) => r && !r.o.ok), insolvent };
-  }, [test, bazaar.quotes, bazaar.pricing]);
+  const summaries = useMemo(
+    () => (test ? test.kinds.map((k) => localKindSummary(DATA, k.outcomes, RUN_KIND_BOARD[k.runKind], bazaar.quotes ?? {}, bazaar.pricing)) : []),
+    [test, bazaar.quotes, bazaar.pricing]
+  );
 
   const titleOk = title.trim().length > 0 && title.trim().length <= TITLE_MAX;
-  const canSubmit = !!user && check.ok && titleOk && boards.length > 0 && description.length <= DESCRIPTION_MAX && !submitting;
+  const canSubmit = !!user && check.ok && titleOk && description.length <= DESCRIPTION_MAX && !submitting;
   const submit = async () => {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await submitFlow({ title: title.trim(), description, boards, cycles: clampCycles(cycles), payload: submissionFile(submission) });
+      const res = await submitFlow({ title: title.trim(), description, cycles: clampCycles(cycles), payload: submissionFile(submission) });
       setSubmitted(res);
       clearSubmitDraft();
       toast({ title: "Submitted", description: "The server is verifying your flow now.", variant: "success" });
     } catch (e) {
-      const errors = e && typeof e === "object" && "errors" in e && Array.isArray((e as { errors: unknown }).errors) ? ((e as { errors: string[] }).errors) : [];
+      const errors = e && typeof e === "object" && "errors" in e && Array.isArray((e as { errors: unknown }).errors) ? (e as { errors: string[] }).errors : [];
       setSubmitError({ message: e instanceof Error ? e.message : String(e), errors });
     } finally {
       setSubmitting(false);
@@ -226,6 +317,7 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
       </DialogFrame>
     );
 
+  const noPrices = !bazaar.prices;
   return (
     <DialogFrame
       id="submit-flow-title"
@@ -262,12 +354,10 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
           Your {check.plots} plot{check.plots === 1 ? "" : "s"} with every step, layout, exit, policy override and script ({Math.ceil(check.bytes / 1024)} KB). The server sets
           everything else: empty starting inventory, default advanced settings, its own stat tiers and secret seeds, at every online frequency.
         </p>
-        {boards.includes("ironman") && (
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Ironman: the starting layouts aren't free. Their mutation items are borrowed, and the flow must grow each one back by cycle {PAYBACK_CYCLES.toLocaleString()}. Frequencies where
-            most seeds don't make it aren't ranked; not making it at online every cycle rejects the flow.
-          </p>
-        )}
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Every flow goes on all three boards: <span className="text-slate-300">Ironman · from nothing</span>, <span className="text-slate-300">Ironman · with starting items</span>{" "}
+          (it may borrow what it needs to get going; the page lists those items and any upkeep) and <span className="text-slate-300">Normal</span>.
+        </p>
         {check.errors.length > 0 && (
           <ul className="rounded-md bg-red-500/10 border border-red-500/30 px-2 py-1.5 text-xs text-red-200 space-y-1" data-testid="submit-errors">
             {check.errors.map((e, i) => (
@@ -286,9 +376,25 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
             ))}
           </ul>
         )}
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400" role="group" aria-label="Rules to compare with">
+          <span>Compare with</span>
+          {RUN_KINDS.map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={rulesKind === k}
+              onClick={() => setRulesKind(k)}
+              className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                rulesKind === k ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200" : "border-slate-600/40 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
+              }`}
+            >
+              {RUN_KIND_LABEL[k]}
+            </button>
+          ))}
+        </div>
         {differences.length > 0 ? (
           <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs text-amber-100 space-y-1.5">
-            <div>Your simulator settings differ from the {BOARD_LABEL[board]} rules, so what you see locally may differ from the server:</div>
+            <div>Your simulator settings differ from the {RUN_KIND_LABEL[rulesKind]} rules, so what you see locally may differ from the server:</div>
             <ul className="list-disc pl-5 text-amber-200/90">
               {differences.map((d) => (
                 <li key={d}>{d}</li>
@@ -300,11 +406,11 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
           </div>
         ) : (
           <p className="text-xs text-emerald-300/90 flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Your settings match the {BOARD_LABEL[board]} rules.
+            <CheckCircle2 className="w-3.5 h-3.5" /> Your settings match the {RUN_KIND_LABEL[rulesKind]} rules.
           </p>
         )}
-        {(profile === "normal") !== (board === "normal") && (
-          <p className="text-[11px] text-slate-400">The simulator is in {profile === "normal" ? "Normal" : "Ironman"} mode; switch it with the toggle at the top of the page to test the {BOARD_LABEL[board]} board.</p>
+        {(profile === "normal") !== (rulesKind === "normal") && (
+          <p className="text-[11px] text-slate-400">The simulator is in {profile === "normal" ? "Normal" : "Ironman"} mode; switch it with the toggle at the top of the page to run it like the {RUN_KIND_LABEL[rulesKind]} board.</p>
         )}
       </Section>
 
@@ -332,7 +438,6 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
           )}
           <div className="flex items-start justify-between gap-3 text-[11px] text-slate-500">
             <span data-testid="newline-hint">
-
               <b className="font-medium text-slate-400">New lines:</b> pressing Enter once joins the lines back together. Leave an empty line to start a new paragraph, or end a line with a backslash (\) to break
               it there. Check with Preview.
             </span>
@@ -341,21 +446,7 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
             </span>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-300">
-          <div className="flex items-center gap-3" role="group" aria-label="Boards">
-            <span>Boards</span>
-            {BOARDS.map((b) => (
-              <label key={b} className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-emerald-500"
-                  checked={boards.includes(b)}
-                  onChange={(e) => setBoards((cur) => (e.target.checked ? BOARDS.filter((x) => x === b || cur.includes(x)) : cur.filter((x) => x !== b)))}
-                />
-                {BOARD_LABEL[b]}
-              </label>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300">
           <label className="flex items-center gap-2">
             <span>Cycles</span>
             <NumberInput className={`${inputClass} w-24 text-right`} value={cycles} min={MIN_CYCLES} max={MAX_CYCLES} integer step={500} onChange={setCycles} aria-label="Cycles" />
@@ -363,84 +454,32 @@ export const SubmitFlowPanel: React.FC<Props> = ({ scenario, onChange, onClose }
               {MIN_CYCLES.toLocaleString()}-{MAX_CYCLES.toLocaleString()}
             </span>
           </label>
+          <span className="text-[11px] text-slate-500" data-testid="cycles-hint">
+            The score averages a secret window just after this length.
+          </span>
         </div>
-        {boards.length === 0 && <p className="text-xs text-red-300">Pick at least one board.</p>}
       </Section>
 
       <Section title="Test locally">
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className={buttonClass.neutral} onClick={runTest} disabled={!check.ok || test?.running}>
-            <Dices className="w-3.5 h-3.5" /> {test?.running ? "Testing..." : `Test with ${TEST_SEEDS} random seeds`}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <button type="button" className={buttonClass.neutral} onClick={() => void runTest()} disabled={!check.ok || test?.running}>
+            <Dices className="w-3.5 h-3.5" /> {test?.running ? "Testing..." : `Test with ${TEST_SEEDS} random seeds per board`}
           </button>
-          <span className="text-[11px] text-slate-500">
-            {BOARD_LABEL[board]} rules, max stats, online every {every} cycle{every === 1 ? "" : "s"}, {clampCycles(cycles).toLocaleString()} cycles, in this browser.
-          </span>
+          <CheckboxField label="Normal too" checked={testNormal} onChange={setTestNormal} title={noPrices ? "Priced with Bazaar prices; none are cached yet" : "Priced with your cached Bazaar prices"} />
         </div>
-        {test && testValues && (
+        <p className="text-[11px] text-slate-500">
+          From nothing and with starting items{testNormal ? ", then Normal" : ""}: max stats, online every {every} cycle{every === 1 ? "" : "s"}, {clampCycles(cycles).toLocaleString()} cycles plus the end
+          window, in this browser.
+          {testNormal && noPrices ? " No Bazaar prices are cached: open the simulator in Normal mode once to fetch them, or the Normal number counts items as unpriced." : ""}
+        </p>
+        {test && (
           <div className="space-y-2" data-testid="seed-test">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-700/60">
-                  <th className="font-medium py-1 pr-2">Seed</th>
-                  <th className="font-medium py-1 pr-2 text-right">Profit / day</th>
-                  <th className="font-medium py-1 pr-2 text-right">Effort (avg / peak)</th>
-                  <th className="font-medium py-1 text-right" title={`Ironman: the cycle the starting layout's last borrowed item was grown back (needed by ${PAYBACK_CYCLES.toLocaleString()})`}>
-                    Paid back
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {test.outcomes.map((o, i) => {
-                  const row = testValues.rows[i];
-                  return (
-                    <tr key={i} className="border-b border-slate-700/30 align-top">
-                      <td className="py-1 pr-2 text-slate-400">#{i + 1}</td>
-                      {!o ? (
-                        <td colSpan={3} className="py-1">
-                          <div className="h-1.5 rounded bg-slate-700/60 overflow-hidden mt-1.5">
-                            <div className="h-full bg-emerald-500/60 transition-[width]" style={{ width: `${Math.round((test.progress[i] ?? 0) * 100)}%` }} />
-                          </div>
-                        </td>
-                      ) : !o.ok ? (
-                        <td colSpan={3} className="py-1 text-red-300 break-words">
-                          Failed: {o.error}
-                        </td>
-                      ) : (
-                        <>
-                          <td className="py-1 pr-2 text-right tabular-nums text-emerald-300">{row?.profit == null ? "—" : formatCoins(row.profit)}</td>
-                          <td className="py-1 pr-2 text-right tabular-nums text-slate-300">{o.result ? effortText(o.result.effort.avg, o.result.effort.peak) : "—"}</td>
-                          <td className={`py-1 text-right tabular-nums ${o.result?.solvent === false ? "text-red-300" : "text-slate-300"}`}>
-                            {o.result?.paybackCycle === undefined || !Object.keys(o.result.peakDebt ?? {}).length
-                              ? "—"
-                              : o.result.paybackCycle === null
-                                ? "never"
-                                : `cycle ${o.result.paybackCycle.toLocaleString()}`}
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {testValues.ratio !== null && (
-              <p className={`text-xs ${testValues.ratio > OUTLIER_RATIO ? "text-red-300" : "text-slate-300"}`}>
-                Spread (best / median): {ratioText(testValues.ratio)}
-                {testValues.ratio > OUTLIER_RATIO && (
-                  <span className="flex items-start gap-1 mt-1">
-                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> Over {OUTLIER_RATIO}×: the server would reject this as inconsistent across seeds.
-                  </span>
-                )}
-              </p>
-            )}
-            {testValues.failed && <p className="text-xs text-red-300">A failed seed makes the server reject the submission.</p>}
-            {testValues.insolvent && (
-              <p className="text-xs text-red-300">
-                Most seeds don't pay the starting layout back by cycle {PAYBACK_CYCLES.toLocaleString()}.{" "}
-                {every === 1 ? "At online every cycle the server rejects the flow." : `It won't be ranked at online every ${every} cycles.`}
-              </p>
-            )}
-            {test.board === "normal" && !bazaar.prices && <p className="text-[11px] text-amber-300">No cached Bazaar prices: open the simulator in Normal mode once to fetch them.</p>}
+            <div className={`grid grid-cols-1 gap-2 ${test.kinds.length > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+              {test.kinds.map((k, i) => (
+                <KindTestCard key={k.runKind} test={k} summary={summaries[i]} noPrices={noPrices} />
+              ))}
+            </div>
+            {summaries.some((s) => s.failed.length > 0) && <p className="text-xs text-red-300">A failed seed makes the server reject the submission.</p>}
             {test.error && <p className="text-xs text-red-300">{test.error}</p>}
             <p className="text-[11px] text-slate-500">Your seeds are random; the server uses secret seeds of its own, so its numbers will differ a little.</p>
           </div>

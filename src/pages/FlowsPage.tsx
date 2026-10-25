@@ -1,22 +1,45 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ArrowUpRight, Code2, FlaskConical, Layers, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowUpRight, Code2, FlaskConical, Layers, Package, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
+import { KitChip, SlowingBadge, StallChip, UpkeepValue } from "../components/flows/FlowChips";
 import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
+import { FilterBar, OwnedImportDialog } from "../components/flows/FlowFilters";
 import { EffortMeter, LayoutBoxes, MutationChip, Sparkline, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
+import { useOwnedItems } from "../components/flows/flowsDisplay";
 import { formatCoins, nameOf } from "../components/simulator/format";
 import { InfoHint, useToast } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
 import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowListResponse } from "../leaderboard/api";
-import { BADGE_TITLE, filterRows, maxProfit, percent, rankEntries, SORT_LABEL, sortRows, splitSolvent, suppliesText, withLikeCounts, type FlowRow, type SortKey } from "../leaderboard/view";
-import { PAYBACK_CYCLES } from "../leaderboard/rules";
+import type { Board } from "../leaderboard/rules";
+import {
+  BADGE_TITLE,
+  DEFAULT_FILTERS,
+  earningOptions,
+  matchesFilters,
+  maxProfit,
+  percent,
+  rankEntries,
+  readListParams,
+  SORT_BOARD,
+  SORT_LABEL,
+  sortRows,
+  startItemsText,
+  suppliesText,
+  withLikeCounts,
+  writeListParams,
+  type FlowRow,
+  type ListParams,
+  type RowFilters,
+  type SortKey,
+} from "../leaderboard/view";
 import { listFlows } from "../services/flowsService";
 import { defaultGameData } from "../simulator";
 
 const DATA = defaultGameData();
 
-type PlotsFilter = "any" | "1" | "2" | "3";
+type PlotsFilter = ListParams["plots"];
 
 /** The current time, refreshed every minute (price age, `new` badges). */
 function useMinuteClock(): number {
@@ -54,6 +77,8 @@ const SORT_HINT: Record<SortKey, string> = {
   perEffort: "Coins per day for each point of work per login: the best return on your time.",
   effort: "The fewest actions per login first.",
   forgiving: "How much profit survives logging in late.",
+  steady: "Coins per day over the second half of the run, once the flow is up and running.",
+  upkeep: "The fewest items to supply every day first (ties by profit).",
   liked: "The most likes from players, all time.",
   liked30d: "The most likes given in the last 30 days.",
   newest: "Most recently submitted first.",
@@ -65,6 +90,9 @@ const RowBadges: React.FC<{ row: FlowRow }> = ({ row }) => (
     {row.badges.stale && <Badge tone="stale" title={BADGE_TITLE.stale}>re-verifying</Badge>}
     {row.badges.estimated && <Badge tone="estimated" title={BADGE_TITLE.estimated}>max-tier stand-in</Badge>}
     {row.profitPerDay === null && <Badge tone="pending" title="Not verified at this tier and frequency yet.">pending</Badge>}
+    {row.kit && <KitChip kit={row.kit} />}
+    {row.stall && <StallChip stall={row.stall} />}
+    {row.slowing && <SlowingBadge />}
   </>
 );
 
@@ -76,9 +104,12 @@ interface RowLike {
   onToggle?: () => void;
 }
 
-const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: boolean; index: number; like: RowLike; sort: SortKey }> = ({ row, top, every, normal, index, like, sort }) => {
+/** One ranked flow (exported for the SSR tests: the page itself renders rows only after its fetch effect). */
+export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; board: Board; index: number; like: RowLike; sort: SortKey }> = ({ row, top, every, board, index, like, sort }) => {
   const navigate = useNavigate();
   const { entry } = row;
+  const normal = board === "normal";
+  const borrow = board === "ironman_borrow";
   const summary = entry.summary ?? null;
   // The layout the flow spends the most time in (server-picked once verified), else plot 1's start.
   const startCode = summary?.plots.find((p) => p.thumb)?.thumb ?? null;
@@ -90,7 +121,8 @@ const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: 
     const t = suppliesText(row.suppliesPerDay);
     return t === "none" ? null : `${t}/day to farm`;
   })();
-  const open = () => navigate(`/flows/${entry.id}`);
+  const query = `?board=${board}`;
+  const open = () => navigate(`/flows/${entry.id}${query}`);
   // A one-line plain-text taste of the description (Markdown marks stripped).
   const excerpt = (entry.excerpt ?? "")
     .replace(/[#>*_`[\]()-]+/g, " ")
@@ -112,7 +144,7 @@ const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: 
       <div className="min-w-0 space-y-1.5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <Link to={`/flows/${entry.id}`} onClick={(e) => e.stopPropagation()} className="break-words text-sm font-semibold text-slate-100 transition-colors group-hover:text-emerald-200">
+            <Link to={`/flows/${entry.id}${query}`} onClick={(e) => e.stopPropagation()} className="break-words text-sm font-semibold text-slate-100 transition-colors group-hover:text-emerald-200">
               {entry.title}
             </Link>
             <RowBadges row={row} />
@@ -173,6 +205,20 @@ const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: 
           <div className="text-[11px] text-slate-500">coins / day{row.scaled ? " · est." : ""}</div>
         </div>
         <div className="space-y-0.5 text-[11px] tabular-nums text-slate-400 sm:mt-1.5">
+          {borrow && entry.cell && (
+            <div data-testid="row-kit" className="space-y-0.5">
+              <div className="sm:flex sm:justify-end">
+                <span className="text-slate-500">Upkeep </span>
+                <UpkeepValue upkeep={entry.cell.upkeep} className="ml-1" />
+              </div>
+              <div className="sm:flex sm:justify-end" title={startItemsText(entry.cell.startItems)}>
+                <span className="inline-flex items-center gap-1">
+                  <Package className="h-3 w-3 text-slate-500" />
+                  {row.startItemsCount === 0 ? <span className="text-emerald-300">No starting items</span> : <span className="text-slate-300">{row.startItemsCount.toLocaleString("en-US")} starting items</span>}
+                </span>
+              </div>
+            </div>
+          )}
           {supply && <div>{supply}</div>}
           {normal && row.buildCost !== null && row.buildCost > 0 && <div className="text-sky-300/90">{formatCoins(row.buildCost)} to build</div>}
           <div className="flex items-center gap-2 sm:justify-end">
@@ -194,7 +240,7 @@ const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; normal: 
         className="absolute right-2 top-2 hidden rounded-md p-1 text-slate-500 opacity-0 transition-opacity duration-150 hover:bg-slate-700/60 hover:text-emerald-300 group-hover:opacity-100 lg:block"
         onClick={(e) => {
           e.stopPropagation();
-          navigate(`/simulator?flow=${encodeURIComponent(entry.id)}`);
+          navigate(`/simulator?flow=${encodeURIComponent(entry.id)}&board=${board}`);
         }}
         title="Open in simulator"
         aria-label="Open in simulator"
@@ -227,12 +273,35 @@ const Legend: React.FC = () => (
   </div>
 );
 
+const BOARD_INTRO: Record<Board, string> = {
+  ironman_strict: "A fresh ironman start: nothing borrowed, a missing item leaves its cell empty.",
+  ironman_borrow: "For ironman players who already own the items a flow's layouts need to get going. Upkeep is what it keeps needing every day.",
+  normal: "Bazaar prices: shortfalls are bought and the starting layouts' cost is shown separately.",
+};
+
+/** The ranking's URL state: board, sort, plots and every filter (defaults are left out of the URL). */
+function useListParams(): [ListParams, (patch: Partial<ListParams>) => void] {
+  const [search, setSearch] = useSearchParams();
+  const params = useMemo(() => readListParams(search), [search]);
+  const set = useCallback(
+    (patch: Partial<ListParams>) => {
+      setSearch((cur) => writeListParams({ ...readListParams(cur), ...patch }), { replace: true });
+    },
+    [setSearch]
+  );
+  return [params, set];
+}
+
 export const FlowsPage: React.FC = () => {
-  const viewer = useFlowViewer();
+  const [params, setParams] = useListParams();
+  const viewer = useFlowViewer({ board: params.board, onBoard: (board) => setParams({ board }) });
+  const board = viewer.board;
   const now = useMinuteClock();
   const { user } = useAuth();
   const likes = useFlowLikes();
   const { toast } = useToast();
+  const [owned, setOwned] = useOwnedItems();
+  const [importing, setImporting] = useState(false);
   useLikeReplay(
     useCallback(
       (_id: string, ok: boolean, error?: string) =>
@@ -240,44 +309,52 @@ export const FlowsPage: React.FC = () => {
       [toast]
     )
   );
-  const [plots, setPlots] = useState<PlotsFilter>("any");
-  const [sort, setSort] = useState<SortKey>("profit");
-  const [query, setQuery] = useState("");
+  const { plots, sort, filters } = params;
+  // The search box types into local state; the URL follows (so typing doesn't push history entries per key).
+  const [query, setQuery] = useState(filters.query);
+  useEffect(() => setQuery(filters.query), [filters.query]);
+  useEffect(() => {
+    if (query === filters.query) return;
+    const t = setTimeout(() => setParams({ filters: { ...filters, query } }), 250);
+    return () => clearTimeout(t);
+  }, [query, filters, setParams]);
+  const setFilters = (patch: Partial<RowFilters>) => setParams({ filters: { ...filters, ...patch } });
+  // A sort that only means something on another board falls back to profit here.
+  const sortShown: SortKey = SORT_BOARD[sort] && SORT_BOARD[sort] !== board ? "profit" : sort;
+
   const [result, setResult] = useState<{ key: string; data?: FlowListResponse; error?: string } | null>(null);
   const [reload, setReload] = useState(0);
   /** The reload count already served: only a new Refresh click bypasses the session cache. */
   const servedReload = useRef(0);
-  const key = `${viewer.board}|${viewer.tier}|${viewer.every}|${plots}|${reload}`;
+  const key = `${board}|${viewer.tier}|${viewer.every}|${plots}|${reload}`;
 
   useEffect(() => {
     let live = true;
     const force = reload !== servedReload.current;
     servedReload.current = reload;
-    listFlows({ board: viewer.board, tier: viewer.tier, every: viewer.every, plots: plots === "any" ? undefined : Number(plots) }, { force })
+    listFlows({ board, tier: viewer.tier, every: viewer.every, plots: plots === "any" ? undefined : Number(plots) }, { force })
       .then((data) => live && setResult({ key, data }))
       .catch((e: unknown) => live && setResult({ key, error: e instanceof Error ? e.message : String(e) }));
     return () => {
       live = false;
     };
-  }, [key, viewer.board, viewer.tier, viewer.every, plots, reload]);
+  }, [key, board, viewer.tier, viewer.every, plots, reload]);
 
   const loading = !result || result.key !== key;
   const all = useMemo(() => (result && !loading ? (result.data?.entries ?? []) : []), [result, loading]);
-  // Ironman: cells that don't pay their starting layout back in time are left out of this frequency's ranking.
-  const { solvent: entries, insolvent } = useMemo(() => splitSolvent(withLikeCounts(all, likes.counts)), [all, likes.counts]);
+  const entries = useMemo(() => withLikeCounts(all, likes.counts), [all, likes.counts]);
   const ranked = useMemo(
-    () =>
-      rankEntries(
-        DATA,
-        entries,
-        { board: viewer.board, quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true, now },
-        viewer.every
-      ),
-    [entries, viewer.board, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.every, now]
+    () => rankEntries(DATA, entries, { board, quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true, now }, viewer.every),
+    [entries, board, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.every, now]
   );
-  const shown = useMemo(() => sortRows(filterRows(ranked, query), sort), [ranked, query, sort]);
+  const options = useMemo(() => earningOptions(ranked), [ranked]);
+  const effective = useMemo<RowFilters>(() => ({ ...filters, query }), [filters, query]);
+  const shown = useMemo(
+    () => sortRows(ranked.filter((r) => matchesFilters(r, effective, board, owned?.items ?? null)), sortShown),
+    [ranked, effective, board, owned, sortShown]
+  );
   const top = maxProfit(ranked);
-  const normal = viewer.board === "normal";
+  const filtered = effective.query.trim() !== "" || JSON.stringify({ ...effective, query: "" }) !== JSON.stringify(DEFAULT_FILTERS);
 
   return (
     <div className="space-y-4 py-2 sm:py-4">
@@ -285,10 +362,10 @@ export const FlowsPage: React.FC = () => {
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-lg font-semibold text-slate-100">
             <Trophy className="h-5 w-5 text-amber-400" /> Flow rankings
-            <InfoHint title="How flows are ranked" width={340}>
+            <InfoHint title="How flows are ranked" width={360}>
               <p className="mb-1.5">
                 Every flow was simulated by the server under the same rules (empty start, default settings, secret seeds) at each online frequency and
-                four stat tiers.
+                four stat tiers, three times: from nothing, with starting items, and on the normal profile.
               </p>
               <p>The server stores item counts per day; your browser prices them for your board and stats, so the ranking follows your inputs instantly.</p>
             </InfoHint>
@@ -309,33 +386,40 @@ export const FlowsPage: React.FC = () => {
       <StatsPanel viewer={viewer} />
 
       <section className="rounded-lg border border-slate-600/30 bg-slate-800/40">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-700/40 px-3 py-2.5 sm:px-4">
-          <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Sort by">
-            {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
-              <Chip key={k} active={sort === k} onClick={() => setSort(k)} title={SORT_HINT[k]}>
-                {SORT_LABEL[k]}
-              </Chip>
-            ))}
+        <div className="space-y-2.5 border-b border-slate-700/40 px-3 py-2.5 sm:px-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Sort by">
+              {(Object.keys(SORT_LABEL) as SortKey[])
+                .filter((k) => !SORT_BOARD[k] || SORT_BOARD[k] === board)
+                .map((k) => (
+                  <Chip key={k} active={sortShown === k} onClick={() => setParams({ sort: k })} title={SORT_HINT[k]}>
+                    {SORT_LABEL[k]}
+                  </Chip>
+                ))}
+            </div>
+            <label className="relative ml-auto w-full min-w-[12rem] sm:w-64">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+              <input
+                type="search"
+                className="w-full rounded-md border border-slate-600/40 bg-slate-900/60 py-1.5 pl-8 pr-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-emerald-500/60 focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                placeholder="Search flows, authors, crops"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search flows"
+              />
+            </label>
           </div>
-          <div className="flex items-center gap-1" role="tablist" aria-label="Plots">
-            <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-500">Plots</span>
-            {(["any", "1", "2", "3"] as PlotsFilter[]).map((p) => (
-              <Chip key={p} active={plots === p} onClick={() => setPlots(p)}>
-                {p === "any" ? "Any" : p}
-              </Chip>
-            ))}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex items-center gap-1" role="tablist" aria-label="Plots">
+              <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-500">Plots</span>
+              {(["any", "1", "2", "3"] as PlotsFilter[]).map((p) => (
+                <Chip key={p} active={plots === p} onClick={() => setParams({ plots: p })}>
+                  {p === "any" ? "Any" : p}
+                </Chip>
+              ))}
+            </div>
+            <FilterBar board={board} filters={filters} earningOptions={options} owned={owned} onChange={setFilters} onImportOwned={() => setImporting(true)} />
           </div>
-          <label className="relative ml-auto w-full min-w-[12rem] sm:w-56">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-            <input
-              type="search"
-              className="w-full rounded-md border border-slate-600/40 bg-slate-900/60 py-1.5 pl-8 pr-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-emerald-500/60 focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-              placeholder="Search title or author"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search flows"
-            />
-          </label>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 sm:px-4">
@@ -353,11 +437,17 @@ export const FlowsPage: React.FC = () => {
             </button>
           </div>
         </div>
+        <p className="px-3 pt-1 text-[11px] text-slate-500 sm:px-4" data-testid="board-intro">
+          {BOARD_INTRO[board]}
+        </p>
         {viewer.scaling && <p className="px-3 pt-1 text-[11px] text-amber-200/70 sm:px-4">Crop and rare-crop numbers are scaled to your yield stats (an estimate).</p>}
-        {!loading && insolvent.length > 0 && (
-          <p className="px-3 pt-1 text-[11px] text-slate-400 sm:px-4" data-testid="insolvent-note">
-            {insolvent.length} flow{insolvent.length === 1 ? " doesn't" : "s don't"} pay back {insolvent.length === 1 ? "its" : "their"} starting layout by cycle{" "}
-            {PAYBACK_CYCLES.toLocaleString()} when online every {viewer.every} cycle{viewer.every === 1 ? "" : "s"}, so {insolvent.length === 1 ? "it isn't" : "they aren't"} ranked here.
+        {board === "ironman_borrow" && filters.owned && !owned && (
+          <p className="px-3 pt-1 text-[11px] text-amber-200/80 sm:px-4">
+            "I own the starting items" needs your items:{" "}
+            <button type="button" className="text-emerald-300 hover:underline" onClick={() => setImporting(true)}>
+              import them from Hypixel
+            </button>
+            .
           </p>
         )}
         {!loading && result?.data?.truncated && (
@@ -394,9 +484,8 @@ export const FlowsPage: React.FC = () => {
             <div className="space-y-1 py-12 text-center text-xs text-slate-400">
               <Trophy className="mx-auto mb-2 h-6 w-6 text-slate-600" />
               <div>
-                {insolvent.length > 0 ? "No flows pay back at this frequency" : "No flows on this board"}
-                {plots !== "any" ? ` with ${plots} plot${plots === "1" ? "" : "s"}` : ""}
-                {insolvent.length > 0 ? "." : " yet."}
+                No flows on this board
+                {plots !== "any" ? ` with ${plots} plot${plots === "1" ? "" : "s"}` : ""} yet.
               </div>
               <div>
                 Be the first: build one in the{" "}
@@ -407,7 +496,21 @@ export const FlowsPage: React.FC = () => {
               </div>
             </div>
           ) : shown.length === 0 ? (
-            <div className="py-10 text-center text-xs text-slate-400">Nothing matches "{query}".</div>
+            <div className="space-y-2 py-10 text-center text-xs text-slate-400">
+              <div>{effective.query.trim() ? `Nothing matches "${effective.query.trim()}" with these filters.` : "No flow on this board matches these filters."}</div>
+              {filtered && (
+                <button
+                  type="button"
+                  className="mx-auto inline-flex items-center gap-1 rounded-md border border-slate-600/40 px-2.5 py-1.5 text-slate-300 hover:bg-slate-700/60"
+                  onClick={() => {
+                    setQuery("");
+                    setParams({ filters: DEFAULT_FILTERS });
+                  }}
+                >
+                  Clear search and filters
+                </button>
+              )}
+            </div>
           ) : (
             <ol className="divide-y divide-slate-700/30" data-testid="flows-list">
               {shown.map((row, i) => (
@@ -416,9 +519,9 @@ export const FlowsPage: React.FC = () => {
                   row={row}
                   top={top}
                   every={viewer.every}
-                  normal={normal}
+                  board={board}
                   index={i}
-                  sort={sort}
+                  sort={sortShown}
                   like={{
                     liked: likes.isLiked(row.entry.id),
                     busy: likes.busy(row.entry.id),
@@ -436,6 +539,16 @@ export const FlowsPage: React.FC = () => {
           )}
         </div>
       </section>
+      {importing && (
+        <OwnedImportDialog
+          owned={owned}
+          onSave={(o) => {
+            setOwned(o);
+            if (o) setFilters({ owned: true });
+          }}
+          onClose={() => setImporting(false)}
+        />
+      )}
     </div>
   );
 };

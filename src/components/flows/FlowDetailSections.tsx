@@ -1,10 +1,28 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowRight, Code2, Flag, Loader2, Repeat } from "lucide-react";
+import { ArrowRight, Code2, Flag, Loader2, Repeat, RotateCcw, TrendingUp } from "lucide-react";
 import type { FlowDetail, FlowSeedResult, FlowStatusResponse } from "../../leaderboard/api";
 import type { Board } from "../../leaderboard/rules";
 import { valueResult, type Quotes } from "../../leaderboard/pricing";
-import { spreadRatio } from "../../leaderboard/result";
-import { BOARD_LABEL, percent, ratioText, TIER_LABEL, type ItemLine, type SourceLine } from "../../leaderboard/view";
+import { spreadRatio, type RunResult } from "../../leaderboard/result";
+import {
+  BOARD_LABEL,
+  boardOf,
+  KIT_MARGIN,
+  needLines,
+  percent,
+  rampText,
+  ratioText,
+  starvedList,
+  starvedText,
+  STALL_CELLS,
+  TIER_LABEL,
+  upkeepLines,
+  usedUpLines,
+  type BoardNumber,
+  type ItemLine,
+  type SourceLine,
+  type StepNamer,
+} from "../../leaderboard/view";
 import type { TierId } from "../../leaderboard/tiers";
 import type { BazaarPricing } from "../../simulator";
 import { defaultGameData, describeConditions } from "../../simulator";
@@ -28,6 +46,151 @@ export const StatTile: React.FC<{ label: React.ReactNode; value: React.ReactNode
     {sub && <div className="mt-0.5 text-[11px] text-slate-500">{sub}</div>}
   </div>
 );
+
+const BOARD_SUB: Record<Board, string> = {
+  ironman_strict: "Ironman · from nothing",
+  ironman_borrow: "Ironman · with starting items",
+  normal: "Normal · Bazaar",
+};
+
+/** The three boards' numbers side by side; the current one highlighted, the others switch to theirs. */
+export const BoardNumbers: React.FC<{ numbers: BoardNumber[]; current: Board; onSelect: (b: Board) => void; tierLabel: string; every: number }> = ({ numbers, current, onSelect, tierLabel, every }) => (
+  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="tablist" aria-label="Boards" data-testid="board-numbers">
+    {numbers.map((n) => {
+      const active = n.board === current;
+      const negative = n.profitPerDay !== null && n.profitPerDay < 0;
+      return (
+        <button
+          key={n.board}
+          type="button"
+          role="tab"
+          aria-selected={active}
+          onClick={() => onSelect(n.board)}
+          title={active ? `${BOARD_LABEL[n.board]}: ${tierLabel} tier, online every ${every}` : `Show this flow on the ${BOARD_LABEL[n.board]} board`}
+          className={`min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.99] ${
+            active ? "border-emerald-500/50 bg-emerald-500/10 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]" : "border-slate-700/50 bg-slate-900/40 hover:border-slate-500/50 hover:bg-slate-800/60"
+          }`}
+        >
+          <div className={`text-[10px] font-medium uppercase tracking-wide ${active ? "text-emerald-300" : "text-slate-500"}`}>{BOARD_SUB[n.board]}</div>
+          <div className={`mt-0.5 font-bold tabular-nums leading-tight ${active ? "text-3xl" : "text-2xl"} ${n.profitPerDay === null ? "text-slate-500" : negative ? "text-red-300" : active ? "text-amber-300" : "text-amber-200/80"}`}>
+            {n.profitPerDay === null ? "—" : formatCoins(n.profitPerDay)}
+            <span className="ml-1 text-xs font-normal text-slate-500">/ day</span>
+          </div>
+          <div className="mt-0.5 min-h-[1rem] text-[11px] text-slate-500">
+            {n.profitPerDay === null
+              ? "not verified yet"
+              : n.board === "normal"
+                ? [n.boughtPerDay > 0 ? `${formatCoins(n.boughtPerDay)}/day bought` : null, n.buildCost > 0 ? `${formatCoins(n.buildCost)} to build` : null].filter(Boolean).join(" · ") || "nothing to buy"
+                : n.slowing
+                  ? "slowing down at the end"
+                  : n.board === "ironman_strict"
+                    ? "nothing borrowed"
+                    : "starting items lent"}
+          </div>
+        </button>
+      );
+    })}
+  </div>
+);
+
+/** "With starting items": the items to bring, what is used up, and the upkeep. */
+export const WhatYouNeed: React.FC<{ result: Pick<RunResult, "startItems" | "sessionOnly" | "usedUp" | "upkeep"> }> = ({ result }) => {
+  const need = needLines(result);
+  const used = usedUpLines(result.usedUp);
+  const upkeep = upkeepLines(result.upkeep);
+  return (
+    <div className="space-y-3 text-xs" data-testid="what-you-need">
+      <div>
+        <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[11px] uppercase tracking-wide text-slate-500">
+          <span>Starting items</span>
+          {need.length > 0 && <span className="normal-case tracking-normal">needs · bring (+{Math.round(KIT_MARGIN * 100)}%)</span>}
+        </div>
+        {need.length === 0 ? (
+          <p className="text-emerald-300">None: it starts from an empty inventory.</p>
+        ) : (
+          <ul className="space-y-1">
+            {need.map((l) => (
+              <li key={l.item} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2">
+                <CropImage cropId={l.item} cropName={nameOf(l.item)} size="custom" width={18} height={18} showFallback />
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-slate-200">{nameOf(l.item)}</span>
+                  {l.sessionOnly && (
+                    <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded border border-cyan-500/30 bg-cyan-500/10 px-1 text-[10px] text-cyan-200" title="Only borrowed for a moment within a login and given back before it ends">
+                      <RotateCcw className="h-2.5 w-2.5" /> returned each session
+                    </span>
+                  )}
+                </span>
+                <span className="whitespace-nowrap tabular-nums text-slate-400">
+                  needs {l.needs.toLocaleString("en-US")} · <span className="font-medium text-slate-100">bring {l.bring.toLocaleString("en-US")}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {used.length > 0 && (
+        <div>
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Used up once</div>
+          <p className="text-slate-300">
+            {used.map((u, i) => (
+              <span key={u.item}>
+                {i > 0 ? ", " : ""}
+                uses up <span className="tabular-nums text-amber-200">{u.units.toLocaleString("en-US")}</span> {nameOf(u.item)} once
+              </span>
+            ))}
+          </p>
+        </div>
+      )}
+      <div>
+        <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Upkeep per day</div>
+        {upkeep.length === 0 ? (
+          <p className="text-emerald-300">None: it gives back everything it borrows.</p>
+        ) : (
+          <ul className="space-y-0.5">
+            {upkeep.map((u) => (
+              <li key={u.item} className="flex items-center gap-2 text-amber-300">
+                <CropImage cropId={u.item} cropName={nameOf(u.item)} size="custom" width={16} height={16} showFallback />
+                <span className="tabular-nums">{Math.ceil(u.perDay - 1e-9).toLocaleString("en-US")}</span> {nameOf(u.item)} / day
+              </li>
+            ))}
+            <li className="pt-0.5 text-[11px] text-slate-500">Borrowed items it never gives back: you supply these every day.</li>
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/** "Layout complete after ~16 days · then 12.3M/day". */
+export const RampLine: React.FC<{ result: Pick<RunResult, "ramp" | "days" | "cycles">; steadyPerDay: number | null }> = ({ result, steadyPerDay }) => {
+  const text = rampText(result, steadyPerDay);
+  if (!text) return null;
+  const never = result.ramp?.complete === null;
+  return (
+    <p className={`flex items-center gap-1.5 text-xs ${never ? "text-amber-200/90" : "text-slate-300"}`} data-testid="ramp-line" title="When the layouts first had every cell filled, and the rate over the second half of the run">
+      <TrendingUp className={`h-3.5 w-3.5 ${never ? "text-amber-400" : "text-emerald-400"}`} /> {text}
+    </p>
+  );
+};
+
+/** Layout cells left empty for lack of stock (author feedback); ≥ STALL_CELLS highlighted. Null when there are none. */
+export const EmptyCells: React.FC<{ starved: unknown; stepName: StepNamer }> = ({ starved, stepName }) => {
+  const list = starvedList(starved);
+  if (!list.length) return null;
+  return (
+    <ul className="space-y-1 text-xs" data-testid="empty-cells">
+      {list.map((e) => {
+        const hot = e.cells >= STALL_CELLS;
+        return (
+          <li key={`${e.plot}|${e.step}|${e.item}`} className={`flex items-center gap-2 rounded-md px-2 py-1 ${hot ? "border border-amber-500/30 bg-amber-500/10 text-amber-200" : "text-slate-300"}`}>
+            <CropImage cropId={e.item} cropName={nameOf(e.item)} size="custom" width={16} height={16} showFallback />
+            <span className="min-w-0 break-words">{starvedText(e, stepName)}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
 
 /** Rows a breakdown list shows before the rest scrolls (like the simulator's inventory sections). */
 const LIST_ROWS_SHOWN = 8;
@@ -255,7 +418,7 @@ export const SeedTable: React.FC<{ seeds: FlowSeedResult[]; board: Board; quotes
       </ul>
       <p className="text-[11px] text-slate-500">
         Best / median: <span className={ratio > 2 ? "text-red-300" : "text-slate-300"}>{ratioText(ratio)}</span> (the server rejects over 2×). The ranking uses
-        the median of every item over these seeds, so no single lucky seed counts.
+        the median seed, so no single lucky seed counts.
       </p>
     </div>
   );
@@ -309,11 +472,12 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
           {status.jobs.map((j, i) => {
             const frac = j.total ? Math.min(1, (j.done ?? 0) / j.total) : 0;
             const label = j.status === "queued" && j.queuePosition ? `queued · #${j.queuePosition} in line` : j.status === "running" && j.total ? `running · ${j.done ?? 0}/${j.total} runs` : j.status;
+            const b = boardOf(j);
             return (
-              <li key={i} className="space-y-1">
+              <li key={j.id ?? i} className="space-y-1">
                 <div className="flex flex-wrap gap-x-2">
                   <span className="text-slate-400">
-                    {BOARD_LABEL[j.board]} · {TIER_LABEL[j.tier as TierId] ?? j.tier} tier · {j.priority === "A" ? "goes live after this" : "background"}
+                    {b ? BOARD_LABEL[b] : String(j.board)} · {TIER_LABEL[j.tier as TierId] ?? j.tier} tier · {j.priority === "A" ? "goes live after this" : "background"}
                   </span>
                   <span className={JOB_TONE[j.status] ?? "text-slate-300"}>{label}</span>
                   {j.error && <span className="break-words text-red-300">{j.error}</span>}
@@ -328,7 +492,7 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
           })}
         </ul>
       ) : null}
-      {pending && <p className="text-slate-500">The server simulates every online frequency with 5 secret seeds; this takes a few minutes. This updates by itself.</p>}
+      {pending && <p className="text-slate-500">The server simulates every online frequency with 5 secret seeds, for each of the three boards; this takes a few minutes. This updates by itself.</p>}
     </div>
   );
 };

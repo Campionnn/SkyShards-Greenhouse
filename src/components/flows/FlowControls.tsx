@@ -20,7 +20,7 @@ import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
  * (granular inputs snapped to the nearest stat tier) and small presentational pieces.
  */
 
-/** The Ironman / Normal toggle, the same one the simulator header uses (site-wide profile mode). */
+/** The three boards; the default follows the site-wide profile mode (ironman → from nothing). */
 export const BoardToggle: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
   <SegmentedControl
     size="xs"
@@ -28,7 +28,24 @@ export const BoardToggle: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
     value={viewer.board}
     onChange={viewer.setBoard}
     options={[
-      { value: "ironman", label: "Ironman", title: "NPC prices; Dead Plants and Fermento are farmed by you (placed free on the server)" },
+      {
+        value: "ironman_strict",
+        label: (
+          <>
+            <span className="hidden sm:inline">Ironman · </span>from nothing
+          </>
+        ),
+        title: "Ironman from an empty inventory: nothing borrowed, a missing item leaves its cell empty. NPC prices; Dead Plants and Fermento are farmed by you",
+      },
+      {
+        value: "ironman_borrow",
+        label: (
+          <>
+            <span className="hidden sm:inline">Ironman · </span>with starting items
+          </>
+        ),
+        title: "Ironman when you already own the items the layouts need to get going (listed per flow). NPC prices",
+      },
       { value: "normal", label: "Normal", tone: "blue", title: "Bazaar prices; supplies are bought" },
     ]}
   />
@@ -379,7 +396,7 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
   return (
     <section className="rounded-lg border border-slate-600/30 bg-slate-800/40" data-testid="stats-panel">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-        <button type="button" onClick={() => setOpen((v) => !v)} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left" aria-expanded={open}>
+        <button type="button" onClick={() => setOpen((v) => !v)} className="flex min-w-[min(100%,16rem)] flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left" aria-expanded={open}>
           <span className="flex items-center gap-2 whitespace-nowrap">
             <Gauge className="h-4 w-4 flex-shrink-0 text-emerald-400" />
             <span className="text-sm font-medium text-slate-200">Your stats</span>
@@ -595,6 +612,7 @@ const BADGE_STYLE = {
   danger: "bg-red-500/15 text-red-200 border-red-500/30",
   info: "bg-cyan-500/10 text-cyan-200 border-cyan-500/30",
   violet: "bg-violet-500/15 text-violet-200 border-violet-500/30",
+  warn: "bg-orange-500/15 text-orange-200 border-orange-500/30",
 } as const;
 
 export type BadgeTone = keyof typeof BADGE_STYLE;

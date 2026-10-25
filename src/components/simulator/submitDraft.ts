@@ -3,15 +3,13 @@
  * (a full-page redirect that comes back to /simulator in the same tab) doesn't wipe them. A
  * `reopen` flag set just before the redirect makes the simulator open the dialog again on return.
  * Lives outside SubmitFlowDialog.tsx because that module is lazy-loaded.
+ * Old drafts may still carry `boards` (every flow is on all three boards now): it is ignored.
  */
-import type { Board } from "../../leaderboard/rules";
-
 const KEY = "skyshards-submit-draft";
 
 export interface SubmitDraft {
   title: string;
   description: string;
-  boards: Board[];
   cycles: number;
   /** Open the dialog again on the next simulator load (set right before the login redirect). */
   reopen?: boolean;
@@ -35,7 +33,6 @@ export function loadSubmitDraft(): SubmitDraft | null {
     return {
       title: typeof d.title === "string" ? d.title : "",
       description: typeof d.description === "string" ? d.description : "",
-      boards: Array.isArray(d.boards) ? d.boards.filter((b): b is Board => b === "ironman" || b === "normal") : [],
       cycles: typeof d.cycles === "number" && Number.isFinite(d.cycles) ? d.cycles : NaN,
       reopen: d.reopen === true,
     };

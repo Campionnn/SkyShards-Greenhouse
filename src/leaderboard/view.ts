@@ -2,10 +2,11 @@ import type { GameData, ItemId } from "../simulator/data/types";
 import { DEFAULT_BAZAAR_PRICING, type BazaarPricing } from "../simulator/economy/bazaar";
 import { RARE_DROP_ITEMS } from "../simulator/economy/bounty";
 import { RARE_CROP_ITEMS } from "../simulator/economy/rareCrops";
-import type { AuthUser, FlowAuthor, FlowCell, FlowListEntry, Spread, SpreadInfo, Timestamp } from "./api";
+import { formatCoins, nameOf } from "../components/simulator/format";
+import type { AuthUser, CurvePoint, FlowAuthor, FlowCell, FlowListEntry, Spread, SpreadInfo, Timestamp } from "./api";
 import { buyPrice, scaleResult, sellPrice, slack, valueResult, yieldStatsDiffer, type Quotes, type YieldStats } from "./pricing";
-import type { RunResult } from "./result";
-import type { Board } from "./rules";
+import { cellResult, spreadRatio, type RunResult, type StarvedCells } from "./result";
+import { BOARD_RUN_KIND, boardFrom, RUN_KIND_BOARD, runKindFrom, type Board, type RunKind } from "./rules";
 import { EVERY, type TierId } from "./tiers";
 
 /**
@@ -35,7 +36,31 @@ export const BADGE_TITLE = {
 };
 
 export const TIER_LABEL: Record<TierId, string> = { max: "Max", high: "High", mid: "Mid", low: "Low" };
-export const BOARD_LABEL: Record<Board, string> = { ironman: "Ironman", normal: "Normal" };
+export const BOARD_LABEL: Record<Board, string> = { ironman_strict: "Ironman · from nothing", ironman_borrow: "Ironman · with starting items", normal: "Normal" };
+/** The boards without the "Ironman ·" prefix (selectors, compact places). */
+export const BOARD_SHORT: Record<Board, string> = { ironman_strict: "From nothing", ironman_borrow: "With starting items", normal: "Normal" };
+/** A run kind as the submit dialog and the simulator's rules selector call it. */
+export const RUN_KIND_LABEL: Record<RunKind, string> = { strict: "From nothing", borrow: "With starting items", normal: "Normal" };
+
+/** The run kind a simulator scenario's settings look like (the rules selectors' default). */
+export function scenarioRunKind(settings: { profile?: string; config: { allowMutationDebt?: boolean; bootstrapDebt?: boolean } }): RunKind {
+  if (settings.profile === "normal") return "normal";
+  return settings.config.allowMutationDebt === true || settings.config.bootstrapDebt === true ? "borrow" : "strict";
+}
+
+/** An admin row's raw `boards` ("all" since v2; old rows list "ironman" / "normal"). */
+export function boardsText(boards: readonly string[]): string {
+  if (!boards.length) return "—";
+  if (boards.includes("all")) return "All boards";
+  return boards.map((b) => (b === "ironman" ? "Ironman" : (BOARD_LABEL[b as Board] ?? b))).join(" + ");
+}
+
+/** The board a cell, seed row or job belongs to: its run kind, else its (possibly old) board name. */
+export function boardOf(x: { runKind?: unknown; board?: unknown }): Board | null {
+  const kind = runKindFrom(x.runKind);
+  if (kind && x.runKind === kind) return RUN_KIND_BOARD[kind];
+  return boardFrom(x.board);
+}
 
 /** Discord avatar (64 px), or Discord's default avatar for the account when it has none. */
 export function avatarUrl(id: string, avatar: string | null | undefined): string {
@@ -124,19 +149,39 @@ export interface FlowRow {
   scaled: boolean;
   badges: RowBadges;
   unpriced: ItemId[];
+  /** Every harvested plant kind that earns coins on this board, most first (`earningItems`). */
+  sources: EarningItem[];
+  /** "From nothing" board: how much more the same flow makes with the starting items (null: under KIT_MIN_GAIN, or unknown). */
+  kit: KitGain | null;
+  /** A plot whose layout cells sit empty for lack of stock (≥ STALL_CELLS on average). */
+  stall: StallInfo | null;
+  /** The cell is scored at its trailing rate (most seeds slowed down at the end). */
+  slowing: boolean;
+  /** Units per day the borrowed items grow by (0 = none or not a borrow cell). */
+  upkeepPerDay: number;
+  /** Starting items the borrow cell needs, whole units (0 = none or not a borrow cell). */
+  startItemsCount: number;
+  /** Coins per day over the second half of the run (the ramp's rate); null without ramp data. */
+  steadyPerDay: number | null;
+  /** Lower-case text the search box matches: title, author, excerpt and item ids / names. */
+  search: string;
 }
 
-export type SortKey = "profit" | "perEffort" | "effort" | "forgiving" | "liked" | "liked30d" | "newest";
+export type SortKey = "profit" | "perEffort" | "effort" | "forgiving" | "steady" | "upkeep" | "liked" | "liked30d" | "newest";
 
 export const SORT_LABEL: Record<SortKey, string> = {
   profit: "Profit",
   perEffort: "Profit per effort",
   effort: "Least effort",
   forgiving: "Most forgiving",
+  steady: "Steady rate",
+  upkeep: "Least upkeep",
   liked: "Most liked",
   liked30d: "Most liked (30 days)",
   newest: "Newest",
 };
+/** Sort keys that only mean something on one board. */
+export const SORT_BOARD: Partial<Record<SortKey, Board>> = { upkeep: "ironman_borrow" };
 
 /** Like counts the viewer changed locally (server replies), over the possibly cached list. */
 export type LikeCounts = Record<string, { likes: number; likes30d: number }>;
@@ -192,44 +237,20 @@ export function mutationsPerDay(data: GameData, r: RunResult): number {
   return n;
 }
 
-/** Whether a cell paid its ironman starting layout back in time (results without the field are solvent). */
-export const isSolvent = (r: { solvent?: boolean } | null | undefined): boolean => r?.solvent !== false;
-
-/**
- * Split list entries into the ranked ones and those whose cell at this frequency doesn't pay its
- * ironman starting layout back by `PAYBACK_CYCLES` (left out of the ranking, counted on the page).
- */
-export function splitSolvent<T extends { cell: { solvent?: boolean } | null }>(entries: readonly T[]): { solvent: T[]; insolvent: T[] } {
-  const solvent: T[] = [];
-  const insolvent: T[] = [];
-  for (const e of entries) (isSolvent(e.cell) ? solvent : insolvent).push(e);
-  return { solvent, insolvent };
+/** A curve point (or any produced / bought pair) priced like a cell: scaled to the viewer, valued on the board. */
+export function pricePoint(data: GameData, p: Pick<CurvePoint, "produced" | "bought"> & { consumed?: CurvePoint["consumed"] }, s: Pick<ViewSettings, "board" | "quotes" | "pricing" | "viewerStats" | "useMyStats">): number {
+  const asResult = { ...EMPTY_RESULT, produced: p.produced ?? {}, bought: p.bought ?? {}, consumed: p.consumed ?? {} };
+  const { result } = viewerResult(data, asResult, s);
+  return valueResult(data, result, s.board, s.board === "normal" ? s.quotes : {}, s.pricing ?? DEFAULT_BAZAAR_PRICING).profitPerDay;
 }
 
-/** "Pays back by cycle 420" / "Never pays back" for a median result; null when it borrowed nothing (or has no debt data). */
-export function paybackText(r: Pick<RunResult, "paybackCycle" | "peakDebt">): string | null {
-  if (r.paybackCycle === undefined || !r.peakDebt || Object.keys(r.peakDebt).length === 0) return null;
-  return r.paybackCycle === null ? "Never paid back" : `Paid back by cycle ${Math.round(r.paybackCycle).toLocaleString("en-US")}`;
-}
-
-/** Items the starting layout borrowed, most units first. */
-export function debtLines(r: Pick<RunResult, "peakDebt">): { item: ItemId; units: number }[] {
-  return Object.entries(r.peakDebt ?? {})
-    .filter(([, n]) => n > 0)
-    .map(([item, units]) => ({ item, units }))
-    .sort((a, b) => b.units - a.units || a.item.localeCompare(b.item));
-}
-
-/** A list row's frequency curve, priced for the viewer (null where the API sent no point or the cell is insolvent). */
+/** A list row's frequency curve, priced for the viewer (null where the API sent no point). */
 export function rowCurve(data: GameData, entry: FlowListEntry, s: ViewSettings): FrequencyPoint[] {
   const curve = entry.curve ?? {};
   return EVERY.map((every) => {
     const p = curve[String(every)];
-    if (!p) return { every, profitPerDay: null };
-    if (!isSolvent(p)) return { every, profitPerDay: null, insolvent: true };
-    const asResult = { ...EMPTY_RESULT, produced: p.produced ?? {}, bought: p.bought ?? {}, consumed: p.consumed ?? {} };
-    const { result } = viewerResult(data, asResult, s);
-    return { every, profitPerDay: valueResult(data, result, s.board, s.board === "normal" ? s.quotes : {}, s.pricing ?? DEFAULT_BAZAAR_PRICING).profitPerDay };
+    if (!p || typeof p !== "object") return { every, profitPerDay: null };
+    return { every, profitPerDay: pricePoint(data, p, s) };
   });
 }
 
@@ -269,6 +290,7 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
     badges,
   };
   const targets = entry.summary?.targets ?? [];
+  const search = searchText(entry);
   if (!entry.cell)
     return {
       ...base,
@@ -282,13 +304,31 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
       earning: targets.map((id) => ({ id, coinsPerDay: null })),
       scaled: false,
       unpriced: [],
+      sources: [],
+      kit: null,
+      stall: null,
+      slowing: false,
+      upkeepPerDay: 0,
+      startItemsCount: 0,
+      steadyPerDay: null,
+      search,
     };
-  const { result, scaled } = viewerResult(data, entry.cell, s);
+  const cell = entry.cell;
+  const { result, scaled } = viewerResult(data, cell, s);
   const quotes = s.board === "normal" ? s.quotes : {};
   const pricing = s.pricing ?? DEFAULT_BAZAAR_PRICING;
   const v = valueResult(data, result, s.board, quotes, pricing);
+  const borrow = s.board === "ironman_strict" && entry.borrowPoint && typeof entry.borrowPoint === "object" ? pricePoint(data, entry.borrowPoint, { ...s, board: "ironman_borrow" }) : null;
   return {
     ...base,
+    sources: earningItems(data, result.bySource, s.board, quotes, pricing),
+    kit: borrow === null ? null : kitGain(v.profitPerDay, borrow),
+    stall: stallInfo(cell.starved),
+    slowing: cell.slowing === true,
+    upkeepPerDay: sumValues(cell.upkeep),
+    startItemsCount: startItemsTotal(cell.startItems),
+    steadyPerDay: steadyRate(data, cell, s),
+    search,
     earning: earningTargets(data, targets, result.bySource, s.board, quotes, pricing),
     profitPerDay: v.profitPerDay,
     revenuePerDay: v.revenuePerDay,
@@ -356,6 +396,11 @@ export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
       return out.sort(byKey((r) => (r.profitPerDay === null ? null : r.effortAvg), false));
     case "forgiving":
       return out.sort(byKey((r) => r.slack, true));
+    case "steady":
+      return out.sort(byKey((r) => r.steadyPerDay, true));
+    case "upkeep":
+      // Least upkeep first; ties keep the profit order (the rows come ranked by profit).
+      return out.sort(byKey((r) => (r.profitPerDay === null ? null : r.upkeepPerDay), false));
     case "liked":
       return out.sort(byKey((r) => r.entry.likes ?? 0, true));
     case "liked30d":
@@ -373,17 +418,361 @@ export function maxProfit(rows: readonly FlowRow[]): number {
   return rows.reduce((m, r) => Math.max(m, r.profitPerDay ?? 0), 0);
 }
 
-/** Case-insensitive match on title or author name; ranks are kept from the full list. */
-export function filterRows<T extends { entry: { title: string; author: FlowAuthor } }>(rows: readonly T[], query: string): T[] {
+/**
+ * Case-insensitive search; ranks are kept from the full list. Rows with a `search` text (flowRow's:
+ * title, author, excerpt, item ids and names) match on it, others on title or author name.
+ */
+export function filterRows<T extends { entry: { title: string; author: FlowAuthor }; search?: string }>(rows: readonly T[], query: string): T[] {
   const q = query.trim().toLowerCase();
   if (!q) return [...rows];
-  return rows.filter((r) => r.entry.title.toLowerCase().includes(q) || r.entry.author.name.toLowerCase().includes(q));
+  return rows.filter((r) => (r.search !== undefined ? r.search.includes(q) : r.entry.title.toLowerCase().includes(q) || r.entry.author.name.toLowerCase().includes(q)));
+}
+
+// ---- Leaderboard v2: earning sources, starting items, upkeep, stalls, ramp, filters ------------
+
+const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** Positive finite values of a count map, as entries, largest first (ties by id). */
+function positiveEntries(m: unknown): [ItemId, number][] {
+  if (!isRecord(m)) return [];
+  return Object.entries(m)
+    .filter((e): e is [ItemId, number] => finite(e[1]) && e[1] > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+const sumValues = (m: unknown): number => positiveEntries(m).reduce((s, [, n]) => s + n, 0);
+
+/** A count rounded up for display ("you need at least this many"); small fractions keep one significant digit. */
+function countUp(n: number): string {
+  if (n >= 1) return Math.ceil(n - 1e-9).toLocaleString("en-US");
+  return n > 0 ? String(Number(n.toPrecision(1))) : "0";
+}
+
+/** Whole starting items a borrow cell needs (each item rounded up), 0 when none or not a borrow cell. */
+export function startItemsTotal(startItems: unknown): number {
+  return positiveEntries(startItems).reduce((s, [, n]) => s + Math.ceil(n - 1e-9), 0);
+}
+
+/** One harvested plant kind and the coins its drops bring per day on a board. */
+export interface EarningItem {
+  id: ItemId;
+  coinsPerDay: number;
+  isMutation: boolean;
+}
+
+/** Every plant kind whose harvests earn coins on the board, most first (`moneyBySource` without the zero lines). */
+export function earningItems(data: GameData, bySource: RunResult["bySource"], board: Board, quotes: Quotes, pricing: BazaarPricing): EarningItem[] {
+  return moneyBySource(data, isRecord(bySource) ? bySource : undefined, board, quotes, pricing)
+    .filter((l) => l.coinsPerDay > 0)
+    .map((l) => ({ id: l.kind, coinsPerDay: l.coinsPerDay, isMutation: l.isMutation }));
+}
+
+/** The plant kinds the earning filter offers: every `bySource` key over the rows, by display name. */
+export function earningOptions(rows: readonly { entry: FlowListEntry }[]): ItemId[] {
+  const ids = new Set<ItemId>();
+  for (const r of rows) {
+    const by = r.entry.cell?.bySource;
+    if (isRecord(by)) for (const k of Object.keys(by)) ids.add(k);
+  }
+  return [...ids].sort((a, b) => nameOf(a).localeCompare(nameOf(b)) || a.localeCompare(b));
+}
+
+/** "From nothing" rows: the borrow cell must beat the strict one by this much for the Kit chip. */
+export const KIT_MIN_GAIN = 0.05;
+
+/**
+ * What the starting items add on the "from nothing" board: `gain` (borrow / strict − 1) when the
+ * strict cell makes something, or `needed` when it makes nothing and the borrow cell does.
+ */
+export type KitGain = { kind: "gain"; gain: number; strict: number; borrow: number } | { kind: "needed"; strict: number; borrow: number };
+
+export function kitGain(strict: number | null, borrow: number | null): KitGain | null {
+  if (!finite(strict) || !finite(borrow) || borrow <= 0) return null;
+  if (strict <= 0) return { kind: "needed", strict, borrow };
+  const gain = borrow / strict - 1;
+  return finite(gain) && gain >= KIT_MIN_GAIN ? { kind: "gain", gain, strict, borrow } : null;
+}
+
+/** The Kit chip's label and tooltip. */
+export function kitText(k: KitGain): { label: string; title: string } {
+  if (k.kind === "needed") return { label: "Kit needed", title: `Makes nothing from scratch; with the starting items: ${formatCoins(k.borrow)}/day (see the "with starting items" board).` };
+  const pct = Math.round(k.gain * 100);
+  return { label: `Kit +${pct.toLocaleString("en-US")}%`, title: `With the starting items this flow makes ${pct.toLocaleString("en-US")}% more (see the "with starting items" board).` };
+}
+
+/** A plot with this many layout cells empty for lack of stock (on average) gets the Stall chip. */
+export const STALL_CELLS = 5;
+
+export interface StallInfo {
+  plot: number;
+  /** All starved cells of that plot. */
+  cells: number;
+  /** Its largest entry. */
+  top: StarvedCells;
+}
+
+/** Valid `starved` entries, largest first (old cells have none). */
+export function starvedList(starved: unknown): StarvedCells[] {
+  if (!Array.isArray(starved)) return [];
+  return starved
+    .filter((e): e is StarvedCells => isRecord(e) && finite(e.plot) && typeof e.step === "string" && typeof e.item === "string" && finite(e.cells) && e.cells > 0)
+    .sort((a, b) => b.cells - a.cells || a.plot - b.plot);
+}
+
+/** The worst plot when any plot averages ≥ STALL_CELLS starved cells (summed over its entries), else null. */
+export function stallInfo(starved: unknown): StallInfo | null {
+  const byPlot = new Map<number, { cells: number; top: StarvedCells }>();
+  for (const e of starvedList(starved)) {
+    const p = byPlot.get(e.plot);
+    if (p) p.cells += e.cells;
+    else byPlot.set(e.plot, { cells: e.cells, top: e });
+  }
+  let best: StallInfo | null = null;
+  for (const [plot, p] of byPlot) if (p.cells >= STALL_CELLS && (!best || p.cells > best.cells)) best = { plot, cells: p.cells, top: p.top };
+  return best;
+}
+
+/** How a step is named in messages ("step 2 (All-in Aloe)" with the payload, else its id). */
+export type StepNamer = (plot: number, stepId: string) => string;
+/** Without the flow's labels (the ranking): the simulator's ids read as is ("step-2"), others get a "step" prefix. */
+export const stepIdName: StepNamer = (_plot, id) => (/^step[-_ ]?\d+$/i.test(id) ? id : `step ${id}`);
+
+/** "Plot 1, step 2 (All-in Aloe): 34 Magic Jellybean cells empty on average". */
+export function starvedText(e: StarvedCells, stepName: StepNamer = stepIdName): string {
+  const n = e.cells >= 10 ? Math.round(e.cells).toLocaleString("en-US") : e.cells >= 1 ? e.cells.toFixed(1).replace(/\.0$/, "") : String(Number(e.cells.toPrecision(1)));
+  return `Plot ${e.plot}, ${stepName(e.plot, e.step)}: ${n} ${nameOf(e.item)} cell${n === "1" ? "" : "s"} empty on average`;
+}
+
+/** The step names of a flows file for messages: "step 2 (All-in Aloe)". */
+export function payloadStepNamer(plots: readonly { id: number; flow: { steps: readonly { id: string; label?: string }[] } }[] | undefined): StepNamer {
+  const names = new Map<string, string>();
+  for (const p of plots ?? []) p.flow.steps.forEach((s, i) => names.set(`${p.id}|${s.id}`, s.label?.trim() ? `step ${i + 1} (${s.label.trim()})` : `step ${i + 1}`));
+  return (plot, id) => names.get(`${plot}|${id}`) ?? stepIdName(plot, id);
+}
+
+/** Per-day upkeep, largest first. */
+export function upkeepLines(upkeep: unknown): { item: ItemId; perDay: number }[] {
+  return positiveEntries(upkeep).map(([item, perDay]) => ({ item, perDay }));
+}
+
+/** "None", or "92 Zombud + 92 Puffercloud /day" (each rounded up; at most three, then "+ N more"). */
+export function upkeepText(upkeep: unknown): string {
+  const lines = upkeepLines(upkeep);
+  if (!lines.length) return "None";
+  const shown = lines.slice(0, 3).map((l) => `${countUp(l.perDay)} ${nameOf(l.item)}`);
+  if (lines.length > 3) shown.push(`${lines.length - 3} more`);
+  return `${shown.join(" + ")} /day`;
+}
+
+/** "54 items: 41 Duskbloom, 7 Shadevine, 6 Dustgrain" (rounded up), "None" when it needs nothing. */
+export function startItemsText(startItems: unknown): string {
+  const lines = positiveEntries(startItems);
+  if (!lines.length) return "None";
+  const total = startItemsTotal(startItems);
+  return `${total.toLocaleString("en-US")} item${total === 1 ? "" : "s"}: ${lines.map(([item, n]) => `${countUp(n)} ${nameOf(item)}`).join(", ")}`;
+}
+
+/** The "What you need" margin on top of the most the flow ever owed. */
+export const KIT_MARGIN = 0.25;
+
+export interface NeedLine {
+  item: ItemId;
+  /** The most owed at once, rounded up. */
+  needs: number;
+  /** With the KIT_MARGIN, rounded up. */
+  bring: number;
+  /** Only ever borrowed within a session (given back before the cycle ends). */
+  sessionOnly: boolean;
+}
+
+/** A borrow cell's starting items, largest first, with the suggested margin. */
+export function needLines(r: Pick<RunResult, "startItems" | "sessionOnly">): NeedLine[] {
+  const session = new Set(Array.isArray(r.sessionOnly) ? r.sessionOnly : []);
+  return positiveEntries(r.startItems).map(([item, n]) => {
+    const needs = Math.ceil(n - 1e-9);
+    return { item, needs, bring: Math.ceil(needs * (1 + KIT_MARGIN) - 1e-9), sessionOnly: session.has(item) };
+  });
+}
+
+/** Items still owed at the end: used up once (rounded up), largest first. */
+export function usedUpLines(usedUp: unknown): { item: ItemId; units: number }[] {
+  return positiveEntries(usedUp).map(([item, n]) => ({ item, units: Math.ceil(n - 1e-9) }));
+}
+
+/** Days until the layouts were complete: `ramp.complete` in days (null: never; undefined: no ramp data). */
+export function rampDays(r: Pick<RunResult, "ramp" | "days" | "cycles">): number | null | undefined {
+  const ramp = r.ramp;
+  if (!isRecord(ramp)) return undefined;
+  if (ramp.complete === null) return null;
+  if (!finite(ramp.complete)) return undefined;
+  return r.cycles > 0 && r.days > 0 ? (ramp.complete * r.days) / r.cycles : 0;
+}
+
+/**
+ * "Layout complete after ~16 days · then 12.3M/day" (the rate over the second half of the run,
+ * priced by the caller), "from the start" for 0, an honest "never complete" for null. Null without
+ * ramp data (old cells).
+ */
+export function rampText(r: Pick<RunResult, "ramp" | "days" | "cycles">, steadyPerDay: number | null): string | null {
+  const days = rampDays(r);
+  if (days === undefined) return null;
+  const then = steadyPerDay === null ? "" : ` · then ${formatCoins(steadyPerDay)}/day`;
+  if (days === null) return `Layout never complete (some cells stay empty)${then}`;
+  if (days <= 0) return `Layout complete from the start${then}`;
+  const d = days < 1 ? "under a day" : `~${Math.round(days).toLocaleString("en-US")} day${Math.round(days) === 1 ? "" : "s"}`;
+  return `Layout complete after ${d}${then}`;
+}
+
+/** Lower-case haystack for the search box: title, author, excerpt, and the item ids and names it grows, places or earns from. */
+export function searchText(entry: FlowListEntry): string {
+  const ids = new Set<string>([...(entry.summary?.targets ?? []), ...(entry.summary?.inputs ?? [])]);
+  const by = entry.cell?.bySource;
+  if (isRecord(by)) for (const k of Object.keys(by)) ids.add(k);
+  const parts = [entry.title, entry.author?.name ?? "", entry.excerpt ?? ""];
+  for (const id of ids) parts.push(id, id.replace(/_/g, " "), nameOf(id));
+  return parts.join("\n").toLowerCase();
+}
+
+export type EarningIn = "top3" | "any";
+/** "Starting items ≤ N" presets (null = any). */
+export const START_ITEM_CAPS: readonly (number | null)[] = [null, 0, 60, 200];
+
+/** The ranking's client-side filters (all in the URL; the plot filter is part of the list request). */
+export interface RowFilters {
+  query: string;
+  /** Plant kinds whose harvests must be among the row's earners. Empty = off. */
+  earning: ItemId[];
+  earningIn: EarningIn;
+  /** "With starting items" board: hide rows with any upkeep. */
+  noUpkeep: boolean;
+  /** "With starting items" board: at most this many starting items (null = any). */
+  maxStartItems: number | null;
+  /** "With starting items" board: only rows whose starting items the viewer owns (and no upkeep). */
+  owned: boolean;
+}
+
+export const DEFAULT_FILTERS: RowFilters = { query: "", earning: [], earningIn: "top3", noUpkeep: false, maxStartItems: null, owned: false };
+
+/** Whether the viewer owns every starting item (at least the rounded-up count). */
+export function ownsStartItems(startItems: unknown, owned: Readonly<Record<ItemId, number>>): boolean {
+  return positiveEntries(startItems).every(([item, n]) => (owned[item] ?? 0) >= Math.ceil(n - 1e-9));
+}
+
+type FilterRow = Pick<FlowRow, "entry" | "sources" | "upkeepPerDay" | "startItemsCount"> & { search?: string };
+
+/**
+ * Whether a row passes the filters on `board`. The starting-item filters only apply on the
+ * "with starting items" board; any filter that needs a cell drops rows without one. `ownedItems`
+ * is the viewer's imported items (the "I own" filter is off without them).
+ */
+export function matchesFilters(row: FilterRow, f: RowFilters, board: Board, ownedItems: Readonly<Record<ItemId, number>> | null = null): boolean {
+  const q = f.query.trim().toLowerCase();
+  if (q && !(row.search ?? `${row.entry.title}\n${row.entry.author.name}`.toLowerCase()).includes(q)) return false;
+  const cell = row.entry.cell;
+  if (f.earning.length) {
+    if (!cell) return false;
+    const pool = f.earningIn === "any" ? row.sources : row.sources.slice(0, 3);
+    if (!pool.some((s) => f.earning.includes(s.id))) return false;
+  }
+  if (board !== "ironman_borrow") return true;
+  const owned = f.owned && ownedItems !== null;
+  if ((f.noUpkeep || owned || f.maxStartItems !== null) && !cell) return false;
+  if ((f.noUpkeep || owned) && row.upkeepPerDay > 0) return false;
+  if (f.maxStartItems !== null && row.startItemsCount > f.maxStartItems) return false;
+  if (owned && !ownsStartItems(cell?.startItems, ownedItems)) return false;
+  return true;
+}
+
+/** Everything the ranking keeps in its URL. */
+export interface ListParams {
+  /** Null: the site profile's default board. */
+  board: Board | null;
+  sort: SortKey;
+  plots: "any" | "1" | "2" | "3";
+  filters: RowFilters;
+}
+
+const SORT_KEYS = Object.keys(SORT_LABEL) as SortKey[];
+
+/** Read the ranking's URL query (unknown or malformed values fall back to the defaults; `board=ironman` is the strict board). */
+export function readListParams(params: URLSearchParams): ListParams {
+  const sort = params.get("sort") as SortKey | null;
+  const plots = params.get("plots");
+  const cap = params.get("maxStart");
+  const capN = cap === null || cap === "" ? null : Number(cap);
+  const earning = [...new Set(params.getAll("earning").flatMap((v) => v.split(",")).map((v) => v.trim()).filter((v) => /^[a-z0-9_]{1,64}$/.test(v)))];
+  return {
+    board: boardFrom(params.get("board")),
+    sort: sort && SORT_KEYS.includes(sort) ? sort : "profit",
+    plots: plots === "1" || plots === "2" || plots === "3" ? plots : "any",
+    filters: {
+      query: (params.get("q") ?? "").slice(0, 100),
+      earning,
+      earningIn: params.get("in") === "any" ? "any" : "top3",
+      noUpkeep: params.get("noUpkeep") === "1",
+      maxStartItems: capN !== null && Number.isInteger(capN) && capN >= 0 ? capN : null,
+      owned: params.get("own") === "1",
+    },
+  };
+}
+
+/** The URL query for the ranking: defaults are left out, so a plain /flows stays plain. */
+export function writeListParams(p: ListParams): URLSearchParams {
+  const out = new URLSearchParams();
+  if (p.board) out.set("board", p.board);
+  if (p.sort !== "profit") out.set("sort", p.sort);
+  if (p.plots !== "any") out.set("plots", p.plots);
+  const f = p.filters;
+  if (f.query.trim()) out.set("q", f.query);
+  for (const id of f.earning) out.append("earning", id);
+  if (f.earning.length && f.earningIn === "any") out.set("in", "any");
+  if (f.noUpkeep) out.set("noUpkeep", "1");
+  if (f.maxStartItems !== null) out.set("maxStart", String(f.maxStartItems));
+  if (f.owned) out.set("own", "1");
+  return out;
+}
+
+// ---- The submit dialog's local test -------------------------------------------------------------
+
+/** One seed of a local test: finished (ok or not) or still running (undefined). */
+export interface LocalSeed {
+  ok: boolean;
+  error: string | null;
+  result: RunResult | null;
+}
+
+export interface LocalKindSummary {
+  done: number;
+  total: number;
+  /** Seeds that failed (1-based seed number and the reason). */
+  failed: { seed: number; error: string }[];
+  /** The cell the server would build: the median seed by this board's valuation (null until every seed succeeded). */
+  cell: RunResult | null;
+  /** The cell's coins per day on the board. */
+  profitPerDay: number | null;
+  /** best / median over the seeds' window values (the outlier check). */
+  ratio: number | null;
+}
+
+/** A local test of one run kind, summarised the way the server builds a cell (`cellResult`, `spreadRatio`). */
+export function localKindSummary(data: GameData, seeds: readonly (LocalSeed | undefined)[], board: Board, quotes: Quotes, pricing: BazaarPricing): LocalKindSummary {
+  const value = (r: RunResult) => valueResult(data, r, board, board === "normal" ? quotes : {}, pricing).profitPerDay;
+  const finished = seeds.filter((s): s is LocalSeed => !!s);
+  const failed = seeds.flatMap((s, i) => (s && (!s.ok || !s.result) ? [{ seed: i + 1, error: s.error || "no result" }] : []));
+  const results = finished.filter((s) => s.ok && s.result).map((s) => s.result!);
+  const complete = results.length === seeds.length && seeds.length > 0;
+  const cell = complete ? cellResult(results, value) : null;
+  const ratio = complete ? spreadRatio(results.map(value)) : null;
+  return { done: finished.length, total: seeds.length, failed, cell, profitPerDay: cell ? value(cell) : null, ratio };
 }
 
 // ---- Detail page helpers ----------------------------------------------------------------------
 
+/** A board's cell: matched by run kind (cells carry both), else by an old cell's board name. */
 export function findCell(cells: readonly FlowCell[], board: Board, tier: TierId, every: number): FlowCell | undefined {
-  return cells.find((c) => c.board === board && c.tier === tier && c.every === every);
+  const kind = BOARD_RUN_KIND[board];
+  return cells.find((c) => c.tier === tier && c.every === every && (c.runKind ? c.runKind === kind : boardFrom(c.board) === board));
 }
 
 /**
@@ -404,18 +793,15 @@ export function spreadAt(spread: Spread | null | undefined, every: number): numb
 export interface FrequencyPoint {
   every: number;
   profitPerDay: number | null;
-  /** The cell exists but doesn't pay its starting layout back in time (profit shown as none). */
-  insolvent?: boolean;
   /** Average effort per login at this frequency, when known (shown in the chart's tooltip). */
   effortAvg?: number | null;
 }
 
-/** Profit per day at every grid frequency of one board / tier (null where no cell exists or it is insolvent). */
+/** Profit per day at every grid frequency of one board / tier (null where no cell exists). */
 export function profitByEvery(data: GameData, cells: readonly FlowCell[], board: Board, tier: TierId, s: Omit<ViewSettings, "board" | "now">): FrequencyPoint[] {
   return EVERY.map((every) => {
     const cell = findCell(cells, board, tier, every);
     if (!cell) return { every, profitPerDay: null };
-    if (!isSolvent(cell.median)) return { every, profitPerDay: null, insolvent: true };
     const { result } = viewerResult(data, cell.median, s);
     return {
       every,
@@ -425,12 +811,38 @@ export function profitByEvery(data: GameData, cells: readonly FlowCell[], board:
   });
 }
 
+export interface BoardNumber {
+  board: Board;
+  /** Null when that board has no cell at this tier / every yet. */
+  profitPerDay: number | null;
+  boughtPerDay: number;
+  buildCost: number;
+  slowing: boolean;
+}
+
+/** The detail page's three numbers: each board's cell at `tier` (else max) and `every`, priced for the viewer. */
+export function boardNumbers(data: GameData, cells: readonly FlowCell[], tier: TierId, every: number, s: Omit<ViewSettings, "board" | "now">): BoardNumber[] {
+  return BOARDS_IN_ORDER.map((board) => {
+    const cell = findCell(cells, board, tier, every) ?? findCell(cells, board, "max", every);
+    if (!cell) return { board, profitPerDay: null, boughtPerDay: 0, buildCost: 0, slowing: false };
+    const { result } = viewerResult(data, cell.median, s);
+    const v = valueResult(data, result, board, board === "normal" ? s.quotes : {}, s.pricing);
+    return { board, profitPerDay: v.profitPerDay, boughtPerDay: v.boughtPerDay, buildCost: v.buildCost, slowing: cell.median.slowing === true };
+  });
+}
+
+const BOARDS_IN_ORDER: readonly Board[] = ["ironman_strict", "ironman_borrow", "normal"];
+
+/** The ramp's second-half rate priced on a board (null without ramp data). */
+export function steadyRate(data: GameData, r: RunResult, s: Pick<ViewSettings, "board" | "quotes" | "pricing" | "viewerStats" | "useMyStats">): number | null {
+  if (!isRecord(r.ramp)) return null;
+  return pricePoint(data, { produced: r.ramp.produced ?? {}, bought: r.ramp.bought ?? {} }, s);
+}
+
 /** Slack at `every` from the frequency points ("Forgiving: 92%"); null when not computable. */
 export function slackFrom(points: readonly FrequencyPoint[], every: number): number | null {
   const at = (n: number) => {
     const p = points.find((x) => x.every === n);
-    // Logging in so late that the starting layout never pays back keeps nothing.
-    if (p?.insolvent) return 0;
     return p && p.profitPerDay !== null ? p.profitPerDay : undefined;
   };
   return slack(every, at, EVERY);

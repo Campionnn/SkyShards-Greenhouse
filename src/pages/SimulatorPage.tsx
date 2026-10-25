@@ -13,7 +13,8 @@ import { buttonClass } from "../components/simulator/styles";
 import { FlowEditor } from "../components/simulator/FlowEditor";
 import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
 import { addPlot, importFlows, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
-import { applyRules } from "../leaderboard/rules";
+import { applyRules, BOARD_RUN_KIND, boardFrom, type Board } from "../leaderboard/rules";
+import { BOARD_LABEL } from "../leaderboard/view";
 import { getFlow } from "../services/flowsService";
 import { ScriptEditor } from "../components/simulator/script/ScriptEditor";
 import { ScriptHaltBanner, ScriptPanel } from "../components/simulator/script/ScriptPanel";
@@ -172,9 +173,11 @@ export const SimulatorPage: React.FC = () => {
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [location.state, location.pathname, location.search, navigate, toast]);
 
-  // `?flow=ID`: open a leaderboard entry under the rules (the site profile's board, online every
-  // cycle, a random seed), then strip the parameter so a reload doesn't load it again.
+  // `?flow=ID[&board=B]`: open a leaderboard entry under that board's rules (without a board, the
+  // site profile's: ironman = from nothing), online every cycle, a random seed; then strip the
+  // parameters so a reload doesn't load it again.
   const flowParam = params.get("flow");
+  const boardParam = boardFrom(params.get("board"));
   const handledFlow = useRef<string | null>(null);
   const scenarioRef = useRef(scenario);
   useEffect(() => {
@@ -185,14 +188,17 @@ export const SimulatorPage: React.FC = () => {
     handledFlow.current = flowParam;
     const rest = new URLSearchParams(location.search);
     rest.delete("flow");
+    rest.delete("board");
     const strip = () => navigate(`${location.pathname}${rest.size ? `?${rest}` : ""}`, { replace: true, state: location.state });
+    const board: Board = boardParam ?? (profile === "normal" ? "normal" : "ironman_strict");
+    const runKind = BOARD_RUN_KIND[board];
     getFlow(flowParam)
       .then((detail) => {
         const before = scenarioRef.current;
         let next: Scenario;
         try {
           const imported = importFlows(before, JSON.stringify(detail.payload));
-          const ruled = applyRules(imported, profile === "normal" ? "normal" : "ironman", 1, Math.floor(Math.random() * 2 ** 31));
+          const ruled = applyRules(imported, runKind, 1, Math.floor(Math.random() * 2 ** 31));
           // The profile is site-wide; keep the scenario's own value.
           next = { ...ruled, settings: { ...ruled.settings } };
           if (before.settings.profile) next.settings.profile = before.settings.profile;
@@ -203,13 +209,15 @@ export const SimulatorPage: React.FC = () => {
           return;
         }
         setScenario(next);
+        // The board's profile is site-wide: switch the simulator's mode to match it.
+        if ((board === "normal") !== (profile === "normal")) setProfile(board === "normal" ? "normal" : "ironman");
         strip();
         setEditing(null);
         setFocus(ALL);
         toast({
           id: "simulator-flow-loaded",
           title: `Loaded ${detail.title} by ${detail.author.name}`,
-          description: "Under the leaderboard rules: max stats, empty inventory, online every cycle, a random seed.",
+          description: `Under the ${BOARD_LABEL[board]} rules: max stats, empty inventory, online every cycle, a random seed.`,
           variant: "success",
           duration: 8000,
           action: { label: "Undo", onClick: () => setScenario(before) },
@@ -219,7 +227,7 @@ export const SimulatorPage: React.FC = () => {
         strip();
         toast({ title: "Could not load the flow", description: e instanceof Error ? e.message : String(e), variant: "error" });
       });
-  }, [flowParam, location.pathname, location.search, location.state, navigate, profile, toast]);
+  }, [flowParam, boardParam, location.pathname, location.search, location.state, navigate, profile, setProfile, toast]);
 
   const place = (layout: IncomingLayout, dest: LayoutDestination) => {
     const before = scenario;

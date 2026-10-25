@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Trophy, Upload } from "lucide-react";
-import { applyRules, BOARDS, ruleDifferences, type Board } from "../../leaderboard/rules";
+import { applyRules, ruleDifferences, RUN_KINDS, type RunKind } from "../../leaderboard/rules";
+import { RUN_KIND_LABEL, scenarioRunKind } from "../../leaderboard/view";
+import { useProfileMode } from "../../hooks/useProfileMode";
 import { EVERY, nearestEvery } from "../../leaderboard/tiers";
 import {
   aloeHarvestSchedule,
@@ -352,13 +354,19 @@ const ForcedEffectsEditor: React.FC<{
   );
 };
 
-/** The settings with the profile a board implies (normal = "normal", ironman = none). */
-function withBoardProfile(settings: Scenario["settings"], board: Board): Scenario["settings"] {
+/** The settings with the profile a run kind implies (normal = "normal", ironman = none). */
+function withRunKindProfile(settings: Scenario["settings"], runKind: RunKind): Scenario["settings"] {
   const out = { ...settings };
-  if (board === "normal") out.profile = "normal";
+  if (runKind === "normal") out.profile = "normal";
   else delete out.profile;
   return out;
 }
+
+const RUN_KIND_HINT: Record<RunKind, string> = {
+  strict: "Ironman from an empty inventory: the starting layouts are paid from stock, nothing is borrowed",
+  borrow: "Ironman with the starting items: any mutation item can be placed before you own it (the stock goes negative)",
+  normal: "The normal profile: free starting layouts, shortfalls bought on the Bazaar",
+};
 
 const GROUP_LABEL: Record<ConfigGroup, string> = {
   verified: "Verified",
@@ -379,14 +387,18 @@ export const SettingsPanel: React.FC<{
   const nonDefault =
     CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length +
     (settings.config.forcedEffects ? 1 : 0) +
-    (settings.config.freePlacedItems?.length ? 1 : 0);
-  const [rulesBoard, setRulesBoard] = useState<Board>(settings.profile === "normal" ? "normal" : "ironman");
+    (settings.config.freePlacedItems?.length ? 1 : 0) +
+    (settings.config.setupFromStock === true ? 1 : 0) +
+    (settings.config.leaderboardRules === true ? 1 : 0);
+  // The profile is site-wide (not in the saved scenario): the selector starts on its board.
+  const [siteProfile] = useProfileMode();
+  const [rulesKind, setRulesKind] = useState<RunKind>(() => scenarioRunKind({ ...settings, profile: siteProfile }));
   const [rulesEvery, setRulesEvery] = useState<number>(settings.activity.kind === "everyN" ? nearestEvery(settings.activity.n) : 1);
-  // The profile is site-wide (the page applies it from localStorage), so diff with the board's profile set.
-  const differences = ruleDifferences({ ...scenario, settings: withBoardProfile(settings, rulesBoard) }, rulesBoard);
+  // The profile is site-wide (the page applies it from localStorage), so diff with the run kind's profile set.
+  const differences = ruleDifferences({ ...scenario, settings: withRunKindProfile(settings, rulesKind) }, rulesKind);
   const applyLeaderboardRules = () => {
     const seed = Math.floor(Math.random() * 2 ** 31);
-    const ruled = applyRules(scenario, rulesBoard, rulesEvery, seed);
+    const ruled = applyRules(scenario, rulesKind, rulesEvery, seed);
     // The profile is site-wide (the page applies it from localStorage), so leave the scenario's own value alone.
     const next: Scenario = { ...ruled, settings: { ...ruled.settings } };
     if (settings.profile) next.settings.profile = settings.profile;
@@ -399,14 +411,20 @@ export const SettingsPanel: React.FC<{
       <div className="mb-3 rounded border border-slate-700/60 bg-slate-800/40 p-2">
         <div className="flex items-center gap-1 text-xs text-slate-300 mb-1.5">
           <Trophy className="w-3.5 h-3.5 text-amber-300" /> Leaderboard rules
-          <InfoHint title="Leaderboard rules" width={300}>
-            Flows on the leaderboard are measured with wiki-maximum player stats, default advanced settings, an empty starting inventory, the player
-            online every N cycles and (ironman board) unlimited Dead Plants and Fermento to place. Apply the same rules here to test your flow the way the
-            server will, with your own random seed. The server uses secret seeds of its own.
+          <InfoHint title="Leaderboard rules" width={320}>
+            <p>
+              Flows on the leaderboard are measured with wiki-maximum player stats, default advanced settings, an empty starting inventory and the player
+              online every N cycles, once per board:
+            </p>
+            <p>
+              <b>From nothing</b>: ironman, the starting layouts paid from the empty stock. <b>With starting items</b>: ironman, any mutation item may be placed
+              before you own it. <b>Normal</b>: the normal profile. Both ironman boards get unlimited Dead Plants and Fermento.
+            </p>
+            <p>Apply the same rules here to test your flow the way the server will, with your own random seed. The server uses secret seeds of its own.</p>
           </InfoHint>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <SelectField<Board> label="Board" value={rulesBoard} options={BOARDS.map((b) => ({ value: b, label: b === "ironman" ? "Ironman" : "Normal" }))} onChange={setRulesBoard} />
+          <SelectField<RunKind> label="Board" value={rulesKind} title={RUN_KIND_HINT[rulesKind]} options={RUN_KINDS.map((k) => ({ value: k, label: RUN_KIND_LABEL[k] }))} onChange={setRulesKind} />
           <SelectField<string> label="Online every" value={String(rulesEvery)} options={EVERY.map((n) => ({ value: String(n), label: `${n} cycle${n === 1 ? "" : "s"}` }))} onChange={(v) => setRulesEvery(Number(v))} />
           <button className={buttonClass.neutral} onClick={applyLeaderboardRules} title={differences.length ? `Changes: ${differences.join("; ")}` : "Already under the rules; re-rolls the seed"}>
             <Trophy className="w-3.5 h-3.5" /> Apply leaderboard rules
@@ -414,6 +432,9 @@ export const SettingsPanel: React.FC<{
         </div>
         {differences.length > 0 && (
           <div className="mt-1.5 text-[11px] text-amber-200/90">Your settings differ from the rules: {differences.join("; ")}.</div>
+        )}
+        {(rulesKind === "normal") !== (siteProfile === "normal") && (
+          <div className="mt-1 text-[11px] text-slate-400">Switch the simulator to {rulesKind === "normal" ? "Normal" : "Ironman"} mode (top of the page) to run it like this board.</div>
         )}
       </div>
       <div className="mb-3">
@@ -539,6 +560,37 @@ export const SettingsPanel: React.FC<{
                 onClick={() => {
                   const config = { ...settings.config };
                   delete config.freePlacedItems;
+                  setSettings({ config });
+                }}
+              >
+                Turn off
+              </button>
+            </div>
+          )}
+          {settings.config.setupFromStock === true && (
+            <div className="rounded border border-amber-500/30 p-2 text-[11px] text-amber-200/90" data-testid="setup-from-stock-note">
+              <span className="font-medium">Starting layouts paid from stock (leaderboard "from nothing" rules):</span> the first layouts spend the starting inventory; an item it
+              doesn't hold leaves its cell empty until the flow grows one.{" "}
+              <button
+                className="underline hover:text-amber-100"
+                onClick={() => {
+                  const config = { ...settings.config };
+                  delete config.setupFromStock;
+                  setSettings({ config });
+                }}
+              >
+                Turn off
+              </button>
+            </div>
+          )}
+          {settings.config.leaderboardRules === true && (
+            <div className="rounded border border-amber-500/30 p-2 text-[11px] text-amber-200/90" data-testid="leaderboard-rules-note">
+              <span className="font-medium">Leaderboard rules:</span> the debug script APIs (forceEffects and friends) are off, and the credit settings are hidden from scripts.{" "}
+              <button
+                className="underline hover:text-amber-100"
+                onClick={() => {
+                  const config = { ...settings.config };
+                  delete config.leaderboardRules;
                   setSettings({ config });
                 }}
               >

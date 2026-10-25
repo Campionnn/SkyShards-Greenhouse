@@ -5,8 +5,7 @@ import { Badge } from "../components/flows/FlowControls";
 import { buttonClass, inputClass } from "../components/simulator/styles";
 import { SegmentedControl, useToast } from "../components/ui";
 import type { AdminFlowRow, AdminStatusFilter } from "../leaderboard/api";
-import { BOARD_LABEL, formatDate } from "../leaderboard/view";
-import type { Board } from "../leaderboard/rules";
+import { boardsText as boardNames, formatDate } from "../leaderboard/view";
 import { adminBan, adminDelete, adminHide, adminListFlows, adminUnban, adminUnhide, clearAdminKey, getAdminKey, hiddenReasonLabel, setAdminKey, verifyAdminKey } from "../services/adminService";
 
 /**
@@ -87,7 +86,7 @@ const Author: React.FC<{ row: AdminFlowRow }> = ({ row }) => (
   </div>
 );
 
-const boardsText = (row: AdminFlowRow) => row.boards.map((b) => BOARD_LABEL[b as Board] ?? b).join(" + ") || "—";
+const boardsText = (row: AdminFlowRow) => boardNames(row.boards);
 
 const Reports: React.FC<{ row: AdminFlowRow }> = ({ row }) =>
   row.reports.some((r) => r.reason) ? (
