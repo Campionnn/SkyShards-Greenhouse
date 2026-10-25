@@ -58,7 +58,8 @@ export function markPickup(p: PlantState, ctx: CycleCtx, replacement: boolean): 
 
 
 /**
- * - setup: starting layouts; free, never drawn from inventory.
+ * - setup: starting layouts; free, never drawn from inventory (unless `config.bootstrapDebt` buys
+ *   them on credit or `config.setupFromStock` pays them from the starting stock).
  * - step: a later flow step laying out.
  * - replace: re-placing what decayed or was destroyed (counted as replacements).
  */
@@ -68,22 +69,24 @@ export type PlacementMode = "setup" | "step" | "replace";
  * Place missing layout plants on free cells. Base crops and free placed items
  * (fire, `FREE_PLACED_ITEMS`) cost nothing; outside setup, other placed items are a required spend and a shortfall records debt
  * (cell stays empty, retried next session). With `config.allowMutationDebt`, a mutation item is placed anyway and its
- * stock goes below 0 (borrowed).
+ * stock goes below 0 (borrowed). Setup is free, bought on credit (`bootstrapDebt`) or paid from stock like a step
+ * (`setupFromStock`: a shortfall leaves the cell empty).
  */
 export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch, mode: PlacementMode): void {
   const replacement = mode === "replace";
   const occ = buildOccupancy(plot);
+  const setupOnCredit = mode === "setup" && ctx.config.bootstrapDebt === true;
+  const paidSetup = setupOnCredit || (mode === "setup" && ctx.config.setupFromStock === true);
   for (const d of layout.plants) {
     const at = occ[cellIndex(d.row, d.col)];
     if (at && at.kindId === d.kindId && at.row === d.row && at.col === d.col && at.origin === d.origin) continue;
     if (!isFootprintFree(occ, d.row, d.col, d.size)) continue;
-    const paidSetup = mode === "setup" && ctx.config.bootstrapDebt === true;
     let paid = false;
     if (d.origin === "placed" && (mode !== "setup" || paidSetup) && !isFreePlacedItem(d.kindId, ctx.config)) {
       // Mutation debt: mutation items only (not fermento or dead plants).
       const allowDebt = ctx.config.allowMutationDebt === true && !!ctx.env.data.mutations[d.kindId];
       // Bootstrap debt: the starting layouts are bought on credit (a loan per item).
-      const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement, allowDebt, openLoan: paidSetup };
+      const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement, allowDebt, openLoan: setupOnCredit };
       if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
       paid = true;
     } else if (replacement) {

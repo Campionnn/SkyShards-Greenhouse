@@ -583,6 +583,43 @@ describe("debt: would it ever need something it does not have?", () => {
     expect(JSON.stringify(s)).not.toContain("loanOpen");
   });
 
+  it("setupFromStock: with no stock the setup cell stays empty (a shortfall), base crops and fire are still placed", () => {
+    const sc = singlePlot(layout([["chloronite", 5, 5], ["wheat", 1, 1], ["fire", 0, 0]]), { config: { setupFromStock: true } });
+    const s = TIMER_ONLY.initState(sc).state;
+    expect(plantAt(s, 1, 5, 5)).toBeUndefined();
+    expect(plantAt(s, 1, 1, 1)?.kindId).toBe("wheat");
+    expect(plantAt(s, 1, 0, 0)?.kindId).toBe("fire");
+    expect(s.inventory.chloronite ?? 0).toBe(0);
+    expect(s.ledger.chloronite).toMatchObject({ consumed: 0, shortfall: 1, minStock: 0 });
+    expect(s.debts.map((d) => d.item)).toEqual(["chloronite"]);
+    expect(s.summary.borrowed ?? {}).toEqual({});
+    expect(JSON.stringify(s)).not.toContain("loanOpen");
+    // Once the stock has it, the next session's upkeep places it (paid, like a later step).
+    const stocked = TIMER_ONLY.run(TIMER_ONLY.addItems(s, { chloronite: 1 }), 1).state;
+    expect(plantAt(stocked, 1, 5, 5)?.kindId).toBe("chloronite");
+    expect(stocked.inventory.chloronite).toBe(0);
+  });
+
+  it("setupFromStock: the setup consumes stock when present, never borrows and never opens a loan", () => {
+    const sc = singlePlot(layout([["chloronite", 5, 5], ["chloronite", 5, 7]]), { config: { setupFromStock: true }, inventory: { chloronite: 1 } });
+    const s = TIMER_ONLY.initState(sc).state;
+    expect([plantAt(s, 1, 5, 5)?.kindId, plantAt(s, 1, 5, 7)?.kindId].filter(Boolean)).toEqual(["chloronite"]);
+    expect(s.inventory.chloronite).toBe(0);
+    expect(s.ledger.chloronite).toMatchObject({ consumed: 1, shortfall: 1, minStock: 0 });
+    expect(s.ledger.chloronite.loanOpen).toBeUndefined();
+    // The setup is built before the run: no effort, and the placed item is not pick-up-able.
+    expect(s.summary.effort?.total ?? 0).toBe(0);
+    expect(s.plots[0].plants.find((p) => p.kindId === "chloronite")?.gate.pickup).toBeUndefined();
+  });
+
+  it("setupFromStock is ignored when bootstrapDebt buys the setup on credit", () => {
+    const sc = singlePlot(layout([["chloronite", 5, 5]]), { config: { setupFromStock: true, bootstrapDebt: true } });
+    const s = TIMER_ONLY.initState(sc).state;
+    expect(plantAt(s, 1, 5, 5)?.kindId).toBe("chloronite");
+    expect(s.inventory.chloronite).toBe(-1);
+    expect(s.ledger.chloronite.loanOpen).toBe(true);
+  });
+
   it("inventory never goes negative", () => {
     const r = engine.run(start(singlePlot(layout([["chloronite", 5, 5], ["fire", 0, 0]]))), 50);
     for (const qty of Object.values(r.state.inventory)) expect(qty).toBeGreaterThanOrEqual(0);
