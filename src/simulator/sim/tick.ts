@@ -94,6 +94,8 @@ function phaseGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void
     noctilumeTimeChange: ctx.policiesFor(plot.id).gateInteractions.noctilumeTime,
   };
   for (const p of plot.plants) {
+    // A tick has passed since it was placed: breaking it no longer gives the item back (placement.ts `pickUp`).
+    if (p.gate.pickup) delete p.gate.pickup;
     // A placed Blastberry primes on the first tick after placement.
     if (p.kindId === "blastberry" && p.origin === "placed" && !p.isDeadPlant) p.gate.primed = true;
     if (p.isDeadPlant || p.origin === "placed") continue;

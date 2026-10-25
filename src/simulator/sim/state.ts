@@ -64,6 +64,12 @@ export interface PlantState {
     /** Turtlellini: times caught in a Blastberry explosion (2 = Shellfruit). */
     exploded?: number;
     /**
+     * A mutation item placed from inventory with no greenhouse tick since: breaking it now picks
+     * it back up (item returned, sim/placement.ts `removeByPlayer`). "replacement" when the spend was
+     * booked as a replacement (undone too). Cleared by the next tick's growth phase.
+     */
+    pickup?: "placed" | "replacement";
+    /**
      * All-in Aloe under `aloeAutoHarvest` (spawned only): the harvest stage the player picked at
      * their last session, for `gapCycles` until the next one and a `respawnChance` per cycle.
      */

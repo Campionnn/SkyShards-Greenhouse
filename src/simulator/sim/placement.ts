@@ -5,15 +5,22 @@ import type { CycleCtx, ResolvedLayout, TickScratch } from "./context";
 import { effort } from "./effort";
 import { destroyPlant, isPrimedBlastberry } from "./explosion";
 import { harvestPlant } from "./harvest";
-import { closePlotDebts, credit, spend } from "./inventory";
+import { closePlotDebts, credit, refundPlacement, spend } from "./inventory";
 import { canBuy } from "./market";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isFootprintFree, isHarvestable, newPlant, removePlant, type Occupancy } from "./plants";
 import type { PlantState, PlotState, SlotLabel } from "./state";
 import { bump } from "./summary";
 import { isProtected } from "../script/overrides";
 
-/** Player removal: harvest if harvestable, clear a Dead Plant (item back to inventory), else break it as a loss. */
+/**
+ * Player removal: harvest if harvestable, clear a Dead Plant (item back to inventory), pick a
+ * mutation item placed since the last tick back up (item back, `gate.pickup`), else break it as a loss.
+ */
 export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch, why: string): void {
+  if (p.gate.pickup) {
+    pickUp(plot, p, ctx);
+    return;
+  }
   if (isHarvestable(p)) {
     harvestPlant(plot, p, ctx, scratch);
     return;
@@ -26,6 +33,27 @@ export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, sc
     return;
   }
   destroyPlant(plot, p, ctx, why);
+}
+
+/**
+ * Game rule: a mutation item placed from inventory can be broken and picked back up, at no loss,
+ * until the next greenhouse tick. In that window it already gives its effects to its neighbours
+ * (e.g. a Blastberry's Immunity and Improved Harvest Boost on an All-in Aloe or Magic Jellybean
+ * harvested in the same session), and a placed Blastberry is not primed yet, so it doesn't explode.
+ */
+function pickUp(plot: PlotState, p: PlantState, ctx: CycleCtx): void {
+  effort(ctx.state, "remove");
+  removePlant(plot, p);
+  refundPlacement(ctx.state, p.kindId, p.gate.pickup === "replacement", ctx.prices);
+  ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "picked up (no tick since placed)" });
+}
+
+/**
+ * Mark a placed plant as paid for from inventory this session (`gate.pickup`): breaking it before
+ * the next tick returns the item. Mutation items only; free items (fire) cost nothing anyway.
+ */
+export function markPickup(p: PlantState, ctx: CycleCtx, replacement: boolean): void {
+  if (p.origin === "placed" && !p.isDeadPlant && ctx.env.data.mutations[p.kindId]) p.gate.pickup = replacement ? "replacement" : "placed";
 }
 
 
@@ -50,12 +78,14 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
     if (at && at.kindId === d.kindId && at.row === d.row && at.col === d.col && at.origin === d.origin) continue;
     if (!isFootprintFree(occ, d.row, d.col, d.size)) continue;
     const paidSetup = mode === "setup" && ctx.config.bootstrapDebt === true;
+    let paid = false;
     if (d.origin === "placed" && (mode !== "setup" || paidSetup) && !isFreePlacedItem(d.kindId, ctx.config)) {
       // Mutation debt: mutation items only (not fermento or dead plants).
       const allowDebt = ctx.config.allowMutationDebt === true && !!ctx.env.data.mutations[d.kindId];
       // Bootstrap debt: the starting layouts are bought on credit (a loan per item).
       const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement, allowDebt, openLoan: paidSetup };
       if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
+      paid = true;
     } else if (replacement) {
       ctx.state.summary.replacements += 1;
     } else if (mode === "setup" && d.origin === "placed" && !isFreePlacedItem(d.kindId, ctx.config) && ctx.state.summary.market) {
@@ -63,6 +93,7 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
       bump(ctx.state.summary.market.built, d.kindId);
     }
     const p = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, d.origin, ctx.cycle);
+    if (paid && mode !== "setup") markPickup(p, ctx, replacement);
     insertPlant(plot, p);
     for (const idx of footprint(d.row, d.col, d.size)) occ[idx] = p;
     // Setup is built before the run; everything after is the player's work.
@@ -190,7 +221,8 @@ export function replacePlacedBeforeDecay(
     if (d.origin !== "placed" || isFreePlacedItem(d.kindId, ctx.config)) continue;
     const p = buildOccupancy(plot)[cellIndex(d.row, d.col)];
     // A primed Blastberry would explode when broken: leave it to its own decay.
-    if (!p || !matches(p, d) || kept(p) || isPrimedBlastberry(p) || !due(p)) continue;
+    // One placed this session (`gate.pickup`) is already fresh.
+    if (!p || !matches(p, d) || kept(p) || isPrimedBlastberry(p) || p.gate.pickup || !due(p)) continue;
     if ((ctx.state.inventory[d.kindId] ?? 0) < 1 && !canBuy(ctx.state, d.kindId)) continue;
     const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `replace ${d.kindId} before decay`, replacement: true };
     if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
@@ -198,6 +230,7 @@ export function replacePlacedBeforeDecay(
     effort(ctx.state, "replace");
     ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "replaced before decay" });
     const fresh = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, "placed", ctx.cycle);
+    markPickup(fresh, ctx, true);
     insertPlant(plot, fresh);
     ctx.emit(plot.id, { kind: "placed", plantId: fresh.id, kindId: fresh.kindId, row: fresh.row, col: fresh.col, origin: "placed", replacement: true });
   }

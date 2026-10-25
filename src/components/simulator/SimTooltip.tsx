@@ -138,6 +138,8 @@ function statusOf(p: PlantState, m: MutationDef | undefined): { text: string; to
   if (p.kindId === "fleshtrap" && (p.gate.hunger ?? 0) <= 0) return { text: "Hungry - fed when the player is online", tone: "text-amber-300" };
   if (p.kindId === "noctilume" && p.origin === "spawned" && p.stage < p.readyStage)
     return { text: "Grows only while the player is online (they set the time)", tone: "text-slate-300" };
+  if (p.origin === "placed" && p.gate.pickup)
+    return { text: "Placed this session - breaking it before the next tick picks the item back up", tone: "text-slate-300" };
   if (p.origin === "placed") return { text: "Fully grown - an input and buff source; cannot be harvested", tone: "text-slate-300" };
   if (p.lockedEffects && p.stage >= p.readyStage) return { text: "Fully grown - ready to harvest", tone: "text-emerald-300" };
   if (m?.id === "all_in_aloe") return { text: "Growing - harvestable at any stage", tone: "text-slate-300" };

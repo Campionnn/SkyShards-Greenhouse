@@ -33,7 +33,7 @@ import { destroyPlant } from "../sim/explosion";
 import { harvestPlant } from "../sim/harvest";
 import { spend } from "../sim/inventory";
 import { canBuy } from "../sim/market";
-import { applyStepLayout, removeByPlayer } from "../sim/placement";
+import { applyStepLayout, markPickup, removeByPlayer } from "../sim/placement";
 import { runSessionPhase } from "../sim/player";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isDry, isFootprintFree, isFullyGrown, isHarvestable, isRoot, newPlant } from "../sim/plants";
 import type { PlantState, PlotState, SimulationState, TickEvent } from "../sim/state";
@@ -1229,12 +1229,15 @@ class PlotHost extends HostObject {
     const plot = this.plot;
     if (!isFootprintFree(buildOccupancy(plot), row, col, def!.size)) return false;
     const origin = isHarvestableCrop(data, kind) ? "planted" : "placed";
-    if (origin === "placed" && !isFreePlacedItem(kind, ctx.config)) {
+    const paid = origin === "placed" && !isFreePlacedItem(kind, ctx.config);
+    if (paid) {
       const allowDebt = ctx.config.allowMutationDebt === true && !!data.mutations[kind];
       const req = { cycle: ctx.cycle, plotId: plot.id, row, col, action: `place ${kind} (script)`, replacement: false, allowDebt };
       if (!spend(ctx.state, kind, 1, req, ctx.prices, ctx.emit)) return false;
     }
     const p = newPlant(ctx.state, data, ctx.config, kind, row, col, origin, ctx.cycle);
+    // Broken again before the next tick, it is picked back up (item returned).
+    if (paid) markPickup(p, ctx, false);
     insertPlant(plot, p);
     effort(ctx.state, origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row, col, origin, replacement: false });
@@ -1282,7 +1285,7 @@ function mergeOverrides(base: PolicyOverrides | undefined, patch: PolicyOverride
 const PLANT_KEYS = [
   "id", "kind", "name", "row", "col", "size", "origin", "stage", "growthStages", "readyStage", "fullyGrown", "fullyGrownAtCycle", "harvestable",
   "water", "dry", "dead", "root", "rival", "decaySeconds", "decayCycles", "timesMutated", "mutatesRemaining", "effects", "activeEffects", "gives",
-  "lockedEffects", "ground", "cells", "target", "asleep", "ratAlive", "charge", "hunger", "primed", "exploded", "alive", "protected",
+  "lockedEffects", "ground", "cells", "target", "asleep", "ratAlive", "charge", "hunger", "primed", "exploded", "canPickUp", "alive", "protected",
 ];
 /** Keys copied by p.snapshot() (everything readable except host objects and functions). */
 const SNAPSHOT_KEYS = PLANT_KEYS.filter((k) => k !== "alive");
@@ -1417,6 +1420,8 @@ class PlantHost extends HostObject {
         return p.gate.hunger ?? null;
       case "primed":
         return !!p.gate.primed;
+      case "canPickUp":
+        return !!p.gate.pickup;
       case "target":
         return rt.plotState(this.plotId)!.slots.find((s) => s.row === p.row && s.col === p.col)?.mutationId ?? null;
       case "protected":

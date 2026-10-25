@@ -146,6 +146,20 @@ describe("scripts: actions", () => {
       expect(watered.drops.wheat).toBeGreaterThan(dry.drops.wheat);
     });
 
+    it("a Blastberry placed, used for the aloe harvest and broken before a tick is picked back up", () => {
+      const plain = aloeHarvest(`function onSession() { plot.at(5, 5).break() }`);
+      const src = `let could = null;
+        function onSession() { plot.place("blastberry", 5, 6); plot.at(5, 5).break(); could = plot.at(5, 6).canPickUp; plot.breakAt(5, 6) }`;
+      const buffed = aloeHarvest(src, (s) => void (s.inventory.blastberry = 1));
+      expect(buffed.drops.wheat).toBeGreaterThan(plain.drops.wheat); // improved harvest boost reached it
+      expect(vars(buffed.state)["plot:1.could"]).toBe(true);
+      expect(plantAt(buffed.state, 1, 5, 6)).toBeUndefined();
+      expect(buffed.state.inventory.blastberry).toBe(1); // item back
+      expect(buffed.state.summary.destroyed.blastberry).toBeUndefined();
+      expect(buffed.state.summary.placedItems.blastberry).toBeUndefined();
+      expect(buffed.state.ledger.blastberry.consumed).toBe(0);
+    });
+
     it("plant.effects reads the plot as the player left it", () => {
       const r = aloeHarvest(`let before = null; let after = null; function onSession() { const a = plot.at(5, 5); before = a.effects; plot.place("nether_wart", 5, 6); after = a.effects; a.break() }`);
       const v = vars(r.state);
@@ -211,6 +225,51 @@ describe("scripts: actions", () => {
     expect(plantAt(s, 1, 0, 4)).toBeUndefined(); // out of stock
     expect(plantAt(s, 1, 9, 9)?.origin).toBe("planted");
     expect(s.inventory.chloronite).toBe(0);
+  });
+
+  describe("picking a placed mutation back up", () => {
+    const EVERY = { kind: "everyN", n: 1, offset: 0 } as const;
+
+    it("after a tick it is no longer free: breaking a placed item loses it", () => {
+      const src = `function onSession() { if (cycle === 0) plot.place("chloronite", 0, 0); if (cycle === 1) plot.breakAt(0, 0) }`;
+      const r = engine.run(start(withScripts(src, { activity: EVERY, inventory: { chloronite: 1 } })), 2);
+      expect(r.state.inventory.chloronite).toBe(0);
+      expect(r.summary.destroyed.chloronite).toBe(1);
+    });
+
+    it("a placed Blastberry picked up before the tick never primes or explodes; after the tick it does", () => {
+      const at = (when: number) => `function onSession() { if (cycle === 0) plot.place("blastberry", 4, 5); if (cycle === ${when}) plot.breakAt(4, 5) }`;
+      const quick = engine.run(start(withScripts(at(0), { activity: EVERY, inventory: { blastberry: 1 } })), 1);
+      expect(quick.events.some((e) => e.kind === "exploded")).toBe(false);
+      expect(plantAt(quick.state, 1, 4, 4)?.kindId).toBe("wheat");
+      expect(quick.state.inventory.blastberry).toBe(1);
+      const late = engine.run(start(withScripts(at(1), { activity: EVERY, inventory: { blastberry: 1 } })), 2);
+      expect(late.events.some((e) => e.kind === "exploded")).toBe(true);
+      expect(late.state.inventory.blastberry).toBe(0);
+    });
+
+    it("works for an early Magic Jellybean harvest too: buffed drops, Blastberry back", () => {
+      const jelly = (source: string) => {
+        const sc = scenario([flow([step("a", layout())])], { inventory: { blastberry: 1 } });
+        sc.plots[0].script = { source };
+        const s = start(sc);
+        inject(s, 1, "magic_jellybean", 5, 5, "spawned", { stage: 59, water: 100 });
+        const r = engine.run(s, 1);
+        const h = r.events.find((e) => e.kind === "harvested" && e.kindId === "magic_jellybean");
+        return { drops: h?.kind === "harvested" ? h.drops : {}, state: r.state };
+      };
+      const plain = jelly(`function onSession() { plot.at(5, 5).harvest() }`);
+      const buffed = jelly(`function onSession() { plot.place("blastberry", 5, 6); plot.at(5, 5).harvest(); plot.breakAt(5, 6) }`);
+      expect(buffed.drops.sugar_cane).toBeGreaterThan(plain.drops.sugar_cane);
+      expect(buffed.state.inventory.blastberry).toBe(1);
+    });
+
+    it("canPickUp is false for the starting layout and for free items", () => {
+      const s = start(withScripts(`let a = null; let f = null; function onStart() { plot.place("fire", 0, 0) } function onTick() { f = plot.at(0, 0).canPickUp; a = plot.at(4, 4).canPickUp }`));
+      const v = vars(engine.run(s, 1).state);
+      expect(v["plot:1.f"]).toBe(false);
+      expect(v["plot:1.a"]).toBe(false);
+    });
   });
 
   it("goto changes step now; offline it waits for the session", () => {

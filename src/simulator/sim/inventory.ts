@@ -144,6 +144,25 @@ export function spend(
 }
 
 /**
+ * Undo one placement spend: the player picked a placed item back up before any tick ran
+ * (`PlantState.gate.pickup`). The unit returns to the stock and is no longer counted as consumed
+ * or placed, so the ledger reads as if it was never spent (anything bought or borrowed for it stays booked).
+ */
+export function refundPlacement(state: SimulationState, item: ItemId, replacement: boolean, prices: PriceSource): void {
+  const row = ledgerRow(state, item);
+  state.inventory[item] = (state.inventory[item] ?? 0) + 1;
+  row.consumed -= 1;
+  const placed = state.summary.placedItems;
+  if ((placed[item] ?? 0) > 1) placed[item] -= 1;
+  else delete placed[item];
+  if (replacement) {
+    state.summary.replacements -= 1;
+    state.summary.costs.replacements -= prices.price(item);
+  }
+  closeLoanIfRepaid(state, item, row);
+}
+
+/**
  * Manually add (or remove, if negative) inventory items. Pure. Tracked in
  * summary.injected, not as revenue or ledger production. Removing stops at 0
  * (a stock already below 0 from mutation debt is never pushed further down).
