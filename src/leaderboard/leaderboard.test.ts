@@ -449,14 +449,29 @@ describe("verify", () => {
     expect(free).toMatchObject({ startItems: {}, usedUp: {}, upkeep: {}, starved: [] });
   });
 
-  it("upkeep: debt that keeps growing over the second half of the run, per day", () => {
-    // A chloronite that decays and is re-placed on credit every time: the owed amount keeps growing.
+  it("upkeep: debt that keeps growing is upkeep per day, not starting items or a one-off use", () => {
+    // A chloronite that decays and is re-placed on credit every time, never grown: the owed amount
+    // grows all run. The player needs 1 to start with and then supplies the upkeep; nothing else.
     const sc = scenario([flow([step("one", layout([["chloronite", 5, 5], ["wheat", 0, 0]]))], false)]);
     const o = runOnce(TIMER_ONLY, submissionFromScenario(sc), "borrow", "max", 1, 5, 400, { wallMs: 60_000 });
     const r = o.result!;
-    expect(r.usedUp!.chloronite).toBeGreaterThan(1);
-    expect(r.upkeep!.chloronite).toBeGreaterThan(0);
-    expect(r.startItems!.chloronite).toBe(r.usedUp!.chloronite);
+    expect(r.upkeep!.chloronite * r.days).toBeGreaterThan(3); // re-placed several times
+    expect(r.startItems!.chloronite).toBeGreaterThanOrEqual(1);
+    expect(r.startItems!.chloronite).toBeLessThan(2.5);
+    expect(r.usedUp!.chloronite ?? 0).toBeLessThan(2.5);
+    // The strict run of the same flow: one empty cell is below the can't-start threshold.
+    expect(runOnce(TIMER_ONLY, submissionFromScenario(sc), "strict", "max", 1, 5, 400, { wallMs: 60_000 }).result!.cantStart).toBeUndefined();
+  });
+
+  it("cantStart: a strict run with a plot of empty cells for items it never grows", () => {
+    const cells: [string, number, number][] = [];
+    for (let c = 0; c < 6; c++) cells.push(["chloronite", 9, c]);
+    const sc = scenario([flow([step("one", layout([...cells, ["wheat", 0, 0]]))], false)]);
+    const strict = runOnce(engine, submissionFromScenario(sc), "strict", "max", 1, 5, 40, { wallMs: 60_000 }).result!;
+    expect(strict.cantStart).toEqual({ plot: 1, cells: 6, items: ["chloronite"] });
+    // A flow that starts (base crops only) has none; borrowing runs never have one.
+    expect(runOnce(engine, submission, "strict", "max", 1, 5, 40, { wallMs: 60_000 }).result!.cantStart).toBeUndefined();
+    expect(runOnce(engine, submissionFromScenario(sc), "borrow", "max", 1, 5, 40, { wallMs: 60_000 }).result!.cantStart).toBeUndefined();
   });
 
   it("startItems counts an item borrowed and given back within one session ('returned each session')", () => {

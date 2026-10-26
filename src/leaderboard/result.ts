@@ -95,18 +95,27 @@ export interface RunResult {
   /** Seed results only: the rates over the run's last TRAIL_SHARE (dropped from stored cells). */
   trail?: TrailRates;
   /**
-   * Borrow runs: per mutation item, the most units owed at once (`-min(ledger.minStock, 0)`):
-   * the starting items a player needs. Catches items borrowed and given back within a session.
+   * Borrow runs: per mutation item, the starting items a player needs: the most units owed at
+   * once, not counting what the daily `upkeep` added (an owed amount that grows every day is
+   * upkeep, not a stock to start with). Without upkeep it is `-min(ledger.minStock, 0)`; with it,
+   * the most owed at any cycle minus `upkeep` × the days elapsed then. Catches items borrowed and
+   * given back within a session.
    */
   startItems?: Record<ItemId, number>;
   /** Borrow runs: `startItems` that were only ever owed inside a session (returned each session). */
   sessionOnly?: ItemId[];
-  /** Borrow runs: units still owed at the end (used up once). */
+  /** Borrow runs: units still owed at the end and never given back, once (the end debt minus the `upkeep` part). */
   usedUp?: Record<ItemId, number>;
   /** Borrow runs: per day, how much the owed amount grew over the second half of the run (positive only). */
   upkeep?: Record<ItemId, number>;
   /** Layout cells left empty for lack of stock, the largest first (at most 8). */
   starved?: StarvedCells[];
+  /**
+   * Runs that can't borrow (strict): the run never got going. Some plot had at least
+   * CANT_START_CELLS layout cells empty on average for items the run never produced at all: what
+   * the flow places but nothing in it grows. Missing when it started (and on borrowing runs).
+   */
+  cantStart?: { plot: number; cells: number; items: ItemId[] };
   ramp?: RampInfo;
   /** Cells only: most seeds slowed down, so the cell holds its median seed's trailing rates. */
   slowing?: true;
@@ -189,6 +198,8 @@ function resolverFor(data: GameData) {
 const MAX_STARVED = 8;
 /** Starved cells the rest of a run may average and still count its layouts as complete. */
 export const RAMP_STARVED_MAX = 0.5;
+/** Average empty cells on one plot, of items the run never produced, that mark a run that never got going. */
+export const CANT_START_CELLS = 5;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 export interface RecorderPlan {
@@ -219,6 +230,10 @@ export class RunRecorder {
   private readonly starvedSeries: number[] = [];
   /** Mutation items whose stock was below 0 at the end of some cycle (owed beyond a session). */
   private readonly owedAcross = new Set<ItemId>();
+  /** Per owed item: the lowest stock seen so far (to catch a new in-session peak at its cycle). */
+  private readonly lowest = new Map<ItemId, number>();
+  /** Per owed item: [days elapsed, most owed during that cycle] for every cycle it was owed. */
+  private readonly owedSeries = new Map<ItemId, [number, number][]>();
 
   constructor(data: GameData, plan: RecorderPlan) {
     this.data = data;
@@ -296,9 +311,34 @@ export class RunRecorder {
     if (c === this.trailFrom) this.trailStart = this.snapshot(state);
     if (c === this.midAt) this.mid = this.snapshot(state);
     for (const [item, n] of Object.entries(state.inventory)) if (n < 0) this.owedAcross.add(item);
+    this.trackOwed(state);
     const starved = this.starvedNow(state);
     this.starvedCycles += 1;
     this.starvedSeries[c] = starved;
+  }
+
+  /**
+   * Borrowing runs: per mutation item, the most owed during this cycle: the end-of-cycle debt, or
+   * a new low of `ledger.minStock` reached inside the session (a borrow given back before the
+   * cycle ended). Only cycles with something owed are kept.
+   */
+  private trackOwed(state: SimulationState): void {
+    const config = state.scenario.settings.config;
+    if (config.allowMutationDebt !== true && config.bootstrapDebt !== true) return;
+    const days = state.elapsedSeconds / 86400;
+    for (const [item, row] of Object.entries(state.ledger)) {
+      if (!this.data.mutations[item] || row.minStock >= 0) continue;
+      const before = this.lowest.get(item) ?? 0;
+      let peak = Math.max(0, -(state.inventory[item] ?? 0));
+      if (row.minStock < before) {
+        peak = Math.max(peak, -row.minStock);
+        this.lowest.set(item, row.minStock);
+      }
+      if (peak <= 0) continue;
+      const series = this.owedSeries.get(item);
+      if (series) series.push([days, peak]);
+      else this.owedSeries.set(item, [[days, peak]]);
+    }
   }
 
   /** See `RampInfo.complete`. Null unless every cycle was observed. */
@@ -371,10 +411,6 @@ export class RunRecorder {
     }
     const config = state.scenario.settings.config;
     if (config.allowMutationDebt === true || config.bootstrapDebt === true) {
-      const startItems: Record<ItemId, number> = {};
-      for (const [item, row] of Object.entries(state.ledger)) if (this.data.mutations[item] && row.minStock < 0) startItems[item] = -row.minStock;
-      const usedUp: Record<ItemId, number> = {};
-      for (const [item, n] of Object.entries(end.owed)) if (n > 0) usedUp[item] = n;
       const upkeep: Record<ItemId, number> = {};
       if (reached && this.mid) {
         const d = (end.seconds - this.mid.seconds) / 86400;
@@ -383,17 +419,51 @@ export class RunRecorder {
           if (g > 0) upkeep[item] = g;
         }
       }
+      // What the player needs to start with, and what is never given back, without the debt the
+      // upkeep keeps adding: an item owed more every day is upkeep, not a starting stock.
+      const startItems: Record<ItemId, number> = {};
+      for (const [item, row] of Object.entries(state.ledger)) {
+        if (!this.data.mutations[item] || row.minStock >= 0) continue;
+        const most = -row.minStock;
+        const u = upkeep[item] ?? 0;
+        let need = most;
+        if (u > 0) {
+          need = 0;
+          for (const [d, peak] of this.owedSeries.get(item) ?? []) need = Math.max(need, peak - u * d);
+          need = round3(Math.min(most, need));
+        }
+        if (need > 0) startItems[item] = need;
+      }
+      const usedUp: Record<ItemId, number> = {};
+      for (const [item, n] of Object.entries(end.owed)) {
+        const once = round3(Math.min(n, n - (upkeep[item] ?? 0) * days));
+        if (once > 0) usedUp[item] = once;
+      }
       out.startItems = startItems;
       out.sessionOnly = Object.keys(startItems).filter((item) => !this.owedAcross.has(item)).sort();
       out.usedUp = usedUp;
       out.upkeep = upkeep;
     }
     const cycles = Math.max(1, this.starvedCycles);
-    out.starved = [...this.starvedCells.values()]
+    const allStarved = [...this.starvedCells.values()]
       .map((e) => ({ plot: e.plot, step: e.step, item: e.item, cells: round3(e.n / cycles) }))
       .filter((e) => e.cells > 0)
-      .sort((a, b) => b.cells - a.cells || a.plot - b.plot || a.step.localeCompare(b.step) || a.item.localeCompare(b.item))
-      .slice(0, MAX_STARVED);
+      .sort((a, b) => b.cells - a.cells || a.plot - b.plot || a.step.localeCompare(b.step) || a.item.localeCompare(b.item));
+    out.starved = allStarved.slice(0, MAX_STARVED);
+    // Never got going: on some plot, cells empty for items the run never produced at all.
+    const neverGrown = new Map<number, { cells: number; items: Set<ItemId> }>();
+    for (const e of allStarved) {
+      if ((end.produced[e.item] ?? 0) > 0) continue;
+      const p = neverGrown.get(e.plot) ?? { cells: 0, items: new Set<ItemId>() };
+      p.cells += e.cells;
+      p.items.add(e.item);
+      neverGrown.set(e.plot, p);
+    }
+    let worst: { plot: number; cells: number; items: ItemId[] } | null = null;
+    for (const [plot, p] of neverGrown) {
+      if (p.cells >= CANT_START_CELLS && (!worst || p.cells > worst.cells || (p.cells === worst.cells && plot < worst.plot))) worst = { plot, cells: round3(p.cells), items: [...p.items].sort() };
+    }
+    if (worst) out.cantStart = worst;
     const complete = this.completeCycle();
     if (this.mid && this.mid.cycle < end.cycle) {
       const d = (end.seconds - this.mid.seconds) / 86400;
