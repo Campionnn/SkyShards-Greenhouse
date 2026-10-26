@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { defaultSettings } from "../simulator";
-import { buildPlan, createGuideEnv, initialState, medoid, parseFlows, runForecast, runOne, sequenceDistance, spread, summarise, toInput, type FlowsFile, type RunTimeline } from "./index";
+import { buildPlan, createGuideEnv, goalItems, initialState, medoid, parseFlows, runForecast, runOne, sequenceDistance, spread, summarise, toInput, type FlowsFile, type RunTimeline } from "./index";
 
 const guideEnv = createGuideEnv();
 const flow: FlowsFile = parseFlows(readFileSync("public/greenhouse/flows/rose-dragon.flows.json", "utf8"));
@@ -34,7 +34,9 @@ describe("runOne", () => {
   }, 60_000);
 
   it("finishes at once when the goal is owned", () => {
-    const done = toInput(initialState(flow, defaultSettings(), { all_in_aloe: 2, devourer: 2, glasscorn: 2, phantomleaf: 2, timestalk: 2 }));
+    // The goal is read from the flow: 2 of each legendary and 1 of every other mutation.
+    const goal = Object.fromEntries(goalItems(flow).map((g) => [g.item, g.count]));
+    const done = toInput(initialState(flow, defaultSettings(), goal));
     const run = runOne(flow, done, 1, guideEnv);
     expect(run.done).toBe(true);
     expect(run.cycles).toBe(0);

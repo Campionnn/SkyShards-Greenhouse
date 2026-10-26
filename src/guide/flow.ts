@@ -234,9 +234,14 @@ export const GROUP_LABELS: Record<ItemGroup, string> = {
 
 export const GROUP_ORDER: ItemGroup[] = ["supplies", "goal", "common", "uncommon", "rare", "epic", "legendary"];
 
+/** Goal entries that need more than one: the Rose Dragon legendaries (the rest is "one of each"). */
+export function legendaryGoal(catalog: Catalog): ItemCount[] {
+  return catalog.goal.filter((g) => g.count > 1);
+}
+
 export function itemGroup(data: GameData, catalog: Catalog, id: string): ItemGroup {
   if ((SUPPLY_ITEMS as readonly string[]).includes(id)) return "supplies";
-  if (id === ALOE_FRAGMENT || catalog.goal.some((g) => g.item === id)) return "goal";
+  if (id === ALOE_FRAGMENT || legendaryGoal(catalog).some((g) => g.item === id)) return "goal";
   const rarity = data.mutations[id]?.rarity;
   if (rarity === "common" || rarity === "uncommon" || rarity === "rare" || rarity === "epic" || rarity === "legendary") return rarity;
   return "common";
@@ -254,7 +259,8 @@ export function groupedItems(data: GameData, catalog: Catalog): { group: ItemGro
     items: byGroup.get(group)!.sort((a, b) => {
       if (group === "goal") {
         // Goal items in the Done step's order, the fragment right after the Aloe.
-        const rank = (id: string) => (id === ALOE_FRAGMENT ? catalog.goal.findIndex((g) => g.item === "all_in_aloe") + 0.5 : catalog.goal.findIndex((g) => g.item === id));
+        const legends = legendaryGoal(catalog);
+        const rank = (id: string) => (id === ALOE_FRAGMENT ? legends.findIndex((g) => g.item === "all_in_aloe") + 0.5 : legends.findIndex((g) => g.item === id));
         return rank(a) - rank(b);
       }
       return itemName(data, a).localeCompare(itemName(data, b));

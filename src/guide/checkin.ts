@@ -68,12 +68,31 @@ export function withSettings(state: GuideState, settings: Settings, checkEvery: 
   return { ...state, checkEvery, settings: { ...settings, activity: checkEvery === null ? settings.activity : activityFor(checkEvery, settings) } };
 }
 
-/** The goal items owned, counting every 9 All-in Aloe Fragments as one Aloe (the game converts them). */
+/** Is this goal entry covered, counting every 9 All-in Aloe Fragments as one Aloe (the game converts them)? */
+function goalMet(g: ItemCount, inventory: Record<string, number>): boolean {
+  const extra = g.item === "all_in_aloe" ? Math.floor((inventory[ALOE_FRAGMENT] ?? 0) / 9) : 0;
+  return (inventory[g.item] ?? 0) + extra >= g.count;
+}
+
+/** The goal items owned (every entry, legendaries and the one-of-each set). */
 export function goalOwned(catalog: Catalog, inventory: Record<string, number>): number {
-  return catalog.goal.filter((g) => {
-    const extra = g.item === "all_in_aloe" ? Math.floor((inventory[ALOE_FRAGMENT] ?? 0) / 9) : 0;
-    return (inventory[g.item] ?? 0) + extra >= g.count;
-  }).length;
+  return catalog.goal.filter((g) => goalMet(g, inventory)).length;
+}
+
+/**
+ * The goal split for display: the Rose Dragon legendaries (more than one of each is needed) and the
+ * "one of every other mutation" set, each with how many entries are covered.
+ */
+export function goalProgress(catalog: Catalog, inventory: Record<string, number>): {
+  legendaries: { owned: number; total: number; items: ItemCount[] };
+  others: { owned: number; total: number; missing: ItemCount[] };
+} {
+  const legendaries = catalog.goal.filter((g) => g.count > 1);
+  const others = catalog.goal.filter((g) => g.count <= 1);
+  return {
+    legendaries: { owned: legendaries.filter((g) => goalMet(g, inventory)).length, total: legendaries.length, items: legendaries },
+    others: { owned: others.filter((g) => goalMet(g, inventory)).length, total: others.length, missing: others.filter((g) => !goalMet(g, inventory)) },
+  };
 }
 
 /** How many Zombuds one harvest on this farm makes: Dead Plants (or empty cells) in a Zombud cell's ring. */

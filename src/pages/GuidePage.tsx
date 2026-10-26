@@ -26,6 +26,7 @@ import {
   decideLogin,
   farmOf,
   goalOwned,
+  goalProgress,
   guideDefaultSettings,
   initialState,
   itemName,
@@ -273,7 +274,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
   const outcomeFor = (plotId: number) => (state.plots[plotId]?.acted ? null : (outcomes.find((o) => o.plotId === plotId && o.from === state.plots[plotId]?.farm) ?? null));
   const nextPlot = catalog.plots.find((id) => !state.plots[id]?.acted);
   const stale = settled !== state;
-  const owned = goalOwned(catalog, state.inventory);
+  const goalState = goalProgress(catalog, state.inventory);
   const supplies = ["dead_plant", "fermento"];
   const tracked = Object.values(state.inventory).filter((n) => n > 0).length;
 
@@ -356,10 +357,27 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
               <ItemChip key={id} id={id} name={itemName(data, id)} count={state.inventory[id] ?? 0} tone={(state.inventory[id] ?? 0) > 0 ? "default" : "muted"} />
             ))}
             <span className="text-xs text-slate-400">
-              <span className={owned === catalog.goal.length ? "text-emerald-300" : "text-slate-300"}>
-                {owned}/{catalog.goal.length}
+              <span className={goalState.legendaries.owned === goalState.legendaries.total ? "text-emerald-300" : "text-slate-300"}>
+                {goalState.legendaries.owned}/{goalState.legendaries.total}
               </span>{" "}
-              Rose Dragon legendaries · {tracked} item{tracked === 1 ? "" : "s"} tracked
+              Rose Dragon legendaries
+              {goalState.others.total > 0 && (
+                <>
+                  {" · "}
+                  <span
+                    className={goalState.others.owned === goalState.others.total ? "text-emerald-300" : "text-slate-300"}
+                    title={
+                      goalState.others.missing.length
+                        ? `Still missing one of: ${goalState.others.missing.map((g) => itemName(data, g.item)).join(", ")}`
+                        : "You have one of every other mutation"
+                    }
+                  >
+                    {goalState.others.owned}/{goalState.others.total}
+                  </span>{" "}
+                  one of each other mutation
+                </>
+              )}{" "}
+              · {tracked} item{tracked === 1 ? "" : "s"} tracked
             </span>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
@@ -398,7 +416,8 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
           <PartyPopper className="h-8 w-8 text-yellow-300" aria-hidden />
           <h2 className="text-lg font-semibold text-yellow-200">You have everything for the Rose Dragon.</h2>
           <p className="max-w-xl text-sm text-slate-300">
-            Every legendary ingredient is in your inventory ({catalog.goal.map((g) => `${g.count}× ${itemName(data, g.item)}`).join(", ")}). Your plots are free for
+            Every legendary ingredient is in your inventory ({goalState.legendaries.items.map((g) => `${g.count}× ${itemName(data, g.item)}`).join(", ")})
+            {goalState.others.total > 0 ? ", plus one of every other mutation" : ""}. Your plots are free for
             whatever comes next.
           </p>
         </section>

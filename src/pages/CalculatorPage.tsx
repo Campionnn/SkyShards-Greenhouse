@@ -19,7 +19,7 @@ const setupError = (title: string, message: string, suggestion: string): SolveEr
 
 export const CalculatorPage: React.FC = () => {
   const { getUnlockedCellsArray, unlockedCells } = useGridState();
-  const { selectedMutations, isLoading: dataLoading, effectiveEffectWeights } = useGreenhouseData();
+  const { selectedMutations, isLoading: dataLoading, effectWeights } = useGreenhouseData();
   const { getLocksForAPI, priorities } = useLockedPlacements();
   const { toast } = useToast();
   const uniqueCrops = useUniqueCrops(); // UNIQUE_CROPS
@@ -119,7 +119,7 @@ export const CalculatorPage: React.FC = () => {
           targets,
           priorities: Object.keys(priorities).length > 0 ? priorities : undefined,
           locks: getLocksForAPI().length > 0 ? getLocksForAPI() : undefined,
-          effect_weights: effectiveEffectWeights,
+          effect_weights: effectWeights,
           unique_crops: uniqueCrops > 0 ? uniqueCrops : undefined, // UNIQUE_CROPS
         },
         {
@@ -198,7 +198,7 @@ export const CalculatorPage: React.FC = () => {
       setSession(null);
       abortControllerRef.current = null;
     }
-  }, [getUnlockedCellsArray, selectedMutations, priorities, getLocksForAPI, effectiveEffectWeights, toast, uniqueCrops]);
+  }, [getUnlockedCellsArray, selectedMutations, priorities, getLocksForAPI, effectWeights, toast, uniqueCrops]);
 
   const handleCancel = useCallback(() => {
     if (abortControllerRef.current) {

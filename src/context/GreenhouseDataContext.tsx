@@ -7,6 +7,15 @@ import { LocalStorageManager, sortByRarity } from "../utilities";
 /** Solver defaults, and the only weights whose solutions the server caches. */
 const DEFAULT_EFFECT_WEIGHTS: Record<string, number> = defaultEffectWeights;
 
+/** The defaults before they became all zero; saved copies of exactly these follow the new defaults. */
+const PREVIOUS_DEFAULT_WEIGHTS: Record<string, number> = { harvest_boost: 0.2, improved_harvest_boost: 0.3, harvest_loss: -0.2 };
+
+function sameWeights(a: Record<string, number>, b: Record<string, number>): boolean {
+  const ids = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const id of ids) if ((a[id] ?? 0) !== (b[id] ?? 0)) return false;
+  return true;
+}
+
 interface GreenhouseDataContextType {
   crops: CropDefinition[];
   mutations: MutationDefinition[];
@@ -26,13 +35,6 @@ interface GreenhouseDataContextType {
   resetEffectWeights: () => void;
   // True when effectWeights match DEFAULT_EFFECT_WEIGHTS (0 and missing are equal).
   effectWeightsAreDefault: boolean;
-  // Maximizing gloomgourd alone optimises raw spawn rate, so weights are
-  // dropped for that solve unless the user keeps them.
-  weightsOverridden: boolean;
-  canOverrideWeights: boolean;
-  setKeepWeights: (keep: boolean) => void;
-  // Weights a solve sends.
-  effectiveEffectWeights: Record<string, number>;
   
   getMutationDef: (id: string) => MutationDefinition | undefined;
   getCropDef: (id: string) => CropDefinition | undefined;
@@ -112,7 +114,9 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
   
   // Saved weights, else the defaults (the only weights the server caches).
   const [effectWeights, setEffectWeightsState] = useState<Record<string, number>>(() => {
-    return LocalStorageManager.loadEffectWeights() ?? { ...DEFAULT_EFFECT_WEIGHTS };
+    const saved = LocalStorageManager.loadEffectWeights();
+    if (!saved || sameWeights(saved, PREVIOUS_DEFAULT_WEIGHTS)) return { ...DEFAULT_EFFECT_WEIGHTS };
+    return saved;
   });
 
   useEffect(() => {
@@ -184,29 +188,8 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     LocalStorageManager.saveEffectWeights(DEFAULT_EFFECT_WEIGHTS);
   }, []);
 
-  const effectWeightsAreDefault = useMemo(() => {
-    const ids = new Set([...Object.keys(effectWeights), ...Object.keys(DEFAULT_EFFECT_WEIGHTS)]);
-    for (const id of ids) {
-      if ((effectWeights[id] ?? 0) !== (DEFAULT_EFFECT_WEIGHTS[id] ?? 0)) return false;
-    }
-    return true;
-  }, [effectWeights]);
+  const effectWeightsAreDefault = useMemo(() => sameWeights(effectWeights, DEFAULT_EFFECT_WEIGHTS), [effectWeights]);
 
-  // A lone maximize-gloomgourd target solves for spawn rate unless keepWeights is set.
-  const [keepWeights, setKeepWeights] = useState(false);
-  const canOverrideWeights = useMemo(
-    () =>
-      selectedMutations.length === 1 &&
-      selectedMutations[0].id === "gloomgourd" &&
-      selectedMutations[0].mode === "maximize",
-    [selectedMutations]
-  );
-  const weightsOverridden = canOverrideWeights && !keepWeights;
-  const effectiveEffectWeights = useMemo(
-    () => (weightsOverridden ? {} : effectWeights),
-    [weightsOverridden, effectWeights]
-  );
-  
   const getMutationDef = useCallback((id: string): MutationDefinition | undefined => {
     return mutations.find(m => m.id === id);
   }, [mutations]);
@@ -230,10 +213,6 @@ export const GreenhouseDataProvider: React.FC<{ children: React.ReactNode }> = (
     setEffectWeight,
     resetEffectWeights,
     effectWeightsAreDefault,
-    weightsOverridden,
-    canOverrideWeights,
-    setKeepWeights,
-    effectiveEffectWeights,
     getMutationDef,
     getCropDef,
   };
