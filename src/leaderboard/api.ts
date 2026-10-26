@@ -194,6 +194,8 @@ export interface AdminFlowRow {
   author_avatar: string | null;
   /** Not in the contract; shown when the API sends it. */
   author_banned_at: Timestamp | null;
+  /** The author's own submissions-per-24h limit set by an admin; null = the default. */
+  author_submission_limit: number | null;
   reports: AdminReport[];
 }
 

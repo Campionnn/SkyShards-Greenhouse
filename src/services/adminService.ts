@@ -6,7 +6,7 @@
  */
 import type { AdminFlowRow, AdminReport, AdminStatusFilter, Timestamp } from "../leaderboard/api";
 import { ApiError, readApiError } from "./authService";
-import { flowsMockEnabled, MOCK_ADMIN_KEY, mockAdminAction, mockAdminBan, mockAdminList } from "./flowsMock";
+import { flowsMockEnabled, MOCK_ADMIN_KEY, mockAdminAction, mockAdminBan, mockAdminLimit, mockAdminList } from "./flowsMock";
 import { clearFlowsCache } from "./flowsService";
 import { REMOTE_API_BASE } from "./solverEndpoint";
 
@@ -121,6 +121,7 @@ export function normalizeAdminRow(raw: unknown): AdminFlowRow {
     author_global_name: strOrNull(r.author_global_name),
     author_avatar: strOrNull(r.author_avatar),
     author_banned_at: r.author_banned_at === null || r.author_banned_at === undefined ? null : time(r.author_banned_at),
+    author_submission_limit: r.author_submission_limit === null || r.author_submission_limit === undefined || !Number.isFinite(Number(r.author_submission_limit)) ? null : Number(r.author_submission_limit),
     reports,
   };
 }
@@ -172,6 +173,35 @@ async function banAction(userId: string, ban: boolean, reason = ""): Promise<voi
 export const adminBan = (userId: string, reason: string): Promise<void> => banAction(userId, true, reason);
 /** Lift a ban: restores only the entries the ban hid. */
 export const adminUnban = (userId: string): Promise<void> => banAction(userId, false);
+
+export interface SubmissionLimitResult {
+  /** The user's own limit; null = the default. */
+  limit: number | null;
+  /** The limit that applies now (own or default). */
+  effectiveLimit: number;
+  /** Submissions in the last 24 h. */
+  used24h: number;
+}
+
+/**
+ * `POST /greenhouse/admin/users/{id}/limit`: give a user their own submissions-per-24h limit
+ * (e.g. 50), or `null` to put them back on the default. Applies at once.
+ */
+export async function adminSetSubmissionLimit(userId: string, limit: number | null): Promise<SubmissionLimitResult> {
+  if (limit !== null && !(Number.isInteger(limit) && limit >= 0)) throw new ApiError(422, "The limit must be a whole number of 0 or more.");
+  if (mock()) {
+    const r = await mockAdminLimit(userId, limit);
+    if (!r) throw new ApiError(404, "User not found");
+    return r;
+  }
+  const res = await adminFetch(`/greenhouse/admin/users/${encodeURIComponent(userId)}/limit`, { method: "POST", body: JSON.stringify({ limit }) });
+  const body = ((await res.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+  return {
+    limit: body.limit === null || body.limit === undefined ? null : num(body.limit),
+    effectiveLimit: num(body.effectiveLimit),
+    used24h: num(body.used24h),
+  };
+}
 
 /** Why an entry is hidden, for a badge: "by reports", "by admin", "banned". */
 export function hiddenReasonLabel(reason: string | null | undefined): string | null {

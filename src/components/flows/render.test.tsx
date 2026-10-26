@@ -244,10 +244,13 @@ describe("admin page renders", () => {
   it("the table and cards show every column and the actions", async () => {
     const rows = (await mockAdminList()).entries.map(normalizeAdminRow);
     const html = text(wrap(<><AdminTable rows={rows} busy={null} act={() => {}} /><AdminCards rows={rows} busy={null} act={() => {}} /></>));
-    for (const s of ["Chloronite engine with wheat filler", "FREE COINS click here", "by reports", "Rejected: Best seed", "All boards", ">Ironman<", "990000000000000001", "Copied from my flow", "> Hide<", "> Unhide<", "> Delete<", "> Ban<", "> Unban<"]) {
+    for (const s of ["Chloronite engine with wheat filler", "FREE COINS click here", "by reports", "Rejected: Best seed", "All boards", ">Ironman<", "990000000000000001", "Copied from my flow", "> Hide<", "> Unhide<", "> Delete<", "> Ban<", "> Unban<", "> Limit<"]) {
       expect(html).toContain(s);
     }
     expect(html).toContain('href="/flows/mockSpam0004"');
+    expect(html).not.toContain("/ day");
+    rows[0] = { ...rows[0], author_submission_limit: 50 };
+    expect(text(wrap(<AdminTable rows={rows} busy={null} act={() => {}} />))).toContain("50 / day");
   });
 
   it("the detail page's moderation box", async () => {

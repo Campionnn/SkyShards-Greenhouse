@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Ban, Eye, EyeOff, KeyRound, Lock, RefreshCw, ShieldCheck, Trash2, Undo2 } from "lucide-react";
+import { Ban, Eye, EyeOff, Gauge, KeyRound, Lock, RefreshCw, ShieldCheck, Trash2, Undo2 } from "lucide-react";
 import { Badge } from "../components/flows/FlowControls";
 import { buttonClass, inputClass } from "../components/simulator/styles";
 import { SegmentedControl, useToast } from "../components/ui";
 import type { AdminFlowRow, AdminStatusFilter } from "../leaderboard/api";
 import { boardsText as boardNames, formatDate } from "../leaderboard/view";
-import { adminBan, adminDelete, adminHide, adminListFlows, adminUnban, adminUnhide, clearAdminKey, getAdminKey, hiddenReasonLabel, setAdminKey, verifyAdminKey } from "../services/adminService";
+import { adminBan, adminDelete, adminHide, adminListFlows, adminSetSubmissionLimit, adminUnban, adminUnhide, clearAdminKey, getAdminKey, hiddenReasonLabel, setAdminKey, verifyAdminKey } from "../services/adminService";
 
 /**
  * /flows/admin: the leaderboard moderation queue (docs/plans/flow-leaderboard.md §8 Phase 3). Reached
@@ -83,6 +83,13 @@ const Author: React.FC<{ row: AdminFlowRow }> = ({ row }) => (
       {row.author_username && row.author_global_name ? `@${row.author_username} · ` : ""}
       {row.owner_id}
     </div>
+    {row.author_submission_limit !== null && (
+      <div className="mt-0.5">
+        <Badge tone="new" title="This author's own submission limit (set by an admin)">
+          {row.author_submission_limit} / day
+        </Badge>
+      </div>
+    )}
   </div>
 );
 
@@ -102,11 +109,12 @@ const Reports: React.FC<{ row: AdminFlowRow }> = ({ row }) =>
     </ul>
   ) : null;
 
-type Act = (row: AdminFlowRow, action: "hide" | "unhide" | "delete" | "ban" | "unban") => void;
+type Action = "hide" | "unhide" | "delete" | "ban" | "unban" | "limit";
+type Act = (row: AdminFlowRow, action: Action) => void;
 
-/** `compact`: a tight 2 × 2 block for the table's actions column; otherwise 2 × 2 on phones, one row from `sm`. */
+/** `compact`: a tight 2-column block for the table's actions column; otherwise 2 columns on phones, one row from `sm`. */
 const Actions: React.FC<{ row: AdminFlowRow; busy: boolean; act: Act; compact?: boolean }> = ({ row, busy, act, compact }) => (
-  <div className={`grid grid-cols-2 [&>button]:justify-center ${compact ? "gap-1 [&>button]:px-2 [&>button]:py-1" : "sm:grid-cols-4 gap-1.5"}`}>
+  <div className={`grid grid-cols-2 [&>button]:justify-center ${compact ? "gap-1 [&>button]:px-2 [&>button]:py-1" : "sm:grid-cols-5 gap-1.5"}`}>
     {row.status === "hidden" ? (
       <button type="button" className={buttonClass.neutral} disabled={busy} onClick={() => act(row, "unhide")}>
         <Eye className="w-3.5 h-3.5" /> Unhide
@@ -124,6 +132,15 @@ const Actions: React.FC<{ row: AdminFlowRow; busy: boolean; act: Act; compact?: 
     </button>
     <button type="button" className={buttonClass.neutral} disabled={busy || !row.owner_id} onClick={() => act(row, "unban")} title="Lift a ban on the author: restores the entries the ban hid">
       <Undo2 className="w-3.5 h-3.5" /> Unban
+    </button>
+    <button
+      type="button"
+      className={`${buttonClass.neutral} ${compact ? "col-span-2" : "col-span-2 sm:col-span-1"}`}
+      disabled={busy || !row.owner_id}
+      onClick={() => act(row, "limit")}
+      title="Set how many flows the author may submit per 24 hours"
+    >
+      <Gauge className="w-3.5 h-3.5" /> Limit
     </button>
   </div>
 );
@@ -216,7 +233,23 @@ export const AdminCards: React.FC<{ rows: AdminFlowRow[]; busy: string | null; a
   </ul>
 );
 
-const DONE: Record<string, string> = { hide: "Hidden", unhide: "Unhidden", delete: "Deleted", ban: "Author banned", unban: "Author unbanned" };
+const DONE: Record<string, string> = { hide: "Hidden", unhide: "Unhidden", delete: "Deleted", ban: "Author banned", unban: "Author unbanned", limit: "Submission limit set" };
+
+/**
+ * Prompts for a submissions-per-24h limit: a whole number, or blank / "default" for the default.
+ * Returns undefined when cancelled or invalid.
+ */
+function promptLimit(who: string, current: number | null): number | null | undefined {
+  const r = window.prompt(`Submissions per 24 hours for ${who}.\nEnter a number (e.g. 50), or leave blank for the default.`, current === null ? "" : String(current));
+  if (r === null) return undefined;
+  const t = r.trim().toLowerCase();
+  if (t === "" || t === "default") return null;
+  if (!/^\d+$/.test(t)) {
+    window.alert("Enter a whole number, or leave it blank for the default.");
+    return undefined;
+  }
+  return Number(t);
+}
 
 export const AdminQueue: React.FC<{ onLock: () => void; initialFilter?: AdminStatusFilter }> = ({ onLock, initialFilter = "reported" }) => {
   const { toast } = useToast();
@@ -255,14 +288,24 @@ export const AdminQueue: React.FC<{ onLock: () => void; initialFilter?: AdminSta
       if (!window.confirm(`Ban ${who}${reason ? ` for "${reason}"` : ""}?`)) return;
     }
     if (action === "unban" && !window.confirm(`Unban ${who}? Entries hidden by the ban come back.`)) return;
+    let limit: number | null = null;
+    if (action === "limit") {
+      const l = promptLimit(who, row.author_submission_limit);
+      if (l === undefined) return;
+      limit = l;
+    }
     setBusy(row.id);
     try {
+      let description = action === "ban" || action === "unban" ? who : row.title;
       if (action === "hide") await adminHide(row.id);
       else if (action === "unhide") await adminUnhide(row.id);
       else if (action === "delete") await adminDelete(row.id);
       else if (action === "ban") await adminBan(row.owner_id, reason);
-      else await adminUnban(row.owner_id);
-      toast({ title: DONE[action], description: action === "ban" || action === "unban" ? who : row.title, variant: "success" });
+      else if (action === "limit") {
+        const r = await adminSetSubmissionLimit(row.owner_id, limit);
+        description = `${who}: ${r.effectiveLimit} per 24 h${r.limit === null ? " (default)" : ""} · ${r.used24h} used`;
+      } else await adminUnban(row.owner_id);
+      toast({ title: DONE[action], description, variant: "success" });
     } catch (e) {
       toast({ title: `Could not ${action}`, description: message(e), variant: "error" });
       if (!getAdminKey()) onLock();

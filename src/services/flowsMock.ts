@@ -541,6 +541,14 @@ export function mockAdminBan(userId: string, ban: boolean): Promise<{ id: string
   return delay({ id: userId, banned: ban });
 }
 
+/** Mirrors `POST /greenhouse/admin/users/{id}/limit` (the default limit is 5, nothing used in the mock). */
+export function mockAdminLimit(userId: string, limit: number | null): Promise<{ limit: number | null; effectiveLimit: number; used24h: number } | null> {
+  const mine = rows().filter((r) => r.owner_id === userId);
+  if (!mine.length) return delay(null);
+  for (const r of mine) r.author_submission_limit = limit;
+  return delay({ limit, effectiveLimit: limit ?? 5, used24h: 0 });
+}
+
 /** The admin fields `GET /flows/{id}` adds when the admin key is sent. */
 export function mockAdminDetailExtras(id: string): Pick<FlowDetail, "status" | "rejectReason" | "hidden" | "hiddenReason" | "reportCount"> | null {
   const r = rows().find((x) => x.id === id);

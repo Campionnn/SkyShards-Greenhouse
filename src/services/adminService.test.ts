@@ -102,6 +102,27 @@ describe("adminService", () => {
     expect(calls[4][1].body).toBeUndefined();
   });
 
+  it("sets a user's own submission limit, or back to the default with null", async () => {
+    const admin = await import("./adminService");
+    admin.setAdminKey("k");
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const { limit } = JSON.parse(String(init.body)) as { limit: number | null };
+      return json({ id: "42", limit, effectiveLimit: limit ?? 5, used24h: 3 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await admin.adminSetSubmissionLimit("42", 50)).toEqual({ limit: 50, effectiveLimit: 50, used24h: 3 });
+    expect(await admin.adminSetSubmissionLimit("42", null)).toEqual({ limit: null, effectiveLimit: 5, used24h: 3 });
+    const calls = fetchMock.mock.calls.map((c) => c as unknown as [string, RequestInit]);
+    expect(calls[0][0]).toMatch(/\/greenhouse\/admin\/users\/42\/limit$/);
+    expect(calls[0][1].method).toBe("POST");
+    expect(JSON.parse(String(calls[1][1].body))).toEqual({ limit: null });
+    await expect(admin.adminSetSubmissionLimit("42", -1)).rejects.toMatchObject({ status: 422 });
+    await expect(admin.adminSetSubmissionLimit("42", 2.5)).rejects.toMatchObject({ status: 422 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(admin.normalizeAdminRow({ id: "a", author_submission_limit: 50 }).author_submission_limit).toBe(50);
+    expect(admin.normalizeAdminRow({ id: "a" }).author_submission_limit).toBeNull();
+  });
+
   it("drops the stored key on a 401 and needs a key at all", async () => {
     const admin = await import("./adminService");
     await expect(admin.adminHide("a")).rejects.toMatchObject({ status: 401 });
