@@ -29,7 +29,7 @@ export function verbOf(outcome: PlotOutcome): Verb {
 /** The script's machine reason as a sentence. `name` turns a step id into a farm name. */
 export function describeWhy(why: string, name: (id: string) => string): string {
   if (!why) return "";
-  if (why === "goal complete" || why === "the step's own exit finished the flow") return "Every Rose Dragon legendary is already in your inventory.";
+  if (why === "goal complete" || why === "the step's own exit finished the flow") return "Everything the Rose Dragon needs is already in your inventory.";
   if (why === "idle") return "The plot was free, and this is the most useful farm you can afford.";
   if (why === "shellfruit popped") return "The Shellfruit have been popped and harvested.";
   if (why === "refresh short") return "The farm needs rebuilding, but you don't have the inputs.";
@@ -90,7 +90,7 @@ export function explain(outcome: PlotOutcome, catalog: Catalog, data: GameData):
   const reason = describeWhy(outcome.why, name);
   switch (verbOf(outcome)) {
     case "done":
-      return { verb: "done", headline: "Done", reason: reason || "Every Rose Dragon legendary is owned." };
+      return { verb: "done", headline: "Done", reason: reason || "Everything the Rose Dragon needs is owned." };
     case "supplies": {
       const block = outcome.supplyBlock;
       const need = block?.need.length ? block.need.map((b) => `${b.count} more ${itemName(data, b.item)}`).join(" and ") : "more Dead Plants or Fermento";

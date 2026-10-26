@@ -17,6 +17,7 @@ import {
   scriptKnobs,
   farmTips,
   goalOwned,
+  goalProgress,
   guideDefaultSettings,
   hoursPerCycle,
   hoursToCycles,
@@ -38,7 +39,10 @@ const guideEnv = createGuideEnv();
 const data = guideEnv.engine.data;
 const flow: FlowsFile = parseFlows(readFileSync("public/greenhouse/flows/rose-dragon.flows.json", "utf8"));
 const catalog = buildCatalog(flow, guideEnv.env.resolveLayout);
-const GOAL = { all_in_aloe: 2, devourer: 2, glasscorn: 2, phantomleaf: 2, timestalk: 2 };
+const LEGENDS = { all_in_aloe: 2, devourer: 2, glasscorn: 2, phantomleaf: 2, timestalk: 2 };
+/** Every non-legendary mutation once (Godseed and Jerryflower are legendaries: not part of it). */
+const ONE_OF_EACH = Object.fromEntries(Object.entries(data.mutations).filter(([, m]) => m.rarity !== "legendary").map(([id]) => [id, 1]));
+const GOAL = { ...ONE_OF_EACH, ...LEGENDS };
 
 const SUPPLIES = { dead_plant: 250, fermento: 50 };
 const start = (inventory: Record<string, number> = SUPPLIES): GuideState => initialState(flow, defaultSettings(), inventory);
@@ -308,8 +312,25 @@ describe("playtest fixes", () => {
   });
 
   it("counts 9 fragments as one All-in Aloe toward the goal", () => {
-    expect(goalOwned(catalog, { ...GOAL, all_in_aloe: 0, [ALOE_FRAGMENT]: 18 })).toBe(5);
-    expect(goalOwned(catalog, { ...GOAL, all_in_aloe: 1, [ALOE_FRAGMENT]: 8 })).toBe(4);
+    const total = Object.keys(GOAL).length;
+    expect(goalOwned(catalog, { ...GOAL, all_in_aloe: 0, [ALOE_FRAGMENT]: 18 })).toBe(total);
+    expect(goalOwned(catalog, { ...GOAL, all_in_aloe: 1, [ALOE_FRAGMENT]: 8 })).toBe(total - 1);
+  });
+
+  it("splits the goal into the legendaries and one of every other mutation", () => {
+    const none = goalProgress(catalog, {});
+    expect(none.legendaries).toMatchObject({ owned: 0, total: 5 });
+    expect(none.others.total).toBe(Object.keys(ONE_OF_EACH).length);
+    expect(none.others.missing.map((g) => g.item)).not.toContain("godseed");
+    const legendsOnly = goalProgress(catalog, { ...LEGENDS, lonelily: 3 });
+    expect(legendsOnly.legendaries.owned).toBe(5);
+    expect(legendsOnly.others.owned).toBe(1);
+    expect(goalProgress(catalog, GOAL).others.missing).toEqual([]);
+  });
+
+  it("is not Done with only the legendaries: one of every other mutation is still needed", () => {
+    const outcomes = decideLogin(flow, toInput(start({ ...SUPPLIES, ...LEGENDS })), guideEnv);
+    expect(outcomes.some((o) => o.action !== "done")).toBe(true);
   });
 
   it("books Zombud harvests from the card: Zombuds in, ring Dead Plants out", () => {
