@@ -7,7 +7,9 @@ import { spreadRatio, type RunResult } from "../../leaderboard/result";
 import {
   BOARD_LABEL,
   boardOf,
+  cantStartText,
   KIT_MARGIN,
+  kitSummaryText,
   needLines,
   percent,
   rampText,
@@ -59,6 +61,25 @@ export const BoardNumbers: React.FC<{ numbers: BoardNumber[]; current: Board; on
     {numbers.map((n) => {
       const active = n.board === current;
       const negative = n.profitPerDay !== null && n.profitPerDay < 0;
+      if (n.cantStart)
+        return (
+          <button
+            key={n.board}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onSelect(n.board)}
+            title={`${BOARD_LABEL[n.board]}: ${cantStartText(n.cantStart)}`}
+            data-testid="board-cant-start"
+            className={`min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.99] ${
+              active ? "border-slate-500/60 bg-slate-800/60" : "border-slate-700/50 bg-slate-900/40 hover:border-slate-500/50 hover:bg-slate-800/60"
+            }`}
+          >
+            <div className={`text-[10px] font-medium uppercase tracking-wide ${active ? "text-slate-300" : "text-slate-500"}`}>{BOARD_SUB[n.board]}</div>
+            <div className={`mt-0.5 font-bold leading-tight text-slate-500 ${active ? "text-2xl" : "text-xl"}`}>Can't start</div>
+            <div className="mt-0.5 min-h-[1rem] text-[11px] text-slate-500">{cantStartText(n.cantStart)}</div>
+          </button>
+        );
       return (
         <button
           key={n.board}
@@ -85,7 +106,7 @@ export const BoardNumbers: React.FC<{ numbers: BoardNumber[]; current: Board; on
                   ? "slowing down at the end"
                   : n.board === "ironman_strict"
                     ? "nothing borrowed"
-                    : "starting items lent"}
+                    : "if you own the starting items"}
           </div>
         </button>
       );
@@ -93,16 +114,19 @@ export const BoardNumbers: React.FC<{ numbers: BoardNumber[]; current: Board; on
   </div>
 );
 
-/** "With starting items": the items to bring, what is used up, and the upkeep. */
+/** "With starting items": what to start with, what is used up once, and what it needs every day after that. */
 export const WhatYouNeed: React.FC<{ result: Pick<RunResult, "startItems" | "sessionOnly" | "usedUp" | "upkeep"> }> = ({ result }) => {
   const need = needLines(result);
   const used = usedUpLines(result.usedUp);
   const upkeep = upkeepLines(result.upkeep);
   return (
     <div className="space-y-3 text-xs" data-testid="what-you-need">
+      <p className="text-slate-200" data-testid="kit-summary">
+        {kitSummaryText(result)}
+      </p>
       <div>
         <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[11px] uppercase tracking-wide text-slate-500">
-          <span>Starting items</span>
+          <span>To start with</span>
           {need.length > 0 && <span className="normal-case tracking-normal">needs · bring (+{Math.round(KIT_MARGIN * 100)}%)</span>}
         </div>
         {need.length === 0 ? (
@@ -131,7 +155,7 @@ export const WhatYouNeed: React.FC<{ result: Pick<RunResult, "startItems" | "ses
       {used.length > 0 && (
         <div>
           <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Used up once</div>
-          <p className="text-slate-300">
+          <p className="text-slate-300" title="Part of the starting items that isn't given back by the end of the run (not counting the daily upkeep)">
             {used.map((u, i) => (
               <span key={u.item}>
                 {i > 0 ? ", " : ""}
@@ -142,7 +166,7 @@ export const WhatYouNeed: React.FC<{ result: Pick<RunResult, "startItems" | "ses
         </div>
       )}
       <div>
-        <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Upkeep per day</div>
+        <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Then per day (upkeep)</div>
         {upkeep.length === 0 ? (
           <p className="text-emerald-300">None: it gives back everything it borrows.</p>
         ) : (
@@ -153,7 +177,7 @@ export const WhatYouNeed: React.FC<{ result: Pick<RunResult, "startItems" | "ses
                 <span className="tabular-nums">{Math.ceil(u.perDay - 1e-9).toLocaleString("en-US")}</span> {nameOf(u.item)} / day
               </li>
             ))}
-            <li className="pt-0.5 text-[11px] text-slate-500">Borrowed items it never gives back: you supply these every day.</li>
+            <li className="pt-0.5 text-[11px] text-slate-500">It uses these up faster than it grows them: you supply them every day, on top of the starting items.</li>
           </ul>
         )}
       </div>

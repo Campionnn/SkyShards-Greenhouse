@@ -10,6 +10,11 @@ import {
   avatarUrl,
   boardNumbers,
   boardOf,
+  cantStartOf,
+  cantStartReason,
+  cantStartText,
+  kitSummaryText,
+  splitRanked,
   boardsText,
   DEFAULT_FILTERS,
   earningItems,
@@ -529,5 +534,89 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(s.ratio).toBeCloseTo(1.5);
     const failed = localKindSummary(data, [seeds[0], { ok: false, error: "script error: boom", result: null }, undefined], "ironman_borrow", {}, DEFAULT_BAZAAR_PRICING);
     expect(failed).toMatchObject({ done: 2, total: 3, cell: null, profitPerDay: null, ratio: null, failed: [{ seed: 2, error: "script error: boom" }] });
+    expect(s.cantStart).toBeNull();
+    // A strict test whose median seed can't start says so; borrow never does.
+    const stuck = [1, 2, 3].map(() => ({ ok: true, error: null, result: result({ wheat: 100 }, { cantStart: { plot: 1, cells: 65, items: ["puffercloud", "zombud"] } }) }));
+    expect(localKindSummary(data, stuck, "ironman_strict", {}, DEFAULT_BAZAAR_PRICING).cantStart).toEqual({ plot: 1, cells: 65, items: ["puffercloud", "zombud"] });
+    expect(localKindSummary(data, stuck, "ironman_borrow", {}, DEFAULT_BAZAAR_PRICING).cantStart).toBeNull();
+  });
+});
+
+describe("leaderboard v2: flows that can't start from nothing", () => {
+  const devourerStarved = [
+    { plot: 1, step: "step-1", item: "zombud", cells: 38 },
+    { plot: 1, step: "step-1", item: "puffercloud", cells: 27 },
+    { plot: 2, step: "step-1", item: "wheat", cells: 9 },
+  ];
+
+  it("cantStartOf: the stored field wins; old cells derive it from starved items never produced", () => {
+    expect(cantStartOf(null)).toBeNull();
+    expect(cantStartOf(result({ wheat: 1 }))).toBeNull();
+    const stored = { plot: 2, cells: 21, items: ["cindershade", "magic_jellybean"] };
+    expect(cantStartOf(result({ wheat: 1 }, { cantStart: stored, starved: devourerStarved }))).toEqual(stored);
+    // Derived: plot 1's 65 cells are for items it never produced; plot 2's wheat it does produce.
+    expect(cantStartOf(result({ wheat: 5, devourer: 3 }, { starved: devourerStarved }))).toEqual({ plot: 1, cells: 65, items: ["puffercloud", "zombud"] });
+    // Produced items don't count: a flow short of an item it grows only stalls.
+    expect(cantStartOf(result({ zombud: 1, puffercloud: 1 }, { starved: devourerStarved.slice(0, 2) }))).toBeNull();
+    // Under CANT_START_CELLS per plot (summed): not blocked, even over several plots.
+    expect(cantStartOf(result({}, { starved: [{ plot: 1, step: "a", item: "cindershade", cells: 4.9 }, { plot: 2, step: "a", item: "cindershade", cells: 4.9 }] }))).toBeNull();
+    // Ties go to the lower plot; a summed plot qualifies.
+    expect(cantStartOf(result({}, { starved: [{ plot: 3, step: "a", item: "x", cells: 3 }, { plot: 3, step: "b", item: "y", cells: 3 }, { plot: 2, step: "a", item: "z", cells: 6 }] }))).toEqual({ plot: 2, cells: 6, items: ["z"] });
+    // Malformed stored values fall back to the rule.
+    expect(cantStartOf({ produced: {}, starved: [], cantStart: { plot: "1" } as unknown as RunResult["cantStart"] })).toBeNull();
+  });
+
+  it("texts: the reason line and the detail note", () => {
+    const c = { plot: 1, cells: 65, items: ["zombud", "puffercloud"] };
+    expect(cantStartText(c)).toBe("Never grows Zombud, Puffercloud: 65 cells empty on plot 1");
+    expect(cantStartReason(c)).toBe("it places Zombud and Puffercloud but never grows them (65 cells empty on plot 1)");
+    expect(cantStartReason({ plot: 1, cells: 28.8, items: ["magic_jellybean"] })).toBe("it places Magic Jellybean but never grows it (28.8 cells empty on plot 1)");
+    expect(cantStartText({ plot: 1, cells: 21, items: ["cindershade", "magic_jellybean", "zombud"] })).toBe("Never grows Cindershade, Magic Jellybean, Zombud: 21 cells empty on plot 1");
+  });
+
+  it("'from nothing' ranking: blocked rows take no place, no rank and don't set the bar; other boards keep them", () => {
+    const blocked = result({ wheat: 1e6 }, { starved: devourerStarved });
+    const entries = [entry("big", "Devourer", blocked, { borrowPoint: { produced: { wheat: 3e6 }, bought: {}, consumed: {} } }), entry("a", "A", result({ wheat: 2000 })), entry("b", "B", result({ wheat: 1000 }))];
+    const rows = rankEntries(data, entries, ironman);
+    expect(rows.map((r) => [r.entry.id, r.rank])).toEqual([
+      ["a", 1],
+      ["b", 2],
+      ["big", 0],
+    ]);
+    expect(rows[2].cantStart?.items).toEqual(["puffercloud", "zombud"]);
+    expect(rows[2].borrowPerDay).toBeCloseTo(3e6 * data.crops.wheat.sellPrice);
+    expect(maxProfit(rows)).toBeCloseTo(2000 * data.crops.wheat.sellPrice);
+    const { ranked, cantStart } = splitRanked(sortRows(rows, "profit"));
+    expect(ranked.map((r) => r.entry.id)).toEqual(["a", "b"]);
+    expect(cantStart.map((r) => r.entry.id)).toEqual(["big"]);
+    // Filters apply to them like any row.
+    expect(rows.filter((r) => matchesFilters(r, { ...DEFAULT_FILTERS, query: "devourer" }, "ironman_strict")).map((r) => r.entry.id)).toEqual(["big"]);
+    // On the other boards nothing is set apart.
+    const borrow = rankEntries(data, entries, { ...ironman, board: "ironman_borrow" });
+    expect(borrow.map((r) => r.rank)).toEqual([1, 2, 3]);
+    expect(borrow.every((r) => r.cantStart === null)).toBe(true);
+  });
+
+  it("the detail page's from-nothing number carries cantStart", () => {
+    const cells: FlowCell[] = [
+      { runKind: "strict", board: "ironman_strict", tier: "max", every: 1, median: result({ devourer: 3 }, { starved: devourerStarved }), spread: null, seeds: 5, engineVersion: "x" },
+      { runKind: "borrow", board: "ironman_borrow", tier: "max", every: 1, median: result({ wheat: 9 }), spread: null, seeds: 5, engineVersion: "x" },
+    ];
+    const n = boardNumbers(data, cells, "max", 1, { quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false });
+    expect(n[0].cantStart).toEqual({ plot: 1, cells: 65, items: ["puffercloud", "zombud"] });
+    expect(n[1].cantStart).toBeNull();
+  });
+
+  it("'with starting items' in words: to start, then per day (rounded up)", () => {
+    expect(kitSummaryText({ startItems: { zombud: 164.2, puffercloud: 115.6 }, upkeep: { zombud: 92.4, puffercloud: 90.2 } })).toBe("Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day.");
+    expect(kitSummaryText({ startItems: { witherbloom: 26 }, upkeep: {} })).toBe("Needs 26 Witherbloom to start, nothing after that.");
+    expect(kitSummaryText({})).toBe("Needs nothing to start, and nothing per day.");
+    expect(kitSummaryText({ startItems: {}, upkeep: { cindershade: 0.04 } })).toBe("Needs nothing to start, then 0.04 Cindershade per day.");
+    expect(startItemsText({ zombud: 164.2, puffercloud: 115.6 })).toBe("281 items: 165 Zombud, 116 Puffercloud");
+    expect(startItemsTotal({ zombud: 164.2, puffercloud: 115.6 })).toBe(281);
+    expect(usedUpLines({ zombud: 97.3, puffercloud: 10.4 })).toEqual([
+      { item: "zombud", units: 98 },
+      { item: "puffercloud", units: 11 },
+    ]);
   });
 });

@@ -33,16 +33,16 @@ export const SlowingBadge: React.FC = () => (
   </Badge>
 );
 
-/** "Upkeep: None" in emerald, else the items per day in amber. */
-export const UpkeepValue: React.FC<{ upkeep: unknown; className?: string }> = ({ upkeep, className = "" }) => {
+/** The upkeep: "None" (or `noneText`) in emerald, else the items per day in amber. */
+export const UpkeepValue: React.FC<{ upkeep: unknown; className?: string; noneText?: string }> = ({ upkeep, className = "", noneText = "None" }) => {
   const text = upkeepText(upkeep);
   const none = text === "None";
   return (
     <span
       className={`${none ? "text-emerald-300" : "text-amber-300"} ${className}`}
-      title={none ? "Gives back everything it borrows" : "Borrowed items it never gives back: you must supply these every day"}
+      title={none ? "Gives back everything it borrows: nothing to supply after the start" : "It uses these up faster than it grows them: you supply them every day, on top of the starting items"}
     >
-      {text}
+      {none ? noneText : text}
     </span>
   );
 };

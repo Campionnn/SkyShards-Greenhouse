@@ -5,7 +5,7 @@ import { RARE_CROP_ITEMS } from "../simulator/economy/rareCrops";
 import { formatCoins, nameOf } from "../components/simulator/format";
 import type { AuthUser, CurvePoint, FlowAuthor, FlowCell, FlowListEntry, Spread, SpreadInfo, Timestamp } from "./api";
 import { buyPrice, scaleResult, sellPrice, slack, valueResult, yieldStatsDiffer, type Quotes, type YieldStats } from "./pricing";
-import { cellResult, spreadRatio, type RunResult, type StarvedCells } from "./result";
+import { CANT_START_CELLS, cellResult, spreadRatio, type RunResult, type StarvedCells } from "./result";
 import { BOARD_RUN_KIND, boardFrom, RUN_KIND_BOARD, runKindFrom, type Board, type RunKind } from "./rules";
 import { EVERY, type TierId } from "./tiers";
 
@@ -165,6 +165,13 @@ export interface FlowRow {
   steadyPerDay: number | null;
   /** Lower-case text the search box matches: title, author, excerpt and item ids / names. */
   search: string;
+  /**
+   * "From nothing" board: the flow never gets going from an empty inventory (`cantStartOf`). Such
+   * rows are not ranked (`rank` 0): the page lists them apart.
+   */
+  cantStart: CantStart | null;
+  /** "From nothing" board: the same tier / every on "with starting items" (`borrowPoint`), priced; null when unknown. */
+  borrowPerDay: number | null;
 }
 
 export type SortKey = "profit" | "perEffort" | "effort" | "forgiving" | "steady" | "upkeep" | "liked" | "liked30d" | "newest";
@@ -312,6 +319,8 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
       startItemsCount: 0,
       steadyPerDay: null,
       search,
+      cantStart: null,
+      borrowPerDay: null,
     };
   const cell = entry.cell;
   const { result, scaled } = viewerResult(data, cell, s);
@@ -321,6 +330,8 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
   const borrow = s.board === "ironman_strict" && entry.borrowPoint && typeof entry.borrowPoint === "object" ? pricePoint(data, entry.borrowPoint, { ...s, board: "ironman_borrow" }) : null;
   return {
     ...base,
+    cantStart: s.board === "ironman_strict" ? cantStartOf(cell) : null,
+    borrowPerDay: borrow,
     sources: earningItems(data, result.bySource, s.board, quotes, pricing),
     kit: borrow === null ? null : kitGain(v.profitPerDay, borrow),
     stall: stallInfo(cell.starved),
@@ -344,7 +355,8 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
 
 /**
  * Standard competition ranks ("1, 2, 2, 4") over rows already sorted best first; rows without a
- * value share the last rank after every valued one.
+ * value share the last rank after every valued one. (`rankEntries` gives rows that can't start
+ * from nothing rank 0 instead.)
  */
 export function rank<T extends { profitPerDay: number | null }>(sorted: readonly T[]): (T & { rank: number })[] {
   let last: number | null | undefined;
@@ -359,7 +371,8 @@ export function rank<T extends { profitPerDay: number | null }>(sorted: readonly
 
 /**
  * Rows ranked by profit per day, best first (unverified entries last, by title). The rank is always
- * the profit rank; `sortRows` reorders for other views without changing it.
+ * the profit rank; `sortRows` reorders for other views without changing it. On "from nothing",
+ * rows that can't start (`cantStart`) take no place: they come last with rank 0 (`splitRanked`).
  */
 export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s: ViewSettings, every = 1): FlowRow[] {
   const rows = entries.map((e) => flowRow(data, e, s, every));
@@ -369,7 +382,13 @@ export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s
     if (b.profitPerDay === null) return -1;
     return b.profitPerDay - a.profitPerDay || a.entry.title.localeCompare(b.entry.title);
   });
-  return rank(rows);
+  const blocked = rows.filter((r) => r.cantStart).map((r) => ({ ...r, rank: 0 }));
+  return [...rank(rows.filter((r) => !r.cantStart)), ...blocked];
+}
+
+/** Ranked rows and the ones that can't start from nothing (rank 0), each in the given order. */
+export function splitRanked<T extends { cantStart: CantStart | null }>(rows: readonly T[]): { ranked: T[]; cantStart: T[] } {
+  return { ranked: rows.filter((r) => !r.cantStart), cantStart: rows.filter((r) => !!r.cantStart) };
 }
 
 /** Missing values always sort last, whichever way the key goes. */
@@ -413,9 +432,9 @@ export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
   }
 }
 
-/** The largest profit in a set of rows (for the relative bars). */
+/** The largest profit in a set of rows (for the relative bars); rows that can't start from nothing don't count. */
 export function maxProfit(rows: readonly FlowRow[]): number {
-  return rows.reduce((m, r) => Math.max(m, r.profitPerDay ?? 0), 0);
+  return rows.reduce((m, r) => (r.cantStart ? m : Math.max(m, r.profitPerDay ?? 0)), 0);
 }
 
 /**
@@ -533,6 +552,67 @@ export function stallInfo(starved: unknown): StallInfo | null {
   return best;
 }
 
+/** A strict run that never got going: on `plot`, `cells` layout cells sat empty for `items` it never grows. */
+export interface CantStart {
+  plot: number;
+  cells: number;
+  items: ItemId[];
+}
+
+/**
+ * Whether a "from nothing" cell never got going. The stored `cantStart` wins (cells inherit it from
+ * their median seed); older cells don't have it, so it is derived with the verifier's rule from
+ * `starved`: per plot, the cells empty for items the cell never produced, at least
+ * CANT_START_CELLS, the worst plot (ties: the lower plot). Only `starved`'s top 8 entries are
+ * stored, so the derived figure can be a little lower than the verifier's.
+ */
+export function cantStartOf(cell: Pick<RunResult, "cantStart" | "starved" | "produced"> | null | undefined): CantStart | null {
+  if (!cell) return null;
+  const stored = cell.cantStart;
+  if (isRecord(stored) && finite(stored.plot) && finite(stored.cells) && Array.isArray(stored.items)) {
+    const items = stored.items.filter((x): x is ItemId => typeof x === "string");
+    return { plot: stored.plot, cells: stored.cells, items };
+  }
+  const produced = isRecord(cell.produced) ? cell.produced : {};
+  const byPlot = new Map<number, { cells: number; items: Set<ItemId> }>();
+  for (const e of starvedList(cell.starved)) {
+    if ((produced[e.item] ?? 0) > 0) continue;
+    const p = byPlot.get(e.plot) ?? { cells: 0, items: new Set<ItemId>() };
+    p.cells += e.cells;
+    p.items.add(e.item);
+    byPlot.set(e.plot, p);
+  }
+  let worst: CantStart | null = null;
+  for (const [plot, p] of byPlot) {
+    if (p.cells >= CANT_START_CELLS && (!worst || p.cells > worst.cells || (p.cells === worst.cells && plot < worst.plot))) worst = { plot, cells: Math.round(p.cells * 1000) / 1000, items: [...p.items].sort() };
+  }
+  return worst;
+}
+
+/** "Zombud, Puffercloud" / "Zombud and Puffercloud" (prose). */
+function itemList(items: readonly ItemId[], prose = false): string {
+  const names = items.map(nameOf);
+  if (!prose || names.length < 2) return names.join(", ");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** "65 cells", "28.8 cells", "1 cell" (one decimal under 100). */
+function cellsText(n: number): string {
+  const v = n >= 100 ? Math.round(n).toLocaleString("en-US") : n >= 1 ? n.toFixed(1).replace(/\.0$/, "") : String(Number(n.toPrecision(1)));
+  return `${v} cell${v === "1" ? "" : "s"}`;
+}
+
+/** The ranking's reason line: "Never grows Zombud, Puffercloud: 65 cells empty on plot 1". */
+export function cantStartText(c: CantStart): string {
+  return `Never grows ${itemList(c.items) || "an item it places"}: ${cellsText(c.cells)} empty on plot ${c.plot}`;
+}
+
+/** The detail page's note: "it places Zombud and Puffercloud but never grows them (65 cells empty on plot 1)". */
+export function cantStartReason(c: CantStart): string {
+  const one = c.items.length === 1;
+  return `it places ${itemList(c.items, true) || "items"} but never grows ${one ? "it" : "them"} (${cellsText(c.cells)} empty on plot ${c.plot})`;
+}
+
 /** How a step is named in messages ("step 2 (All-in Aloe)" with the payload, else its id). */
 export type StepNamer = (plot: number, stepId: string) => string;
 /** Without the flow's labels (the ranking): the simulator's ids read as is ("step-2"), others get a "step" prefix. */
@@ -563,6 +643,25 @@ export function upkeepText(upkeep: unknown): string {
   const shown = lines.slice(0, 3).map((l) => `${countUp(l.perDay)} ${nameOf(l.item)}`);
   if (lines.length > 3) shown.push(`${lines.length - 3} more`);
   return `${shown.join(" + ")} /day`;
+}
+
+/**
+ * "With starting items" in one line: "Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud +
+ * 91 Puffercloud per day." (each rounded up; at most three items per part, then "+ N more").
+ * "Needs nothing to start" / "nothing after that" for the empty parts.
+ */
+export function kitSummaryText(r: Pick<RunResult, "startItems" | "upkeep">): string {
+  const start = positiveEntries(r.startItems);
+  const daily = upkeepLines(r.upkeep);
+  const startPart = start.length
+    ? `Needs ${start.slice(0, 3).map(([item, n]) => `${countUp(n)} ${nameOf(item)}`).join(", ")}${start.length > 3 ? ` + ${start.length - 3} more` : ""} to start`
+    : "Needs nothing to start";
+  const dailyPart = daily.length
+    ? `then ${daily.slice(0, 3).map((l) => `${countUp(l.perDay)} ${nameOf(l.item)}`).join(" + ")}${daily.length > 3 ? ` + ${daily.length - 3} more` : ""} per day`
+    : start.length
+      ? "nothing after that"
+      : "and nothing per day";
+  return `${startPart}, ${dailyPart}.`;
 }
 
 /** "54 items: 41 Duskbloom, 7 Shadevine, 6 Dustgrain" (rounded up), "None" when it needs nothing. */
@@ -753,6 +852,8 @@ export interface LocalKindSummary {
   profitPerDay: number | null;
   /** best / median over the seeds' window values (the outlier check). */
   ratio: number | null;
+  /** "From nothing": the cell never got going (the server keeps it off that board's ranking). */
+  cantStart: CantStart | null;
 }
 
 /** A local test of one run kind, summarised the way the server builds a cell (`cellResult`, `spreadRatio`). */
@@ -764,7 +865,7 @@ export function localKindSummary(data: GameData, seeds: readonly (LocalSeed | un
   const complete = results.length === seeds.length && seeds.length > 0;
   const cell = complete ? cellResult(results, value) : null;
   const ratio = complete ? spreadRatio(results.map(value)) : null;
-  return { done: finished.length, total: seeds.length, failed, cell, profitPerDay: cell ? value(cell) : null, ratio };
+  return { done: finished.length, total: seeds.length, failed, cell, profitPerDay: cell ? value(cell) : null, ratio, cantStart: cell && board === "ironman_strict" ? cantStartOf(cell) : null };
 }
 
 // ---- Detail page helpers ----------------------------------------------------------------------
@@ -818,16 +919,25 @@ export interface BoardNumber {
   boughtPerDay: number;
   buildCost: number;
   slowing: boolean;
+  /** "From nothing" only: the flow never got going (the tile shows "Can't start" instead of coins). */
+  cantStart: CantStart | null;
 }
 
 /** The detail page's three numbers: each board's cell at `tier` (else max) and `every`, priced for the viewer. */
 export function boardNumbers(data: GameData, cells: readonly FlowCell[], tier: TierId, every: number, s: Omit<ViewSettings, "board" | "now">): BoardNumber[] {
   return BOARDS_IN_ORDER.map((board) => {
     const cell = findCell(cells, board, tier, every) ?? findCell(cells, board, "max", every);
-    if (!cell) return { board, profitPerDay: null, boughtPerDay: 0, buildCost: 0, slowing: false };
+    if (!cell) return { board, profitPerDay: null, boughtPerDay: 0, buildCost: 0, slowing: false, cantStart: null };
     const { result } = viewerResult(data, cell.median, s);
     const v = valueResult(data, result, board, board === "normal" ? s.quotes : {}, s.pricing);
-    return { board, profitPerDay: v.profitPerDay, boughtPerDay: v.boughtPerDay, buildCost: v.buildCost, slowing: cell.median.slowing === true };
+    return {
+      board,
+      profitPerDay: v.profitPerDay,
+      boughtPerDay: v.boughtPerDay,
+      buildCost: v.buildCost,
+      slowing: cell.median.slowing === true,
+      cantStart: board === "ironman_strict" ? cantStartOf(cell.median) : null,
+    };
   });
 }
 

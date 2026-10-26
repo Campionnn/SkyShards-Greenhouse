@@ -61,9 +61,12 @@ describe("normalizeDetail", () => {
           },
         },
         // A cell whose runKind and board disagree: the run kind wins.
-        { runKind: "strict", board: "normal", tier: "max", every: 2, median: { produced: {} } },
+        { runKind: "strict", board: "normal", tier: "max", every: 2, median: { produced: {}, cantStart: { plot: 1, cells: 65, items: ["puffercloud", "zombud", 7] } } },
+        { runKind: "strict", board: "ironman_strict", tier: "max", every: 3, median: { produced: {}, cantStart: { plot: "1", cells: 65, items: [] } } },
       ],
     } as unknown as FlowDetail);
+    expect(d.cells[1].median.cantStart).toEqual({ plot: 1, cells: 65, items: ["puffercloud", "zombud"] });
+    expect(d.cells[2].median.cantStart).toBeUndefined();
     const m = d.cells[0].median;
     expect(m.startItems).toEqual({ zombud: 41720.3 });
     expect(m.sessionOnly).toEqual(["blastberry"]);
@@ -98,12 +101,18 @@ describe("the mock matches the API's shapes", () => {
     const borrow = await mockList("ironman_borrow", "max", 1);
     expect(borrow.entries.every((e) => e.borrowPoint === undefined)).toBe(true);
     const devourer = borrow.entries.find((e) => e.id === "mockDevr0007")!;
-    expect(devourer.cell!.upkeep).toEqual({ zombud: 91.3, puffercloud: 90.5 });
-    expect(Object.keys(devourer.cell!.startItems!)).toEqual(["zombud", "puffercloud"]);
+    expect(devourer.cell!.upkeep).toEqual({ zombud: 92.4, puffercloud: 90.2 });
+    expect(devourer.cell!.startItems).toEqual({ zombud: 164.2, puffercloud: 115.6 });
+    expect(devourer.cell!.usedUp).toEqual({ zombud: 97.3, puffercloud: 10.4 });
+    expect(devourer.cell!.cantStart).toBeUndefined();
+    expect(strict.entries.find((e) => e.id === "mockDevr0007")!.cell!.cantStart).toEqual({ plot: 1, cells: 65, items: ["puffercloud", "zombud"] });
     const aloe = strict.entries.find((e) => e.id === "mockAloe0002")!;
     expect(aloe.cell!.slowing).toBe(true);
+    expect(aloe.cell!.cantStart).toEqual({ plot: 1, cells: 28.8, items: ["magic_jellybean"] });
     expect(aloe.curve!["1"].slowing).toBe(true);
     expect(aloe.cell!.starved![0].cells).toBeGreaterThan(5);
+    // Healthy flows have no cantStart.
+    expect(strict.entries.filter((e) => e.cell?.cantStart).map((e) => e.id).sort()).toEqual(["mockAloe0002", "mockDevr0007"]);
     expect(strict.entries.some((e) => e.cell?.bySource?.chorus_fruit)).toBe(true);
     // Strict cells never carry the borrow-only fields.
     expect(strict.entries.every((e) => e.cell?.startItems === undefined)).toBe(true);

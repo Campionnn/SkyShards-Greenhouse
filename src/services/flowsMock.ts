@@ -42,6 +42,8 @@ interface KindSpec {
   /** The second-half rate as a share of the window rate (a ramp: > 1). */
   steady?: number;
   slowing?: boolean;
+  /** Strict runs that never got going (RunResult.cantStart, at every = 1; scaled like `starved`). */
+  cantStart?: { plot: number; cells: number; items: string[] };
 }
 
 interface Spec {
@@ -87,7 +89,8 @@ const SPECS: Spec[] = [
     description:
       "### How it works\nThree plots of **Chloronite** around a wheat core. Harvest every login, re-place *dead plants* when they decay.\n\n- Plot 1 and 2: Chloronite\n- Plot 3: Jellybean support\n\n> Works best online every 1-3 cycles.\n\n[links are not rendered](https://example.com)",
     kinds: {
-      strict: { factor: 0.97, complete: 220, steady: 1.04, starved: [{ plot: 3, step: "step-1", item: "magic_jellybean", cells: 0.6 }] },
+      // Short of Jellybeans on plot 3 (a Stall), but it grows them, so it starts from nothing.
+      strict: { factor: 0.97, complete: 220, steady: 1.04, starved: [{ plot: 3, step: "step-1", item: "magic_jellybean", cells: 5.6 }] },
       borrow: { factor: 1, startItems: { chloronite: 4, magic_jellybean: 6 }, complete: 0 },
     },
   },
@@ -110,16 +113,18 @@ const SPECS: Spec[] = [
     description: "Low effort. Log in whenever. The Jellybean step needs its 53 beans before it moves on.",
     steps: [[{ id: "s-aloe", label: "All-in Aloe" }, { id: "s-bean", label: "Jellybean" }], [{ id: "step-1" }]],
     kinds: {
+      // As submitted it deadlocks from nothing: the Jellybean step never fills, nothing grows a Jellybean.
       strict: {
         factor: 0,
         slowing: true,
         complete: null,
         steady: 0,
         starved: [
-          { plot: 1, step: "s-aloe", item: "magic_jellybean", cells: 34.2 },
+          { plot: 1, step: "s-aloe", item: "magic_jellybean", cells: 22.7 },
           { plot: 1, step: "s-bean", item: "magic_jellybean", cells: 6.1 },
           { plot: 2, step: "step-1", item: "all_in_aloe", cells: 1.4 },
         ],
+        cantStart: { plot: 1, cells: 28.8, items: ["magic_jellybean"] },
       },
       borrow: { factor: 1, startItems: { magic_jellybean: 141, all_in_aloe: 2, blastberry: 1 }, sessionOnly: ["blastberry"], complete: 0 },
     },
@@ -199,12 +204,23 @@ const SPECS: Spec[] = [
     effort: [140, 620],
     description: "Heavy: clear roots every login and rebuild the Zombud ring after each Devourer.",
     kinds: {
-      strict: { factor: 0.27, complete: 1400, steady: 1.1, starved: [{ plot: 1, step: "step-1", item: "zombud", cells: 2.2 }] },
+      // From nothing it never grows a Zombud or Puffercloud: 65 cells on plot 1 stay empty (it lives off Lonelily drops).
+      strict: {
+        factor: 0.27,
+        complete: null,
+        steady: 1,
+        starved: [
+          { plot: 1, step: "step-1", item: "zombud", cells: 38 },
+          { plot: 1, step: "step-1", item: "puffercloud", cells: 27 },
+        ],
+        cantStart: { plot: 1, cells: 65, items: ["puffercloud", "zombud"] },
+      },
+      // The starting items don't count the debt the daily upkeep adds (values fractional: shown rounded up).
       borrow: {
         factor: 1,
-        startItems: { zombud: 41720.3, puffercloud: 41377.6 },
-        usedUp: { zombud: 41720.3, puffercloud: 41377.6 },
-        upkeep: { zombud: 91.3, puffercloud: 90.5 },
+        startItems: { zombud: 164.2, puffercloud: 115.6 },
+        usedUp: { zombud: 97.3, puffercloud: 10.4 },
+        upkeep: { zombud: 92.4, puffercloud: 90.2 },
         complete: 0,
       },
     },
@@ -265,6 +281,7 @@ function resultFor(s: Spec, runKind: RunKind, tier: TierId, every: number, noise
     starved: (k.starved ?? []).map((e) => ({ ...e, cells: Math.round(e.cells * (1 + 0.1 * (every - 1)) * 1000) / 1000 })),
     ramp: { complete: k.complete === undefined ? 0 : k.complete, produced: scale(s.produced, tierF * everyF * noise * (k.steady ?? k.factor)), bought: normal ? scale(s.bought, tierF) : {} },
   };
+  if (k.cantStart) r.cantStart = { ...k.cantStart, cells: Math.round(k.cantStart.cells * (1 + 0.1 * (every - 1)) * 1000) / 1000 };
   if (runKind === "borrow") {
     r.startItems = k.startItems ?? {};
     r.sessionOnly = k.sessionOnly ?? [];

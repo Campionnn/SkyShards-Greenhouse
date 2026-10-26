@@ -115,6 +115,10 @@ export function normalizeResult(raw: unknown): RunResult | null {
     result.ramp = { complete: c === null ? null : isNum(c) ? c : null, produced: counts(src.ramp.produced) ?? {}, bought: counts(src.ramp.bought) ?? {} };
   }
   if (src.slowing === true) result.slowing = true;
+  const cs = src.cantStart as unknown;
+  if (isObj(cs) && isNum(cs.plot) && isNum(cs.cells) && Array.isArray(cs.items)) {
+    result.cantStart = { plot: cs.plot, cells: cs.cells, items: cs.items.filter((x): x is string => typeof x === "string") };
+  }
   return result;
 }
 

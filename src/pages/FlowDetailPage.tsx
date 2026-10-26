@@ -22,6 +22,7 @@ import {
   BADGE_TITLE,
   BOARD_LABEL,
   boardNumbers,
+  cantStartReason,
   DESCRIPTION_MAX,
   earningTargets,
   kitGain,
@@ -218,7 +219,9 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const stall = cell ? stallInfo(cell.median.starved) : null;
   const strictN = numbers.find((n) => n.board === "ironman_strict")?.profitPerDay ?? null;
   const borrowN = numbers.find((n) => n.board === "ironman_borrow")?.profitPerDay ?? null;
-  const kit = viewer.board === "ironman_strict" ? kitGain(strictN, borrowN) : null;
+  // "From nothing" when the flow never gets going there: no number, Kit or Stall; a note says why.
+  const blocked = viewer.board === "ironman_strict" ? (numbers.find((n) => n.board === "ironman_strict")?.cantStart ?? null) : null;
+  const kit = viewer.board === "ironman_strict" && !blocked ? kitGain(strictN, borrowN) : null;
   const needPanel = !!cell && viewer.board === "ironman_borrow";
   const emptyPanel = !!cell && starvedList(cell.median.starved).length > 0;
   const spread = cell ? spreadAt(cell.spread, viewer.every) : null;
@@ -308,8 +311,8 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                       </Badge>
                     )}
                     {kit && <KitChip kit={kit} />}
-                    {stall && <StallChip stall={stall} stepName={stepName} />}
-                    {cell?.median.slowing && <SlowingBadge />}
+                    {stall && !blocked && <StallChip stall={stall} stepName={stepName} />}
+                    {cell?.median.slowing && !blocked && <SlowingBadge />}
                   </div>
                   <h1 className="break-words text-2xl font-bold tracking-tight text-slate-50">{detail.title}</h1>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
@@ -323,26 +326,38 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                 </div>
 
                 <BoardNumbers numbers={numbers} current={viewer.board} onSelect={viewer.setBoard} tierLabel={TIER_LABEL[tierShown]} every={viewer.every} />
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-400">
-                  <span>
-                    coins / day · {TIER_LABEL[tierShown]} tier, online every {viewer.every}
-                    {shown?.scaled ? " · scaled to your yield (est.)" : ""}
-                  </span>
-                  {shown && (
-                    <span className="flex items-center gap-2">
-                      <EffortMeter avg={shown.result.effort.avg} peak={shown.result.effort.peak} />
-                      {forgiving !== null && <span>· {percent(forgiving)} forgiving</span>}
-                    </span>
-                  )}
-                </div>
-                {cell && <RampLine result={cell.median} steadyPerDay={steady} />}
-                {split && value && (
+                {blocked ? (
+                  <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200" data-testid="cant-start-note">
+                    <b className="font-medium">Can't start from nothing:</b> {cantStartReason(blocked)}. See{" "}
+                    <button type="button" className="text-emerald-300 underline-offset-2 hover:underline" onClick={() => viewer.setBoard("ironman_borrow")}>
+                      "With starting items"
+                    </button>{" "}
+                    for what it makes when you own them.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-400">
+                      <span>
+                        coins / day · {TIER_LABEL[tierShown]} tier, online every {viewer.every}
+                        {shown?.scaled ? " · scaled to your yield (est.)" : ""}
+                      </span>
+                      {shown && (
+                        <span className="flex items-center gap-2">
+                          <EffortMeter avg={shown.result.effort.avg} peak={shown.result.effort.peak} />
+                          {forgiving !== null && <span>· {percent(forgiving)} forgiving</span>}
+                        </span>
+                      )}
+                    </div>
+                    {cell && <RampLine result={cell.median} steadyPerDay={steady} />}
+                  </>
+                )}
+                {split && value && !blocked && (
                   <div className="max-w-lg">
                     <SplitBar split={split} fraction={1} className="h-2" />
                     <SplitLegend split={split} className="mt-1.5" />
                   </div>
                 )}
-                {earning.length > 0 && (
+                {earning.length > 0 && !blocked && (
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[11px] uppercase tracking-wide text-slate-500">Top earners</span>
                     {earning.slice(0, 3).map((t) => (

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowUpRight, Code2, FlaskConical, Layers, Package, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
+import { ArrowUpRight, Ban, ChevronDown, Code2, FlaskConical, Layers, Package, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
 import { KitChip, SlowingBadge, StallChip, UpkeepValue } from "../components/flows/FlowChips";
 import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { FilterBar, OwnedImportDialog } from "../components/flows/FlowFilters";
@@ -15,7 +15,9 @@ import type { FlowListResponse } from "../leaderboard/api";
 import type { Board } from "../leaderboard/rules";
 import {
   BADGE_TITLE,
+  cantStartText,
   DEFAULT_FILTERS,
+  kitSummaryText,
   earningOptions,
   matchesFilters,
   maxProfit,
@@ -25,6 +27,7 @@ import {
   SORT_BOARD,
   SORT_LABEL,
   sortRows,
+  splitRanked,
   startItemsText,
   suppliesText,
   withLikeCounts,
@@ -206,16 +209,20 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
         </div>
         <div className="space-y-0.5 text-[11px] tabular-nums text-slate-400 sm:mt-1.5">
           {borrow && entry.cell && (
-            <div data-testid="row-kit" className="space-y-0.5">
-              <div className="sm:flex sm:justify-end">
-                <span className="text-slate-500">Upkeep </span>
-                <UpkeepValue upkeep={entry.cell.upkeep} className="ml-1" />
-              </div>
-              <div className="sm:flex sm:justify-end" title={startItemsText(entry.cell.startItems)}>
+            <div data-testid="row-kit" className="space-y-0.5" title={kitSummaryText(entry.cell)}>
+              <div className="sm:flex sm:justify-end" title={`To start with: ${startItemsText(entry.cell.startItems)}`}>
                 <span className="inline-flex items-center gap-1">
                   <Package className="h-3 w-3 text-slate-500" />
-                  {row.startItemsCount === 0 ? <span className="text-emerald-300">No starting items</span> : <span className="text-slate-300">{row.startItemsCount.toLocaleString("en-US")} starting items</span>}
+                  {row.startItemsCount === 0 ? (
+                    <span className="text-emerald-300">Nothing to start with</span>
+                  ) : (
+                    <span className="text-slate-300">{row.startItemsCount.toLocaleString("en-US")} items to start</span>
+                  )}
                 </span>
+              </div>
+              <div className="sm:flex sm:justify-end">
+                <span className="text-slate-500">then </span>
+                <UpkeepValue upkeep={entry.cell.upkeep} className="ml-1" noneText="nothing per day" />
               </div>
             </div>
           )}
@@ -248,6 +255,79 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
         <FlaskConical className="h-4 w-4" />
       </button>
     </li>
+  );
+};
+
+/**
+ * A flow that can't start from nothing (the "from nothing" board's set-aside list): no rank, a
+ * muted line with why, and a way to its "with starting items" number.
+ */
+export const CantStartRow: React.FC<{ row: FlowRow }> = ({ row }) => {
+  const { entry } = row;
+  const startCode = entry.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
+  const thumbLayout = entry.thumb?.layout ?? (startCode ? { code: startCode } : null);
+  return (
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-2 py-2 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-3" data-testid="cant-start-row">
+      <div className="hidden opacity-60 sm:block" aria-hidden>
+        <LayoutBoxes layout={thumbLayout} cell={4} />
+      </div>
+      <div className="min-w-0 space-y-0.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <Link to={`/flows/${entry.id}?board=ironman_strict`} className="break-words font-medium text-slate-300 transition-colors hover:text-emerald-200">
+            {entry.title}
+          </Link>
+          <span className="text-slate-500">
+            <AuthorLabel author={entry.author} size={14} />
+          </span>
+        </div>
+        {row.cantStart && <p className="text-amber-200/80">{cantStartText(row.cantStart)}</p>}
+      </div>
+      <Link
+        to={`/flows/${entry.id}?board=ironman_borrow`}
+        className="whitespace-nowrap rounded-md border border-slate-600/40 px-2 py-1 text-right text-[11px] text-slate-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-200"
+        title="This flow on the 'with starting items' board"
+      >
+        {row.borrowPerDay !== null ? (
+          <>
+            <span className="tabular-nums text-amber-300">{formatCoins(row.borrowPerDay)}</span>
+            <span className="text-slate-500">/day with starting items</span>
+          </>
+        ) : (
+          "With starting items"
+        )}
+        <ArrowUpRight className="ml-0.5 inline h-3 w-3 opacity-70" />
+      </Link>
+    </li>
+  );
+};
+
+/** The "from nothing" board's collapsed list of flows that can't start there. */
+export const CantStartSection: React.FC<{ rows: FlowRow[]; onSwitch: () => void; defaultOpen?: boolean }> = ({ rows, onSwitch, defaultOpen = false }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="mt-2 rounded-lg border border-slate-700/50 bg-slate-900/30" data-testid="cant-start-section">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">
+        <Ban className="h-3.5 w-3.5 text-slate-500" />
+        <span className="font-medium text-slate-300">Can't start from nothing ({rows.length})</span>
+        <ChevronDown className={`ml-auto h-3.5 w-3.5 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="border-t border-slate-700/40">
+          <p className="px-3 pt-2 text-[11px] text-slate-500">
+            These flows place items they never grow, so a fresh ironman can't run them. They are ranked on{" "}
+            <button type="button" className="text-emerald-300 hover:underline" onClick={onSwitch}>
+              "with starting items"
+            </button>
+            .
+          </p>
+          <ul className="divide-y divide-slate-700/30 pb-1">
+            {rows.map((r) => (
+              <CantStartRow key={r.entry.id} row={r} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 };
 
@@ -353,6 +433,8 @@ export const FlowsPage: React.FC = () => {
     () => sortRows(ranked.filter((r) => matchesFilters(r, effective, board, owned?.items ?? null)), sortShown),
     [ranked, effective, board, owned, sortShown]
   );
+  // "From nothing": flows that can't start there take no place; they are listed apart (filtered and sorted the same way).
+  const { ranked: shownRanked, cantStart: shownBlocked } = useMemo(() => splitRanked(shown), [shown]);
   const top = maxProfit(ranked);
   const filtered = effective.query.trim() !== "" || JSON.stringify({ ...effective, query: "" }) !== JSON.stringify(DEFAULT_FILTERS);
 
@@ -512,8 +594,14 @@ export const FlowsPage: React.FC = () => {
               )}
             </div>
           ) : (
+            <>
+            {shownRanked.length === 0 && (
+              <p className="px-3 py-6 text-center text-xs text-slate-400">
+                {filtered ? "No flow that starts from nothing matches these filters." : "No flow on this board starts from nothing yet."}
+              </p>
+            )}
             <ol className="divide-y divide-slate-700/30" data-testid="flows-list">
-              {shown.map((row, i) => (
+              {shownRanked.map((row, i) => (
                 <FlowRowItem
                   key={row.entry.id}
                   row={row}
@@ -536,6 +624,8 @@ export const FlowsPage: React.FC = () => {
                 />
               ))}
             </ol>
+            {shownBlocked.length > 0 && <CantStartSection rows={shownBlocked} onSwitch={() => viewer.setBoard("ironman_borrow")} />}
+            </>
           )}
         </div>
       </section>

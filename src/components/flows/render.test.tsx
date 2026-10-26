@@ -10,8 +10,8 @@ import { normalizeDetail } from "../../services/flowsService";
 import { AuthCallbackPage } from "../../pages/AuthCallbackPage";
 import { FlowDetailView, ModerationBox } from "../../pages/FlowDetailPage";
 import { AdminCards, AdminTable, FlowsAdminPage } from "../../pages/FlowsAdminPage";
-import { FlowRowItem, FlowsPage } from "../../pages/FlowsPage";
-import { rankEntries, DEFAULT_FILTERS, type ViewSettings } from "../../leaderboard/view";
+import { CantStartSection, FlowRowItem, FlowsPage } from "../../pages/FlowsPage";
+import { DEFAULT_FILTERS, maxProfit, rankEntries, splitRanked, type ViewSettings } from "../../leaderboard/view";
 import type { Board } from "../../leaderboard/rules";
 import { DEFAULT_BAZAAR_PRICING } from "../../simulator";
 import { defaultGameData } from "../../simulator/data/default";
@@ -56,13 +56,19 @@ const wrap = (node: React.ReactNode, url = "/") =>
 const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 const DATA = defaultGameData();
 
-/** The ranked rows of the mock list on a board, rendered with the page's row component. */
+/**
+ * The mock list on a board, rendered like the page: ranked rows with the page's row component,
+ * then (from nothing) the open "Can't start" section. `ranked` / `blocked` are the split rows.
+ */
 async function renderRows(board: Board) {
   const list = await mockList(board, "max", 1);
   const s: ViewSettings = { board, quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false, now: Date.now() };
-  const rows = rankEntries(DATA, list.entries, s, 1);
+  const { ranked, cantStart } = splitRanked(rankEntries(DATA, list.entries, s, 1));
   const like = { liked: false, busy: false };
-  return text(wrap(<ol>{rows.map((r, i) => <FlowRowItem key={r.entry.id} row={r} top={rows[0].profitPerDay ?? 0} every={1} board={board} index={i} like={like} sort="profit" />)}</ol>));
+  const top = maxProfit(ranked);
+  const ranks = text(wrap(<ol>{ranked.map((r, i) => <FlowRowItem key={r.entry.id} row={r} top={top} every={1} board={board} index={i} like={like} sort="profit" />)}</ol>));
+  const section = cantStart.length ? text(wrap(<CantStartSection rows={cantStart} onSwitch={() => {}} defaultOpen />)) : "";
+  return { html: ranks + section, ranks, section, ranked, blocked: cantStart };
 }
 
 describe("leaderboard pages render", () => {
@@ -90,32 +96,49 @@ describe("leaderboard pages render", () => {
     expect(old).not.toContain("I own the starting items");
   });
 
-  it("ranking rows on 'from nothing': Kit chips (+% and 'needed'), Stall, Slowing", async () => {
-    const html = await renderRows("ironman_strict");
-    expect(html).toMatch(/Kit \+\d+%/);
-    expect(html).toContain("Kit needed");
-    expect(html).toContain("Makes nothing from scratch; with the starting items:");
-    expect(html).toContain(">Stall<");
+  it("ranking rows on 'from nothing': Kit +N% and Stall on ranked rows; flows that can't start are set apart", async () => {
+    const r = await renderRows("ironman_strict");
+    // 7 mock flows: Devourer and the aloe flow can't start from nothing; the other 5 are ranked 1-5.
+    expect(r.ranked.map((x) => x.rank)).toEqual([1, 2, 3, 4, 5]);
+    expect(r.blocked.map((x) => x.entry.id).sort()).toEqual(["mockAloe0002", "mockDevr0007"]);
+    expect(r.blocked.every((x) => x.rank === 0)).toBe(true);
+    expect(r.ranks).not.toContain("Devourer root farm");
+    expect(r.ranks).toMatch(/Kit \+\d+%/);
+    expect(r.ranks).toContain(">Stall<");
     // The ranking has no step labels: the step id names it.
-    expect(html).toContain("Plot 1, step s-aloe: 34 Magic Jellybean cells empty on average.");
-    expect(html).toContain(">Slowing<");
-    expect(html).not.toMatch(/Infinity|NaN/);
-    expect(html).not.toContain("starting items</span>");
+    expect(r.ranks).toContain("Plot 3, step-1: 5.6 Magic Jellybean cells empty on average.");
+    expect(r.html).not.toMatch(/Infinity|NaN/);
+    // The set-apart section: its count, the explanation, each row's reason and a way to the other board.
+    expect(r.section).toContain('data-testid="cant-start-section"');
+    expect(r.section).toContain("Can't start from nothing (2)");
+    expect(r.section).toContain("These flows place items they never grow, so a fresh ironman can't run them. They are ranked on");
+    expect(r.section).toContain("Never grows Puffercloud, Zombud: 65 cells empty on plot 1");
+    expect(r.section).toContain("Never grows Magic Jellybean: 28.8 cells empty on plot 1");
+    expect(r.section).toContain('href="/flows/mockDevr0007?board=ironman_borrow"');
+    expect(r.section).toContain("/day with starting items");
+    // No Kit or Stall chips there: the reason line replaces them.
+    expect(r.section).not.toMatch(/Kit |>Stall</);
   });
 
-  it("ranking rows on 'with starting items': upkeep and the starting-item count with the items as a tooltip", async () => {
-    const html = await renderRows("ironman_borrow");
+  it("ranking rows on 'with starting items': to start, then per day; nothing set apart", async () => {
+    const r = await renderRows("ironman_borrow");
+    const html = r.html;
+    expect(r.blocked).toHaveLength(0);
+    expect(r.ranked.map((x) => x.entry.id)).toContain("mockDevr0007");
     expect(html).toContain('data-testid="row-kit"');
-    expect(html).toContain("92 Zombud + 91 Puffercloud /day");
-    expect(html).toContain(">None<");
-    expect(html).toContain("83,099 starting items");
-    expect(html).toContain('title="83,099 items: 41,721 Zombud, 41,378 Puffercloud"');
-    expect(html).toContain("No starting items");
+    expect(html).toContain("281 items to start");
+    expect(html).toContain('title="To start with: 281 items: 165 Zombud, 116 Puffercloud"');
+    expect(html).toContain('title="Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day."');
+    expect(html).toContain("93 Zombud + 91 Puffercloud /day");
+    expect(html).toContain("nothing per day");
+    expect(html).toContain("Nothing to start with");
     expect(html).not.toContain("Kit ");
+    expect(html).not.toContain("Can't start");
   });
 
   it("ranking rows on Normal: no ironman parts; links keep the board", async () => {
-    const html = await renderRows("normal");
+    const { html, blocked } = await renderRows("normal");
+    expect(blocked).toHaveLength(0);
     expect(html).toContain("coins / day");
     expect(html).not.toContain('data-testid="row-kit"');
     expect(html).not.toMatch(/Kit |>Stall</);
@@ -161,21 +184,47 @@ describe("leaderboard pages render", () => {
     const devourer = normalizeDetail((await mockDetail("mockDevr0007"))!);
     const html = text(wrap(<FlowDetailView detail={devourer} onChange={() => {}} onReload={() => {}} />, "/flows/mockDevr0007?board=ironman_borrow"));
     expect(html).toContain('data-testid="what-you-need"');
-    for (const s of ["What you need", "needs 41,721", "bring 52,152", "uses up", "Zombud once", "92</span> Zombud / day", "Upkeep per day"]) expect(html).toContain(s);
-    // The current board is the highlighted number.
+    for (const s of [
+      "What you need",
+      "Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day.",
+      "To start with",
+      "needs 165",
+      "bring 207",
+      "uses up",
+      "98</span> Zombud once",
+      "Then per day (upkeep)",
+      "93</span> Zombud / day",
+    ]) expect(html).toContain(s);
+    // The current board is the highlighted number; "from nothing" can't start.
     expect(html).toMatch(/aria-selected="true"[^>]*>.{0,400}Ironman · with starting items/s);
+    expect(html).toContain('data-testid="board-cant-start"');
+    expect(html).not.toContain('data-testid="cant-start-note"');
     const aloe = normalizeDetail((await mockDetail("mockAloe0002"))!);
     const a = text(wrap(<FlowDetailView detail={aloe} onChange={() => {}} onReload={() => {}} />, "/flows/mockAloe0002?board=ironman_borrow"));
     expect(a).toContain("returned each session");
     expect(a).toContain("None: it gives back everything it borrows.");
   });
 
-  it("/flows/:id on from nothing: Kit needed, Stall, Slowing, the empty-cells panel and an honest ramp line", async () => {
-    const aloe = normalizeDetail((await mockDetail("mockAloe0002"))!);
-    const html = text(wrap(<FlowDetailView detail={aloe} onChange={() => {}} onReload={() => {}} />, "/flows/mockAloe0002?board=ironman"));
-    for (const s of ["Kit needed", ">Stall<", ">Slowing<", "Empty layout cells", "Plot 1, step 1 (All-in Aloe): 34 Magic Jellybean cells empty on average", "Layout never complete (some cells stay empty)"]) expect(html).toContain(s);
-    expect(html).toContain('data-testid="empty-cells"');
+  it("/flows/:id on from nothing for a flow that can't start: the 'Can't start' tile and note, the empty cells kept", async () => {
+    const devourer = normalizeDetail((await mockDetail("mockDevr0007"))!);
+    const html = text(wrap(<FlowDetailView detail={devourer} onChange={() => {}} onReload={() => {}} />, "/flows/mockDevr0007?board=ironman"));
+    expect(html).toContain('data-testid="board-cant-start"');
+    expect(html).toMatch(/data-testid="board-cant-start"[^>]*>.{0,300}Can't start.{0,200}Never grows Puffercloud, Zombud: 65 cells empty on plot 1/s);
+    expect(html).toContain('data-testid="cant-start-note"');
+    expect(html).toContain("Can't start from nothing:</b> it places Puffercloud and Zombud but never grows them (65 cells empty on plot 1). See");
+    expect(html).not.toContain("Top earners");
+    expect(html).toContain("for what it makes when you own them.");
+    // The ranking-related bits are replaced: no Kit / Stall / Slowing chips, ramp line or forgiving.
+    expect(html).not.toMatch(/Kit needed|Kit \+|>Stall<|>Slowing<|Layout complete|Layout never/);
+    // The empty-cells panel stays (author feedback).
+    for (const s of ["Empty layout cells", 'data-testid="empty-cells"', "Plot 1, step 1: 38 Zombud cells empty on average", "Plot 1, step 1: 27 Puffercloud cells empty on average"]) expect(html).toContain(s);
     expect(html).not.toContain('data-testid="what-you-need"');
+    // A flow that starts keeps its number and chips: Stall on the Chloronite engine.
+    const chloro = normalizeDetail((await mockDetail("mockChloro01"))!);
+    const c = text(wrap(<FlowDetailView detail={chloro} onChange={() => {}} onReload={() => {}} />, "/flows/mockChloro01?board=ironman_strict"));
+    expect(c).not.toContain("Can't start");
+    expect(c).toContain(">Stall<");
+    expect(c).toContain("Plot 3, step 1: 5.6 Magic Jellybean cells empty on average");
     // A flow with no empty cells hides the panel.
     const veil = normalizeDetail((await mockDetail("mockVeil0008"))!);
     expect(text(wrap(<FlowDetailView detail={veil} onChange={() => {}} onReload={() => {}} />))).not.toContain("Empty layout cells");
@@ -322,13 +371,19 @@ describe("submit dialog renders", () => {
       "A failed seed makes the server reject the submission.",
       "2/3 seeds",
       "Spread (best / median): 1.00×",
-      "83,099 items: 41,721 Zombud, 41,378 Puffercloud",
-      "92 Zombud + 91 Puffercloud /day",
-      "Used up once: 41,721 Zombud, 41,378 Puffercloud",
-      "Plot 1, step-1: 2.2 Zombud cells empty on average",
+      // The strict devourer run can't start: said instead of only the number.
+      'data-testid="test-cant-start"',
+      "Can't start from nothing: never grows Puffercloud, Zombud: 65 cells empty on plot 1.",
+      "Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day.",
+      "To start with: <span",
+      "281 items: 165 Zombud, 116 Puffercloud",
+      "93 Zombud + 91 Puffercloud /day",
+      "Used up once: 98 Zombud, 11 Puffercloud",
+      "Plot 1, step-1: 38 Zombud cells empty on average",
     ]) {
       expect(html).toContain(s);
     }
+    expect(html).toMatch(/data-testid="test-strict".{0,300}Can't start/s);
     expect(html).not.toMatch(/Infinity|NaN/);
   });
 });

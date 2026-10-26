@@ -7,7 +7,9 @@ import { applyRules, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, M
 import { nearestEvery } from "../../leaderboard/tiers";
 import { WALL_MS_BACKSTOP } from "../../leaderboard/verify";
 import {
+  cantStartText,
   DESCRIPTION_MAX,
+  kitSummaryText,
   localKindSummary,
   OUTLIER_RATIO,
   ratioText,
@@ -119,6 +121,10 @@ export const KindTestCard: React.FC<{ test: KindTest; summary: LocalKindSummary;
           <span className="text-[11px] text-slate-500 tabular-nums">
             {summary.done}/{summary.total} seeds
           </span>
+        ) : summary.cantStart ? (
+          <span className="text-sm font-semibold text-slate-400" title={summary.profitPerDay !== null ? `${formatCoins(summary.profitPerDay)} / day, but it isn't ranked on this board` : undefined}>
+            Can't start
+          </span>
         ) : summary.profitPerDay !== null ? (
           <span className={`text-sm font-semibold tabular-nums ${summary.profitPerDay < 0 ? "text-red-300" : "text-amber-300"}`}>
             {formatCoins(summary.profitPerDay)}
@@ -145,13 +151,20 @@ export const KindTestCard: React.FC<{ test: KindTest; summary: LocalKindSummary;
           {summary.ratio > OUTLIER_RATIO ? `: over ${OUTLIER_RATIO}×, the server would reject this as inconsistent across seeds.` : ""}
         </p>
       )}
+      {summary.cantStart && (
+        <p className="text-amber-200" data-testid="test-cant-start">
+          Can't start from nothing: {cantStartText(summary.cantStart).replace(/^Never/, "never")}. It is listed apart on the "from nothing" board and ranked on "with
+          starting items".
+        </p>
+      )}
       {cell && test.runKind === "borrow" && (
         <div className="space-y-0.5 text-slate-400">
+          <p className="text-slate-200">{kitSummaryText(cell)}</p>
           <p>
-            Starting items: <span className="text-slate-200">{startItemsText(cell.startItems)}</span>
+            To start with: <span className="text-slate-200">{startItemsText(cell.startItems)}</span>
           </p>
           <p>
-            Upkeep: <span className={upkeepText(cell.upkeep) === "None" ? "text-emerald-300" : "text-amber-300"}>{upkeepText(cell.upkeep)}</span>
+            Then per day: <span className={upkeepText(cell.upkeep) === "None" ? "text-emerald-300" : "text-amber-300"}>{upkeepText(cell.upkeep) === "None" ? "nothing" : upkeepText(cell.upkeep)}</span>
           </p>
           {used.length > 0 && <p>Used up once: {used.map((u) => `${u.units.toLocaleString("en-US")} ${nameOf(u.item)}`).join(", ")}</p>}
         </div>
