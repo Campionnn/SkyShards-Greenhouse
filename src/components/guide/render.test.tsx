@@ -29,7 +29,8 @@ const data = guideEnv.engine.data;
 const flow: FlowsFile = parseFlows(readFileSync("public/greenhouse/flows/rose-dragon.flows.json", "utf8"));
 const catalog = buildCatalog(flow, guideEnv.env.resolveLayout);
 const knobs = scriptKnobs(flow);
-const state = initialState(flow, defaultSettings(), { dead_plant: 250, fermento: 50 });
+// Enough Choconut + Ashwreath that Plot 1 goes to the (paid) Commons farm, not the free Choconut farm.
+const state = initialState(flow, defaultSettings(), { dead_plant: 250, fermento: 50, ashwreath: 60, choconut: 120 });
 const outcomes = decideLogin(flow, toInput(state), guideEnv);
 const noop = () => {};
 /** SSR text without React's <!-- --> separators and with entities decoded. */
