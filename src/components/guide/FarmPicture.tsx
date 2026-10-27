@@ -17,7 +17,6 @@ import { getGroundImagePath } from "../../types/greenhouse";
 import { calculateCropImageDimensions, getCellPixelPosition, getGridDimensions } from "../../utilities/gridCalculations";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage } from "../shared/CropImage";
-import { CompassFrame, COMPASS_RESERVE } from "../grid/CompassFrame";
 import { Portal } from "../ui/Portal";
 import { useOptionalOpenInfo } from "../../context/InfoModalContext";
 import type { Cell, PlotFacts } from "../../guide";
@@ -39,8 +38,6 @@ export interface FarmPictureProps {
   /** Cells placed from inventory this session: marked gold. */
   highlight?: Cell[];
   facts?: PlotFacts;
-  /** Draw N/E/S/W around the grid. */
-  compass?: boolean;
   /** Hover / tap a cell to see what it is. Off for thumbnails. */
   tooltips?: boolean;
   className?: string;
@@ -59,12 +56,11 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
   cellSize: fixed,
   highlight,
   facts,
-  compass = true,
   tooltips = true,
   className = "",
 }) => {
   const fitRef = useRef<HTMLDivElement>(null);
-  const fitted = useFitCellSize(fitRef, { max: maxCell, min: minCell, reserve: compass ? COMPASS_RESERVE : 0 });
+  const fitted = useFitCellSize(fitRef, { max: maxCell, min: minCell });
   const cellSize = fixed ?? fitted.cellSize;
   const gap = fixed ? (fixed < 16 ? 1 : 2) : fitted.gap;
   const { width, height } = getGridDimensions(cellSize, gap);
@@ -228,7 +224,7 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
 
   return (
     <div ref={fixed ? undefined : fitRef} className={`w-full min-w-0 max-w-full overflow-hidden ${className}`}>
-      {compass ? <CompassFrame className="mx-auto">{grid}</CompassFrame> : <div className="mx-auto w-fit">{grid}</div>}
+      <div className="mx-auto w-fit">{grid}</div>
       {tip && <CellTooltip {...tip} nameOf={nameOf} data={data} hint={openInfo ? (tip.pinned ? "Tap again for details." : "Click for details.") : undefined} />}
     </div>
   );

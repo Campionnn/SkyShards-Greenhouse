@@ -26,7 +26,6 @@ import {
   MutationValidator,
 } from "../designer";
 import { CropImage } from "../shared";
-import { COMPASS_RESERVE } from "../grid";
 import { Panel, SectionLabel, useToast } from "../ui";
 import { CheckboxField, IdSelect, NumberInput, SelectField } from "./controls";
 import { ALL_KIND_IDS, ALL_MUTATION_IDS, allItemIds, describeConditions, nameOf } from "./format";
@@ -61,7 +60,7 @@ const StepLayoutEditor: React.FC<{ layout: StepLayout; onChange: (layout: StepLa
   const [version, setVersion] = useState(0);
   const [picking, setPicking] = useState(false);
   const fitRef = useRef<HTMLDivElement>(null);
-  const { cellSize, gap } = useFitCellSize(fitRef, { max: 52, reserve: COMPASS_RESERVE });
+  const { cellSize, gap } = useFitCellSize(fitRef, { max: 52 });
   const code = layoutCode(layout);
   // Re-read the layout only when the editor is (re)mounted, not on every keystroke it produced.
   const initial = useMemo(() => layoutToPlacements(layout), [version]); // eslint-disable-line react-hooks/exhaustive-deps

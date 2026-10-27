@@ -84,12 +84,11 @@ export const Sparkline: React.FC<{ points: FrequencyPoint[]; selected: number; c
 // ---- Layout thumbnails ---------------------------------------------------------------------
 
 /** A layout drawn like the Guide's farm pictures (real crop and ground images), no tooltips. */
-export const LayoutThumb: React.FC<{ layout: StepLayout | null; cellSize?: number; className?: string; tooltips?: boolean; compass?: boolean; maxCell?: number }> = ({
+export const LayoutThumb: React.FC<{ layout: StepLayout | null; cellSize?: number; className?: string; tooltips?: boolean; maxCell?: number }> = ({
   layout,
   cellSize,
   className = "",
   tooltips = false,
-  compass = false,
   maxCell,
 }) => {
   const resolved = useMemo(() => {
@@ -106,7 +105,7 @@ export const LayoutThumb: React.FC<{ layout: StepLayout | null; cellSize?: numbe
   }
   return (
     <div className={`rounded-md bg-slate-950/70 p-1 ring-1 ring-slate-700/50 ${className}`}>
-      <FarmPicture layout={resolved} nameOf={nameOf} data={DATA} cellSize={cellSize} maxCell={maxCell} compass={compass} tooltips={tooltips} />
+      <FarmPicture layout={resolved} nameOf={nameOf} data={DATA} cellSize={cellSize} maxCell={maxCell} tooltips={tooltips} />
     </div>
   );
 };

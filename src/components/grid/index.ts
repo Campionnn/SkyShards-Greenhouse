@@ -15,7 +15,5 @@ export type { DragValidationOverlayProps } from "./DragValidationOverlay";
 export { InteractiveGrid } from "./InteractiveGrid";
 export type { InteractiveGridProps } from "./InteractiveGrid";
 
-export { CompassFrame, COMPASS_GUTTER, COMPASS_RESERVE } from "./CompassFrame";
-
 export { EffectTooltip } from "./EffectTooltip";
 export type { EffectTooltipProps } from "./EffectTooltip";

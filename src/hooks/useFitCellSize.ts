@@ -21,7 +21,7 @@ export function useFitCellSize(
     max?: number;
     min?: number;
     cells?: number;
-    /** Pixels of the container width taken by something beside the grid (e.g. a compass frame). */
+    /** Pixels of the container width taken by something beside the grid (e.g. padding or a side label). */
     reserve?: number;
   } = {}
 ): FitCellSize {

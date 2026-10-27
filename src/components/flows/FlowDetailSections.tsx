@@ -372,7 +372,7 @@ export const FlowWalkthrough: React.FC<{ detail: FlowDetail }> = ({ detail }) =>
                 </Badge>
               )}
             </header>
-            <LayoutThumb layout={step.layout} maxCell={30} tooltips compass className="w-full" />
+            <LayoutThumb layout={step.layout} maxCell={30} tooltips className="w-full" />
             {steps.length > 1 && (
               <div className="mt-2 flex flex-wrap gap-1" role="tablist" aria-label={`Plot ${p.id} steps`}>
                 {steps.map((s, i) => (

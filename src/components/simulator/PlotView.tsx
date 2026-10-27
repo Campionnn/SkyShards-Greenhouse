@@ -19,7 +19,6 @@ import { GRID_SIZE } from "../../constants";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { getCellPixelPosition, getGridDimensions } from "../../utilities";
 import { CropImage } from "../shared";
-import { CompassFrame, COMPASS_RESERVE } from "../grid";
 import { kindData, nameOf, plantIconOf } from "./format";
 import { hoveredCellOffset } from "./sanityFormat";
 import { PlotMarkLegend } from "./markers";
@@ -88,7 +87,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
   // The hovered cell, not the hovered thing: the card is re-derived from the current plot on every
   // render, so it follows the snapshot live (e.g. holding → to step) without the mouse moving.
   const [hoverCell, setHoverCell] = useState<{ row: number; col: number } | null>(null);
-  const { cellSize, gap } = useFitCellSize(fitRef, { max: maxCell, min: 16, reserve: COMPASS_RESERVE });
+  const { cellSize, gap } = useFitCellSize(fitRef, { max: maxCell, min: 16 });
   const { width, height } = getGridDimensions(cellSize, gap);
   const marks = useMemo(() => marksFrom(events), [events]);
   // Sanity Check results, memoised per cell for the current snapshot state.
@@ -253,8 +252,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
       </div>
 
       <div ref={fitRef} className="w-full">
-        <CompassFrame className="mx-auto">
-        <div className="relative select-none" style={{ width, height }} onMouseMove={trackHover} onMouseLeave={() => setHoverCell(null)}>
+        <div className="relative select-none mx-auto" style={{ width, height }} onMouseMove={trackHover} onMouseLeave={() => setHoverCell(null)}>
           {Array.from({ length: 100 }, (_, i) => {
             const r = Math.floor(i / 10);
             const c = i % 10;
@@ -410,7 +408,6 @@ export const PlotView: React.FC<PlotViewProps> = ({
             />
           )}
         </div>
-        </CompassFrame>
       </div>
 
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">

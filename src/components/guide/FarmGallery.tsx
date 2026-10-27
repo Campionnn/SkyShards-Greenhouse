@@ -33,7 +33,7 @@ export const FarmGallery: React.FC<{
                   selected ? "border-emerald-500/60 bg-emerald-500/10" : "border-slate-600/30 bg-slate-800/40 hover:border-slate-500/60 hover:bg-slate-800/70"
                 }`}
               >
-                <FarmPicture layout={farm.layout} nameOf={name} cellSize={13} compass={false} tooltips={false} />
+                <FarmPicture layout={farm.layout} nameOf={name} cellSize={13} tooltips={false} />
                 <span className="flex items-start gap-1 text-sm font-medium text-slate-100">
                   {selected && <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />}
                   {farm.name}

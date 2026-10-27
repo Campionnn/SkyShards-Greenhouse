@@ -10,7 +10,6 @@ import {
   MutationValidator,
   Panel,
 } from "../components";
-import { COMPASS_RESERVE } from "../components/grid";
 import { useToast } from "../components/ui/toastContext";
 import { useDesigner, useGreenhouseData } from "../context";
 import { useFitCellSize } from "../hooks";
@@ -29,7 +28,7 @@ export const DesignerPage: React.FC = () => {
   
   // Cells fit the available width; the grid never scrolls.
   const fitRef = useRef<HTMLDivElement>(null);
-  const gridSize = useFitCellSize(fitRef, { reserve: COMPASS_RESERVE });
+  const gridSize = useFitCellSize(fitRef);
 
   // Share-image export, called by the Playwright renderer via window.exportGrid.
   const exportGridForShare = useCallback(async (): Promise<string> => {
