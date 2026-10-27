@@ -45,6 +45,8 @@ const ONE_OF_EACH = Object.fromEntries(Object.entries(data.mutations).filter(([,
 const GOAL = { ...ONE_OF_EACH, ...LEGENDS };
 
 const SUPPLIES = { dead_plant: 250, fermento: 50 };
+/** Enough Choconut + Ashwreath that the free Choconut farm is not needed: Plot 1 goes to Commons. */
+const COMMONS_READY = { ...SUPPLIES, ashwreath: 60, choconut: 120 };
 const start = (inventory: Record<string, number> = SUPPLIES): GuideState => initialState(flow, defaultSettings(), inventory);
 const withFarms = (state: GuideState, farms: Record<number, string>): GuideState => Object.entries(farms).reduce((s, [id, farm]) => setFarm(s, Number(id), farm), state);
 
@@ -88,7 +90,7 @@ describe("the farm catalog", () => {
     const glasscorn = farmOf(catalog, 1, "glasscorn");
     expect(glasscorn.cost).toEqual(expect.arrayContaining([{ item: "startlevine", count: 6 }, { item: "chloronite", count: 6 }]));
     expect(glasscorn.products).toEqual([{ item: "glasscorn", count: 1 }]);
-    expect(farmOf(catalog, 1, "commons").cost).toEqual([{ item: "dead_plant", count: 7 }]);
+    expect(farmOf(catalog, 1, "commons").cost).toEqual([{ item: "dead_plant", count: 8 }]);
     for (const plotId of catalog.plots) {
       for (const farm of catalog.farms[plotId]) expect(farm.cost.some((c) => c.item === "fire")).toBe(false);
     }
@@ -112,15 +114,21 @@ describe("the farm catalog", () => {
 });
 
 describe("decideLogin", () => {
-  it("sends the starter stock to affordable farms and records exactly what it places", () => {
+  it("sends the starter stock to the free Choconut farm first", () => {
     const outcomes = decideLogin(flow, toInput(start()), guideEnv);
     expect(outcomes.map((o) => [o.plotId, o.from, o.to, o.action])).toEqual([
-      [1, "hub", "commons", "enter"],
+      [1, "hub", "choco", "enter"],
       [2, "hub", "lonelily", "enter"],
-      [3, "hub", "commons", "enter"],
+      [3, "hub", "choco", "enter"],
     ]);
-    expect(outcomes[0].spent).toEqual([{ item: "dead_plant", count: 7 }]);
-    expect(outcomes[0].placedCells.filter((c) => c.paid)).toHaveLength(7);
+    expect(outcomes[0].spent).toEqual([]);
+  });
+
+  it("sends stock to an affordable farm and records exactly what it places", () => {
+    const outcomes = decideLogin(flow, toInput(start(COMMONS_READY)), guideEnv);
+    expect(outcomes[0].to).toBe("commons");
+    expect(outcomes[0].spent).toEqual([{ item: "dead_plant", count: 8 }]);
+    expect(outcomes[0].placedCells.filter((c) => c.paid)).toHaveLength(8);
     expect(outcomes[0].placedCells.some((c) => c.kind === "fire" && !c.paid)).toBe(true);
   });
 
@@ -149,7 +157,7 @@ describe("decideLogin", () => {
   });
 
   it("keeps a working farm and says what it is waiting for", () => {
-    const outcomes = decideLogin(flow, toInput(withFarms(start(), { 1: "commons", 2: "uncommons", 3: "rares" })), guideEnv);
+    const outcomes = decideLogin(flow, toInput(withFarms(start(), { 1: "commons", 2: "cream", 3: "rares" })), guideEnv);
     for (const o of outcomes) {
       expect(o.action).toBe("stay");
       expect(o.why).toMatch(/^working /);
@@ -206,13 +214,13 @@ describe("decideLogin", () => {
 
 describe("trust-and-correct check-ins", () => {
   it("confirming moves the plot and takes off what it placed, and undo puts it back", () => {
-    const state = start();
+    const state = start(COMMONS_READY);
     const [plot1] = decideLogin(flow, toInput(state), guideEnv);
     const after = confirmPlot(state, plot1);
     expect(after.plots[1]).toMatchObject({ farm: "commons", acted: true });
-    expect(after.inventory.dead_plant).toBe(243);
+    expect(after.inventory.dead_plant).toBe(242);
     expect(after.memory.builtOnce).toEqual(plot1.builtOnce);
-    expect(after.confirmations[1].delta).toEqual({ dead_plant: -7 });
+    expect(after.confirmations[1].delta).toEqual({ dead_plant: -8 });
     // The undo record is plain data, so it survives a save and reload.
     const reloaded = restoreState(JSON.parse(JSON.stringify({ version: 3, ...after })), flow, catalog, defaultSettings())!;
     const undone = undoPlot(reloaded, 1);
@@ -226,7 +234,7 @@ describe("trust-and-correct check-ins", () => {
     const done = outcomes.reduce((s, o) => confirmPlot(s, o), state);
     expect(Object.values(done.plots).every((p) => p.acted)).toBe(true);
     const next = startNewCheckIn(done);
-    expect(next.plots).toEqual({ 1: { farm: "commons" }, 2: { farm: "lonelily" }, 3: { farm: "commons" } });
+    expect(next.plots).toEqual({ 1: { farm: "choco" }, 2: { farm: "lonelily" }, 3: { farm: "choco" } });
     expect(next.confirmations).toEqual({});
   });
 
@@ -384,7 +392,7 @@ describe("playtest fixes", () => {
     expect(farmOf(catalog, 3, "shellfruit")).toMatchObject({ name: "Shellfruit", detail: "place them · blast Turtlellini" });
     expect(farmOf(catalog, 2, "devourer").detail).toBe("keep inputs while growing");
     expect(farmOf(catalog, 1, "commons").detail).toBe("");
-    expect(farmOf(catalog, 1, "commons-choconut").detail).toBe("no Dead Plants or Fermento");
+    expect(farmOf(catalog, 1, "choco").detail).toBe("no Dead Plants or Fermento");
   });
 
   it("starts a new player with nothing owned", () => {
