@@ -3,7 +3,7 @@ import { newRunner } from "../flow/runner";
 import { ScenarioError, validateScenario } from "../flow/validate";
 import { seedRng } from "../rng";
 import { countUniqueCropGroups, cycleSeconds, effectiveUniqueCrops } from "../growth/clock";
-import { forcedEffectsOf, scenarioUsesScripts } from "../script/overrides";
+import { forcedEffectsOf, phaseDisabled, scenarioUsesScripts } from "../script/overrides";
 import { emptyScriptsState, ScriptRuntime } from "../script/runtime";
 import { newScratch, type Env, type TickScratch } from "./context";
 import { makeCycleCtx } from "./cycle";
@@ -11,6 +11,7 @@ import { convertAloeFragments, ledgerRow } from "./inventory";
 import { emptyMarket } from "./market";
 import { applyStepLayout } from "./placement";
 import { isDry } from "./plants";
+import { waterToMax } from "./player";
 import { zeroSummary } from "./summary";
 import type { PlotState, Scenario, SimulationState, TimedEvent } from "./state";
 
@@ -98,6 +99,20 @@ export function initState(env: Env, scenario: Scenario): { state: SimulationStat
     scripts.runTopLevel();
     scripts.callHook("onStart");
     scripts.save();
+  }
+
+  // The player who just built the starting layouts waters them before logging off, like `waterNew`
+  // does for a later step's layout; otherwise they would start at 0 water, drink below 0 on the first
+  // tick and roll `negativeWaterSkipChance` (about half of them a stage behind for good). After the
+  // scripts so `plot.setPolicy({ watering: "never" })` / `plot.disable("water")` at the start apply.
+  // Not counted as effort (building the setup isn't either). No RNG.
+  if (input.settings.playerActions !== false) {
+    for (const id of input.settings.config.plotOrder) {
+      const plot = state.plots.find((p) => p.id === id);
+      if (!plot || ctx.policiesFor(id).watering !== "toMax") continue;
+      if (state.scripts && phaseDisabled(state, id, "water")) continue;
+      waterToMax(plot);
+    }
   }
   return { state, events };
 }

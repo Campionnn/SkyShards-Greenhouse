@@ -285,19 +285,42 @@ describe("everything starts at 0 water", () => {
     expect(inject(t, 1, "wheat", 6, 6, "planted").water).toBe(0);
   });
 
-  it("layout plants start at 0: a placed item never drinks, a base crop drinks until the player waters it", () => {
+  it("unwatered layout plants start at 0: a placed item never drinks, a base crop drinks until the player waters it", () => {
     const sc = (activity: ActivitySchedule) =>
-      start(singlePlot(layout([["chloronite", 5, 5], ["wheat", 2, 2]]), { config: { waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 }, activity }), engine);
+      start(
+        singlePlot(layout([["chloronite", 5, 5], ["wheat", 2, 2]]), {
+          config: { waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 },
+          activity,
+          policies: { watering: "never" },
+        }),
+        engine
+      );
     const away = sc(NEVER_ACTIVE);
     expect(plantAt(away, 1, 5, 5)).toMatchObject({ origin: "placed", water: 0 });
     expect(plantAt(away, 1, 2, 2)).toMatchObject({ origin: "planted", water: 0 });
     const r = engine.run(away, 5).state;
     expect(plantAt(r, 1, 5, 5)!.water).toBe(0);
     expect(plantAt(r, 1, 2, 2)!.water).toBe(-100); // dried out after 5 cycles, never watered
-    // An online player waters everything to max at the first session.
-    const online = engine.run(sc(ONLINE), 1).state;
-    expect(plantAt(online, 1, 2, 2)!.water).toBe(100);
-    expect(plantAt(online, 1, 5, 5)!.water).toBe(100);
+  });
+
+  it("the player who builds the starting layout waters it to max (watering: toMax), even if never online again", () => {
+    const s = start(singlePlot(layout([["chloronite", 5, 5], ["wheat", 2, 2]]), { config: { waterLossMin: 20, waterLossMax: 20 }, activity: NEVER_ACTIVE }), engine);
+    expect(plantAt(s, 1, 5, 5)!.water).toBe(100);
+    expect(plantAt(s, 1, 2, 2)!.water).toBe(100);
+    expect(plantAt(engine.run(s, 3).state, 1, 2, 2)!.water).toBe(40);
+    // Not when the player never acts.
+    const off = singlePlot(layout([["wheat", 2, 2]]));
+    off.settings.playerActions = false;
+    expect(plantAt(start(off, engine), 1, 2, 2)!.water).toBe(0);
+  });
+
+  it("a starting layout grows in lockstep: no first-tick below-0 skip leaves half of it a stage behind", () => {
+    const roses: [string, number, number][] = [];
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) roses.push(["wild_rose", r, c]);
+    const s = start(singlePlot(layout(roses), { config: { negativeWaterSkipChance: 1 }, activity: ONLINE }), engine);
+    const r = engine.run(s, 4).state;
+    expect(new Set(r.plots[0].plants.map((p) => p.stage))).toEqual(new Set([4]));
+    expect(r.plots[0].plants.some((p) => p.skipNextGrowth)).toBe(false);
   });
 
   it("with watering: never a base crop is never raised above 0", () => {

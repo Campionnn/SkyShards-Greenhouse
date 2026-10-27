@@ -32,13 +32,18 @@ function decaysBeforeNextSession(plot: PlotState, p: PlantState, ctx: CycleCtx):
  */
 function water(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   if (ctx.policiesFor(plot.id).watering !== "toMax") return;
+  if (waterToMax(plot)) effortWater(ctx.state, scratch);
+}
+
+/** Water every plant on the plot to `MAX_WATER` (Soggybud can't be watered). True if any plant needed water. */
+export function waterToMax(plot: PlotState): boolean {
   let watered = false;
   for (const p of plot.plants) {
-    if (p.kindId === "soggybud") continue; // Soggybud can't be watered
+    if (p.kindId === "soggybud") continue;
     if (p.water < MAX_WATER) watered = true;
     p.water = MAX_WATER;
   }
-  if (watered) effortWater(ctx.state, scratch);
+  return watered;
 }
 
 /** Wake Snoozling, vacuum the Cheesebite rat, discharge Thunderling, feed Fleshtrap. */
