@@ -114,12 +114,12 @@ describe("the farm catalog", () => {
 });
 
 describe("decideLogin", () => {
-  it("sends the starter stock to the free Choconut farm first", () => {
+  it("starts one plot on the free Choconut farm and another on Commons", () => {
     const outcomes = decideLogin(flow, toInput(start()), guideEnv);
     expect(outcomes.map((o) => [o.plotId, o.from, o.to, o.action])).toEqual([
       [1, "hub", "choco", "enter"],
       [2, "hub", "lonelily", "enter"],
-      [3, "hub", "choco", "enter"],
+      [3, "hub", "commons", "enter"],
     ]);
     expect(outcomes[0].spent).toEqual([]);
   });
@@ -234,7 +234,7 @@ describe("trust-and-correct check-ins", () => {
     const done = outcomes.reduce((s, o) => confirmPlot(s, o), state);
     expect(Object.values(done.plots).every((p) => p.acted)).toBe(true);
     const next = startNewCheckIn(done);
-    expect(next.plots).toEqual({ 1: { farm: "choco" }, 2: { farm: "lonelily" }, 3: { farm: "choco" } });
+    expect(next.plots).toEqual({ 1: { farm: "choco" }, 2: { farm: "lonelily" }, 3: { farm: "commons" } });
     expect(next.confirmations).toEqual({});
   });
 
