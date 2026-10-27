@@ -271,10 +271,10 @@ describe("tips", () => {
 
 describe("playtest fixes", () => {
   it("assumes a Shellfruit farm's Blastberries primed by the next visit, so it pops instead of waiting forever", () => {
-    const state = withFarms(start({ ...SUPPLIES, turtlellini: 6, blastberry: 8 }), { 3: "shellfruit" });
+    const state = withFarms(start({ ...SUPPLIES, turtlellini: 9, blastberry: 8 }), { 3: "shellfruit" });
     const plot3 = decideLogin(flow, toInput(state), guideEnv).find((o) => o.plotId === 3)!;
     expect(plot3.why).not.toBe("waiting for the Blastberries to prime");
-    expect(plot3.harvested).toEqual([{ item: "shellfruit", count: 6 }]);
+    expect(plot3.harvested).toEqual([{ item: "shellfruit", count: 9 }]);
     expect(plot3.to).not.toBe("shellfruit");
   });
 
@@ -286,7 +286,7 @@ describe("playtest fixes", () => {
     expect(plot3.spent).toContainEqual({ item: "shellfruit", count: 6 });
     expect(plot3.selfFunded).toEqual([{ item: "shellfruit", count: 6 }]);
     const after = confirmPlot(state, plot3);
-    expect(after.inventory.shellfruit ?? 0).toBe(0); // harvested 6, placed 6: the player adds only extras
+    expect(after.inventory.shellfruit ?? 0).toBe(0); // the 6 placed came from the pop; the player adds the 3 extras
     expect(after.inventory.chorus_fruit).toBe(15 - 7);
     expect(undoPlot(after, 3).inventory).toEqual(state.inventory);
   });
