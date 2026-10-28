@@ -19,3 +19,6 @@ export type {
 } from "./useDesignerGridPlacement";
 export { useFitCellSize } from "./useFitCellSize";
 export type { FitCellSize } from "./useFitCellSize";
+export { usePlacementFocus, focusKey } from "./usePlacementFocus";
+export type { PlacementFocus, FocusVisual, FocusKind, FocusItemProps } from "./usePlacementFocus";
+export { useTargetDisplay, useInputsVisible } from "./useTargetDisplay";

@@ -6,6 +6,8 @@ import { getRarityTextColor } from "../../utilities";
 import { useGreenhouseData } from "../../context";
 import type { SolveResponse } from "../../types/greenhouse";
 import type { SolveErrorInfo } from "../../services";
+import { focusKey, type PlacementFocus } from "../../hooks/usePlacementFocus";
+import { focusItemClass } from "../grid/placementStyles";
 import {
   RESULT_STATUS_INFO,
   TONE_BADGE,
@@ -202,8 +204,11 @@ export const ResultSummary: React.FC<{ result: SolveResponse; meta: SolveRunMeta
 // Mutations in the layout
 // ---------------------------------------------------------------------------
 
-/** Count per mutation with its share of the score. Fixed-count targets are hard constraints, so no requested-vs-got is shown. */
-export const MutationList: React.FC<{ result: SolveResponse }> = ({ result }) => {
+/**
+ * Count per mutation with its share of the score. Fixed-count targets are hard constraints, so no
+ * requested-vs-got is shown. With `focus`, hovering or clicking a row finds that mutation on the grid.
+ */
+export const MutationList: React.FC<{ result: SolveResponse; focus?: PlacementFocus }> = ({ result, focus }) => {
   const { getMutationDef } = useGreenhouseData();
 
   const counts = new Map<string, number>();
@@ -223,8 +228,13 @@ export const MutationList: React.FC<{ result: SolveResponse }> = ({ result }) =>
         const def = getMutationDef(id);
         const name = def?.name || id.replace(/_/g, " ");
         const value = values.get(id);
+        const key = focusKey("target", id);
         return (
-          <div key={id} className="flex items-center gap-2 bg-slate-700/30 rounded-md px-3 py-2">
+          <div
+            key={id}
+            {...(focus ? focus.itemProps(key, name) : {})}
+            className={`flex items-center gap-2 bg-slate-700/30 rounded-md px-3 py-2 ${focus ? focusItemClass(focus, key) : ""}`}
+          >
             <CropImage cropId={id} cropName={name} size="xs" showFallback={false} />
             <span className={`text-sm truncate flex-1 min-w-0 ${def ? getRarityTextColor(def.rarity) : "text-slate-200"}`}>{name}</span>
             {value !== undefined && (

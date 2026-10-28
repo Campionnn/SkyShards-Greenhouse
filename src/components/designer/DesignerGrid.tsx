@@ -10,9 +10,12 @@ import {
   effectsGivenBy,
 } from "../../utilities";
 import { GridBackground, DragValidationOverlay, EffectTooltip } from "../grid";
+import { FOCUS_RING, FOCUS_TRANSITION, REMOVE_HOVER_GLOW, focusFade, shadows, targetLook } from "../grid/placementStyles";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { CropImage } from "../shared";
 import type { DesignerPlacement } from "../../context";
+import type { TargetDisplay } from "../../constants";
+import { focusKey, type FocusVisual } from "../../hooks/usePlacementFocus";
 
 export interface DesignerGridHandle {
   getGridElement: () => HTMLDivElement | null;
@@ -22,7 +25,10 @@ interface DesignerGridProps {
   className?: string;
   cellSize?: number;
   gap?: number;
-  showTargets?: boolean;
+  /** How target mutations are drawn. */
+  targetDisplay?: TargetDisplay;
+  /** False: input crops draw only their ground. */
+  showInputs?: boolean;
 }
 
 const StatusMessage: React.FC<{
@@ -83,9 +89,14 @@ interface DesignerPlacementCellProps {
   isPlacementMode: boolean;
   isInput: boolean;
   groundType: string;
-  showImage?: boolean;
+  /** How a target is drawn (ignored for inputs). */
+  targetDisplay?: TargetDisplay;
+  /** Inputs hidden: an input draws only its ground (ignored for targets). */
+  inputHidden?: boolean;
   validationInfo?: { isValid: boolean; missingRequirements: Array<{ crop: string; needed: number; have: number }> };
   title?: string;
+  /** Highlighted or faded from the list below the grid. */
+  focus?: FocusVisual;
   onMouseDown: (e: React.MouseEvent) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -101,9 +112,11 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
   isPlacementMode,
   isInput,
   groundType,
-  showImage = true,
+  targetDisplay = "solid",
+  inputHidden = false,
   validationInfo,
   title,
+  focus = null,
   onMouseDown,
   onMouseEnter,
   onMouseLeave,
@@ -115,15 +128,14 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
   const { totalWidth, totalHeight, imageWidth, imageHeight } = calculateCropImageDimensions(placement.size, cellSize, gap);
   const { top, left } = getCellPixelPosition(placement.position[0], placement.position[1], cellSize, gap);
   
-  const isInvalidTarget = !isInput && validationInfo && !validationInfo.isValid;
-  
-  // Valid targets glow blue (when the image shows); invalid targets get a red border instead.
-  const baseGlow = isInput
-    ? undefined
-    : isInvalidTarget
-      ? undefined
-      : showImage ? "0 0 8px rgba(0, 200, 255, 1), inset 0 0 8px rgba(0, 200, 255, 1)" : undefined;
-  const hoverGlow = "0 0 8px rgba(239, 68, 68, 0.8), inset 0 0 8px rgba(239, 68, 68, 0.4)";
+  const isInvalidTarget = !isInput && !!validationInfo && !validationInfo.isValid;
+  const shownFocus = isDragging ? null : focus;
+  // Inputs draw plain, or just their ground when hidden (unless hovered, dragged or focused, so you
+  // can still see what you are moving); targets per the display (a focused hidden target shows
+  // faded). Invalid targets get a red border.
+  const look = isInput
+    ? { glow: undefined, veil: undefined, border: undefined, showImage: !inputHidden || isHovered || isDragging || shownFocus === "focused", imageOpacity: 1 }
+    : targetLook(shownFocus === "focused" && targetDisplay === "hidden" ? "faded" : targetDisplay, isInvalidTarget);
   
   const style: React.CSSProperties = {
     position: "absolute",
@@ -140,12 +152,13 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible", // lets the tooltip overflow
-    boxShadow: isHovered ? hoverGlow : baseGlow,
-    border: isInvalidTarget ? "2px solid #ef4444" : undefined,
-    zIndex: isDragging ? 20 : (isHovered && isInvalidTarget ? 30 : 10), // raised while its tooltip shows
+    ...focusFade(shownFocus),
+    boxShadow: shadows(shownFocus === "focused" && FOCUS_RING, isHovered ? REMOVE_HOVER_GLOW : look.glow, look.veil),
+    border: look.border,
+    zIndex: isDragging ? 20 : (isHovered && isInvalidTarget ? 30 : shownFocus === "focused" ? 12 : 10), // raised while its tooltip shows
     cursor: isDragging ? "grabbing" : (isPlacementMode ? "crosshair" : "grab"),
-    opacity: isDragging ? 0.8 : 1,
-    transition: isDragging ? "none" : "transform 0.15s ease, box-shadow 0.15s ease",
+    ...(isDragging ? { opacity: 0.8 } : {}),
+    transition: isDragging ? "none" : `transform 0.15s ease, ${FOCUS_TRANSITION}`,
   };
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -174,23 +187,25 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
       onContextMenu={(e) => e.preventDefault()}
       title={title ?? `${placement.cropName} - Drag to move, right-click to remove`}
     >
-      {showImage && (
-        <CropImage
-          cropId={placement.cropId}
-          cropName={placement.cropName}
-          width={imageWidth}
-          height={imageHeight}
-          showGround={false}
-          groundType={groundType}
-          hasGroundContext={true}
-          showFallback={true}
-          fallbackText={placement.cropName.slice(0, 4)}
-        />
+      {look.showImage && (
+        <div className="flex items-center justify-center" style={look.imageOpacity < 1 ? { opacity: look.imageOpacity } : undefined}>
+          <CropImage
+            cropId={placement.cropId}
+            cropName={placement.cropName}
+            width={imageWidth}
+            height={imageHeight}
+            showGround={false}
+            groundType={groundType}
+            hasGroundContext={true}
+            showFallback={true}
+            fallbackText={placement.cropName.slice(0, 4)}
+          />
+        </div>
       )}
       
       {/* Trash icon on hover */}
       {isHovered && (
-        <div className="absolute top-0.5 right-0.5 bg-red-500 rounded-bl-md p-0.5">
+        <div className="absolute top-0.5 right-0.5 bg-red-500 rounded-bl-md p-0.5" data-gif-exclude="true">
           <Trash2 className="w-3 h-3 text-white" />
         </div>
       )}
@@ -267,7 +282,8 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
   className = "",
   cellSize = 48,
   gap = 2,
-  showTargets = true,
+  targetDisplay = "solid",
+  showInputs = true,
 }, ref) => {
   const gridRef = useRef<HTMLDivElement>(null);
   const { getCropDef, getMutationDef, mutations } = useGreenhouseData();
@@ -284,6 +300,7 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
     effectSimulation,
     groundTiles,
     selectedGround,
+    placementFocus,
   } = useDesigner();
   
   useImperativeHandle(ref, () => ({
@@ -389,7 +406,9 @@ return (
             isHovered={isHovered}
             isPlacementMode={isPlacementMode}
             isInput={true}
+            inputHidden={!showInputs}
             groundType={getGroundType(placement.cropId)}
+            focus={placementFocus.visualFor(focusKey("input", placement.cropId))}
             title=""
             onMouseDown={(e) => handlePlacementMouseDown(placement.id, e)}
             onMouseEnter={() => {
@@ -426,8 +445,9 @@ return (
             isPlacementMode={isPlacementMode}
             isInput={false}
             groundType={getGroundType(placement.cropId)}
-            showImage={showTargets}
+            targetDisplay={targetDisplay}
             validationInfo={validationInfo}
+            focus={placementFocus.visualFor(focusKey("target", placement.cropId))}
             title=""
             onMouseDown={(e) => handlePlacementMouseDown(placement.id, e)}
             onMouseEnter={() => {

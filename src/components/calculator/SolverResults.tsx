@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from "react";
-import { CheckCircle2, AlertTriangle, Grid3X3, Eye, EyeOff, RotateCcw, Paintbrush, Info, Loader2, FlaskConical } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Grid3X3, RotateCcw, Paintbrush, Info, Loader2, FlaskConical } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { GRID_SIZE } from "../../constants";
 import { useGreenhouseData, useGridState, useLockedPlacements, useDesigner, useInfoModal } from "../../context";
-import { useGridPlacement, useFitCellSize } from "../../hooks";
+import { useGridPlacement, useFitCellSize, usePlacementFocus, focusKey, useTargetDisplay, useInputsVisible } from "../../hooks";
 import {
   getGridDimensions,
   simulateEffects,
@@ -22,6 +22,9 @@ import {
   CropCell,
   MutationCell,
   EffectTooltip,
+  TargetDisplayToggle,
+  FindOnGridHint,
+  focusItemClass,
 } from "../grid";
 import { CropImage } from "../shared";
 import { SectionLabel } from "../ui";
@@ -182,7 +185,8 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const [showMutations, setShowMutations] = useState(true);
+  const [targetDisplay, setTargetDisplay] = useTargetDisplay();
+  const [inputsVisible, setInputsVisible] = useInputsVisible();
   const [hoveredEffectItem, setHoveredEffectItem] = useState<PlacementItem | null>(null);
 
   // Grid sizing: fit the available width, never scroll.
@@ -299,6 +303,16 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     return processMutationsToItems(result.mutations, getMutationDef);
   }, [result, getMutationDef]);
 
+  // Hovering or clicking an entry in the Mutations / Crops to plant lists finds it on the grid.
+  const focusKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const p of result?.placements || []) keys.add(focusKey("input", p.crop));
+    for (const m of result?.mutations || []) keys.add(focusKey("target", m.mutation));
+    for (const l of lockedPlacements) keys.add(focusKey("input", l.crop));
+    return keys;
+  }, [result, lockedPlacements]);
+  const focus = usePlacementFocus(focusKeys);
+
   // Effect propagation over the displayed layout (solver crops + mutations + locks).
   // Locked placements are also in result.placements for final results, so dedupe by position.
   const effectSim = useMemo(() => {
@@ -388,6 +402,8 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
             title=""
             onMouseEnter={() => setHoveredEffectItem(item)}
             onMouseLeave={() => setHoveredEffectItem(null)}
+            focus={focus.visualFor(focusKey("input", item.id))}
+            hidden={!inputsVisible}
           />
         ))}
 
@@ -401,11 +417,12 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
             groundType={groundOf(item.id)}
             cellSize={cellSize}
             gap={gap}
-            showImage={showMutations}
+            display={targetDisplay}
             onClick={() => openInfo(item.id)}
             title=""
             onMouseEnter={() => setHoveredEffectItem(item)}
             onMouseLeave={() => setHoveredEffectItem(null)}
+            focus={focus.visualFor(focusKey("target", item.id))}
           />
         ))}
 
@@ -427,6 +444,8 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
               onMouseLeave={() => setHoveredPlacementId(null)}
               onClick={() => openInfo(placement.crop)}
               onCancelDrag={cancelDrag}
+              focus={focus.visualFor(focusKey("input", placement.crop))}
+              hidden={!inputsVisible}
             />
           );
         })}
@@ -551,15 +570,14 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
 
       <SectionLabel
         actions={
-          hasResult ? (
-            <button
-              onClick={() => setShowMutations(!showMutations)}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-200 cursor-pointer"
-              title={showMutations ? "Hide mutation overlays" : "Show mutation overlays"}
-            >
-              {showMutations ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              <span>{showMutations ? "Hide targets" : "Show targets"}</span>
-            </button>
+          hasResult || lockedPlacements.length > 0 ? (
+            <TargetDisplayToggle
+              value={targetDisplay}
+              onChange={setTargetDisplay}
+              inputsVisible={inputsVisible}
+              onInputsVisibleChange={setInputsVisible}
+              className="justify-end"
+            />
           ) : undefined
         }
       >
@@ -576,8 +594,8 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
 
       {hasResult && (
         <div className="mb-4">
-          <SectionLabel>Mutations</SectionLabel>
-          <MutationList result={result} />
+          <SectionLabel actions={<FindOnGridHint pinned={focus.pinned !== null} />}>Mutations</SectionLabel>
+          <MutationList result={result} focus={focus} />
         </div>
       )}
 
@@ -589,11 +607,14 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
               const cropDef = getCropDef(cropId);
               const mutationDef = getMutationDef(cropId);
               const displayName = cropDef?.name || mutationDef?.name || cropId.replace(/_/g, " ");
+              const key = focusKey("input", cropId);
+              const item = focus.itemProps(key, displayName);
               return (
                 <div
                   key={cropId}
-                  className="flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1"
-                  title={locked ? `${locked} of these are your locked placements` : undefined}
+                  {...item}
+                  className={`flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1 ${focusItemClass(focus, key)}`}
+                  title={locked ? `${item.title}. ${locked} of these are your locked placements.` : item.title}
                 >
                   <CropImage cropId={cropId} cropName={displayName} size="xs" showFallback={false} />
                   <span className="text-xs text-slate-300">{displayName}</span>

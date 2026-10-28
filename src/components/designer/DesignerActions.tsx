@@ -49,6 +49,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     groundTiles,
     loadFromSolverResult,
     undo,
+    placementFocus,
   } = useDesigner();
   const { getCropDef, getMutationDef } = useGreenhouseData();
   const { toast } = useToast();
@@ -305,6 +306,11 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     setExportStep("exporting");
     setExportProgress(0);
     setHasExportedOnce(true);
+    // A list highlight would fade most of the exported grid: drop it and let the grid repaint first.
+    if (placementFocus.active) {
+      placementFocus.clear();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    }
     
     try {
       const options = getExportOptions();
@@ -343,7 +349,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       });
       resetExportState();
     }
-  }, [gridRef, getExportOptions, inputPlacements, targetPlacements, showTargets, toast, resetExportState]);
+  }, [gridRef, getExportOptions, inputPlacements, targetPlacements, showTargets, toast, resetExportState, placementFocus]);
   
   const handleDownload = useCallback(() => {
     if (!currentExportBlob) return;

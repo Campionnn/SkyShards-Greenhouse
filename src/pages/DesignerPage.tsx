@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Eye, EyeOff, LayoutTemplate, ClipboardCheck } from "lucide-react";
+import { LayoutTemplate, ClipboardCheck } from "lucide-react";
 import {
   CropSelectionPalette,
   DesignerActions,
@@ -9,16 +9,20 @@ import {
   LayoutHistoryControls,
   MutationValidator,
   Panel,
+  TargetDisplayToggle,
 } from "../components";
 import { useToast } from "../components/ui/toastContext";
 import { useDesigner, useGreenhouseData } from "../context";
-import { useFitCellSize } from "../hooks";
+import { useFitCellSize, useTargetDisplay, useInputsVisible } from "../hooks";
 import { decodeDesign } from "../utilities";
 import { captureGridAsPng, aggregateCropInfo } from "../utilities/gridExport";
 import type { DesignerGridHandle } from "../components";
 
 export const DesignerPage: React.FC = () => {
-  const [showTargets, setShowTargets] = useState(true);
+  const [targetDisplay, setTargetDisplay] = useTargetDisplay();
+  const [inputsVisible, setInputsVisible] = useInputsVisible();
+  // Exports list the targets either way; they are drawn on the image unless hidden.
+  const showTargets = targetDisplay !== "hidden";
   const gridRef = useRef<DesignerGridHandle>(null);
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -202,36 +206,26 @@ export const DesignerPage: React.FC = () => {
               <h3 className="text-sm font-medium text-slate-200">Greenhouse Designer</h3>
               <div className="flex items-center gap-2 sm:gap-3">
                 <LayoutHistoryControls />
-                <button
-                  onClick={() => setShowTargets(!showTargets)}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-200"
-                  title={showTargets ? "Hide target mutations" : "Show target mutations"}
-                >
-                  {showTargets ? (
-                    <>
-                      <EyeOff className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Hide Targets</span>
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Show Targets</span>
-                    </>
-                  )}
-                </button>
-                <div className="flex gap-2 sm:gap-4 text-xs text-slate-400">
-                </div>
               </div>
             </div>
             
             <div className="mb-4">
-              <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
-                Grid Layout
-              </h4>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+                  Grid Layout
+                </h4>
+                <TargetDisplayToggle
+                  value={targetDisplay}
+                  onChange={setTargetDisplay}
+                  inputsVisible={inputsVisible}
+                  onInputsVisibleChange={setInputsVisible}
+                />
+              </div>
               <div ref={fitRef} className="w-full flex flex-col items-center">
                 <DesignerGrid
                   ref={gridRef}
-                  showTargets={showTargets}
+                  targetDisplay={targetDisplay}
+                  showInputs={inputsVisible}
                   cellSize={gridSize.cellSize}
                   gap={gridSize.gap}
                 />

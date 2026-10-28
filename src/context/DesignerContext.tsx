@@ -20,6 +20,7 @@ import {
 } from "../utilities";
 import type { LayoutHistory, LayoutSnapshot, LayoutTransform } from "../utilities";
 import { GROUND_TYPES, type GroundTile, type GroundType } from "../utilities/designEncoding";
+import { focusKey, usePlacementFocus } from "../hooks/usePlacementFocus";
 import {
   DesignerContext,
   type DesignerContextType,
@@ -274,6 +275,13 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       ...targetPlacements.map(p => ({ id: p.cropId, position: p.position, size: p.size, isSlot: true })),
     ]);
   }, [inputPlacements, targetPlacements]);
+
+  // List-to-grid highlight (LayoutCropSummary -> DesignerGrid).
+  const focusKeys = useMemo(() => new Set([
+    ...inputPlacements.map(p => focusKey("input", p.cropId)),
+    ...targetPlacements.map(p => focusKey("target", p.cropId)),
+  ]), [inputPlacements, targetPlacements]);
+  const placementFocus = usePlacementFocus(focusKeys);
   
   const isPositionOccupied = useCallback((
     position: [number, number],
@@ -703,6 +711,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
     hoveredInputId,
     setHoveredInputId,
     effectSimulation,
+    placementFocus,
     loadFromSolverResult,
     allPlacements,
     getPossibleMutations,

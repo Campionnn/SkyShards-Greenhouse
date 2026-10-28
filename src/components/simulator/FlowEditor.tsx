@@ -128,7 +128,7 @@ const StepLayoutEditor: React.FC<{ layout: StepLayout; onChange: (layout: StepLa
           <div className="order-1 lg:col-start-1 lg:row-start-1 2xl:col-start-2 min-w-0 bg-slate-900/40 border border-slate-600/30 rounded-lg p-3">
             <LayoutHistoryControls className="justify-end mb-2" />
             <div ref={fitRef} className="w-full flex flex-col items-center">
-              <DesignerGrid cellSize={cellSize} gap={gap} showTargets />
+              <DesignerGrid cellSize={cellSize} gap={gap} />
             </div>
             <LayoutCropSummary className="mt-4" />
           </div>

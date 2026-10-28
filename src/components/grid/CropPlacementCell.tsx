@@ -4,6 +4,9 @@ import { calculateCropImageDimensions, getCellPixelPosition } from "../../utilit
 import { getGroundImagePath } from "../../types/greenhouse";
 import { CropImage } from "../shared";
 import type { LockedPlacement, SelectedCropForPlacement } from "../../types/greenhouse";
+import type { FocusVisual } from "../../hooks/usePlacementFocus";
+import { FOCUS_RING, FOCUS_TRANSITION, LOCKED_GLOW, REMOVE_HOVER_GLOW, focusFade, shadows, targetLook } from "./placementStyles";
+import type { TargetDisplay } from "../../constants";
 
 interface BaseCellStyleParams {
   position: [number, number];
@@ -48,6 +51,10 @@ export interface LockedPlacementCellProps {
   onMouseLeave: () => void;
   onClick?: () => void;
   onCancelDrag?: () => void;
+  /** Highlighted or faded from the list below the grid. */
+  focus?: FocusVisual;
+  /** Inputs hidden: draw only the ground (a focused one still shows). */
+  hidden?: boolean;
 }
 
 // px; less movement between mousedown and mouseup counts as a click.
@@ -65,6 +72,8 @@ export const LockedPlacementCell: React.FC<LockedPlacementCellProps> = ({
   onMouseLeave,
   onClick,
   onCancelDrag,
+  focus = null,
+  hidden = false,
 }) => {
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
   const hasDraggedRef = useRef(false);
@@ -79,16 +88,16 @@ export const LockedPlacementCell: React.FC<LockedPlacementCellProps> = ({
     groundType: placement.ground,
   });
   
+  const bare = hidden && !isDragging && !isHovered && focus !== "focused";
   const style: React.CSSProperties = {
     ...baseStyle,
-    boxShadow: isHovered 
-      ? "0 0 8px rgba(239, 68, 68, 0.8), inset 0 0 8px rgba(239, 68, 68, 0.4)"
-      : "0 0 8px rgba(234, 179, 8, 0.8), inset 0 0 8px rgba(234, 179, 8, 0.4)",
-    zIndex: isDragging ? 20 : 10,
+    ...focusFade(isDragging ? null : focus),
+    boxShadow: shadows(focus === "focused" && !isDragging && FOCUS_RING, isHovered ? REMOVE_HOVER_GLOW : !bare && LOCKED_GLOW),
+    zIndex: isDragging ? 20 : focus === "focused" ? 12 : 10,
     cursor: isDragging ? "grabbing" : (isPlacementMode ? "crosshair" : "grab"),
-    opacity: isDragging ? 0.8 : 1,
+    ...(isDragging ? { opacity: 0.8 } : {}),
     transform: isDragging ? undefined : "scale(1)",
-    transition: isDragging ? "none" : "transform 0.15s ease, box-shadow 0.15s ease",
+    transition: isDragging ? "none" : `transform 0.15s ease, ${FOCUS_TRANSITION}`,
   };
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -132,16 +141,18 @@ export const LockedPlacementCell: React.FC<LockedPlacementCellProps> = ({
       onContextMenu={(e) => e.preventDefault()}
       title={`${placement.crop} - Click for info, drag to move, right-click to remove`}
     >
-      <CropImage
-        cropId={placement.crop}
-        cropName={placement.crop}
-        width={imageWidth}
-        height={imageHeight}
-        showGround={false}
-        groundType={placement.ground}
-        hasGroundContext={true}
-        showFallback={false}
-      />
+      {!bare && (
+        <CropImage
+          cropId={placement.crop}
+          cropName={placement.crop}
+          width={imageWidth}
+          height={imageHeight}
+          showGround={false}
+          groundType={placement.ground}
+          hasGroundContext={true}
+          showFallback={false}
+        />
+      )}
       
       {/* Trash icon on hover */}
       {isHovered && (
@@ -205,6 +216,7 @@ export const PlacementPreview: React.FC<PlacementPreviewProps> = ({
   );
 };
 
+
 export interface CropCellProps {
   id: string;
   name: string;
@@ -218,6 +230,10 @@ export interface CropCellProps {
   title?: string;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  /** Highlighted or faded from the list below the grid. */
+  focus?: FocusVisual;
+  /** Inputs hidden: draw only the ground (a focused one still shows). */
+  hidden?: boolean;
 }
 
 export const CropCell: React.FC<CropCellProps> = ({
@@ -233,9 +249,12 @@ export const CropCell: React.FC<CropCellProps> = ({
   title,
   onMouseEnter,
   onMouseLeave,
+  focus = null,
+  hidden = false,
 }) => {
   const { imageWidth, imageHeight } = calculateCropImageDimensions(size, cellSize, gap);
-  
+  const bare = hidden && focus !== "focused";
+
   const baseStyle = getBaseCellStyle({
     position,
     size,
@@ -243,16 +262,17 @@ export const CropCell: React.FC<CropCellProps> = ({
     gap,
     groundType,
   });
-  
+
   const style: React.CSSProperties = {
     ...baseStyle,
+    ...focusFade(focus),
     borderWidth: 2,
     borderStyle: "solid",
     borderColor: "transparent",
-    boxShadow: isLocked
-      ? "0 0 8px rgba(234, 179, 8, 0.8), inset 0 0 8px rgba(234, 179, 8, 0.4)" 
-      : undefined,
+    boxShadow: shadows(focus === "focused" && FOCUS_RING, isLocked && !bare && LOCKED_GLOW),
+    zIndex: focus === "focused" ? 12 : undefined,
     cursor: onClick ? "pointer" : undefined,
+    transition: FOCUS_TRANSITION,
   };
 
   const handleClick = (e: React.MouseEvent) => {
@@ -266,21 +286,23 @@ export const CropCell: React.FC<CropCellProps> = ({
     <div
       style={style}
       title={title ?? `${name} (${position[0]}, ${position[1]})${size > 1 ? ` - ${size}x${size}` : ""}${isLocked ? " (Locked)" : ""} - Click for info`}
-      className={`transition-transform hover:z-10 ${onClick ? "hover:brightness-110" : ""}`}
+      className={`hover:z-10 ${onClick ? "hover:brightness-110" : ""}`}
       onClick={handleClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <CropImage
-        cropId={id}
-        cropName={name}
-        width={imageWidth}
-        height={imageHeight}
-        showGround={false}
-        groundType={groundType}
-        hasGroundContext={true}
-        showFallback={false}
-      />
+      {!bare && (
+        <CropImage
+          cropId={id}
+          cropName={name}
+          width={imageWidth}
+          height={imageHeight}
+          showGround={false}
+          groundType={groundType}
+          hasGroundContext={true}
+          showFallback={false}
+        />
+      )}
     </div>
   );
 };
@@ -293,11 +315,14 @@ export interface MutationCellProps {
   groundType: string;
   cellSize: number;
   gap: number;
-  showImage: boolean;
+  /** How target mutations are drawn. */
+  display: TargetDisplay;
   onClick?: () => void;
   title?: string;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  /** Highlighted or faded from the list below the grid. */
+  focus?: FocusVisual;
 }
 
 export const MutationCell: React.FC<MutationCellProps> = ({
@@ -308,14 +333,17 @@ export const MutationCell: React.FC<MutationCellProps> = ({
   groundType,
   cellSize,
   gap,
-  showImage,
+  display,
   onClick,
   title,
   onMouseEnter,
   onMouseLeave,
+  focus = null,
 }) => {
   const { imageWidth, imageHeight } = calculateCropImageDimensions(size, cellSize, gap);
-  
+  // A focused target always shows, even with targets hidden: that is what was asked for.
+  const look = targetLook(focus === "focused" && display === "hidden" ? "faded" : display);
+
   const baseStyle = getBaseCellStyle({
     position,
     size,
@@ -323,12 +351,15 @@ export const MutationCell: React.FC<MutationCellProps> = ({
     gap,
     groundType,
   });
-  
+
   const style: React.CSSProperties = {
     ...baseStyle,
-    boxShadow: showImage ? "0 0 8px rgba(0, 200, 255, 1), inset 0 0 8px rgba(0, 200, 255, 1)" : "",
-    zIndex: 5, // above crops
+    ...focusFade(focus),
+    boxShadow: shadows(focus === "focused" && FOCUS_RING, look.glow, look.veil),
+    border: look.border,
+    zIndex: focus === "focused" ? 12 : 5, // above crops
     cursor: onClick ? "pointer" : undefined,
+    transition: FOCUS_TRANSITION,
   };
 
   const handleClick = (e: React.MouseEvent) => {
@@ -342,23 +373,25 @@ export const MutationCell: React.FC<MutationCellProps> = ({
     <div
       style={style}
       title={title ?? `${name} (${position[0]}, ${position[1]})${size > 1 ? ` - ${size}x${size}` : ""} - Click for info`}
-      className={`transition-transform hover:z-10 ${onClick ? "hover:brightness-110" : ""}`}
+      className={`hover:z-10 ${onClick ? "hover:brightness-110" : ""}`}
       onClick={handleClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {showImage && (
-        <CropImage
-          cropId={id}
-          cropName={name}
-          width={imageWidth}
-          height={imageHeight}
-          showGround={false}
-          groundType={groundType}
-          hasGroundContext={true}
-          showFallback={true}
-          fallbackText={name}
-        />
+      {look.showImage && (
+        <div className="flex items-center justify-center" style={{ opacity: look.imageOpacity }}>
+          <CropImage
+            cropId={id}
+            cropName={name}
+            width={imageWidth}
+            height={imageHeight}
+            showGround={false}
+            groundType={groundType}
+            hasGroundContext={true}
+            showFallback={true}
+            fallbackText={name}
+          />
+        </div>
       )}
     </div>
   );

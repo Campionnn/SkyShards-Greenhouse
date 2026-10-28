@@ -17,3 +17,18 @@ export type { InteractiveGridProps } from "./InteractiveGrid";
 
 export { EffectTooltip } from "./EffectTooltip";
 export type { EffectTooltipProps } from "./EffectTooltip";
+
+export { TargetDisplayToggle } from "./TargetDisplayToggle";
+export { FindOnGridHint } from "./FindOnGridHint";
+export {
+  focusItemClass,
+  targetLook,
+  shadows,
+  focusFade,
+  TARGET_GLOW,
+  REMOVE_HOVER_GLOW,
+  LOCKED_GLOW,
+  FOCUS_RING,
+  FOCUS_TRANSITION,
+} from "./placementStyles";
+export type { TargetLook } from "./placementStyles";

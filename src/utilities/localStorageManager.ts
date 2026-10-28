@@ -8,6 +8,7 @@ import type { ProfileMode, Scenario } from "../simulator";
 import { DEFAULT_BAZAAR_PRICING, type BazaarOverride, type BazaarPricing, type BazaarQuote } from "../simulator/economy/bazaar";
 import type { GroundTile } from "./designEncoding";
 import type { StoredSolverLayout } from "./layoutHandoff";
+import { TARGET_DISPLAYS, type TargetDisplay } from "../constants/styles";
 
 const STORAGE_KEYS = {
   GRID_CONFIG: "skyshards-grid-config",
@@ -27,6 +28,8 @@ const STORAGE_KEYS = {
   GUIDE_FLOW_TOTALS_2PLOTS: "skyshards-guide-flow-totals-2plots",
   LAST_SOLVER_LAYOUT: "skyshards-last-solver-layout",
   PROFILE_MODE: "skyshards-profile-mode",
+  TARGET_DISPLAY: "skyshards-target-display",
+  INPUTS_HIDDEN: "skyshards-inputs-hidden",
   BAZAAR_PRICES: "skyshards-bazaar-prices",
   BAZAAR_PRICING: "skyshards-bazaar-pricing",
   BAZAAR_OVERRIDES: "skyshards-bazaar-overrides",
@@ -381,6 +384,25 @@ export class LocalStorageManager {
 
   static loadProfileMode(): ProfileMode {
     return this.load<string>(STORAGE_KEYS.PROFILE_MODE) === "normal" ? "normal" : "ironman";
+  }
+
+  /** How the Calculator and Designer grids draw target mutations (`skyshards-target-display`), shared by both. */
+  static saveTargetDisplay(display: TargetDisplay): boolean {
+    return this.save(STORAGE_KEYS.TARGET_DISPLAY, display);
+  }
+
+  static loadTargetDisplay(): TargetDisplay {
+    const value = this.load<string>(STORAGE_KEYS.TARGET_DISPLAY);
+    return TARGET_DISPLAYS.includes(value as TargetDisplay) ? (value as TargetDisplay) : "solid";
+  }
+
+  /** Whether the Calculator and Designer grids hide input crops (`skyshards-inputs-hidden`), shared by both. */
+  static saveInputsHidden(hidden: boolean): boolean {
+    return this.save(STORAGE_KEYS.INPUTS_HIDDEN, hidden);
+  }
+
+  static loadInputsHidden(): boolean {
+    return this.load<boolean>(STORAGE_KEYS.INPUTS_HIDDEN) === true;
   }
 
   /** The last Bazaar prices fetched (greenhouse items only), shown while a fresh fetch runs or fails. */
