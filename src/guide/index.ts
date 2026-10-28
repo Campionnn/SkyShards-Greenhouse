@@ -68,7 +68,7 @@ export {
   type LastImport,
 } from "./checkin";
 export { applyImportedItems, inventoryChanges, sinceLastImport, trackedFound, trackedItems, type InventoryChange } from "./importInventory";
-export { flowNeeds, needsTotals, scriptPlan, type FlowNeed, type FlowNeeds, type ScriptPlan } from "./needs";
+export { baselineTotals, flowFingerprint, flowNeeds, needsTotals, scriptMarks, type FlowNeed, type FlowNeeds } from "./needs";
 export { DEFAULT_CHECK_EVERY, GUIDE_DEFAULT_STATS, activityFor, guideDefaultSettings, hoursPerCycle, hoursToCycles } from "./schedule";
 export type * from "./types";
 

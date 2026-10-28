@@ -1,12 +1,12 @@
 /**
- * The whole flow's mutation totals, from the plot script's own build plan (`flowNeeds`):
+ * The whole flow's mutation totals, measured from simulated runs (`flowNeeds`):
  * - `FlowNeedsPanel`: one collapsible line on the page ("x of y mutations covered") that opens into
  *   every item, grouped like the inventory, with covered / estimated total.
  * - `WorkingTowards`: a card section for the farm a plot is on or moving to: how far each product
  *   is from the point the farm hands the plot on, plus that product's whole-flow total.
  */
 import React, { useMemo, useState } from "react";
-import { Check, ChevronDown, ListChecks } from "lucide-react";
+import { Check, ChevronDown, ListChecks, Loader2 } from "lucide-react";
 import type { GameData } from "../../simulator/data/types";
 import { GROUP_LABELS, groupedItems, itemName, needsTotals, type Catalog, type FlowNeeds, type WaitFor } from "../../guide";
 import { CropImage } from "../shared/CropImage";
@@ -28,6 +28,17 @@ export const FlowNeedsPanel: React.FC<{ needs: FlowNeeds; catalog: Catalog; data
   const totals = needsTotals(needs);
   const groups = useMemo(() => groupedItems(data, catalog), [data, catalog]);
   const pct = Math.round((100 * totals.covered) / Math.max(1, totals.total));
+  if (!needs.ready) {
+    return (
+      <section className="flex items-center gap-3 rounded-lg border border-slate-600/30 bg-slate-800/40 px-4 py-3 text-sm" aria-label="Everything the flow needs">
+        <ListChecks className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+        <span className="font-medium text-slate-100">Whole flow</span>
+        <span className="flex items-center gap-1.5 text-xs text-slate-400">
+          <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden /> Simulating the whole flow to count every mutation it uses…
+        </span>
+      </section>
+    );
+  }
   return (
     <section className="rounded-lg border border-slate-600/30 bg-slate-800/40" aria-label="Everything the flow needs">
       <button
@@ -57,9 +68,10 @@ export const FlowNeedsPanel: React.FC<{ needs: FlowNeeds; catalog: Catalog; data
         <div className="space-y-4 border-t border-slate-600/30 px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="max-w-3xl text-xs text-slate-400">
-              Roughly how many of each mutation the whole Rose Dragon flow uses from an empty start: inputs for later farms plus the goal itself. What you own counts,
-              and so does owning what an item gets made into: with enough of everything made from Gloomgourd, Gloomgourd is done even with none left. Yields are
-              averages, so totals are estimates.
+              How many of each mutation the whole Rose Dragon flow typically uses from an empty start: what its farms place, plus what the goal keeps. Measured from{" "}
+              {needs.runs} simulated runs with your schedule and stats (the middle run per item). What's left is measured the same way from where you are now, so
+              owning what an item gets made into counts too: with enough of everything made from Gloomgourd, Gloomgourd is done even with none left. Harvests are
+              random, so these are estimates.
             </p>
             <label className="flex min-h-8 cursor-pointer items-center gap-2 text-xs text-slate-300">
               <input type="checkbox" className="accent-emerald-500" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} />
@@ -121,13 +133,14 @@ export const WorkingTowards: React.FC<{
 }> = ({ products, needs, inventory, waitFor = [], data, footnote }) => {
   const rows = [...new Set(products)]
     .map((item) => {
-      const need = needs.items[item];
-      if (!need) return null;
+      // While the totals are still being simulated, the bar uses the script's stock mark alone.
+      const need = needs.items[item] ?? null;
       const scripted = waitFor.find((w) => w.item === item && w.target > 0);
       const have = scripted ? scripted.have : Math.max(0, inventory[item] ?? 0);
-      const done = need.remaining === 0 && !scripted;
-      const mark = needs.high[item] ?? Infinity;
-      const target = scripted ? scripted.target : done ? have : Math.max(have, Math.min(mark, have + need.remaining));
+      const mark = needs.high[item];
+      if (!need && !scripted && mark === undefined) return null;
+      const done = !!need && need.remaining === 0 && !scripted;
+      const target = scripted ? scripted.target : done ? have : Math.max(have, Math.min(mark ?? Infinity, need ? have + need.remaining : Infinity));
       return { item, have, target, done, need };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
@@ -155,10 +168,12 @@ export const WorkingTowards: React.FC<{
                 </>
               )}
             </div>
-            <p className="pl-6 text-[11px] text-slate-500">
-              Whole flow: {n(r.need.covered)} of ~{n(r.need.total)} covered
-              {r.need.remaining > 0 ? ` · ${n(r.need.remaining)} still to make` : ""}
-            </p>
+            {r.need && (
+              <p className="pl-6 text-[11px] text-slate-500">
+                Whole flow: {n(r.need.covered)} of ~{n(r.need.total)} covered
+                {r.need.remaining > 0 ? ` · ${n(r.need.remaining)} still to make` : ""}
+              </p>
+            )}
           </li>
         ))}
       </ul>

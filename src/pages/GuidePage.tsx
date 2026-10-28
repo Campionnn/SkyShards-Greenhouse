@@ -23,7 +23,9 @@ import {
   confirmPlot,
   createGuideEnv,
   decideLogin,
+  baselineTotals,
   farmOf,
+  flowFingerprint,
   flowNeeds,
   goalOwned,
   goalProgress,
@@ -36,7 +38,7 @@ import {
   FLOW_VARIANT_ORDER,
   restoreState,
   scriptKnobs,
-  scriptPlan,
+  scriptMarks,
   setFacts,
   setFarm,
   setItem,
@@ -57,8 +59,9 @@ import {
   type GuideState,
   type Plan,
   type PlotOutcome,
+  type RunTimeline,
 } from "../guide";
-import { ForecastCancelled, GuidePool } from "../guide/worker/pool";
+import { ForecastCancelled, GuidePool, poolSize } from "../guide/worker/pool";
 import { PlotCard } from "../components/guide/PlotCard";
 import { FarmGallery } from "../components/guide/FarmGallery";
 import { InventoryDialog, type InventoryMode } from "../components/guide/InventoryDialog";
@@ -71,6 +74,8 @@ import { buttonClass, scheduleText, timeAgo, type Precision } from "../component
 import "../components/guide/guide.css";
 
 const guideEnv = createGuideEnv();
+/** Runs from an empty start behind the whole-flow totals (the median of these). */
+const TOTALS_SEEDS = Array.from({ length: 16 }, (_, i) => 1001 + i);
 const data = guideEnv.engine.data;
 
 /** Typing must not re-run the projection and a forecast on every keystroke. */
@@ -188,11 +193,44 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
 
   const done = !!catalog && !!state && goalOwned(catalog, state.inventory) === catalog.goal.length;
 
-  // Whole-flow totals from the script's build plan: estimated total per mutation and what's covered.
-  const buildPlanOfScript = useMemo(() => (flow ? scriptPlan(flow) : null), [flow]);
+  // Whole-flow totals: simulated runs of the flow from an empty start, with the player's schedule
+  // and stats. Remembered per flow version and settings; a separate small pool, so they never cancel
+  // (or wait behind) the check-in's own forecast.
+  const marks = useMemo(() => (flow ? scriptMarks(flow) : {}), [flow]);
+  const totalsKey = useMemo(
+    () => (flow && settled ? JSON.stringify([flowFingerprint(flow), settled.settings.activity, settled.settings.playerStats, TOTALS_SEEDS.length]) : null),
+    [flow, settled]
+  );
+  const [baseline, setBaseline] = useState<{ key: string; runs: number; totals: Record<string, number> } | null>(() => LocalStorageManager.loadGuideFlowTotals(variant));
+  const [forecastRuns, setForecastRuns] = useState<{ runs: RunTimeline[]; inventory: Record<string, number> } | null>(null);
+  useEffect(() => {
+    if (!flow || !catalog || !settled || !totalsKey || baseline?.key === totalsKey) return;
+    const pool = new GuidePool(Math.min(2, poolSize()));
+    let live = true;
+    const empty = toInput(initialState(flow, settled.settings));
+    pool
+      .forecast({ flow, input: empty, seeds: TOTALS_SEEDS })
+      .then((runs) => {
+        if (!live) return;
+        const next = { key: totalsKey, runs: runs.length, totals: baselineTotals(runs, catalog) };
+        LocalStorageManager.saveGuideFlowTotals(next, variant);
+        setBaseline(next);
+      })
+      .catch(() => {})
+      .finally(() => pool.dispose());
+    return () => {
+      live = false;
+      pool.dispose();
+    };
+    // `settled` only matters through totalsKey (its schedule and stats).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow, catalog, totalsKey, variant]);
   const needs = useMemo(
-    () => (buildPlanOfScript && settled ? flowNeeds(buildPlanOfScript, settled.inventory, Object.values(settled.plots).map((p) => p.farm)) : null),
-    [buildPlanOfScript, settled]
+    () =>
+      catalog
+        ? flowNeeds(baseline?.key === totalsKey ? baseline.totals : null, forecastRuns?.runs ?? null, catalog, forecastRuns?.inventory ?? {}, marks, baseline?.runs ?? 0)
+        : null,
+    [catalog, baseline, totalsKey, forecastRuns, marks]
   );
 
   // Re-render "updated 4 min ago" now and then.
@@ -233,6 +271,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
           if (n >= Math.min(3, total)) {
             setForecast(summarise(timelines, forecastInput.inventory));
             setPlan(buildPlan(timelines));
+            setForecastRuns({ runs: timelines, inventory: forecastInput.inventory });
           }
         },
       })
@@ -240,6 +279,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         if (!live) return;
         setForecast(summarise(runs, forecastInput.inventory));
         setPlan(buildPlan(runs));
+        setForecastRuns({ runs, inventory: forecastInput.inventory });
         setProgress(null);
       })
       .catch((error: unknown) => {

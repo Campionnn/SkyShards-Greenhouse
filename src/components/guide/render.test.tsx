@@ -13,11 +13,12 @@ import {
   parseFlows,
   runForecast,
   scriptKnobs,
-  scriptPlan,
+  scriptMarks,
   setFarm,
   summarise,
   toInput,
   type FlowsFile,
+  type RunTimeline,
 } from "../../guide";
 import { FarmPicture } from "./FarmPicture";
 import { PlotCard } from "./PlotCard";
@@ -38,6 +39,8 @@ const knobs = scriptKnobs(flow);
 const state = initialState(flow, defaultSettings(), { dead_plant: 250, fermento: 50, ashwreath: 60, choconut: 120 });
 const outcomes = decideLogin(flow, toInput(state), guideEnv);
 const noop = () => {};
+/** A finished forecast run that placed these items. */
+const needsRun = (placed: Record<string, number>): RunTimeline => ({ seed: 1, visits: [], farms: {}, cycles: 1, elapsedSeconds: 1, logins: 1, done: true, debtEvents: 0, supplyNeed: {}, supplyShortAt: {}, placed });
 /** SSR text without React's <!-- --> separators and with entities decoded. */
 const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 const card = (plotId: number, overrides: Partial<Parameters<typeof PlotCard>[0]> = {}) =>
@@ -131,22 +134,29 @@ describe("PlotCard", () => {
   });
 
   it("shows what a farm is working towards, with whole-flow totals, even on a switch", () => {
-    const needs = flowNeeds(scriptPlan(flow)!, state.inventory);
+    const needs = flowNeeds({ gloomgourd: 60, choconut: 150 }, [needsRun({ gloomgourd: 59, choconut: 150 })], catalog, {}, scriptMarks(flow));
     const html = card(1, { needs });
     expect(html).toContain("Switch to Commons farm");
     expect(html).toContain("Working towards");
     expect(html).toMatch(/Gloomgourd/);
-    expect(html).toMatch(/Whole flow: 0 of ~\d+ covered/);
+    expect(html).toContain("Whole flow: 0 of ~60 covered");
     // A done card shows the farm it stands on too.
     expect(card(1, { needs, outcome: null, plot: { farm: "commons", acted: true } })).toContain("Working towards");
+    // While the totals are still simulating, the card still shows its bars (from the script's marks).
+    const pending = card(1, { needs: flowNeeds(null, null, catalog, {}, scriptMarks(flow)) });
+    expect(pending).toContain("Working towards");
+    expect(pending).not.toContain("Whole flow:");
   });
 });
 
 describe("FlowNeedsPanel", () => {
-  it("sums the whole flow and lists items once opened", () => {
-    const html = text(renderToString(<FlowNeedsPanel needs={flowNeeds(scriptPlan(flow)!, state.inventory)} catalog={catalog} data={data} />));
-    expect(html).toMatch(/of ~[\d,]+ mutations covered/);
+  it("sums the whole flow, and says so while it is still simulating", () => {
+    const ready = flowNeeds({ gloomgourd: 60, choconut: 150 }, [needsRun({ gloomgourd: 30, choconut: 100 })], catalog, { gloomgourd: 10 }, {}, 16);
+    const html = text(renderToString(<FlowNeedsPanel needs={ready} catalog={catalog} data={data} />));
+    expect(html).toMatch(/of ~210 mutations covered/);
     expect(html).toContain("items done");
+    const pending = text(renderToString(<FlowNeedsPanel needs={flowNeeds(null, null, catalog, {}, {})} catalog={catalog} data={data} />));
+    expect(pending).toContain("Simulating the whole flow");
   });
 });
 

@@ -114,6 +114,7 @@ export function runOne(flow: FlowsFile, input: GuideInput, seed: number, guideEn
     debtEvents: state.summary.debtEvents,
     supplyNeed,
     supplyShortAt: Object.fromEntries(SUPPLY_ITEMS.map((item) => [item, shortAt[item] ?? null])),
+    placed: { ...state.summary.placedItems },
   };
 }
 

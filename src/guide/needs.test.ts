@@ -1,62 +1,110 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { flowNeeds, needsTotals, parseFlows, scriptPlan, type FlowsFile } from "./index";
+import {
+  baselineTotals,
+  buildCatalog,
+  createGuideEnv,
+  flowFingerprint,
+  flowNeeds,
+  guideDefaultSettings,
+  initialState,
+  needsTotals,
+  parseFlows,
+  runForecast,
+  scriptMarks,
+  toInput,
+  type FlowsFile,
+  type RunTimeline,
+} from "./index";
 
+const guideEnv = createGuideEnv();
 const flow: FlowsFile = parseFlows(readFileSync("public/greenhouse/flows/rose-dragon.flows.json", "utf8"));
-const twoPlots: FlowsFile = parseFlows(readFileSync("public/greenhouse/flows/rose-dragon-2plots.flows.json", "utf8"));
-const plan = scriptPlan(flow)!;
+const catalog = buildCatalog(flow, guideEnv.env.resolveLayout);
+const settings = guideDefaultSettings();
+const empty = toInput(initialState(flow, settings));
+const runs = runForecast(flow, empty, guideEnv, [1, 2, 3]);
+const totals = baselineTotals(runs, catalog);
+const marks = scriptMarks(flow);
 
-describe("whole-flow needs (the script's own build plan)", () => {
-  it("reads the build plan out of the shipped script", () => {
-    expect(plan).not.toBeNull();
-    expect(plan.topo).toContain("commons");
-    expect(plan.plan.cream.use.gloomgourd).toBeGreaterThan(0);
-    expect(scriptPlan(twoPlots)).not.toBeNull();
-    expect(scriptPlan({ plots: [] })).toBeNull();
+/** A fake run that placed these items. */
+const run = (placed: Record<string, number>, done = true): RunTimeline => ({
+  seed: 1,
+  visits: [],
+  farms: {},
+  cycles: 1,
+  elapsedSeconds: 1,
+  logins: 1,
+  done,
+  debtEvents: 0,
+  supplyNeed: {},
+  supplyShortAt: {},
+  placed,
+});
+
+describe("whole-flow totals (simulated runs)", () => {
+  it("records what every run placed", () => {
+    for (const r of runs) {
+      expect(r.done).toBe(true);
+      expect(r.placed?.choconut).toBeGreaterThan(0);
+    }
+  }, 120_000);
+
+  it("totals what the runs place plus what the goal keeps, for every mutation the flow uses", () => {
+    for (const g of catalog.goal) expect(totals[g.item]).toBeGreaterThanOrEqual(g.count);
+    // Realistic low tiers: the old build-plan walk said ~340 Choconut.
+    expect(totals.choconut).toBeGreaterThan(60);
+    expect(totals.choconut).toBeLessThan(300);
+    expect(totals.gloomgourd).toBeGreaterThan(5);
+    // Dead Plants, Fermento and Aloe fragments are not mutations the totals count.
+    expect(totals.dead_plant).toBeUndefined();
+    expect(totals.fermento).toBeUndefined();
+    expect(totals.all_in_aloe_fragment).toBeUndefined();
   });
 
-  it("estimates a total for every goal item and every input along the way", () => {
-    const needs = flowNeeds(plan, {});
-    for (const [item, count] of Object.entries(plan.goal)) expect(needs.items[item]?.total).toBeGreaterThanOrEqual(count);
-    // Gloomgourd feeds Cream and Soggybud farms: far more than the one the goal asks for.
-    expect(needs.items.gloomgourd.total).toBeGreaterThan(20);
-    expect(needs.items.gloomgourd).toMatchObject({ covered: 0, remaining: needs.items.gloomgourd.total, have: 0 });
-    // Dead Plants and Fermento are not modelled by the plan: no row.
-    expect(needs.items.dead_plant).toBeUndefined();
+  it("uses the median run, so one wasteful run doesn't move the total", () => {
+    const t = baselineTotals([run({ choconut: 130 }), run({ choconut: 140 }), run({ choconut: 303 })], catalog);
+    expect(t.choconut).toBe(140 + (catalog.goal.find((g) => g.item === "choconut")?.count ?? 0));
+    // Unfinished runs are ignored when some finished.
+    expect(baselineTotals([run({ choconut: 100 }), run({ choconut: 900 }, false)], catalog).choconut).toBe(100 + 1);
   });
 
-  it("counts stock as covered", () => {
-    const needs = flowNeeds(plan, { gloomgourd: 20 });
-    expect(needs.items.gloomgourd.covered).toBe(20);
-    expect(needs.items.gloomgourd.remaining).toBe(needs.items.gloomgourd.total - 20);
+  it("is not ready until both the totals and a forecast are in", () => {
+    expect(flowNeeds(null, runs, catalog, {}, marks).ready).toBe(false);
+    expect(flowNeeds(totals, null, catalog, {}, marks).ready).toBe(false);
+    expect(flowNeeds(totals, runs, catalog, {}, marks, 3)).toMatchObject({ ready: true, runs: 3 });
   });
 
-  it("counts owning what an item is made into as covered", () => {
-    // Enough of everything made from Gloomgourd (and what those become), and nothing in stock.
-    const downstream = { creambloom: 500, chocoberry: 500, soggybud: 500 };
-    const needs = flowNeeds(plan, downstream);
-    expect(needs.items.gloomgourd.have).toBe(0);
-    expect(needs.items.gloomgourd.remaining).toBeLessThanOrEqual(1); // the goal's own one
-    expect(needs.items.gloomgourd.remaining).toBe(Math.max(0, plan.goal.gloomgourd));
-    const own = flowNeeds(plan, { ...downstream, gloomgourd: 1 });
-    expect(own.items.gloomgourd.remaining).toBe(0);
+  it("starts at nothing covered from an empty start", () => {
+    const needs = flowNeeds(totals, runs, catalog, {}, marks);
+    expect(needs.items.choconut.covered).toBe(0);
+    expect(needs.items.choconut.remaining).toBe(needs.items.choconut.total);
+  });
+
+  it("counts stock, and owning what an item is made into, as covered", () => {
+    const total = { gloomgourd: 60 };
+    // The player owns 20; the runs from there still place 30 (plus the goal's 1).
+    expect(flowNeeds(total, [run({ gloomgourd: 30 })], catalog, { gloomgourd: 20 }, marks).items.gloomgourd).toMatchObject({ total: 60, remaining: 11, covered: 49, have: 20 });
+    // Everything made from Gloomgourd is owned: the runs never place any. The goal's one is still needed.
+    expect(flowNeeds(total, [run({})], catalog, {}, marks).items.gloomgourd.remaining).toBe(1);
+    expect(flowNeeds(total, [run({})], catalog, { gloomgourd: 1 }, marks).items.gloomgourd.remaining).toBe(0);
   });
 
   it("is done everywhere once the goal is owned", () => {
-    const needs = flowNeeds(plan, { ...plan.goal });
-    expect(Object.values(needs.items).every((r) => r.remaining === 0)).toBe(true);
+    const goal = Object.fromEntries(catalog.goal.map((g) => [g.item, g.count]));
+    const needs = flowNeeds(totals, [run({})], catalog, goal, marks);
     const t = needsTotals(needs);
     expect(t.done).toBe(t.items);
     expect(t.covered).toBe(t.total);
   });
 
-  it("credits a farm already standing as one paid build", () => {
-    const idle = flowNeeds(plan, {}, ["hub", "hub", "hub"]);
-    const cream = flowNeeds(plan, {}, ["cream", "hub", "hub"]);
-    expect(cream.items.gloomgourd.remaining).toBeLessThan(idle.items.gloomgourd.remaining);
+  it("counts every 9 Aloe fragments as one All-in Aloe", () => {
+    expect(flowNeeds({ all_in_aloe: 2 }, [run({})], catalog, { all_in_aloe: 1, all_in_aloe_fragment: 9 }, marks).items.all_in_aloe.remaining).toBe(0);
   });
 
-  it("counts every 9 Aloe fragments as one All-in Aloe", () => {
-    expect(flowNeeds(plan, { all_in_aloe: 1, all_in_aloe_fragment: 9 }).items.all_in_aloe.remaining).toBe(0);
+  it("reads the script's stock marks and fingerprints the flow", () => {
+    expect(marks.choconut).toBeGreaterThan(0);
+    expect(scriptMarks({ plots: [] })).toEqual({});
+    expect(flowFingerprint(flow)).toBe(flowFingerprint(parseFlows(readFileSync("public/greenhouse/flows/rose-dragon.flows.json", "utf8"))));
+    expect(flowFingerprint(flow)).not.toBe(flowFingerprint(parseFlows(readFileSync("public/greenhouse/flows/rose-dragon-2plots.flows.json", "utf8"))));
   });
 });
