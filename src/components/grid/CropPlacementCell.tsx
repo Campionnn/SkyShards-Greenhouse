@@ -269,9 +269,7 @@ export const CropCell: React.FC<CropCellProps> = ({
   const style: React.CSSProperties = {
     ...baseStyle,
     ...focusFade(focus),
-    borderWidth: 2,
-    borderStyle: "solid",
-    borderColor: "transparent",
+    // No border: it would start the ground texture 2px in, out of line with hidden and empty cells.
     ...(bare ? BARE_PLACEMENT_STYLE : {}),
     boxShadow: shadows(focus === "focused" && FOCUS_RING, isLocked && !bare && LOCKED_GLOW),
     zIndex: focus === "focused" ? 12 : undefined,
