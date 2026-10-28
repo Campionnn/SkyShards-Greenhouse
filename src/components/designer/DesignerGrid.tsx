@@ -10,11 +10,11 @@ import {
   effectsGivenBy,
 } from "../../utilities";
 import { GridBackground, DragValidationOverlay, EffectTooltip } from "../grid";
-import { FOCUS_RING, FOCUS_TRANSITION, REMOVE_HOVER_GLOW, focusFade, shadows, targetLook } from "../grid/placementStyles";
+import { BARE_PLACEMENT_STYLE, FOCUS_RING, FOCUS_TRANSITION, REMOVE_HOVER_GLOW, TARGET_GLOW, focusFade, shadows } from "../grid/placementStyles";
+import { BareGround } from "../grid/BareGround";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { CropImage } from "../shared";
 import type { DesignerPlacement } from "../../context";
-import type { TargetDisplay } from "../../constants";
 import { focusKey, type FocusVisual } from "../../hooks/usePlacementFocus";
 
 export interface DesignerGridHandle {
@@ -25,8 +25,8 @@ interface DesignerGridProps {
   className?: string;
   cellSize?: number;
   gap?: number;
-  /** How target mutations are drawn. */
-  targetDisplay?: TargetDisplay;
+  /** False: target mutations draw only their ground. */
+  showTargets?: boolean;
   /** False: input crops draw only their ground. */
   showInputs?: boolean;
 }
@@ -89,10 +89,8 @@ interface DesignerPlacementCellProps {
   isPlacementMode: boolean;
   isInput: boolean;
   groundType: string;
-  /** How a target is drawn (ignored for inputs). */
-  targetDisplay?: TargetDisplay;
-  /** Inputs hidden: an input draws only its ground (ignored for targets). */
-  inputHidden?: boolean;
+  /** Inputs or targets hidden (per this placement's kind): draw only its ground. */
+  hidden?: boolean;
   validationInfo?: { isValid: boolean; missingRequirements: Array<{ crop: string; needed: number; have: number }> };
   title?: string;
   /** Highlighted or faded from the list below the grid. */
@@ -112,8 +110,7 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
   isPlacementMode,
   isInput,
   groundType,
-  targetDisplay = "solid",
-  inputHidden = false,
+  hidden = false,
   validationInfo,
   title,
   focus = null,
@@ -130,12 +127,11 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
   
   const isInvalidTarget = !isInput && !!validationInfo && !validationInfo.isValid;
   const shownFocus = isDragging ? null : focus;
-  // Inputs draw plain, or just their ground when hidden (unless hovered, dragged or focused, so you
-  // can still see what you are moving); targets per the display (a focused hidden target shows
-  // faded). Invalid targets get a red border.
-  const look = isInput
-    ? { glow: undefined, veil: undefined, border: undefined, showImage: !inputHidden || isHovered || isDragging || shownFocus === "focused", imageOpacity: 1 }
-    : targetLook(shownFocus === "focused" && targetDisplay === "hidden" ? "faded" : targetDisplay, isInvalidTarget);
+  // A hidden placement shows just its ground, cell by cell, unless hovered, dragged or picked from
+  // the list (so you can see what you are moving). Valid targets glow cyan when shown; invalid
+  // targets keep a red outline either way, so a broken layout is never hidden.
+  const bare = hidden && !isHovered && !isDragging && shownFocus !== "focused";
+  const glow = !isInput && !isInvalidTarget && !bare ? TARGET_GLOW : undefined;
   
   const style: React.CSSProperties = {
     position: "absolute",
@@ -152,9 +148,10 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible", // lets the tooltip overflow
+    ...(bare ? BARE_PLACEMENT_STYLE : {}),
     ...focusFade(shownFocus),
-    boxShadow: shadows(shownFocus === "focused" && FOCUS_RING, isHovered ? REMOVE_HOVER_GLOW : look.glow, look.veil),
-    border: look.border,
+    boxShadow: shadows(shownFocus === "focused" && FOCUS_RING, isHovered ? REMOVE_HOVER_GLOW : glow),
+    ...(isInvalidTarget ? { outline: "2px solid #ef4444", outlineOffset: -2 } : {}),
     zIndex: isDragging ? 20 : (isHovered && isInvalidTarget ? 30 : shownFocus === "focused" ? 12 : 10), // raised while its tooltip shows
     cursor: isDragging ? "grabbing" : (isPlacementMode ? "crosshair" : "grab"),
     ...(isDragging ? { opacity: 0.8 } : {}),
@@ -187,20 +184,20 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
       onContextMenu={(e) => e.preventDefault()}
       title={title ?? `${placement.cropName} - Drag to move, right-click to remove`}
     >
-      {look.showImage && (
-        <div className="flex items-center justify-center" style={look.imageOpacity < 1 ? { opacity: look.imageOpacity } : undefined}>
-          <CropImage
-            cropId={placement.cropId}
-            cropName={placement.cropName}
-            width={imageWidth}
-            height={imageHeight}
-            showGround={false}
-            groundType={groundType}
-            hasGroundContext={true}
-            showFallback={true}
-            fallbackText={placement.cropName.slice(0, 4)}
-          />
-        </div>
+      {bare ? (
+        <BareGround ground={groundType} size={placement.size} cellSize={cellSize} gap={gap} />
+      ) : (
+        <CropImage
+          cropId={placement.cropId}
+          cropName={placement.cropName}
+          width={imageWidth}
+          height={imageHeight}
+          showGround={false}
+          groundType={groundType}
+          hasGroundContext={true}
+          showFallback={true}
+          fallbackText={placement.cropName.slice(0, 4)}
+        />
       )}
       
       {/* Trash icon on hover */}
@@ -282,7 +279,7 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
   className = "",
   cellSize = 48,
   gap = 2,
-  targetDisplay = "solid",
+  showTargets = true,
   showInputs = true,
 }, ref) => {
   const gridRef = useRef<HTMLDivElement>(null);
@@ -406,7 +403,7 @@ return (
             isHovered={isHovered}
             isPlacementMode={isPlacementMode}
             isInput={true}
-            inputHidden={!showInputs}
+            hidden={!showInputs}
             groundType={getGroundType(placement.cropId)}
             focus={placementFocus.visualFor(focusKey("input", placement.cropId))}
             title=""
@@ -445,7 +442,7 @@ return (
             isPlacementMode={isPlacementMode}
             isInput={false}
             groundType={getGroundType(placement.cropId)}
-            targetDisplay={targetDisplay}
+            hidden={!showTargets}
             validationInfo={validationInfo}
             focus={placementFocus.visualFor(focusKey("target", placement.cropId))}
             title=""

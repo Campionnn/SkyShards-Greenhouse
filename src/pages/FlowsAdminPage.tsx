@@ -353,7 +353,7 @@ export const FlowsAdminPage: React.FC = () => {
     setKey(null);
   }, []);
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl space-y-4">
+    <div className="w-full py-3 sm:py-4 space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <ShieldCheck className="w-4 h-4 text-amber-400" />
         <h1 className="text-sm font-medium text-slate-200">Leaderboard moderation</h1>

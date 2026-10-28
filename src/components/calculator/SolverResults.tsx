@@ -3,7 +3,7 @@ import { CheckCircle2, AlertTriangle, Grid3X3, RotateCcw, Paintbrush, Info, Load
 import { useNavigate } from "react-router-dom";
 import { GRID_SIZE } from "../../constants";
 import { useGreenhouseData, useGridState, useLockedPlacements, useDesigner, useInfoModal } from "../../context";
-import { useGridPlacement, useFitCellSize, usePlacementFocus, focusKey, useTargetDisplay, useInputsVisible } from "../../hooks";
+import { useGridPlacement, useFitCellSize, usePlacementFocus, focusKey, useTargetsVisible, useInputsVisible } from "../../hooks";
 import {
   getGridDimensions,
   simulateEffects,
@@ -22,7 +22,7 @@ import {
   CropCell,
   MutationCell,
   EffectTooltip,
-  TargetDisplayToggle,
+  GridVisibilityToggle,
   FindOnGridHint,
   focusItemClass,
 } from "../grid";
@@ -185,7 +185,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const [targetDisplay, setTargetDisplay] = useTargetDisplay();
+  const [targetsVisible, setTargetsVisible] = useTargetsVisible();
   const [inputsVisible, setInputsVisible] = useInputsVisible();
   const [hoveredEffectItem, setHoveredEffectItem] = useState<PlacementItem | null>(null);
 
@@ -417,7 +417,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
             groundType={groundOf(item.id)}
             cellSize={cellSize}
             gap={gap}
-            display={targetDisplay}
+            hidden={!targetsVisible}
             onClick={() => openInfo(item.id)}
             title=""
             onMouseEnter={() => setHoveredEffectItem(item)}
@@ -571,9 +571,9 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
       <SectionLabel
         actions={
           hasResult || lockedPlacements.length > 0 ? (
-            <TargetDisplayToggle
-              value={targetDisplay}
-              onChange={setTargetDisplay}
+            <GridVisibilityToggle
+              targetsVisible={targetsVisible}
+              onTargetsVisibleChange={setTargetsVisible}
               inputsVisible={inputsVisible}
               onInputsVisibleChange={setInputsVisible}
               className="justify-end"

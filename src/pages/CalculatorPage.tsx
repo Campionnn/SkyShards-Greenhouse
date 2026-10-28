@@ -221,7 +221,7 @@ export const CalculatorPage: React.FC = () => {
 
   return (
     <>
-      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl">
+      <div className="w-full py-3 sm:py-4">
         <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[320px_minmax(0,1fr)_380px] gap-4 lg:gap-6 lg:items-start">
           {/* Setup column: sticky on desktop, scrolls internally, Solve pinned below. */}
           <aside className="order-2 lg:order-1 flex flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-7rem)]">

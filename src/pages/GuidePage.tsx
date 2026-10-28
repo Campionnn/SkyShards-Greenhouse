@@ -350,7 +350,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
   });
 
   return (
-    <div className="guide-root container mx-auto max-w-screen-2xl space-y-4 overflow-x-clip px-2 py-4 sm:px-4 sm:py-6">
+    <div className="guide-root w-full space-y-4 overflow-x-clip py-3 sm:py-4">
       {/* Same header row as the Simulator: icon, small title, info hint, one action on the right. */}
       <header className="flex flex-wrap items-center gap-2">
         <Compass className="h-4 w-4 text-emerald-400" aria-hidden />

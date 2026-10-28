@@ -9,20 +9,18 @@ import {
   LayoutHistoryControls,
   MutationValidator,
   Panel,
-  TargetDisplayToggle,
+  GridVisibilityToggle,
 } from "../components";
 import { useToast } from "../components/ui/toastContext";
 import { useDesigner, useGreenhouseData } from "../context";
-import { useFitCellSize, useTargetDisplay, useInputsVisible } from "../hooks";
+import { useFitCellSize, useTargetsVisible, useInputsVisible } from "../hooks";
 import { decodeDesign } from "../utilities";
 import { captureGridAsPng, aggregateCropInfo } from "../utilities/gridExport";
 import type { DesignerGridHandle } from "../components";
 
 export const DesignerPage: React.FC = () => {
-  const [targetDisplay, setTargetDisplay] = useTargetDisplay();
+  const [showTargets, setShowTargets] = useTargetsVisible();
   const [inputsVisible, setInputsVisible] = useInputsVisible();
-  // Exports list the targets either way; they are drawn on the image unless hidden.
-  const showTargets = targetDisplay !== "hidden";
   const gridRef = useRef<DesignerGridHandle>(null);
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -32,7 +30,8 @@ export const DesignerPage: React.FC = () => {
   
   // Cells fit the available width; the grid never scrolls.
   const fitRef = useRef<HTMLDivElement>(null);
-  const gridSize = useFitCellSize(fitRef);
+  // Same cap as the Calculator's grid, so wide screens get bigger cells.
+  const gridSize = useFitCellSize(fitRef, { max: 60 });
 
   // Share-image export, called by the Playwright renderer via window.exportGrid.
   const exportGridForShare = useCallback(async (): Promise<string> => {
@@ -187,7 +186,7 @@ export const DesignerPage: React.FC = () => {
   }, [layoutLoadState]);
   
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl">
+    <div className="w-full py-3 sm:py-4">
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[300px_minmax(0,1fr)_380px] gap-4 lg:gap-6 lg:items-start">
         {/* Actions and validation column: sticky on desktop, scrolls internally. */}
         <div className="order-2 space-y-4 lg:col-start-1 lg:row-start-2 xl:row-start-1 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto scrollbar-dark xl:pr-1">
@@ -214,9 +213,9 @@ export const DesignerPage: React.FC = () => {
                 <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">
                   Grid Layout
                 </h4>
-                <TargetDisplayToggle
-                  value={targetDisplay}
-                  onChange={setTargetDisplay}
+                <GridVisibilityToggle
+                  targetsVisible={showTargets}
+                  onTargetsVisibleChange={setShowTargets}
                   inputsVisible={inputsVisible}
                   onInputsVisibleChange={setInputsVisible}
                 />
@@ -224,7 +223,7 @@ export const DesignerPage: React.FC = () => {
               <div ref={fitRef} className="w-full flex flex-col items-center">
                 <DesignerGrid
                   ref={gridRef}
-                  targetDisplay={targetDisplay}
+                  showTargets={showTargets}
                   showInputs={inputsVisible}
                   cellSize={gridSize.cellSize}
                   gap={gridSize.gap}

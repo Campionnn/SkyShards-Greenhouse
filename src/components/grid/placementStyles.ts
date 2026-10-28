@@ -1,13 +1,12 @@
 import type { CSSProperties } from "react";
-import type { TargetDisplay } from "../../constants";
 import type { FocusVisual, PlacementFocus } from "../../hooks/usePlacementFocus";
 
 /**
- * Shared look of placements on the Calculator and Designer grids: how target mutation spots are
- * drawn (solid / faded / hidden) and how list-driven focus highlights or fades a placement.
+ * Shared look of placements on the Calculator and Designer grids: glows, invalid-target marks and
+ * how list-driven focus highlights or fades a placement. Hidden placements draw `BareGround`.
  */
 
-/** Cyan glow of a target mutation drawn solid. */
+/** Cyan glow of a target mutation. */
 export const TARGET_GLOW = "0 0 8px rgba(0, 200, 255, 1), inset 0 0 8px rgba(0, 200, 255, 1)";
 /** Hover glow of a draggable (removable) placement. */
 export const REMOVE_HOVER_GLOW = "0 0 8px rgba(239, 68, 68, 0.8), inset 0 0 8px rgba(239, 68, 68, 0.4)";
@@ -16,36 +15,13 @@ export const LOCKED_GLOW = "0 0 8px rgba(234, 179, 8, 0.8), inset 0 0 8px rgba(2
 /** White ring of a placement found from the list below the grid. */
 export const FOCUS_RING = "0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 12px 2px rgba(255, 255, 255, 0.45)";
 
-export interface TargetLook {
-  /** Glow; a hover glow may replace it. */
-  glow?: string;
-  /** Always-on inset shadow darkening the ground (faded targets). */
-  veil?: string;
-  border?: string;
-  showImage: boolean;
-  /** Image opacity (faded targets are see-through). */
-  imageOpacity: number;
-}
-
-/**
- * How a target spot is drawn. `invalid` marks a Designer target its inputs can't spawn (red), which
- * stays visible in every display so a broken layout is never hidden.
- */
-export function targetLook(display: TargetDisplay, invalid = false): TargetLook {
-  if (display === "faded") {
-    return {
-      // A dark veil over the ground plus a dashed outline: reads as "leave this cell empty".
-      veil: "inset 0 0 0 999px rgba(15, 23, 42, 0.4)",
-      border: `2px dashed ${invalid ? "rgba(239, 68, 68, 0.95)" : "rgba(34, 211, 238, 0.85)"}`,
-      showImage: true,
-      imageOpacity: 0.7,
-    };
-  }
-  if (display === "hidden") {
-    return { border: invalid ? "2px solid #ef4444" : undefined, showImage: false, imageOpacity: 1 };
-  }
-  return { glow: invalid ? undefined : TARGET_GLOW, border: invalid ? "2px solid #ef4444" : undefined, showImage: true, imageOpacity: 1 };
-}
+/** Style overrides for a placement drawn as `BareGround`: no merged texture, no border. */
+export const BARE_PLACEMENT_STYLE: CSSProperties = {
+  backgroundImage: "none",
+  // Longhand, as the cells set border longhands too (React warns when shorthand and longhand mix).
+  borderWidth: 0,
+  borderRadius: 0,
+};
 
 /** Joins box-shadow layers, skipping empty ones. */
 export function shadows(...layers: (string | undefined | null | false)[]): string | undefined {
@@ -72,15 +48,3 @@ export function focusItemClass(focus: PlacementFocus, key: string): string {
   if (focus.active === key) return `${base} !bg-slate-600/60`;
   return `${base} hover:!bg-slate-600/50`;
 }
-
-export const TARGET_DISPLAY_LABEL: Record<TargetDisplay, string> = {
-  solid: "Solid",
-  faded: "Faded",
-  hidden: "Hidden",
-};
-
-export const TARGET_DISPLAY_HINT: Record<TargetDisplay, string> = {
-  solid: "Draw target mutations like planted crops, with a cyan glow",
-  faded: "Draw target mutations as dark, dashed spots with a see-through icon: the cells to leave empty",
-  hidden: "Hide target mutations; only what you plant shows",
-};

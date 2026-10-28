@@ -286,7 +286,7 @@ export const SimulatorPage: React.FC = () => {
   const cols = focused !== null ? "grid-cols-1" : shownPlots.length >= 3 ? "grid-cols-1 lg:grid-cols-3" : shownPlots.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1";
 
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl space-y-4">
+    <div className="w-full py-3 sm:py-4 space-y-4">
       <div className="flex items-center gap-2">
         <FlaskConical className="w-4 h-4 text-emerald-400" />
         <h1 className="text-sm font-medium text-slate-200">Greenhouse Simulator</h1>
@@ -454,7 +454,7 @@ export const SimulatorPage: React.FC = () => {
 
       {editingPlot !== null && scenario.plots.some((p) => p.id === editingPlot) && (
         <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true">
-          <div className="container mx-auto max-w-screen-2xl px-2 sm:px-4 py-6">
+          <div className="w-full max-w-screen-2xl mx-auto px-2 sm:px-4 py-6">
             <div className="bg-slate-900 rounded-lg shadow-2xl">
               <FlowEditor
                 key={`${editing!.plotId}-${editing!.step}`}
@@ -471,7 +471,7 @@ export const SimulatorPage: React.FC = () => {
 
       {scripting !== null && (scripting === "controller" || scenario.plots.some((p) => p.id === scripting)) && (
         <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true" aria-label="Script editor">
-          <div className="container mx-auto max-w-screen-2xl px-2 sm:px-4 py-6">
+          <div className="w-full max-w-screen-2xl mx-auto px-2 sm:px-4 py-6">
             <div className="bg-slate-900 rounded-lg shadow-2xl">
               <ScriptEditor
                 scenario={scenario}

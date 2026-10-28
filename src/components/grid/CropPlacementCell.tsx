@@ -5,8 +5,8 @@ import { getGroundImagePath } from "../../types/greenhouse";
 import { CropImage } from "../shared";
 import type { LockedPlacement, SelectedCropForPlacement } from "../../types/greenhouse";
 import type { FocusVisual } from "../../hooks/usePlacementFocus";
-import { FOCUS_RING, FOCUS_TRANSITION, LOCKED_GLOW, REMOVE_HOVER_GLOW, focusFade, shadows, targetLook } from "./placementStyles";
-import type { TargetDisplay } from "../../constants";
+import { BARE_PLACEMENT_STYLE, FOCUS_RING, FOCUS_TRANSITION, LOCKED_GLOW, REMOVE_HOVER_GLOW, TARGET_GLOW, focusFade, shadows } from "./placementStyles";
+import { BareGround } from "./BareGround";
 
 interface BaseCellStyleParams {
   position: [number, number];
@@ -91,6 +91,7 @@ export const LockedPlacementCell: React.FC<LockedPlacementCellProps> = ({
   const bare = hidden && !isDragging && !isHovered && focus !== "focused";
   const style: React.CSSProperties = {
     ...baseStyle,
+    ...(bare ? BARE_PLACEMENT_STYLE : {}),
     ...focusFade(isDragging ? null : focus),
     boxShadow: shadows(focus === "focused" && !isDragging && FOCUS_RING, isHovered ? REMOVE_HOVER_GLOW : !bare && LOCKED_GLOW),
     zIndex: isDragging ? 20 : focus === "focused" ? 12 : 10,
@@ -141,7 +142,9 @@ export const LockedPlacementCell: React.FC<LockedPlacementCellProps> = ({
       onContextMenu={(e) => e.preventDefault()}
       title={`${placement.crop} - Click for info, drag to move, right-click to remove`}
     >
-      {!bare && (
+      {bare ? (
+        <BareGround ground={placement.ground} size={placement.size} cellSize={cellSize} gap={gap} />
+      ) : (
         <CropImage
           cropId={placement.crop}
           cropName={placement.crop}
@@ -269,6 +272,7 @@ export const CropCell: React.FC<CropCellProps> = ({
     borderWidth: 2,
     borderStyle: "solid",
     borderColor: "transparent",
+    ...(bare ? BARE_PLACEMENT_STYLE : {}),
     boxShadow: shadows(focus === "focused" && FOCUS_RING, isLocked && !bare && LOCKED_GLOW),
     zIndex: focus === "focused" ? 12 : undefined,
     cursor: onClick ? "pointer" : undefined,
@@ -291,7 +295,9 @@ export const CropCell: React.FC<CropCellProps> = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {!bare && (
+      {bare ? (
+        <BareGround ground={groundType} size={size} cellSize={cellSize} gap={gap} />
+      ) : (
         <CropImage
           cropId={id}
           cropName={name}
@@ -315,8 +321,8 @@ export interface MutationCellProps {
   groundType: string;
   cellSize: number;
   gap: number;
-  /** How target mutations are drawn. */
-  display: TargetDisplay;
+  /** Targets hidden: draw only the ground (a focused one still shows). */
+  hidden?: boolean;
   onClick?: () => void;
   title?: string;
   onMouseEnter?: () => void;
@@ -333,7 +339,7 @@ export const MutationCell: React.FC<MutationCellProps> = ({
   groundType,
   cellSize,
   gap,
-  display,
+  hidden = false,
   onClick,
   title,
   onMouseEnter,
@@ -341,8 +347,8 @@ export const MutationCell: React.FC<MutationCellProps> = ({
   focus = null,
 }) => {
   const { imageWidth, imageHeight } = calculateCropImageDimensions(size, cellSize, gap);
-  // A focused target always shows, even with targets hidden: that is what was asked for.
-  const look = targetLook(focus === "focused" && display === "hidden" ? "faded" : display);
+  // A target picked from the list below always shows, even with targets hidden.
+  const bare = hidden && focus !== "focused";
 
   const baseStyle = getBaseCellStyle({
     position,
@@ -354,9 +360,9 @@ export const MutationCell: React.FC<MutationCellProps> = ({
 
   const style: React.CSSProperties = {
     ...baseStyle,
+    ...(bare ? BARE_PLACEMENT_STYLE : {}),
     ...focusFade(focus),
-    boxShadow: shadows(focus === "focused" && FOCUS_RING, look.glow, look.veil),
-    border: look.border,
+    boxShadow: shadows(focus === "focused" && FOCUS_RING, !bare && TARGET_GLOW),
     zIndex: focus === "focused" ? 12 : 5, // above crops
     cursor: onClick ? "pointer" : undefined,
     transition: FOCUS_TRANSITION,
@@ -378,20 +384,20 @@ export const MutationCell: React.FC<MutationCellProps> = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {look.showImage && (
-        <div className="flex items-center justify-center" style={{ opacity: look.imageOpacity }}>
-          <CropImage
-            cropId={id}
-            cropName={name}
-            width={imageWidth}
-            height={imageHeight}
-            showGround={false}
-            groundType={groundType}
-            hasGroundContext={true}
-            showFallback={true}
-            fallbackText={name}
-          />
-        </div>
+      {bare ? (
+        <BareGround ground={groundType} size={size} cellSize={cellSize} gap={gap} />
+      ) : (
+        <CropImage
+          cropId={id}
+          cropName={name}
+          width={imageWidth}
+          height={imageHeight}
+          showGround={false}
+          groundType={groundType}
+          hasGroundContext={true}
+          showFallback={true}
+          fallbackText={name}
+        />
       )}
     </div>
   );
