@@ -105,6 +105,8 @@ interface RowLike {
   busy: boolean;
   /** Omitted on the viewer's own flows (count only). */
   onToggle?: () => void;
+  /** Logged out: a click asks to log in first instead of redirecting straight away. */
+  needsLogin?: boolean;
 }
 
 /** One ranked flow (exported for the SSR tests: the page itself renders rows only after its fetch effect). */
@@ -177,6 +179,7 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
             liked={like.liked}
             busy={like.busy}
             onToggle={like.onToggle}
+            needsLogin={like.needsLogin}
             title={sort === "liked30d" ? `${entry.likes30d ?? 0} likes in the last 30 days (${entry.likes ?? 0} all time)` : undefined}
           />
         </div>
@@ -613,6 +616,7 @@ export const FlowsPage: React.FC = () => {
                   like={{
                     liked: likes.isLiked(row.entry.id),
                     busy: likes.busy(row.entry.id),
+                    needsLogin: !likes.loggedIn,
                     onToggle:
                       user?.id === row.entry.author.id
                         ? undefined

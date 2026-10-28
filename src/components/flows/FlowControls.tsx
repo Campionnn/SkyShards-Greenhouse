@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Clock, Coins, Copy, Gauge, Heart, LogOut, RefreshCw, RotateCcw, Sprout, Wrench, X, Zap } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import type { FlowViewer, ViewerStats } from "../../hooks/useFlowViewer";
@@ -12,7 +12,7 @@ import { STAT_FIELDS, type NumericStatKey } from "../playerStats/statFields";
 import { BazaarPriceControls, BazaarPriceDialog } from "../simulator/BazaarPanels";
 import { priceAge } from "../simulator/bazaarFormat";
 import { formatDuration } from "../simulator/format";
-import { DiscordIcon, InfoHint, SegmentedControl } from "../ui";
+import { DiscordIcon, InfoHint, Portal, SegmentedControl } from "../ui";
 import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 
 /**
@@ -560,18 +560,108 @@ export const AccountControl: React.FC = () => {
   );
 };
 
+const LOGIN_POPOVER_WIDTH = 256;
+
 /**
- * Heart + like count. `onToggle` is omitted for a read-only count (own flow); a logged-out click
- * goes through the login (the caller's toggle handles that).
+ * The "log in to like" prompt a logged-out heart click opens, anchored under the heart (above it
+ * when there's no room). Confirming runs `onLogin` (the caller's toggle: it remembers the like and
+ * redirects to Discord). Escape, "Not now" or a click outside closes it. Clicks inside never reach
+ * the clickable ranking row behind it (React events bubble through portals).
+ */
+const LikeLoginPopover: React.FC<{ anchor: React.RefObject<HTMLButtonElement | null>; onLogin: () => void; onClose: () => void }> = ({ anchor, onLogin, onClose }) => {
+  const box = useRef<HTMLDivElement>(null);
+  const loginButton = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; above: boolean } | null>(null);
+
+  useLayoutEffect(() => {
+    const place = () => {
+      const a = anchor.current?.getBoundingClientRect();
+      const h = box.current?.offsetHeight ?? 0;
+      if (!a) return;
+      const gap = 6;
+      const pad = 8;
+      const left = Math.max(pad, Math.min(a.right - LOGIN_POPOVER_WIDTH, window.innerWidth - LOGIN_POPOVER_WIDTH - pad));
+      const above = a.bottom + gap + h > window.innerHeight - pad && a.top - gap - h >= pad;
+      setPos({ top: above ? a.top - gap - h : a.bottom + gap, left, above });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [anchor]);
+
+  useEffect(() => {
+    loginButton.current?.focus({ preventScroll: true });
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!box.current?.contains(t) && !anchor.current?.contains(t)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      onClose();
+      anchor.current?.focus();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [anchor, onClose]);
+
+  return (
+    <Portal>
+      <div
+        ref={box}
+        role="dialog"
+        aria-labelledby="like-login-title"
+        onClick={(e) => e.stopPropagation()}
+        style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, width: LOGIN_POPOVER_WIDTH, visibility: pos ? "visible" : "hidden" }}
+        className={`like-login-pop fixed z-[9999] rounded-lg border border-slate-600/70 bg-slate-800 p-3 text-left shadow-xl shadow-black/40 ${pos?.above ? "origin-bottom-right" : "origin-top-right"}`}
+        data-testid="like-login-popover"
+      >
+        <p id="like-login-title" className="flex items-center gap-1.5 text-sm font-semibold text-slate-100">
+          <Heart className="h-3.5 w-3.5 fill-rose-400 text-rose-400" /> Log in to like flows
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-slate-400">Likes are tied to your Discord account (only your name and avatar are used). This flow is liked once you're back.</p>
+        <div className="mt-3 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-md px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:bg-slate-700/60 hover:text-slate-100">
+            Not now
+          </button>
+          <button
+            ref={loginButton}
+            type="button"
+            onClick={onLogin}
+            className="inline-flex items-center gap-1.5 rounded-md bg-[#5865F2]/80 px-3 py-1.5 text-xs font-medium text-white transition-[background-color,transform] duration-150 hover:bg-[#5865F2] active:scale-[0.97]"
+          >
+            <DiscordIcon className="h-3.5 w-3.5" /> Log in with Discord
+          </button>
+        </div>
+      </div>
+    </Portal>
+  );
+};
+
+/**
+ * Heart + like count. `onToggle` is omitted for a read-only count (own flow). With `needsLogin`
+ * (logged out) a click opens a small "log in to like" prompt first; its button runs `onToggle`,
+ * which remembers the like and goes through the Discord login.
  */
 export const LikeButton: React.FC<{
   count: number;
   liked: boolean;
   busy?: boolean;
   onToggle?: () => void;
+  needsLogin?: boolean;
   size?: "sm" | "md";
   title?: string;
-}> = ({ count, liked, busy = false, onToggle, size = "sm", title }) => {
+}> = ({ count, liked, busy = false, onToggle, needsLogin = false, size = "sm", title }) => {
+  const button = useRef<HTMLButtonElement>(null);
+  const [asking, setAsking] = useState(false);
+  const closeAsk = useCallback(() => setAsking(false), []);
   const icon = size === "md" ? "h-3.5 w-3.5" : "h-3 w-3";
   const box = size === "md" ? "gap-1.5 px-3 py-1.5 text-xs" : "gap-1 px-1.5 py-0.5 text-[11px]";
   const tone = liked ? "border-rose-500/40 bg-rose-500/15 text-rose-200" : "border-slate-600/50 bg-slate-800/70 text-slate-300";
@@ -588,19 +678,35 @@ export const LikeButton: React.FC<{
       </span>
     );
   return (
-    <button
-      type="button"
-      aria-pressed={liked}
-      disabled={busy}
-      title={title ?? (liked ? "Remove your like" : "Like this flow")}
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-      className={`inline-flex items-center rounded-md border font-medium transition-[background-color,color,transform] duration-150 hover:border-rose-500/40 hover:text-rose-200 active:scale-[0.95] disabled:opacity-60 ${box} ${tone}`}
-    >
-      {content}
-    </button>
+    <>
+      <button
+        ref={button}
+        type="button"
+        aria-pressed={liked}
+        aria-haspopup={needsLogin ? "dialog" : undefined}
+        aria-expanded={needsLogin ? asking : undefined}
+        disabled={busy}
+        title={asking ? undefined : (title ?? (needsLogin ? "Log in with Discord to like this flow" : liked ? "Remove your like" : "Like this flow"))}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (needsLogin) setAsking((a) => !a);
+          else onToggle();
+        }}
+        className={`inline-flex items-center rounded-md border font-medium transition-[background-color,color,transform] duration-150 hover:border-rose-500/40 hover:text-rose-200 active:scale-[0.95] disabled:opacity-60 ${box} ${tone} ${asking ? "border-rose-500/40 text-rose-200" : ""}`}
+      >
+        {content}
+      </button>
+      {asking && needsLogin && (
+        <LikeLoginPopover
+          anchor={button}
+          onClose={closeAsk}
+          onLogin={() => {
+            setAsking(false);
+            onToggle();
+          }}
+        />
+      )}
+    </>
   );
 };
 

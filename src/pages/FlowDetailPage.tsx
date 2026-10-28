@@ -381,6 +381,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                       liked={liked}
                       busy={likes.busy(detail.id)}
                       onToggle={owner || detail.status !== "live" ? undefined : toggleLike}
+                      needsLogin={!likes.loggedIn}
                       title={owner ? `${likeCount} like${likeCount === 1 ? "" : "s"} (${likes30d} in the last 30 days)` : !user ? "Log in with Discord to like this flow" : undefined}
                     />
                   )}
