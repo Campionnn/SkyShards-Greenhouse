@@ -118,7 +118,7 @@ export interface Farm {
   cost: ItemCount[];
   /** Free base crops (and fire) planted or placed for free. */
   free: ItemCount[];
-  /** The mutations its target cells grow. */
+  /** The mutations its target cells grow (empty farmland: Lonelily, counted in cells that can spawn one). */
   products: ItemCount[];
   /** Hub, supplies and Done are not farms the player builds. */
   kind: "farm" | "hub" | "supplies" | "done";
@@ -149,6 +149,30 @@ export function labelDetail(id: string, label: string | undefined): string {
   const tail = rest.replace(/\([^)]*\)/g, "").replace(/^[\s:]+/, "").trim();
   // The flow's labels say "bought"; these inputs are farmed, not bought.
   return [tail, ...parts].filter(Boolean).join(" · ").replace(/\bno bought inputs\b/, "no Dead Plants or Fermento");
+}
+
+/**
+ * Cells where a Lonelily can spawn: empty farmland with nothing in the 8 cells around it (the
+ * game's `requires_zero_adjacent` rule). Empty farmland (the hub, a Lonelily field) has no target
+ * cells, so this is how the Guide knows those plots grow Lonelilies.
+ */
+export function lonelilyCells(layout: ResolvedLayout): number {
+  const taken = new Set<string>();
+  const mark = (row: number, col: number, size: number) => {
+    for (let r = row; r < row + size; r++) for (let c = col; c < col + size; c++) taken.add(`${r},${c}`);
+  };
+  for (const p of layout.plants) mark(p.row, p.col, p.size);
+  for (const s of layout.slots) mark(s.row, s.col, s.size);
+  let n = 0;
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      if (taken.has(`${r},${c}`) || layout.groundTiles[`${r},${c}`] !== "farmland") continue;
+      let clear = true;
+      for (let dr = -1; dr <= 1 && clear; dr++) for (let dc = -1; dc <= 1; dc++) if ((dr || dc) && taken.has(`${r + dr},${c + dc}`)) clear = false;
+      if (clear) n += 1;
+    }
+  }
+  return n;
 }
 
 function counts(entries: string[]): ItemCount[] {
@@ -198,6 +222,9 @@ export function buildCatalog(flow: FlowsFile, resolve: Resolver): Catalog {
       for (const id of paid) items.add(id);
       for (const s of layout.slots) items.add(s.mutationId);
       const kind: Farm["kind"] = step.id === HUB ? "hub" : step.id === SUPPLIES ? "supplies" : step.id === DONE ? "done" : "farm";
+      // Empty farmland has no target cells but grows Lonelilies wherever nothing stands around a cell.
+      const lonely = kind !== "done" && layout.slots.length === 0 ? lonelilyCells(layout) : 0;
+      if (lonely > 0) items.add("lonelily");
       return {
         id: step.id,
         plotId: plot.id,
@@ -208,7 +235,7 @@ export function buildCatalog(flow: FlowsFile, resolve: Resolver): Catalog {
         ...("code" in step.layout ? { code: step.layout.code } : {}),
         cost: counts(paid),
         free: counts(free),
-        products: counts(layout.slots.map((s) => s.mutationId)),
+        products: lonely > 0 ? [{ item: "lonelily", count: lonely }] : counts(layout.slots.map((s) => s.mutationId)),
         kind,
       };
     });

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { defaultSettings } from "../simulator";
-import { applyImportedItems, buildCatalog, createGuideEnv, initialState, inventoryChanges, parseFlows, trackedFound, validate, type FlowsFile } from "./index";
+import { applyImportedItems, buildCatalog, createGuideEnv, initialState, inventoryChanges, parseFlows, sinceLastImport, trackedFound, trackedItems, validate, type FlowsFile } from "./index";
 
 const guideEnv = createGuideEnv();
 const data = guideEnv.engine.data;
@@ -46,6 +46,18 @@ describe("Import from Hypixel (Guide inventory)", () => {
     expect(some.inventory).toEqual({ ...state.inventory, dead_plant: 210 });
     // Nothing else in the state changes.
     expect({ ...all, inventory: state.inventory }).toEqual(state);
+  });
+
+  it("keeps the tracked counts of a lookup and compares a new one with it", () => {
+    expect(trackedItems(catalog, found)).toEqual({ dead_plant: 210, fermento: 50, ...(catalog.items.includes("godseed") ? { godseed: 6 } : {}) });
+    const previous = { profileId: "p1", items: { dead_plant: 210 } };
+    // Same count on Hypixel as last import: probably not saved yet.
+    expect(sinceLastImport(previous, "p1", "dead_plant", 210)).toBe(0);
+    expect(sinceLastImport(previous, "p1", "dead_plant", 250)).toBe(40);
+    expect(sinceLastImport(previous, "p1", "fermento", 50)).toBe(50);
+    // Another profile, or no earlier import: nothing to compare.
+    expect(sinceLastImport(previous, "p2", "dead_plant", 210)).toBeNull();
+    expect(sinceLastImport(undefined, "p1", "dead_plant", 210)).toBeNull();
   });
 
   it("ignores junk counts", () => {

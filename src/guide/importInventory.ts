@@ -44,6 +44,27 @@ export function trackedFound(catalog: Catalog, found: Readonly<Record<string, nu
   return catalog.items.filter((item) => whole(found[item]) > 0).length;
 }
 
+/** The tracked items an import found, zero counts left out: what `LastImport.items` keeps. */
+export function trackedItems(catalog: Catalog, found: Readonly<Record<string, number>>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of catalog.items) {
+    const n = whole(found[item]);
+    if (n > 0) out[item] = n;
+  }
+  return out;
+}
+
+/**
+ * How Hypixel's count moved since the previous import of the same profile (null: no previous one).
+ * 0 means Hypixel shows the same count as last time: either nothing happened there, or Hypixel
+ * hasn't saved the latest harvest yet. The Guide's own number may then be newer (it took off what
+ * confirmed plots placed), so the dialog leaves those rows unticked.
+ */
+export function sinceLastImport(previous: { profileId: string; items: Readonly<Record<string, number>> } | undefined, profileId: string, item: string, found: number): number | null {
+  if (!previous || previous.profileId !== profileId) return null;
+  return found - whole(previous.items[item]);
+}
+
 /** Set the ticked items to their imported totals. */
 export function applyImportedItems(state: GuideState, changes: readonly InventoryChange[], only?: ReadonlySet<string>): GuideState {
   let next = state;

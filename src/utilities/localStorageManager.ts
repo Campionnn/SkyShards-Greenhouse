@@ -22,6 +22,7 @@ const STORAGE_KEYS = {
   GUIDE_STATE: "skyshards-guide-state",
   GUIDE_STATE_2PLOTS: "skyshards-guide-state-2plots",
   GUIDE_VARIANT: "skyshards-guide-variant",
+  GUIDE_HOWTO: "skyshards-guide-howto",
   LAST_SOLVER_LAYOUT: "skyshards-last-solver-layout",
   PROFILE_MODE: "skyshards-profile-mode",
   BAZAAR_PRICES: "skyshards-bazaar-prices",
@@ -47,6 +48,8 @@ export interface StoredGuideState {
   confirmations?: Record<number, { plotId: number; before: { farm: string }; delta: Record<string, number>; memory: { builtOnce: Record<string, number> } }>;
   /** Forecast precision the player last chose. */
   precision?: "quick" | "normal" | "thorough";
+  /** The last Hypixel import (src/guide/checkin.ts `LastImport`), for "Import again". */
+  lastImport?: { username: string; profileId: string; profileName: string; fetchedAt: number; appliedAt?: number; items: Record<string, number> };
 }
 
 /** Cached Bazaar prices: when they were fetched (ms), the API's own timestamp, and quotes by simulator item id. */
@@ -315,6 +318,15 @@ export class LocalStorageManager {
 
   static loadGuideVariant(): GuideVariant {
     return this.load<string>(STORAGE_KEYS.GUIDE_VARIANT) === "two" ? "two" : "three";
+  }
+
+  /** Whether the Guide's "How to use this guide" panel is folded away (`skyshards-guide-howto`). */
+  static saveGuideHowToHidden(hidden: boolean): boolean {
+    return this.save(STORAGE_KEYS.GUIDE_HOWTO, hidden);
+  }
+
+  static loadGuideHowToHidden(): boolean {
+    return this.load<boolean>(STORAGE_KEYS.GUIDE_HOWTO) === true;
   }
 
   /** Last finished Calculator result, offered by the Simulator's layout picker. */

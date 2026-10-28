@@ -14,6 +14,7 @@ import {
   itemName,
   type Catalog,
   type ConfirmExtras,
+  type FlowNeeds,
   type ItemCount,
   type PlotInput,
   type PlotOutcome,
@@ -21,6 +22,7 @@ import {
   type Verb,
 } from "../../guide";
 import { FarmPicture } from "./FarmPicture";
+import { WorkingTowards } from "./FlowNeeds";
 import { ItemChip } from "./primitives";
 import { buttonClass } from "./format";
 
@@ -63,7 +65,17 @@ export interface PlotCardProps {
   /** A Devourer farm: "a Devourer was harvested here (or a plant decayed) since it was built". */
   onDevourerRefresh: (on: boolean) => void;
   onOpenInventory: () => void;
+  /** Whole-flow totals (null when the flow's script has no build plan). */
+  needs?: FlowNeeds | null;
+  /** What the player owns now: the done-this-visit card's progress reads it. */
+  inventory?: Record<string, number>;
+  /** Plots in this visit (login order) and which of them are already checked, for "waiting on" lines. */
+  visitPlots?: number[];
+  checked?: number[];
 }
+
+/** "Plot 2", "Plots 2 and 3". */
+const plotList = (ids: number[]) => (ids.length === 1 ? `Plot ${ids[0]}` : `Plots ${ids.slice(0, -1).join(", ")} and ${ids[ids.length - 1]}`);
 
 /** "37 base crops", "31 base crops and 6 fire", "4 fire". */
 function freeLabel(free: ItemCount[]): string {
@@ -119,11 +131,16 @@ export const PlotCard: React.FC<PlotCardProps> = ({
   onPickFarm,
   onDevourerRefresh,
   onOpenInventory,
+  needs = null,
+  inventory = {},
+  visitPlots = [],
+  checked = [],
 }) => {
   const name = (id: string) => itemName(data, id);
   const current = farmOf(catalog, plotId, plot.farm);
   const reportedZombuds = (plot.facts?.standing ?? []).filter((s) => s.kind === "zombud" && s.fullyGrown).length;
   const [zombuds, setZombuds] = useState(reportedZombuds);
+  const othersLeft = visitPlots.filter((id) => id !== plotId && !checked.includes(id));
 
   if (!outcome) {
     return (
@@ -136,15 +153,23 @@ export const PlotCard: React.FC<PlotCardProps> = ({
             </span>
           }
         />
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-200">
+            <Check className="h-4 w-4 shrink-0" /> Plot {plotId} is set up on {current.name}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-300">
+            {othersLeft.length
+              ? `Waiting on ${plotList(othersLeft)}. This card stays as it is until the next visit: do ${othersLeft.length === 1 ? "that plot" : "those plots"} and press ${othersLeft.length === 1 ? "its" : "their"} button too.`
+              : "Every plot is done for this visit. Next time you're online, harvest and press \"I'm back\"."}
+          </p>
+        </div>
         {canUndo && (
           <button type="button" className={buttonClass.secondary} onClick={onUndo}>
             <Undo2 className="h-4 w-4" /> Undo, I didn't do this
           </button>
         )}
-        <p className="text-xs text-slate-400">
-          On <span className="font-medium text-slate-200">{current.name}</span>.
-        </p>
         <FarmPicture layout={current.layout} nameOf={name} data={data} maxCell={26} facts={plot.facts} />
+        {needs && current.products.length > 0 && <WorkingTowards products={current.products.map((p) => p.item)} needs={needs} inventory={inventory} data={data} />}
       </article>
     );
   }
@@ -161,6 +186,9 @@ export const PlotCard: React.FC<PlotCardProps> = ({
   // Items an earlier plot this visit places that this card's numbers already account for.
   const before = earlier.filter((e) => e.spent.length > 0);
   const harvestNow = [...outcome.harvested, ...outcome.harvestReady.filter((h) => !outcome.harvested.some((x) => x.item === h.item))];
+  const spentTotal = outcome.spent.reduce((s, x) => s + x.count, 0);
+  const spentWord = spentTotal > 0 ? (outcome.spent.length === 1 ? `the ${spentTotal} ${name(outcome.spent[0].item)}` : `the ${spentTotal} items it places`) : "";
+  const towards = ex.verb !== "done" ? target.products.map((p) => p.item) : [];
 
   return (
     <article className={`${CARD} ${next ? "border-emerald-500/40" : "border-slate-600/30"}`} aria-label={`Plot ${plotId}`}>
@@ -178,10 +206,17 @@ export const PlotCard: React.FC<PlotCardProps> = ({
             </button>
           </div>
         ) : ex.verb === "done" ? null : (
-          <button type="button" className={buttonClass.primary} onClick={() => onConfirm(showZombuds ? { zombudHarvests: zombuds, zombudPerHarvest } : {})}>
-            <Check className="h-4 w-4 shrink-0" />
-            <span className="min-w-0">{ex.verb === "stay" || ex.verb === "wait" ? `Done with Plot ${plotId}` : `Did it: Plot ${plotId} is on ${target.name}`}</span>
-          </button>
+          <>
+            <button type="button" className={buttonClass.primary} onClick={() => onConfirm(showZombuds ? { zombudHarvests: zombuds, zombudPerHarvest } : {})}>
+              <Check className="h-4 w-4 shrink-0" />
+              <span className="min-w-0">{ex.verb === "stay" || ex.verb === "wait" ? `Done with Plot ${plotId}` : `Did it: Plot ${plotId} is on ${target.name}`}</span>
+            </button>
+            <p className="text-[11px] leading-snug text-slate-500">
+              Do it in the game first, then press.
+              {visitPlots.length > 1 && ` Each plot has its own button: press all ${visitPlots.length} to finish this visit.`}
+              {spentWord && ` Pressing takes ${spentWord} off what you own.`}
+            </p>
+          </>
         )}
         <div>
           <p className="text-sm font-semibold text-slate-100">{ex.headline}</p>
@@ -312,31 +347,37 @@ export const PlotCard: React.FC<PlotCardProps> = ({
             <span>A Devourer was harvested here, or one of the farm's plants decayed, since it was built. The farm then has to be rebuilt.</span>
           </label>
         )}
-        {ex.verb === "stay" && waiting.length > 0 && (
-          <Section title="Working towards">
-            <ul className="space-y-1">
-              {waiting.slice(0, 6).map((w) => {
-                const pct = Math.min(100, Math.round((100 * w.have) / Math.max(1, w.target)));
-                return (
-                  <li key={w.item} className="flex items-center gap-2 text-xs text-slate-300">
-                    <span className="w-28 shrink-0 truncate sm:w-32">{name(w.item)}</span>
-                    <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-700" role="progressbar" aria-valuenow={w.have} aria-valuemax={w.target} aria-label={name(w.item)}>
-                      <span className="block h-full rounded-full bg-emerald-400/80" style={{ width: `${pct}%` }} />
-                    </span>
-                    <span className="w-14 shrink-0 text-right tabular-nums text-slate-400">
+        {needs && towards.length > 0 ? (
+          <WorkingTowards
+            products={towards}
+            needs={needs}
+            inventory={outcome.inventoryAfter}
+            waitFor={ex.verb === "stay" ? waiting : []}
+            data={data}
+            footnote={
+              before.length > 0 && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Counts are after {before.map((e) => `Plot ${e.plotId}`).join(" and ")} {before.length === 1 ? "places its" : "place their"} items this visit.
+                </p>
+              )
+            }
+          />
+        ) : (
+          ex.verb === "stay" &&
+          waiting.length > 0 && (
+            <Section title="Working towards">
+              <ul className="space-y-1">
+                {waiting.slice(0, 6).map((w) => (
+                  <li key={w.item} className="flex items-center justify-between gap-2 text-xs text-slate-300">
+                    <span className="truncate">{name(w.item)}</span>
+                    <span className="tabular-nums text-slate-400">
                       {w.have}/{w.target}
                     </span>
                   </li>
-                );
-              })}
-            </ul>
-            {waiting.length > 6 && <p className="mt-1 text-[11px] text-slate-500">and {waiting.length - 6} more</p>}
-            {before.length > 0 && (
-              <p className="mt-1 text-[11px] text-slate-500">
-                Counts are after {before.map((e) => `Plot ${e.plotId}`).join(" and ")} {before.length === 1 ? "places its" : "place their"} items this visit.
-              </p>
-            )}
-          </Section>
+                ))}
+              </ul>
+            </Section>
+          )
         )}
         {tips.length > 0 && (
           <Section title="While you're here">
