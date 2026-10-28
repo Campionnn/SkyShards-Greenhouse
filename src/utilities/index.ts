@@ -30,3 +30,4 @@ export * from "./effectSimulation";
 export * from "./layoutTransform";
 export * from "./layoutHistory";
 export * from "./layoutHandoff";
+export * from "./shareLink";

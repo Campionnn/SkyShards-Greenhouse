@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from "react";
-import { CheckCircle2, AlertTriangle, Grid3X3, RotateCcw, Paintbrush, Info, Loader2, FlaskConical } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Grid3X3, RotateCcw, Paintbrush, Info, Loader2, FlaskConical, Share2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { GRID_SIZE } from "../../constants";
 import { useGreenhouseData, useGridState, useLockedPlacements, useDesigner, useInfoModal } from "../../context";
@@ -13,6 +13,7 @@ import {
   makeIncomingLayout,
   simulatorHandoffState,
   solverResultCells,
+  copyShareLink,
 } from "../../utilities";
 import {
   GridBackground,
@@ -25,6 +26,8 @@ import {
   GridVisibilityToggle,
   FindOnGridHint,
   focusItemClass,
+  focusFade,
+  FOCUS_TRANSITION,
 } from "../grid";
 import { CropImage } from "../shared";
 import { SectionLabel } from "../ui";
@@ -269,6 +272,19 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     navigate("/simulator", { state: simulatorHandoffState(currentLayout) });
   }, [currentLayout, navigate, toast]);
 
+  const handleCopyShareLink = useCallback(async () => {
+    if (!currentLayout) {
+      toast({ title: "Nothing to share", description: "Place some locked crops or solve first", variant: "warning", duration: 3000 });
+      return;
+    }
+    try {
+      await copyShareLink(currentLayout.code);
+      toast({ title: "Share link copied!", description: "Paste this link in Discord or share with others", variant: "success", duration: 3000 });
+    } catch (err) {
+      toast({ title: "Couldn't copy the link", description: err instanceof Error ? err.message : "Clipboard not available", variant: "error", duration: 5000 });
+    }
+  }, [currentLayout, toast]);
+
   const {
     hoveredPlacementId,
     setHoveredPlacementId,
@@ -302,6 +318,18 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     if (!result || !result.mutations) return [];
     return processMutationsToItems(result.mutations, getMutationDef);
   }, [result, getMutationDef]);
+
+  // Cells under any placement (crops, targets, locks) get no empty-cell tile: a tile under a
+  // target would show through when the target fades.
+  const coveredCells = useMemo(() => {
+    const cells = new Set(occupiedCells);
+    const cover = ([r, c]: [number, number], size: number) => {
+      for (let dr = 0; dr < size; dr++) for (let dc = 0; dc < size; dc++) cells.add(`${r + dr},${c + dc}`);
+    };
+    for (const m of result?.mutations || []) cover(m.position, m.size);
+    for (const l of lockedPlacements) cover(l.position, l.size);
+    return cells;
+  }, [occupiedCells, result, lockedPlacements]);
 
   // Hovering or clicking an entry in the Mutations / Crops to plant lists finds it on the grid.
   const focusKeys = useMemo(() => {
@@ -372,12 +400,21 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
           Array.from({ length: GRID_SIZE }).flatMap((_, rowIndex) =>
             Array.from({ length: GRID_SIZE }).map((_, colIndex) => {
               const key = `${rowIndex},${colIndex}`;
-              if (occupiedCells.has(key)) return null;
+              if (coveredCells.has(key)) return null;
               const isUnlocked = unlockedCells.has(key);
               return (
                 <div
                   key={key}
-                  style={{ position: "absolute", top: rowIndex * (cellSize + gap), left: colIndex * (cellSize + gap), width: cellSize, height: cellSize }}
+                  style={{
+                    position: "absolute",
+                    top: rowIndex * (cellSize + gap),
+                    left: colIndex * (cellSize + gap),
+                    width: cellSize,
+                    height: cellSize,
+                    // Empty unlocked cells fade with everything else while a list entry is shown.
+                    ...(isUnlocked && focus.active ? focusFade("dimmed") : {}),
+                    transition: FOCUS_TRANSITION,
+                  }}
                   className={`rounded ${isUnlocked ? "bg-emerald-600/40 border border-emerald-500/30" : "bg-slate-700/30 border border-slate-600/20"}`}
                 />
               );
@@ -543,6 +580,14 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
               >
                 <FlaskConical className="w-3 h-3" />
                 Simulate
+              </button>
+              <button
+                onClick={handleCopyShareLink}
+                className="px-2 py-1 text-xs bg-sky-500/30 hover:bg-sky-500/50 border border-sky-500/30 rounded text-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
+                title="Copy a share link to this layout"
+              >
+                <Share2 className="w-3 h-3" />
+                Share
               </button>
             </>
           )}
