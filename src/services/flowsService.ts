@@ -7,6 +7,7 @@ import type { FlowCell, FlowDetail, FlowListResponse, FlowSeedResult, FlowStatus
 import type { RunResult } from "../leaderboard/result";
 import { BOARD_RUN_KIND, BOARDS, boardFrom, RUN_KIND_BOARD, runKindFrom, type Board, type RunKind } from "../leaderboard/rules";
 import type { TierId } from "../leaderboard/tiers";
+import { SHARE_BASE_URL } from "../utilities/shareLink";
 import { ApiError, apiFetch } from "./authService";
 import { flowsMockEnabled, mockAdminDetailExtras, mockDetail, mockList, mockMyLikes, mockSetLike, mockStatus, mockSubmit } from "./flowsMock";
 
@@ -248,4 +249,13 @@ export async function myLikedFlows(): Promise<string[]> {
 export function flowLink(id: string): string {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   return `${origin}/flows/${id}`;
+}
+
+/**
+ * The link to paste into Discord etc.: the API's `/share/flow/ID` page carries the Open Graph tags
+ * (title, coins/day, author, plots, cycles) and redirects people to `/flows/ID`. The SPA page itself
+ * has no per-flow meta tags, so pasting `flowLink` gives a generic embed.
+ */
+export function flowShareLink(id: string): string {
+  return `${SHARE_BASE_URL}/flow/${encodeURIComponent(id)}`;
 }

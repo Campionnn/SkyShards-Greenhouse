@@ -26,7 +26,7 @@ import {
   type LocalKindSummary,
 } from "../../leaderboard/view";
 import { LocalTestPool, randomSeeds, type SeedOutcome } from "../../leaderboard/worker/pool";
-import { flowLink, submitFlow } from "../../services/flowsService";
+import { flowLink, flowShareLink, submitFlow } from "../../services/flowsService";
 import { defaultGameData, type Scenario } from "../../simulator";
 import { Avatar } from "../flows/FlowControls";
 import { StatusBox } from "../flows/FlowDetailSections";
@@ -319,7 +319,7 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
           <a href={`/flows/${submitted.id}`} className="text-emerald-300 hover:underline break-all">
             {flowLink(submitted.id)}
           </a>
-          <button type="button" className={buttonClass.neutral} onClick={() => copy(flowLink(submitted.id))}>
+          <button type="button" className={buttonClass.neutral} onClick={() => copy(flowShareLink(submitted.id))}>
             <Link2 className="w-3.5 h-3.5" /> Copy link
           </button>
         </div>

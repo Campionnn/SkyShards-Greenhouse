@@ -48,7 +48,7 @@ import {
   viewerResult,
 } from "../leaderboard/view";
 import { adminDelete, adminHide, adminUnhide, getAdminKey, hiddenReasonLabel } from "../services/adminService";
-import { deleteFlow, flowLink, getFlow, updateFlow } from "../services/flowsService";
+import { deleteFlow, flowShareLink, getFlow, updateFlow } from "../services/flowsService";
 import { defaultGameData } from "../simulator";
 
 const DATA = defaultGameData();
@@ -248,10 +248,10 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(flowLink(detail.id));
-      toast({ title: "Link copied", description: flowLink(detail.id), variant: "success" });
+      await navigator.clipboard.writeText(flowShareLink(detail.id));
+      toast({ title: "Link copied", description: "Paste it in Discord for an embed with the flow's stats.", variant: "success" });
     } catch {
-      toast({ title: "Could not copy", description: flowLink(detail.id), variant: "warning" });
+      toast({ title: "Could not copy", description: flowShareLink(detail.id), variant: "warning" });
     }
   };
   const remove = async () => {
