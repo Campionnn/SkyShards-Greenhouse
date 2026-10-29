@@ -1,0 +1,735 @@
+{
+  "kind": "skyshards-greenhouse-flows",
+  "version": 1,
+  "plots": [
+    {
+      "id": 1,
+      "flow": {
+        "steps": [
+          {
+            "id": "step-10",
+            "label": "Lonelilly",
+            "layout": {
+              "code": "q8mpcaQDAAA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "lonelily",
+                    "qty": 200
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-7",
+            "label": "Duskies",
+            "layout": {
+              "code": "LYo5DoAwEAM_tAUSCOpAPmI73BIdXR7PZoVGLjwamuyyxzqbbLTB-vrGv-u27OscHKTYhozUUOJZ5MDJdMPGQXgjCe4UDmc0KCy_U0LrEO0H"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "duskbloom",
+                    "qty": 600
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-11",
+            "label": "Soggybud",
+            "layout": {
+              "code": "LYzRDQAhDEIX6s8lLsAoKH-u4PAHVprQhDwYxVLt841DyGdnPB-YcGSJ1IsiorlUGgiyjOgiawZBd97gHf0B"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "soggybud",
+                    "qty": 250
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ],
+            "fullClear": true
+          },
+          {
+            "id": "step-8",
+            "label": "Noctilume",
+            "layout": {
+              "code": "K9XJqTE0qklCAEc9KErU04MiBEDIJunpQVFSElA8CYzAUokoesGSINkkAA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "noctilume",
+                    "qty": 72
+                  }
+                ],
+                "to": "step-1",
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-1",
+            "label": "Thundering",
+            "layout": {
+              "code": "PYyJCQAgDAMXKoGKDuAoarqFw2vrQ0kgR5MiTSiaRPPUPtGIvjVghiurRDW_m4nH8H-4PdiJbtEI5oW3Byw"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thunderling",
+                    "qty": 180
+                  }
+                ],
+                "to": "step-2"
+              }
+            ]
+          },
+          {
+            "id": "step-9",
+            "label": "Snoozling Spawners",
+            "layout": {
+              "code": "y9TJ10nRMdWx1EmsKdEpA_IyaxJBIDk5KTk50REIk52SnJIhYklJSRhipKhLcQHDVOc0AA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 100
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thornshade",
+                    "qty": 100
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-4",
+            "label": "Snooze",
+            "layout": {
+              "code": "K9Ep1cnSKdMp0LHUMdYxqTE01smuyXBKd8pIA2Kn1NTU5CQgkZKe7KinlwTEyU4penp6IJyckQxjOSUCQRKIgKtLdUrFog5oEtC8ZKB5AA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "snoozling",
+                    "qty": 60
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-2",
+            "label": "PBA",
+            "layout": {
+              "code": "NctRDoAgDAPQCzVNCOg_w4vg3IzhChxeFF2_2pdVhIiwY0FDQuxhRUi40PpRRirNrOykqorIQTJT3V35nJqYZk7_tuHbaNNP-91E5mYyvl93vwE"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "plantboy_advance",
+                    "qty": 120
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "plantDecayed",
+                        "kindId": "snoozling"
+                      },
+                      {
+                        "kind": "plantDecayed",
+                        "kindId": "thunderling"
+                      }
+                    ]
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ],
+            "fullClear": true
+          },
+          {
+            "id": "step-5",
+            "label": "Hybridize",
+            "layout": {
+              "code": "LYwxDgAwCAI_1JB06e5T4A_dfHwD1oF4p-Gs23s3SJHwsFRDSVNkaBSLcIqK9iHy_8kbNQr45Q8"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "targetsFilled",
+                    "count": 0
+                  }
+                ]
+              }
+            ],
+            "fullClear": true
+          },
+          {
+            "id": "step-3",
+            "label": "Aloe",
+            "layout": {
+              "code": "NYzBCQAgDAMXkoN-_HeUFNzC4aVGUwgkORoxYu5YW0-F0gcdiluDoOu7mWuZS6Vzu7lHq_gP4AA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "plantboy_advance",
+                    "qty": 20
+                  },
+                  {
+                    "kind": "plantDecayed",
+                    "kindId": "plantboy_advance"
+                  }
+                ]
+              },
+              {
+                "when": [
+                  {
+                    "kind": "plantDecayed",
+                    "kindId": "plantboy_advance"
+                  }
+                ],
+                "match": "any",
+                "to": "step-5"
+              }
+            ]
+          }
+        ],
+        "loop": true,
+        "startIndex": 0
+      },
+      "script": {
+        "source": "// =====================================================================\n//  All-in Aloe plot script: Blastberry tech\n//\n//  Only acts in steps whose layout grows All-in Aloe. Nothing is planted.\n//\n//  Every All-in Aloe is harvested with +30% yield and Immunity, as if a\n//  Blastberry had been put next to it just before the harvest, and 1 Magic\n//  Jellybean leaves the inventory for it (the placed Jellybean you break to\n//  make room). The built-in harvest still decides when each aloe is\n//  harvested. Aloes the step change would clear are harvested first so they\n//  get the tech too.\n// =====================================================================\n\nconst ALOE = \"all_in_aloe\";\nconst JB = \"magic_jellybean\";\nconst BB_EFFECTS = [\"immunity\", \"improved_harvest_boost\"];\n\nlet aloeStep = false;   // does this step grow All-in Aloe?\nlet tally = { aloesHarvested: 0, aloesWithTech: 0, jellybeansSpent: 0 };\nlet warned = {};\n\nfunction warnOnce(id, text) {\n  if (warned[id]) return;\n  warned[id] = true;\n  warn(text);\n}\n\nfunction capture() {\n  aloeStep = plot.layout.targets.some((t) => t.mutation === ALOE);\n}\n\n// The aloes being harvested hold the Blastberry's effects for that moment only\n// (forced effects), and 1 Magic Jellybean per aloe is placed on the aloe's empty\n// cell and broken straight away, which spends it without counting as a harvest.\nfunction withBlastberry(run) {\n  const before = forcedEffects[ALOE] ?? [];\n  forceEffects(ALOE, [...before, ...BB_EFFECTS]);\n  run();\n  if (before.length) forceEffects(ALOE, before);\n  else unforceEffects(ALOE);\n}\n\nfunction spendJellybean(r, c) {\n  if (!plot.place(JB, r, c)) return false;\n  plot.breakAt(r, c);\n  tally.jellybeansSpent++;\n  return true;\n}\n\n/** The built-in harvest phase, with the Blastberry effects on every aloe it takes. */\nfunction harvestWithTech() {\n  const before = plot.spawns(ALOE).map((p) => ({ id: p.id, row: p.row, col: p.col }));\n  const ready = plot.spawns(ALOE).filter((p) => p.stage >= 4).length;\n  if (!ready || (!config.allowMutationDebt && inventory.get(JB) < ready)) {\n    if (ready) warnOnce(\"jbstock\", `Cycle ${cycle}: not enough Magic Jellybeans for the Blastberry tech on every aloe; this harvest goes without it.`);\n    plot.runPhase(\"harvest\");\n    return;\n  }\n  withBlastberry(() => plot.runPhase(\"harvest\"));\n  // 1 Jellybean for each aloe that was there before and is gone now.\n  const still = {};\n  for (const p of plot.spawns(ALOE)) still[p.id] = true;\n  for (const a of before) {\n    if (still[a.id]) continue;\n    tally.aloesHarvested++;\n    tally.aloesWithTech++;\n    spendJellybean(a.row, a.col);\n  }\n}\n\n/** The step changes this session: harvest the aloes it would clear, with the tech. */\nfunction harvestBeforeStepChange() {\n  const due = plot.spawns(ALOE).filter((p) => p.stage >= 4);\n  if (!due.length) return;\n  const n = config.allowMutationDebt ? due.length : Math.min(due.length, inventory.get(JB));\n  if (n < due.length) warnOnce(\"jbstock2\", `Cycle ${cycle}: not enough Magic Jellybeans for the Blastberry tech; some aloes are harvested without it.`);\n  if (n) {\n    withBlastberry(() => {\n      for (const a of due.slice(0, n)) {\n        const r = a.row;\n        const c = a.col;\n        if (a.harvest()) {\n          tally.aloesHarvested++;\n          tally.aloesWithTech++;\n          spendJellybean(r, c);\n        }\n      }\n    });\n  }\n  for (const a of due.slice(n)) if (a.harvest()) tally.aloesHarvested++;\n}\n\n// ---- Hooks ----\nfunction onStart() {\n  capture();\n}\n\nfunction onStepChange(e) {\n  capture();\n}\n\nfunction onSession() {\n  if (!aloeStep) return;\n  const to = plot.pending ?? plot.exitDue();\n  if (to && to !== plot.step.id) harvestBeforeStepChange();\n  harvestWithTech();\n}\n\nfunction afterSession() {\n  const p = `Plot ${plot.id}: `;\n  metric(p + \"aloes harvested\", tally.aloesHarvested);\n  metric(p + \"aloes harvested with +30% and immunity\", tally.aloesWithTech);\n  metric(p + \"Magic Jellybeans spent on the Blastberry tech\", tally.jellybeansSpent);\n}\n"
+      }
+    },
+    {
+      "id": 2,
+      "flow": {
+        "steps": [
+          {
+            "id": "step-10",
+            "label": "Lonelilly",
+            "layout": {
+              "code": "q8mpcaQDAAA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "lonelily",
+                    "qty": 200
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-11",
+            "label": "Soggybud",
+            "layout": {
+              "code": "LYzRDQAhDEIX6s8lLsAoKH-u4PAHVprQhDwYxVLt841DyGdnPB-YcGSJ1IsiorlUGgiyjOgiawZBd97gHf0B"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "soggybud",
+                    "qty": 250
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-7",
+            "label": "Duskies",
+            "layout": {
+              "code": "LcoxDoAwDEPRC2VgAeZSLmK70MLAxtbDk1ToKUOsT5Pd9thkqy0293d8Vz9zPbYhk2IcKlJQYi5ycCd9YWiEN5KwMxqHNhoUln-Tbx5htB8"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "duskbloom",
+                    "qty": 600
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-8",
+            "label": "Noctilume",
+            "layout": {
+              "code": "K9XJqTE0qklCAEc9KErU04MiBEDIJunpQVFSElA8CYzAUokoesGSINkkAA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "noctilume",
+                    "qty": 72
+                  }
+                ],
+                "to": "step-1",
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-1",
+            "label": "Thundering",
+            "layout": {
+              "code": "PYyJCQAgDAMXKoGKDuAoarqFw2vrQ0kgR5MiTSiaRPPUPtGIvjVghiurRDW_m4nH8H-4PdiJbtEI5oW3Byw"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thunderling",
+                    "qty": 180
+                  }
+                ],
+                "to": "step-2"
+              }
+            ]
+          },
+          {
+            "id": "step-9",
+            "label": "Snoozling Spawners",
+            "layout": {
+              "code": "y9TJ10nRMdWx1EmsKdEpA_IyaxJBIDk5KTk50REIk52SnJIhYklJSRhipKhLcQHDVOc0AA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 100
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thornshade",
+                    "qty": 100
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-4",
+            "label": "Snooze",
+            "layout": {
+              "code": "K9Ep1cnSKdMp0LHUMdYxqTE01smuyXBKd8pIA2Kn1NTU5CQgkZKe7KinlwTEyU4penp6IJyckQxjOSUCQRKIgKtLdUrFog5oEtC8ZKB5AA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "snoozling",
+                    "qty": 60
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-2",
+            "label": "PBA",
+            "layout": {
+              "code": "NctRDoAgDAPQCzVNCOg_w4vg3IzhChxeFF2_2pdVhIiwY0FDQuxhRUi40PpRRirNrOykqorIQTJT3V35nJqYZk7_tuHbaNNP-91E5mYyvl93vwE"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "plantboy_advance",
+                    "qty": 120
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "plantDecayed",
+                        "kindId": "snoozling"
+                      },
+                      {
+                        "kind": "plantDecayed",
+                        "kindId": "thunderling"
+                      }
+                    ]
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ],
+            "fullClear": true
+          },
+          {
+            "id": "step-5",
+            "label": "Hybridize",
+            "layout": {
+              "code": "LYwxDgAwCAI_1JB06e5T4A_dfHwD1oF4p-Gs23s3SJHwsFRDSVNkaBSLcIqK9iHy_8kbNQr45Q8"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "targetsFilled",
+                    "count": 0
+                  }
+                ]
+              }
+            ],
+            "fullClear": true
+          },
+          {
+            "id": "step-3",
+            "label": "Aloe",
+            "layout": {
+              "code": "NYzBCQAgDAMXkoN-_HeUFNzC4aVGUwgkORoxYu5YW0-F0gcdiluDoOu7mWuZS6Vzu7lHq_gP4AA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "plantboy_advance",
+                    "qty": 20
+                  },
+                  {
+                    "kind": "plantDecayed",
+                    "kindId": "plantboy_advance"
+                  }
+                ]
+              },
+              {
+                "when": [
+                  {
+                    "kind": "plantDecayed",
+                    "kindId": "plantboy_advance"
+                  }
+                ],
+                "match": "any",
+                "to": "step-5"
+              }
+            ]
+          }
+        ],
+        "loop": true,
+        "startIndex": 0
+      },
+      "script": {
+        "source": "// =====================================================================\n//  All-in Aloe plot script: Blastberry tech\n//\n//  Only acts in steps whose layout grows All-in Aloe. Nothing is planted.\n//\n//  Every All-in Aloe is harvested with +30% yield and Immunity, as if a\n//  Blastberry had been put next to it just before the harvest, and 1 Magic\n//  Jellybean leaves the inventory for it (the placed Jellybean you break to\n//  make room). The built-in harvest still decides when each aloe is\n//  harvested. Aloes the step change would clear are harvested first so they\n//  get the tech too.\n// =====================================================================\n\nconst ALOE = \"all_in_aloe\";\nconst JB = \"magic_jellybean\";\nconst BB_EFFECTS = [\"immunity\", \"improved_harvest_boost\"];\n\nlet aloeStep = false;   // does this step grow All-in Aloe?\nlet tally = { aloesHarvested: 0, aloesWithTech: 0, jellybeansSpent: 0 };\nlet warned = {};\n\nfunction warnOnce(id, text) {\n  if (warned[id]) return;\n  warned[id] = true;\n  warn(text);\n}\n\nfunction capture() {\n  aloeStep = plot.layout.targets.some((t) => t.mutation === ALOE);\n}\n\n// The aloes being harvested hold the Blastberry's effects for that moment only\n// (forced effects), and 1 Magic Jellybean per aloe is placed on the aloe's empty\n// cell and broken straight away, which spends it without counting as a harvest.\nfunction withBlastberry(run) {\n  const before = forcedEffects[ALOE] ?? [];\n  forceEffects(ALOE, [...before, ...BB_EFFECTS]);\n  run();\n  if (before.length) forceEffects(ALOE, before);\n  else unforceEffects(ALOE);\n}\n\nfunction spendJellybean(r, c) {\n  if (!plot.place(JB, r, c)) return false;\n  plot.breakAt(r, c);\n  tally.jellybeansSpent++;\n  return true;\n}\n\n/** The built-in harvest phase, with the Blastberry effects on every aloe it takes. */\nfunction harvestWithTech() {\n  const before = plot.spawns(ALOE).map((p) => ({ id: p.id, row: p.row, col: p.col }));\n  const ready = plot.spawns(ALOE).filter((p) => p.stage >= 4).length;\n  if (!ready || (!config.allowMutationDebt && inventory.get(JB) < ready)) {\n    if (ready) warnOnce(\"jbstock\", `Cycle ${cycle}: not enough Magic Jellybeans for the Blastberry tech on every aloe; this harvest goes without it.`);\n    plot.runPhase(\"harvest\");\n    return;\n  }\n  withBlastberry(() => plot.runPhase(\"harvest\"));\n  // 1 Jellybean for each aloe that was there before and is gone now.\n  const still = {};\n  for (const p of plot.spawns(ALOE)) still[p.id] = true;\n  for (const a of before) {\n    if (still[a.id]) continue;\n    tally.aloesHarvested++;\n    tally.aloesWithTech++;\n    spendJellybean(a.row, a.col);\n  }\n}\n\n/** The step changes this session: harvest the aloes it would clear, with the tech. */\nfunction harvestBeforeStepChange() {\n  const due = plot.spawns(ALOE).filter((p) => p.stage >= 4);\n  if (!due.length) return;\n  const n = config.allowMutationDebt ? due.length : Math.min(due.length, inventory.get(JB));\n  if (n < due.length) warnOnce(\"jbstock2\", `Cycle ${cycle}: not enough Magic Jellybeans for the Blastberry tech; some aloes are harvested without it.`);\n  if (n) {\n    withBlastberry(() => {\n      for (const a of due.slice(0, n)) {\n        const r = a.row;\n        const c = a.col;\n        if (a.harvest()) {\n          tally.aloesHarvested++;\n          tally.aloesWithTech++;\n          spendJellybean(r, c);\n        }\n      }\n    });\n  }\n  for (const a of due.slice(n)) if (a.harvest()) tally.aloesHarvested++;\n}\n\n// ---- Hooks ----\nfunction onStart() {\n  capture();\n}\n\nfunction onStepChange(e) {\n  capture();\n}\n\nfunction onSession() {\n  if (!aloeStep) return;\n  const to = plot.pending ?? plot.exitDue();\n  if (to && to !== plot.step.id) harvestBeforeStepChange();\n  harvestWithTech();\n}\n\nfunction afterSession() {\n  const p = `Plot ${plot.id}: `;\n  metric(p + \"aloes harvested\", tally.aloesHarvested);\n  metric(p + \"aloes harvested with +30% and immunity\", tally.aloesWithTech);\n  metric(p + \"Magic Jellybeans spent on the Blastberry tech\", tally.jellybeansSpent);\n}\n"
+      }
+    },
+    {
+      "id": 3,
+      "flow": {
+        "steps": [
+          {
+            "id": "step-10",
+            "label": "Lonelilly",
+            "layout": {
+              "code": "q8mpcaQDAAA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "lonelily",
+                    "qty": 200
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-11",
+            "label": "Soggybud",
+            "layout": {
+              "code": "LYzRDQAhDEIX6s8lLsAoKH-u4PAHVprQhDwYxVLt841DyGdnPB-YcGSJ1IsiorlUGgiyjOgiawZBd97gHf0B"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "soggybud",
+                    "qty": 250
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-7",
+            "label": "Duskies",
+            "layout": {
+              "code": "LcoxDoAwDEPRC2VgAjGWchHbhQIDTGw9PEmFnjLE-jTZZbcNNtlos6G9_X_anuu2dJkU41CRghJzkYPb6QvDQXgjCSujcTh7g8Lyb0qIDr39AA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "duskbloom",
+                    "qty": 600
+                  }
+                ],
+                "to": "step-8",
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-8",
+            "label": "Noctilume",
+            "layout": {
+              "code": "K9XJqTE0qklCAEc9KErU04MiBEDIJunpQVFSElA8CYzAUokoesGSINkkAA"
+            },
+            "exits": [
+              {
+                "to": "step-9",
+                "when": [
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "creambloom",
+                    "qty": 40
+                  },
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "thornshade",
+                    "qty": 30
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "noctilume",
+                    "qty": 72
+                  }
+                ],
+                "checkOnEntry": true
+              },
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "noctilume",
+                    "qty": 72
+                  }
+                ],
+                "to": "step-4",
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-1",
+            "label": "Thundering",
+            "layout": {
+              "code": "PYyJCQAgDAMXKoGKDuAoarqFw2vrQ0kgR5MiTSiaRPPUPtGIvjVghiurRDW_m4nH8H-4PdiJbtEI5oW3Byw"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thunderling",
+                    "qty": 180
+                  }
+                ],
+                "to": "step-2",
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-9",
+            "label": "Snoozling Spawners",
+            "layout": {
+              "code": "y9TJ10nRSdMxrSnRKdMp0MmsSQSB5OSk5ORERyBMdkpySoaIJSUlYYgRUpeSAlPn7JzqAoZ6KSkA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "creambloom",
+                    "qty": 50
+                  },
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "thornshade",
+                    "qty": 50
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-4",
+            "label": "Snooze",
+            "layout": {
+              "code": "K9Ep1cnSKdMp0LHUMdYxqTE01smuyXBKd8pIA2Kn1NTU5CQgkZKe7KinlwTEyU4penp6IJyckQxjOSUCQRKIgKtLdUrFog5oEtC8ZKB5AA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "snoozling",
+                    "qty": 30
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ]
+          },
+          {
+            "id": "step-2",
+            "label": "PBA",
+            "layout": {
+              "code": "NctRDoAgDAPQCzVNCOo_Uw8CY6DxxwN4eFF0_WpfFuE8XMKIAwMK_OUmuAE7ThxXnlsizWxOpKqKSCYZqKUU5XNqYhrY_duar6113-z3KtK3urTv12u9AQ"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryAtLeast",
+                    "item": "plantboy_advance",
+                    "qty": 120
+                  },
+                  {
+                    "kind": "group",
+                    "match": "any",
+                    "of": [
+                      {
+                        "kind": "plantDecayed",
+                        "kindId": "snoozling"
+                      },
+                      {
+                        "kind": "plantDecayed",
+                        "kindId": "thunderling"
+                      }
+                    ]
+                  }
+                ],
+                "checkOnEntry": true
+              }
+            ],
+            "fullClear": true
+          },
+          {
+            "id": "step-5",
+            "label": "Hybridize",
+            "layout": {
+              "code": "LYwxDgAwCAI_1JB06e5T4A_dfHwD1oF4p-Gs23s3SJHwsFRDSVNkaBSLcIqK9iHy_8kbNQr45Q8"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "targetsFilled",
+                    "count": 0
+                  }
+                ]
+              }
+            ],
+            "fullClear": true
+          },
+          {
+            "id": "step-3",
+            "label": "Aloe",
+            "layout": {
+              "code": "NYzBCQAgDAMXkoN-_HeUFNzC4aVGUwgkORoxYu5YW0-F0gcdiluDoOu7mWuZS6Vzu7lHq_gP4AA"
+            },
+            "exits": [
+              {
+                "when": [
+                  {
+                    "kind": "inventoryBelow",
+                    "item": "plantboy_advance",
+                    "qty": 20
+                  },
+                  {
+                    "kind": "plantDecayed",
+                    "kindId": "plantboy_advance"
+                  }
+                ]
+              },
+              {
+                "when": [
+                  {
+                    "kind": "plantDecayed",
+                    "kindId": "plantboy_advance"
+                  }
+                ],
+                "match": "any",
+                "to": "step-5"
+              }
+            ]
+          }
+        ],
+        "loop": true,
+        "startIndex": 0
+      },
+      "script": {
+        "source": "// =====================================================================\n//  All-in Aloe plot script: Blastberry tech\n//\n//  Only acts in steps whose layout grows All-in Aloe. Nothing is planted.\n//\n//  Every All-in Aloe is harvested with +30% yield and Immunity, as if a\n//  Blastberry had been put next to it just before the harvest, and 1 Magic\n//  Jellybean leaves the inventory for it (the placed Jellybean you break to\n//  make room). The built-in harvest still decides when each aloe is\n//  harvested. Aloes the step change would clear are harvested first so they\n//  get the tech too.\n// =====================================================================\n\nconst ALOE = \"all_in_aloe\";\nconst JB = \"magic_jellybean\";\nconst BB_EFFECTS = [\"immunity\", \"improved_harvest_boost\"];\n\nlet aloeStep = false;   // does this step grow All-in Aloe?\nlet tally = { aloesHarvested: 0, aloesWithTech: 0, jellybeansSpent: 0 };\nlet warned = {};\n\nfunction warnOnce(id, text) {\n  if (warned[id]) return;\n  warned[id] = true;\n  warn(text);\n}\n\nfunction capture() {\n  aloeStep = plot.layout.targets.some((t) => t.mutation === ALOE);\n}\n\n// The aloes being harvested hold the Blastberry's effects for that moment only\n// (forced effects), and 1 Magic Jellybean per aloe is placed on the aloe's empty\n// cell and broken straight away, which spends it without counting as a harvest.\nfunction withBlastberry(run) {\n  const before = forcedEffects[ALOE] ?? [];\n  forceEffects(ALOE, [...before, ...BB_EFFECTS]);\n  run();\n  if (before.length) forceEffects(ALOE, before);\n  else unforceEffects(ALOE);\n}\n\nfunction spendJellybean(r, c) {\n  if (!plot.place(JB, r, c)) return false;\n  plot.breakAt(r, c);\n  tally.jellybeansSpent++;\n  return true;\n}\n\n/** The built-in harvest phase, with the Blastberry effects on every aloe it takes. */\nfunction harvestWithTech() {\n  const before = plot.spawns(ALOE).map((p) => ({ id: p.id, row: p.row, col: p.col }));\n  const ready = plot.spawns(ALOE).filter((p) => p.stage >= 4).length;\n  if (!ready || (!config.allowMutationDebt && inventory.get(JB) < ready)) {\n    if (ready) warnOnce(\"jbstock\", `Cycle ${cycle}: not enough Magic Jellybeans for the Blastberry tech on every aloe; this harvest goes without it.`);\n    plot.runPhase(\"harvest\");\n    return;\n  }\n  withBlastberry(() => plot.runPhase(\"harvest\"));\n  // 1 Jellybean for each aloe that was there before and is gone now.\n  const still = {};\n  for (const p of plot.spawns(ALOE)) still[p.id] = true;\n  for (const a of before) {\n    if (still[a.id]) continue;\n    tally.aloesHarvested++;\n    tally.aloesWithTech++;\n    spendJellybean(a.row, a.col);\n  }\n}\n\n/** The step changes this session: harvest the aloes it would clear, with the tech. */\nfunction harvestBeforeStepChange() {\n  const due = plot.spawns(ALOE).filter((p) => p.stage >= 4);\n  if (!due.length) return;\n  const n = config.allowMutationDebt ? due.length : Math.min(due.length, inventory.get(JB));\n  if (n < due.length) warnOnce(\"jbstock2\", `Cycle ${cycle}: not enough Magic Jellybeans for the Blastberry tech; some aloes are harvested without it.`);\n  if (n) {\n    withBlastberry(() => {\n      for (const a of due.slice(0, n)) {\n        const r = a.row;\n        const c = a.col;\n        if (a.harvest()) {\n          tally.aloesHarvested++;\n          tally.aloesWithTech++;\n          spendJellybean(r, c);\n        }\n      }\n    });\n  }\n  for (const a of due.slice(n)) if (a.harvest()) tally.aloesHarvested++;\n}\n\n// ---- Hooks ----\nfunction onStart() {\n  capture();\n}\n\nfunction onStepChange(e) {\n  capture();\n}\n\nfunction onSession() {\n  if (!aloeStep) return;\n  const to = plot.pending ?? plot.exitDue();\n  if (to && to !== plot.step.id) harvestBeforeStepChange();\n  harvestWithTech();\n}\n\nfunction afterSession() {\n  const p = `Plot ${plot.id}: `;\n  metric(p + \"aloes harvested\", tally.aloesHarvested);\n  metric(p + \"aloes harvested with +30% and immunity\", tally.aloesWithTech);\n  metric(p + \"Magic Jellybeans spent on the Blastberry tech\", tally.jellybeansSpent);\n}\n"
+      }
+    }
+  ]
+}

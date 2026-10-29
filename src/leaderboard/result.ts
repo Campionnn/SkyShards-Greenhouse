@@ -119,6 +119,26 @@ export interface RunResult {
   ramp?: RampInfo;
   /** Cells only: most seeds slowed down, so the cell holds its median seed's trailing rates. */
   slowing?: true;
+  /**
+   * "From nothing" results (Leaderboard v3, verify.ts runIronman): how the starting items were
+   * made before the flow started. The result's counts cover the whole timeline (the builder's
+   * crops included).
+   */
+  prep?: PrepInfo;
+}
+
+/** The "from nothing" timeline's first part: the builder making the flow's starting items (docs/plans/leaderboard-v3.md §3). */
+export interface PrepInfo {
+  /** The starting items, whole units: ceil(startItems) of the same seed's borrow run. */
+  kit: Record<ItemId, number>;
+  /** T*: the cycle the flow started (a multiple of CUT_STEP); 0 without a kit; the run's end when not done. */
+  cycles: number;
+  /** Simulated days at `cycles`. */
+  days: number;
+  /** The builder owned the kit by the first scored cut (the author's length). */
+  done: boolean;
+  /** The flow part came from the borrow run's snapshots (stitched) or from its own strict run from the kit (real). */
+  mode: "stitched" | "real";
 }
 
 const perDay = (counts: Readonly<Record<string, number>>, days: number): PerDay => {
@@ -155,8 +175,8 @@ export function stepTimeOf(state: SimulationState): Record<string, Record<string
 
 // ---- Recording a run -------------------------------------------------------------------------
 
-/** Cumulative counts at one cycle. */
-interface Snapshot {
+/** A run's cumulative counts at one cycle (what the window mean and the trail are computed from). */
+export interface CountSnapshot {
   cycle: number;
   seconds: number;
   produced: Record<ItemId, number>;
@@ -164,6 +184,10 @@ interface Snapshot {
   bought: Record<ItemId, number>;
   shortfall: Record<ItemId, number>;
   bySource: Record<string, Record<ItemId, number>>;
+}
+
+/** Cumulative counts at one cycle, with what the run owed. */
+interface Snapshot extends CountSnapshot {
   /** Mutation items owed (stock below 0), units. */
   owed: Record<ItemId, number>;
 }
@@ -188,6 +212,166 @@ function nestedRateBetween(a: Snapshot["bySource"], b: Snapshot["bySource"], day
   return out;
 }
 
+/** A state's cumulative counts (ledger produced / consumed / shortfall, bought, bySource). Reads only. */
+export function countSnapshot(state: SimulationState): CountSnapshot {
+  const produced: Record<ItemId, number> = {};
+  const consumed: Record<ItemId, number> = {};
+  const shortfall: Record<ItemId, number> = {};
+  for (const [item, row] of Object.entries(state.ledger)) {
+    if (row.produced > 0) produced[item] = row.produced;
+    if (row.consumed > 0) consumed[item] = row.consumed;
+    if (row.shortfall > 0) shortfall[item] = row.shortfall;
+  }
+  const bySource: CountSnapshot["bySource"] = {};
+  for (const [k, items] of Object.entries(state.summary.bySource ?? {})) bySource[k] = { ...items };
+  return { cycle: state.cycle, seconds: state.elapsedSeconds, produced, consumed, bought: { ...(state.summary.market?.bought ?? {}) }, shortfall, bySource };
+}
+
+/** The first cycle of a run's trailing TRAIL_SHARE, for a run that ends at `to`. */
+export const trailStart = (to: number): number => Math.floor(to * (1 - TRAIL_SHARE) + 1e-9);
+
+/** Sums over the cut points of counts(t) / days(t). */
+interface CutSums {
+  produced: PerDay;
+  consumed: PerDay;
+  bought: PerDay;
+  shortfall: PerDay;
+  bySource: Record<string, PerDay>;
+}
+
+const emptySums = (): CutSums => ({ produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {} });
+
+/** Add one cut's counts per day to the sums; false (nothing added) when no time has passed. */
+function addCutTo(sums: CutSums, s: CountSnapshot): boolean {
+  const days = s.seconds / 86400;
+  if (!(days > 0)) return false;
+  const add = (into: PerDay, from: Readonly<Record<string, number>>) => {
+    for (const [item, n] of Object.entries(from)) if (n > 0) into[item] = (into[item] ?? 0) + n / days;
+  };
+  add(sums.produced, s.produced);
+  add(sums.consumed, s.consumed);
+  add(sums.bought, s.bought);
+  add(sums.shortfall, s.shortfall);
+  for (const [k, items] of Object.entries(s.bySource)) add((sums.bySource[k] ??= {}), items);
+  return true;
+}
+
+function meanOf(sums: Readonly<PerDay>, cuts: number): PerDay {
+  const out: PerDay = {};
+  for (const [k, v] of Object.entries(sums)) if (v > 0) out[k] = v / cuts;
+  return out;
+}
+
+/** The window means of the cut sums. */
+function windowMeans(sums: CutSums, cuts: number): Pick<RunResult, "produced" | "consumed" | "bought" | "shortfall"> & { bySource: Record<string, PerDay> } {
+  return {
+    produced: meanOf(sums.produced, cuts),
+    consumed: meanOf(sums.consumed, cuts),
+    bought: meanOf(sums.bought, cuts),
+    shortfall: meanOf(sums.shortfall, cuts),
+    bySource: Object.fromEntries(Object.entries(sums.bySource).map(([k, m]) => [k, meanOf(m, cuts)])),
+  };
+}
+
+/** `a + b` per item (either may be missing items). */
+function addCounts(a: Readonly<Record<string, number>>, b: Readonly<Record<string, number>>): Record<string, number> {
+  const out: Record<string, number> = { ...a };
+  for (const [k, n] of Object.entries(b)) out[k] = (out[k] ?? 0) + n;
+  return out;
+}
+
+/** One cumulative snapshot of a two-part timeline: the first part's counts at its end plus the second part's at `s`, at timeline cycle `cycle`. */
+export function joinSnapshots(first: CountSnapshot, s: CountSnapshot, cycle: number): CountSnapshot {
+  const bySource: CountSnapshot["bySource"] = {};
+  for (const k of new Set([...Object.keys(first.bySource), ...Object.keys(s.bySource)])) bySource[k] = addCounts(first.bySource[k] ?? {}, s.bySource[k] ?? {});
+  return {
+    cycle,
+    seconds: first.seconds + s.seconds,
+    produced: addCounts(first.produced, s.produced),
+    consumed: addCounts(first.consumed, s.consumed),
+    bought: addCounts(first.bought, s.bought),
+    shortfall: addCounts(first.shortfall, s.shortfall),
+    bySource,
+  };
+}
+
+/** What a timeline result keeps of its flow part (or, without one, its builder part). */
+export type TimelineRest = Omit<RunResult, "cycles" | "days" | "window" | "produced" | "consumed" | "bought" | "shortfall" | "bySource" | "trail" | "prep">;
+
+/**
+ * The "from nothing" timeline's result (docs/plans/leaderboard-v3.md §3.3): the builder ran for
+ * `prep.cycles` = T* cycles (`prepEnd` = its counts then), then the flow from its own cycle 0. The
+ * per-day maps are the v2 window mean over the timeline's cuts C, C + CUT_STEP, ..., `to`:
+ * counts(t) = prep + flow(t − T*), days(t) = prep days + flow days(t − T*). `trail` covers the
+ * timeline's last TRAIL_SHARE. `flowAt(n)` returns the flow's cumulative counts at its own cycle n;
+ * the cycles read are exactly those ≡ C (mod CUT_STEP) in [max(0, C − T*), to − T*] plus the
+ * trail's start and the end (`timelineCycles`).
+ *
+ * With `prep.done` false there is no flow part: the builder alone is the timeline, and `prepAt(t)`
+ * gives its counts at timeline cycle t (only the same cut, trail and end cycles are read).
+ *
+ * Everything that isn't a count (`rest`: effort, starved, ramp, uptime, startItems, ...) is taken
+ * as given; the caller decides whose it is.
+ */
+export function stitch(args: {
+  from: number;
+  to: number;
+  prep: PrepInfo;
+  prepEnd: CountSnapshot | null;
+  flowAt: ((cycle: number) => CountSnapshot | undefined) | null;
+  prepAt?: (cycle: number) => CountSnapshot | undefined;
+  rest: TimelineRest;
+}): RunResult {
+  const { from, to, prep } = args;
+  const T = prep.done ? prep.cycles : to;
+  const at = (t: number): CountSnapshot | undefined => {
+    if (!prep.done || t < T) return args.prepAt?.(t);
+    if (!args.flowAt) return undefined;
+    const s = args.flowAt(t - T);
+    if (!s) return undefined;
+    return args.prepEnd ? joinSnapshots(args.prepEnd, s, t) : { ...s, cycle: t };
+  };
+  const sums = emptySums();
+  let cuts = 0;
+  for (let t = from; t <= to; t += CUT_STEP) {
+    const s = at(t);
+    if (!s) throw new Error(`stitch: no counts at timeline cycle ${t}`);
+    if (addCutTo(sums, s)) cuts += 1;
+  }
+  const end = at(to);
+  const trailAt = at(trailStart(to));
+  if (!end || !trailAt) throw new Error("stitch: no counts at the end or the trail's start");
+  const days = end.seconds / 86400;
+  const means = cuts > 0 ? windowMeans(sums, cuts) : { produced: perDay(end.produced, days), consumed: perDay(end.consumed, days), bought: perDay(end.bought, days), shortfall: perDay(end.shortfall, days), bySource: Object.fromEntries(Object.entries(end.bySource).map(([k, m]) => [k, perDay(m, days)])) };
+  const d = (end.seconds - trailAt.seconds) / 86400;
+  return {
+    ...args.rest,
+    cycles: to,
+    days,
+    window: { from, to, cuts },
+    ...means,
+    trail: {
+      from: trailAt.cycle,
+      produced: rateBetween(trailAt.produced, end.produced, d),
+      consumed: rateBetween(trailAt.consumed, end.consumed, d),
+      bought: rateBetween(trailAt.bought, end.bought, d),
+      shortfall: rateBetween(trailAt.shortfall, end.shortfall, d),
+      bySource: nestedRateBetween(trailAt.bySource, end.bySource, d),
+    },
+    prep: { ...prep, kit: { ...prep.kit } },
+  };
+}
+
+/** The flow-own cycles a stitched timeline reads (see `stitch`), for a flow started at T*. */
+export function timelineCycles(from: number, to: number, T: number): Set<number> {
+  const out = new Set<number>();
+  for (let t = from; t <= to; t += CUT_STEP) if (t >= T) out.add(t - T);
+  const trail = trailStart(to);
+  if (trail >= T) out.add(trail - T);
+  out.add(to - T);
+  return out;
+}
+
 const resolvers = new WeakMap<GameData, (layout: StepLayout) => ResolvedLayout>();
 function resolverFor(data: GameData) {
   let r = resolvers.get(data);
@@ -207,6 +391,12 @@ export interface RecorderPlan {
   from: number;
   /** The run's last cycle: `endCycles(C)`. */
   to: number;
+  /**
+   * Snapshot mode (Leaderboard v3): also keep the cumulative counts at every observed cycle this
+   * returns true for (`snapshots()`), e.g. the cycles a stitched "from nothing" timeline reads.
+   * Doesn't change the result.
+   */
+  snapshotAt?: (cycle: number) => boolean;
 }
 
 /**
@@ -216,12 +406,15 @@ export interface RecorderPlan {
 export class RunRecorder {
   private readonly data: GameData;
   private readonly plan: RecorderPlan;
+  private readonly snapshotAt: ((cycle: number) => boolean) | undefined;
+  /** Snapshot mode: cycle -> the counts then. */
+  private readonly kept = new Map<number, CountSnapshot>();
   private readonly trailFrom: number;
   private readonly midAt: number;
   private cuts = 0;
   /** Sum over the cut points of counts(t) / days(t). */
-  private readonly sums = { produced: {} as PerDay, consumed: {} as PerDay, bought: {} as PerDay, shortfall: {} as PerDay, bySource: {} as Record<string, PerDay> };
-  private trailStart: Snapshot | null = null;
+  private readonly sums: CutSums = emptySums();
+  private trailSnap: Snapshot | null = null;
   private mid: Snapshot | null = null;
   /** "plot|step|item" -> cell-cycles starved. */
   private readonly starvedCells = new Map<string, { plot: number; step: string; item: ItemId; n: number }>();
@@ -238,38 +431,24 @@ export class RunRecorder {
   constructor(data: GameData, plan: RecorderPlan) {
     this.data = data;
     this.plan = { from: Math.max(0, Math.floor(plan.from)), to: Math.max(0, Math.floor(plan.to)) };
-    this.trailFrom = Math.floor(this.plan.to * (1 - TRAIL_SHARE) + 1e-9);
+    this.snapshotAt = plan.snapshotAt;
+    this.trailFrom = trailStart(this.plan.to);
     this.midAt = Math.floor(this.plan.to / 2);
   }
 
-  private snapshot(state: SimulationState): Snapshot {
-    const produced: Record<ItemId, number> = {};
-    const consumed: Record<ItemId, number> = {};
-    const shortfall: Record<ItemId, number> = {};
-    for (const [item, row] of Object.entries(state.ledger)) {
-      if (row.produced > 0) produced[item] = row.produced;
-      if (row.consumed > 0) consumed[item] = row.consumed;
-      if (row.shortfall > 0) shortfall[item] = row.shortfall;
-    }
-    const owed: Record<ItemId, number> = {};
-    for (const [item, n] of Object.entries(state.inventory)) if (n < 0 && this.data.mutations[item]) owed[item] = -n;
-    const bySource: Snapshot["bySource"] = {};
-    for (const [k, items] of Object.entries(state.summary.bySource ?? {})) bySource[k] = { ...items };
-    return { cycle: state.cycle, seconds: state.elapsedSeconds, produced, consumed, bought: { ...(state.summary.market?.bought ?? {}) }, shortfall, bySource, owed };
+  /** Snapshot mode: the counts kept so far, by cycle. */
+  snapshots(): ReadonlyMap<number, CountSnapshot> {
+    return this.kept;
   }
 
-  private addCut(s: Snapshot): void {
-    const days = s.seconds / 86400;
-    if (!(days > 0)) return;
-    this.cuts += 1;
-    const add = (into: PerDay, from: Readonly<Record<string, number>>) => {
-      for (const [item, n] of Object.entries(from)) if (n > 0) into[item] = (into[item] ?? 0) + n / days;
-    };
-    add(this.sums.produced, s.produced);
-    add(this.sums.consumed, s.consumed);
-    add(this.sums.bought, s.bought);
-    add(this.sums.shortfall, s.shortfall);
-    for (const [k, items] of Object.entries(s.bySource)) add((this.sums.bySource[k] ??= {}), items);
+  private snapshot(state: SimulationState): Snapshot {
+    const owed: Record<ItemId, number> = {};
+    for (const [item, n] of Object.entries(state.inventory)) if (n < 0 && this.data.mutations[item]) owed[item] = -n;
+    return { ...countSnapshot(state), owed };
+  }
+
+  private addCut(s: CountSnapshot): void {
+    if (addCutTo(this.sums, s)) this.cuts += 1;
   }
 
   /** Layout cells empty for lack of stock right now, per (plot, step, item). */
@@ -307,8 +486,9 @@ export class RunRecorder {
 
   observe(state: SimulationState): void {
     const c = state.cycle;
+    if (this.snapshotAt?.(c)) this.kept.set(c, countSnapshot(state));
     if (c >= this.plan.from && c <= this.plan.to && (c - this.plan.from) % CUT_STEP === 0) this.addCut(this.snapshot(state));
-    if (c === this.trailFrom) this.trailStart = this.snapshot(state);
+    if (c === this.trailFrom) this.trailSnap = this.snapshot(state);
     if (c === this.midAt) this.mid = this.snapshot(state);
     for (const [item, n] of Object.entries(state.inventory)) if (n < 0) this.owedAcross.add(item);
     this.trackOwed(state);
@@ -360,18 +540,9 @@ export class RunRecorder {
     const end = this.snapshot(state);
     const days = state.elapsedSeconds / 86400;
     const reached = state.cycle >= this.plan.to;
-    const mean = (sums: Readonly<PerDay>, cuts: number): PerDay => {
-      const out: PerDay = {};
-      for (const [k, v] of Object.entries(sums)) if (v > 0) out[k] = v / cuts;
-      return out;
-    };
     let produced: PerDay, consumed: PerDay, bought: PerDay, shortfall: PerDay, bySource: Record<string, PerDay>;
     if (this.cuts > 0) {
-      produced = mean(this.sums.produced, this.cuts);
-      consumed = mean(this.sums.consumed, this.cuts);
-      bought = mean(this.sums.bought, this.cuts);
-      shortfall = mean(this.sums.shortfall, this.cuts);
-      bySource = Object.fromEntries(Object.entries(this.sums.bySource).map(([k, m]) => [k, mean(m, this.cuts)]));
+      ({ produced, consumed, bought, shortfall, bySource } = windowMeans(this.sums, this.cuts));
     } else {
       // The run stopped before the window (a failed seed): totals per day at the end.
       produced = perDay(end.produced, days);
@@ -397,8 +568,8 @@ export class RunRecorder {
       bySource,
       stepTime: stepTimeOf(state),
     };
-    if (reached && this.trailStart) {
-      const t = this.trailStart;
+    if (reached && this.trailSnap) {
+      const t = this.trailSnap;
       const d = (end.seconds - t.seconds) / 86400;
       out.trail = {
         from: t.cycle,

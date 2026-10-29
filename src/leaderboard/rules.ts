@@ -56,6 +56,15 @@ export function runKindFrom(raw: unknown): RunKind | null {
 /** Ironman boards are priced at NPC prices (mutation items 0); normal at the Bazaar. */
 export const isIronmanBoard = (b: Board): boolean => b !== "normal";
 
+/**
+ * Leaderboard v3's sampled stitch check (verify.ts runIronman): a stitched "from nothing" value
+ * may differ from the real run's by at most this share (reference NPC valuation), else the whole
+ * job runs real. The sample is seed index STITCH_SAMPLE_SEED_INDEX at the job's lowest and highest
+ * frequency. Mirrored in SkyShards-API leaderboard/config.py.
+ */
+export const STITCH_TOLERANCE = 0.01;
+export const STITCH_SAMPLE_SEED_INDEX = 0;
+
 export const MIN_CYCLES = 2000;
 export const MAX_CYCLES = 5000;
 export const DEFAULT_CYCLES = 2000;
