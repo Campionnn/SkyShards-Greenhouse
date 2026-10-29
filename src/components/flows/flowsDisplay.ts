@@ -1,74 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { FlowDetail } from "../../leaderboard/api";
 import { rarityOf } from "../simulator/format";
 
 /** Non-component helpers for the leaderboard components (kept apart for fast refresh). */
-
-// ---- Items the viewer owns (the "I own the starting items" filter) ----------------------------
-
-/** Imported from Hypixel (sacks, ender chest, backpacks, inventory); kept in localStorage like the Guide's import. */
-export const OWNED_ITEMS_KEY = "skyshards-flows-owned";
-
-export interface OwnedItems {
-  username: string;
-  /** Profile name for the label ("Banana (Ironman)"). */
-  profile: string;
-  /** Item id -> count (whole, > 0). */
-  items: Record<string, number>;
-  /** Epoch ms of the import. */
-  at: number;
-}
-
-/** A stored import, or null when missing or malformed. */
-export function readOwnedItems(raw: unknown): OwnedItems | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  if (!r.items || typeof r.items !== "object" || Array.isArray(r.items)) return null;
-  const items: Record<string, number> = {};
-  for (const [k, v] of Object.entries(r.items as Record<string, unknown>)) if (typeof v === "number" && Number.isFinite(v) && v > 0) items[k] = Math.floor(v);
-  return {
-    username: typeof r.username === "string" ? r.username : "",
-    profile: typeof r.profile === "string" ? r.profile : "",
-    items,
-    at: typeof r.at === "number" && Number.isFinite(r.at) ? r.at : 0,
-  };
-}
-
-function loadOwned(): OwnedItems | null {
-  try {
-    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(OWNED_ITEMS_KEY) : null;
-    return raw ? readOwnedItems(JSON.parse(raw)) : null;
-  } catch {
-    return null;
-  }
-}
-
-const OWNED_EVENT = "skyshards-flows-owned";
-
-/** The viewer's imported items (shared by every component that asks; null before an import). */
-export function useOwnedItems(): [OwnedItems | null, (next: OwnedItems | null) => void] {
-  const [owned, setOwned] = useState<OwnedItems | null>(loadOwned);
-  useEffect(() => {
-    const sync = () => setOwned(loadOwned());
-    window.addEventListener(OWNED_EVENT, sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener(OWNED_EVENT, sync);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
-  const set = useCallback((next: OwnedItems | null) => {
-    try {
-      if (next) localStorage.setItem(OWNED_ITEMS_KEY, JSON.stringify(next));
-      else localStorage.removeItem(OWNED_ITEMS_KEY);
-    } catch {
-      // Private mode: keep this page's copy.
-    }
-    setOwned(next);
-    window.dispatchEvent(new Event(OWNED_EVENT));
-  }, []);
-  return [owned, set];
-}
 
 export const SPLIT_STYLE = {
   crops: { label: "crops", bar: "bg-emerald-400/80", text: "text-emerald-300" },

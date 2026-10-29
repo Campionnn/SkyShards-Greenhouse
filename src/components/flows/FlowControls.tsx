@@ -414,7 +414,6 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
           {!open && <span className="min-w-0 text-xs text-slate-500">{summary}</span>}
         </button>
         <div className="flex flex-wrap items-center gap-2">
-          <KitSwitch viewer={viewer} />
           <BoardToggle viewer={viewer} />
         </div>
       </header>

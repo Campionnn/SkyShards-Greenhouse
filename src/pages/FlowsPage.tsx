@@ -2,10 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowUpRight, Ban, ChevronDown, Code2, FlaskConical, Layers, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
 import { SlowingBadge, StallChip, StartingItemsLine, UpkeepValue } from "../components/flows/FlowChips";
-import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
-import { FilterBar, OwnedImportDialog } from "../components/flows/FlowFilters";
+import { AccountControl, AuthorLabel, Badge, KitSwitch, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
+import { FilterBar } from "../components/flows/FlowFilters";
 import { EffortMeter, LayoutBoxes, MutationChip, Sparkline, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
-import { useOwnedItems } from "../components/flows/flowsDisplay";
 import { formatCoins, nameOf } from "../components/simulator/format";
 import { InfoHint, useToast } from "../components/ui";
 import { useAuth } from "../hooks/useAuth";
@@ -26,7 +25,6 @@ import {
   prepText,
   rankEntries,
   readListParams,
-  SORT_BOARD,
   SORT_LABEL,
   sortRows,
   splitRanked,
@@ -82,8 +80,6 @@ const SORT_HINT: Record<SortKey, string> = {
   perEffort: "Coins per day for each point of work per login: the best return on your time.",
   effort: "The fewest actions per login first.",
   forgiving: "How much profit survives logging in late.",
-  steady: "Coins per day over the second half of the run, once the flow is up and running.",
-  upkeep: "The fewest items to supply every day first (ties by profit).",
   liked: "The most likes from players, all time.",
   liked30d: "The most likes given in the last 30 days.",
   newest: "Most recently submitted first.",
@@ -389,8 +385,6 @@ export const FlowsPage: React.FC = () => {
   const { user } = useAuth();
   const likes = useFlowLikes();
   const { toast } = useToast();
-  const [owned, setOwned] = useOwnedItems();
-  const [importing, setImporting] = useState(false);
   useLikeReplay(
     useCallback(
       (_id: string, ok: boolean, error?: string) =>
@@ -408,8 +402,7 @@ export const FlowsPage: React.FC = () => {
     return () => clearTimeout(t);
   }, [query, filters, setParams]);
   const setFilters = (patch: Partial<RowFilters>) => setParams({ filters: { ...filters, ...patch } });
-  // A sort that only means something on another board falls back to profit here.
-  const sortShown: SortKey = SORT_BOARD[sort] && SORT_BOARD[sort] !== board ? "profit" : sort;
+  const sortShown: SortKey = sort;
 
   const [result, setResult] = useState<{ key: string; data?: FlowListResponse; error?: string } | null>(null);
   const [reload, setReload] = useState(0);
@@ -439,8 +432,8 @@ export const FlowsPage: React.FC = () => {
   const options = useMemo(() => earningOptions(ranked), [ranked]);
   const effective = useMemo<RowFilters>(() => ({ ...filters, query }), [filters, query]);
   const shown = useMemo(
-    () => sortRows(ranked.filter((r) => matchesFilters(r, effective, board, owned?.items ?? null)), sortShown),
-    [ranked, effective, board, owned, sortShown]
+    () => sortRows(ranked.filter((r) => matchesFilters(r, effective, board)), sortShown),
+    [ranked, effective, board, sortShown]
   );
   // "From nothing": flows whose starting items can't be made within the run take no place; they are listed apart (filtered and sorted the same way).
   const { ranked: shownRanked, cantMake: shownBlocked } = useMemo(() => splitRanked(shown), [shown]);
@@ -481,13 +474,11 @@ export const FlowsPage: React.FC = () => {
         <div className="space-y-2.5 border-b border-slate-700/40 px-3 py-2.5 sm:px-4">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Sort by">
-              {(Object.keys(SORT_LABEL) as SortKey[])
-                .filter((k) => !SORT_BOARD[k] || SORT_BOARD[k] === board)
-                .map((k) => (
-                  <Chip key={k} active={sortShown === k} onClick={() => setParams({ sort: k })} title={SORT_HINT[k]}>
-                    {SORT_LABEL[k]}
-                  </Chip>
-                ))}
+              {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+                <Chip key={k} active={sortShown === k} onClick={() => setParams({ sort: k })} title={SORT_HINT[k]}>
+                  {SORT_LABEL[k]}
+                </Chip>
+              ))}
             </div>
             <label className="relative ml-auto w-full min-w-[12rem] sm:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
@@ -510,7 +501,7 @@ export const FlowsPage: React.FC = () => {
                 </Chip>
               ))}
             </div>
-            <FilterBar board={board} filters={filters} earningOptions={options} owned={owned} onChange={setFilters} onImportOwned={() => setImporting(true)} />
+            <FilterBar board={board} filters={filters} earningOptions={options} kitSwitch={<KitSwitch viewer={viewer} />} onChange={setFilters} />
           </div>
         </div>
 
@@ -533,15 +524,6 @@ export const FlowsPage: React.FC = () => {
           {BOARD_INTRO[viewer.cellKind]}
         </p>
         {viewer.scaling && <p className="px-3 pt-1 text-[11px] text-amber-200/70 sm:px-4">Crop and rare-crop numbers are scaled to your yield stats (an estimate).</p>}
-        {board === "ironman" && filters.owned && !owned && (
-          <p className="px-3 pt-1 text-[11px] text-amber-200/80 sm:px-4">
-            "I own the starting items" needs your items:{" "}
-            <button type="button" className="text-emerald-300 hover:underline" onClick={() => setImporting(true)}>
-              import them from Hypixel
-            </button>
-            .
-          </p>
-        )}
         {!loading && result?.data?.truncated && (
           <p className="px-3 pt-1 text-[11px] text-amber-200/70 sm:px-4" data-testid="truncated-note">
             Showing the {all.length.toLocaleString()} most recently updated flows; older ones aren't included.
@@ -641,16 +623,6 @@ export const FlowsPage: React.FC = () => {
           )}
         </div>
       </section>
-      {importing && (
-        <OwnedImportDialog
-          owned={owned}
-          onSave={(o) => {
-            setOwned(o);
-            if (o) setFilters({ owned: true });
-          }}
-          onClose={() => setImporting(false)}
-        />
-      )}
     </div>
   );
 };

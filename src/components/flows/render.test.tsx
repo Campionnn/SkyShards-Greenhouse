@@ -19,7 +19,7 @@ import { SubmitFlowPanel, type TestState } from "../simulator/SubmitFlowDialog";
 import { SettingsPanel } from "../simulator/ScenarioPanels";
 import { ToastProvider } from "../ui";
 import { ReportPanel } from "./FlowDetailSections";
-import { FilterBar, OwnedImportPanel } from "./FlowFilters";
+import { FilterBar } from "./FlowFilters";
 import { FlowMarkdown } from "./FlowMarkdown";
 
 // Server-render the leaderboard pages and the submit dialog body with a fake fetch, to catch
@@ -75,7 +75,7 @@ async function renderRows(board: Board, kit = false) {
 describe("leaderboard pages render", () => {
   it("/flows renders the stats panel, the two boards, the starting-items switch, sorting, filters and a loading state", () => {
     const html = text(wrap(<FlowsPage />));
-    for (const s of ["Flow rankings", "Your stats", "How often you log in", "Crop Growth", "Farming Fortune", "Per-crop fortune", "Import from Hypixel", "Farming armor", "Scored at", "Profit per effort", "Most forgiving", "Steady rate", "Search flows, authors, crops", "Loading the rankings..."]) {
+    for (const s of ["Flow rankings", "Your stats", "How often you log in", "Crop Growth", "Farming Fortune", "Per-crop fortune", "Import from Hypixel", "Farming armor", "Scored at", "Profit per effort", "Most forgiving", "Search flows, authors, crops", "Loading the rankings..."]) {
       expect(html).toContain(s);
     }
     for (const s of ["Ironman", "Normal", "Earning", "I have the starting items"]) expect(html).toContain(s);
@@ -83,8 +83,10 @@ describe("leaderboard pages render", () => {
     expect(html).toMatch(/role="switch" aria-checked="false"[^>]*>.{0,600}I have the starting items/s);
     expect(html).toContain('data-testid="filter-bar"');
     expect(html).toContain('data-testid="tier-meter"');
-    // Ironman (the default) has the upkeep sort and the starting-item filters in both modes.
-    for (const s of ["Least upkeep", "No upkeep", "I own the starting items"]) expect(html).toContain(s);
+    // Ironman (the default) has the starting-items switch in the filter bar and the starting-item filters in both modes.
+    for (const s of ["No upkeep", "Starting items"]) expect(html).toContain(s);
+    for (const s of ["Least upkeep", "Steady rate", "I own the starting items"]) expect(html).not.toContain(s);
+    expect(html).toMatch(/data-testid="filter-bar".{0,4000}data-testid="kit-switch"/s);
     expect(html).toContain("each flow's starting items are made first");
     // Friendly inputs: Bioanalysis is a dropdown of the accessories, the upgrades are tier lists.
     for (const s of ["Bioanalysis", "Artifact · +15%", "Talisman · +5%", "Tier 9 · +50%", "Evergreen Chip"]) expect(html).toContain(s);
@@ -92,7 +94,7 @@ describe("leaderboard pages render", () => {
 
   it("/flows?board=ironman&kit=1 and v2's links: the switch on, the filters kept; Normal has neither", () => {
     const html = text(wrap(<FlowsPage />, "/flows?board=ironman&kit=1&noUpkeep=1&maxStart=60"));
-    for (const s of ["Least upkeep", "No upkeep", "Starting items", "≤ 60", "≤ 200", "I own the starting items", "As if you already own each flow's starting items"]) expect(html).toContain(s);
+    for (const s of ["No upkeep", "Starting items", "≤ 60", "≤ 200", "As if you already own each flow's starting items"]) expect(html).toContain(s);
     expect(html).toMatch(/aria-pressed="true"[^>]*>No upkeep/);
     expect(html).toMatch(/role="switch" aria-checked="true"/);
     // v2's links open the right view.
@@ -158,17 +160,17 @@ describe("leaderboard pages render", () => {
     expect(html).toContain('href="/flows/mockDevr0007?board=normal"');
   });
 
-  it("the filter bar on each board, and the owned-items import", () => {
+  it("the filter bar on each board", () => {
     const none = () => {};
-    const normal = text(wrap(<FilterBar board="normal" filters={{ ...DEFAULT_FILTERS, earning: ["chorus_fruit"] }} earningOptions={["chorus_fruit"]} owned={null} onChange={none} onImportOwned={none} />));
+    const normal = text(wrap(<FilterBar board="normal" filters={{ ...DEFAULT_FILTERS, earning: ["chorus_fruit"] }} earningOptions={["chorus_fruit"]} kitSwitch={<span>KIT</span>} onChange={none} />));
     expect(normal).toContain("Chorus Fruit");
     expect(normal).toContain("top 3");
     expect(normal).toContain("Clear filters");
     expect(normal).not.toContain("No upkeep");
-    const borrow = text(wrap(<FilterBar board="ironman" filters={DEFAULT_FILTERS} earningOptions={[]} owned={{ username: "Ke5o", profile: "Banana", items: { zombud: 3 }, at: 1 }} onChange={none} onImportOwned={none} />));
-    for (const s of ["No upkeep", "Starting items", "Any", "I own the starting items", "Import your items again"]) expect(borrow).toContain(s);
-    const panel = text(wrap(<OwnedImportPanel owned={{ username: "Ke5o", profile: "Banana", items: { zombud: 3 }, at: 1 }} onSave={none} onClose={none} />));
-    for (const s of ["Items you own", "Minecraft username", "Look up", "Forget my items", "1 item types from Ke5o (Banana)"]) expect(panel).toContain(s);
+    const borrow = text(wrap(<FilterBar board="ironman" filters={DEFAULT_FILTERS} earningOptions={[]} kitSwitch={<span>KIT</span>} onChange={none} />));
+    for (const s of ["KIT", "No upkeep", "Starting items", "Any"]) expect(borrow).toContain(s);
+    expect(borrow).not.toContain("I own the starting items");
+    expect(normal).not.toContain("KIT");
   });
 
   it("/flows/:id renders every section from a full entry", async () => {

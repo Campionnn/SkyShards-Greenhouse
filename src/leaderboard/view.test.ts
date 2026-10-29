@@ -26,7 +26,6 @@ import {
   localKindSummary,
   matchesFilters,
   needLines,
-  ownsStartItems,
   payloadStepNamer,
   rampDays,
   rampText,
@@ -468,7 +467,7 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(earningOptions(rows)).toEqual(["chloronite", "chorus_fruit", "devourer", "wheat"]);
   });
 
-  it("the row: the other ironman number, prep, stall, slowing, upkeep, start items, steady rate, search text", () => {
+  it("the row: the other ironman number, prep, stall, slowing, upkeep, start items, search text", () => {
     const prep = { kit: { zombud: 2 }, cycles: 75, days: 5.47, done: true, mode: "stitched" as const };
     const fromNothing = result({ wheat: 1000 }, { starved: [{ plot: 1, step: "a", item: "magic_jellybean", cells: 34 }], slowing: true, ramp: { complete: null, produced: { wheat: 2000 }, bought: {} }, prep });
     const altPoint = { produced: { wheat: 2000 }, bought: {}, consumed: {} };
@@ -478,7 +477,6 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(row.cantMake).toBeNull();
     expect(row.stall?.plot).toBe(1);
     expect(row.slowing).toBe(true);
-    expect(row.steadyPerDay).toBeCloseTo(2000 * data.crops.wheat.sellPrice);
     expect(row.search).toContain("magic jellybean");
     expect(row.search).toContain("all-in aloe");
     expect(row.search).toContain("blastberries");
@@ -494,11 +492,11 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(kit.startItemsCount).toBe(41721 + 41378);
     // Old cells: none of the v2 / v3 fields.
     const old = flowRow(data, v2entry("o", result({ wheat: 1 })), ironman);
-    expect([old.altPerDay, old.prep, old.cantMake, old.stall, old.slowing, old.upkeepPerDay, old.startItemsCount, old.steadyPerDay]).toEqual([null, null, null, null, false, 0, 0, null]);
+    expect([old.altPerDay, old.prep, old.cantMake, old.stall, old.slowing, old.upkeepPerDay, old.startItemsCount]).toEqual([null, null, null, null, false, 0, 0]);
     expect(searchText(v2entry("s", null))).toContain("flow s");
   });
 
-  it("matchesFilters: earning in top 3 or anywhere, upkeep, starting items, owned, search", () => {
+  it("matchesFilters: earning in top 3 or anywhere, upkeep, starting items, search", () => {
     const rows = rankEntries(
       data,
       [
@@ -509,8 +507,8 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
       ],
       ironman
     );
-    const by = (f: Partial<RowFilters>, board: Parameters<typeof matchesFilters>[2] = "ironman", owned: Record<string, number> | null = null) =>
-      rows.filter((r) => matchesFilters(r, { ...DEFAULT_FILTERS, ...f }, board, owned)).map((r) => r.entry.id);
+    const by = (f: Partial<RowFilters>, board: Parameters<typeof matchesFilters>[2] = "ironman") =>
+      rows.filter((r) => matchesFilters(r, { ...DEFAULT_FILTERS, ...f }, board)).map((r) => r.entry.id);
     expect(by({})).toHaveLength(4);
     // A filter that needs a cell drops the unverified row.
     expect(by({ earning: ["wheat"], earningIn: "any" })).not.toContain("pending");
@@ -520,14 +518,8 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(by({ noUpkeep: true }, "normal")).toHaveLength(4);
     expect(by({ maxStartItems: 0 })).toEqual(["chorus"]);
     expect(by({ maxStartItems: 200 }).sort()).toEqual(["aloe", "chorus"]);
-    expect(by({ owned: true }, "ironman", { magic_jellybean: 141, blastberry: 1 }).sort()).toEqual(["aloe", "chorus"]);
-    expect(by({ owned: true }, "ironman", { magic_jellybean: 140, blastberry: 1 })).toEqual(["chorus"]);
-    // Without imported items the "I own" filter is off.
-    expect(by({ owned: true }, "ironman", null)).toHaveLength(4);
     expect(by({ query: "AUTHOR ALOE" })).toEqual(["aloe"]);
     expect(by({ query: "chorus fruit" }).sort()).toEqual(["chorus", "devourer"]);
-    expect(ownsStartItems({ a: 1.2 }, { a: 2 })).toBe(true);
-    expect(ownsStartItems({ a: 1.2 }, { a: 1 })).toBe(false);
   });
 
   it("'Chorus Fruit' shows the chorus flows ordered by coins per day", () => {
@@ -537,24 +529,9 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(hit.map((r) => r.entry.id)).toEqual(["c1", "c2", "c0"]);
   });
 
-  it("sorts: steady rate (most first) and least upkeep (ties by profit, missing = 0)", () => {
-    const rows = rankEntries(
-      data,
-      [
-        v2entry("a", result({ wheat: 3000 }, { upkeep: { zombud: 9 }, ramp: { complete: 0, produced: { wheat: 100 }, bought: {} } })),
-        v2entry("b", result({ wheat: 2000 }, { ramp: { complete: 0, produced: { wheat: 9000 }, bought: {} } })),
-        v2entry("c", result({ wheat: 1000 }, { upkeep: {} })),
-        v2entry("d", null),
-      ],
-      withKit
-    );
-    expect(sortRows(rows, "steady").map((r) => r.entry.id)).toEqual(["b", "a", "c", "d"]);
-    expect(sortRows(rows, "upkeep").map((r) => r.entry.id)).toEqual(["b", "c", "a", "d"]);
-  });
-
   it("URL params round-trip; v2's board names, the switch and junk are handled", () => {
-    const p = readListParams(new URLSearchParams("board=ironman&kit=1&sort=upkeep&plots=2&q=aloe&earning=chorus_fruit&earning=devourer&in=any&noUpkeep=1&maxStart=60&own=1"));
-    expect(p).toEqual({ board: "ironman", kit: true, sort: "upkeep", plots: "2", filters: { query: "aloe", earning: ["chorus_fruit", "devourer"], earningIn: "any", noUpkeep: true, maxStartItems: 60, owned: true } });
+    const p = readListParams(new URLSearchParams("board=ironman&kit=1&sort=effort&plots=2&q=aloe&earning=chorus_fruit&earning=devourer&in=any&noUpkeep=1&maxStart=60"));
+    expect(p).toEqual({ board: "ironman", kit: true, sort: "effort", plots: "2", filters: { query: "aloe", earning: ["chorus_fruit", "devourer"], earningIn: "any", noUpkeep: true, maxStartItems: 60 } });
     expect(readListParams(writeListParams(p))).toEqual(p);
     expect(writeListParams(p).get("kit")).toBe("1");
     expect(writeListParams({ board: null, kit: false, sort: "profit", plots: "any", filters: DEFAULT_FILTERS }).toString()).toBe("");

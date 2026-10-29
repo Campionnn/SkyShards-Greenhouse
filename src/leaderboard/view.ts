@@ -164,8 +164,6 @@ export interface FlowRow {
   upkeepPerDay: number;
   /** Starting items the borrow cell needs, whole units (0 = none or not a borrow cell). */
   startItemsCount: number;
-  /** Coins per day over the second half of the run (the ramp's rate); null without ramp data. */
-  steadyPerDay: number | null;
   /** Lower-case text the search box matches: title, author, excerpt and item ids / names. */
   search: string;
   /**
@@ -185,21 +183,17 @@ export interface FlowRow {
   prep: PrepInfo | null;
 }
 
-export type SortKey = "profit" | "perEffort" | "effort" | "forgiving" | "steady" | "upkeep" | "liked" | "liked30d" | "newest";
+export type SortKey = "profit" | "perEffort" | "effort" | "forgiving" | "liked" | "liked30d" | "newest";
 
 export const SORT_LABEL: Record<SortKey, string> = {
   profit: "Profit",
   perEffort: "Profit per effort",
   effort: "Least effort",
   forgiving: "Most forgiving",
-  steady: "Steady rate",
-  upkeep: "Least upkeep",
   liked: "Most liked",
   liked30d: "Most liked (30 days)",
   newest: "Newest",
 };
-/** Sort keys that only mean something on one board. */
-export const SORT_BOARD: Partial<Record<SortKey, Board>> = { upkeep: "ironman" };
 
 /** Like counts the viewer changed locally (server replies), over the possibly cached list. */
 export type LikeCounts = Record<string, { likes: number; likes30d: number }>;
@@ -327,7 +321,6 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
       slowing: false,
       upkeepPerDay: 0,
       startItemsCount: 0,
-      steadyPerDay: null,
       search,
       cantMake: null,
       stops: false,
@@ -353,7 +346,6 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
     slowing: cell.slowing === true,
     upkeepPerDay: sumValues(cell.upkeep),
     startItemsCount: startItemsTotal(cell.startItems),
-    steadyPerDay: steadyRate(data, cell, s),
     search,
     earning: earningTargets(data, targets, result.bySource, s.board, quotes, pricing),
     profitPerDay: v.profitPerDay,
@@ -548,11 +540,6 @@ export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
       return out.sort(byKey((r) => (r.profitPerDay === null ? null : r.effortAvg), false));
     case "forgiving":
       return out.sort(byKey((r) => r.slack, true));
-    case "steady":
-      return out.sort(byKey((r) => r.steadyPerDay, true));
-    case "upkeep":
-      // Least upkeep first; ties keep the profit order (the rows come ranked by profit).
-      return out.sort(byKey((r) => (r.profitPerDay === null ? null : r.upkeepPerDay), false));
     case "liked":
       return out.sort(byKey((r) => r.entry.likes ?? 0, true));
     case "liked30d":
@@ -857,26 +844,18 @@ export interface RowFilters {
   noUpkeep: boolean;
   /** Ironman board: at most this many starting items (null = any). */
   maxStartItems: number | null;
-  /** Ironman board: only rows whose starting items the viewer owns (and no upkeep). */
-  owned: boolean;
 }
 
-export const DEFAULT_FILTERS: RowFilters = { query: "", earning: [], earningIn: "top3", noUpkeep: false, maxStartItems: null, owned: false };
-
-/** Whether the viewer owns every starting item (at least the rounded-up count). */
-export function ownsStartItems(startItems: unknown, owned: Readonly<Record<ItemId, number>>): boolean {
-  return positiveEntries(startItems).every(([item, n]) => (owned[item] ?? 0) >= Math.ceil(n - 1e-9));
-}
+export const DEFAULT_FILTERS: RowFilters = { query: "", earning: [], earningIn: "top3", noUpkeep: false, maxStartItems: null };
 
 type FilterRow = Pick<FlowRow, "entry" | "sources" | "upkeepPerDay" | "startItemsCount"> & { search?: string };
 
 /**
  * Whether a row passes the filters on `board`. The starting-item filters only apply on the
  * ironman board (both modes: either cell carries the starting items); any filter that needs a cell
- * drops rows without one. `ownedItems` is the viewer's imported items (the "I own" filter is off
- * without them).
+ * drops rows without one.
  */
-export function matchesFilters(row: FilterRow, f: RowFilters, board: Board, ownedItems: Readonly<Record<ItemId, number>> | null = null): boolean {
+export function matchesFilters(row: FilterRow, f: RowFilters, board: Board): boolean {
   const q = f.query.trim().toLowerCase();
   if (q && !(row.search ?? `${row.entry.title}\n${row.entry.author.name}`.toLowerCase()).includes(q)) return false;
   const cell = row.entry.cell;
@@ -886,11 +865,9 @@ export function matchesFilters(row: FilterRow, f: RowFilters, board: Board, owne
     if (!pool.some((s) => f.earning.includes(s.id))) return false;
   }
   if (board !== "ironman") return true;
-  const owned = f.owned && ownedItems !== null;
-  if ((f.noUpkeep || owned || f.maxStartItems !== null) && !cell) return false;
-  if ((f.noUpkeep || owned) && row.upkeepPerDay > 0) return false;
+  if ((f.noUpkeep || f.maxStartItems !== null) && !cell) return false;
+  if (f.noUpkeep && row.upkeepPerDay > 0) return false;
   if (f.maxStartItems !== null && row.startItemsCount > f.maxStartItems) return false;
-  if (owned && !ownsStartItems(cell?.startItems, ownedItems)) return false;
   return true;
 }
 
@@ -925,7 +902,6 @@ export function readListParams(params: URLSearchParams): ListParams {
       earningIn: params.get("in") === "any" ? "any" : "top3",
       noUpkeep: params.get("noUpkeep") === "1",
       maxStartItems: capN !== null && Number.isInteger(capN) && capN >= 0 ? capN : null,
-      owned: params.get("own") === "1",
     },
   };
 }
@@ -943,7 +919,6 @@ export function writeListParams(p: ListParams): URLSearchParams {
   if (f.earning.length && f.earningIn === "any") out.set("in", "any");
   if (f.noUpkeep) out.set("noUpkeep", "1");
   if (f.maxStartItems !== null) out.set("maxStart", String(f.maxStartItems));
-  if (f.owned) out.set("own", "1");
   return out;
 }
 
