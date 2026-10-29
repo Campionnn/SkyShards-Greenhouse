@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Trophy, Upload } from "lucide-react";
-import { applyRules, ruleDifferences, RULE_KINDS, submissionFromScenario, type RuleKind } from "../../leaderboard/rules";
-import { RULE_KIND_LABEL, scenarioRuleKind } from "../../leaderboard/view";
+import { Copy, Download, Eye, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Trophy, Upload } from "lucide-react";
+import { applyRules, ruleDifferences, type RuleKind } from "../../leaderboard/rules";
+import { profileRuleKind, ruleDifferenceLines } from "../../leaderboard/view";
 import { useProfileMode } from "../../hooks/useProfileMode";
 import { EVERY, nearestEvery } from "../../leaderboard/tiers";
 import {
@@ -61,7 +61,9 @@ export const ScenarioPanel: React.FC<{
   issues: ScenarioIssue[];
   warnings: ScenarioIssue[];
   error: string | null;
-}> = ({ scenario, onChange, onEditFlow, onLoadLayout, issues, warnings, error }) => {
+  /** Show "from nothing" in the simulator (the submit dialog's local test offers it). */
+  onWatchFromNothing?: (every: number) => void;
+}> = ({ scenario, onChange, onEditFlow, onLoadLayout, issues, warnings, error, onWatchFromNothing }) => {
   const { toast } = useToast();
   const [json, setJson] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -242,7 +244,7 @@ export const ScenarioPanel: React.FC<{
       {exporting && <FlowExportDialog onClose={() => setExporting(false)} onExport={exportJson} />}
       {submitting && (
         <React.Suspense fallback={null}>
-          <SubmitFlowDialog scenario={scenario} onChange={onChange} onClose={() => setSubmitting(false)} />
+          <SubmitFlowDialog scenario={scenario} onChange={onChange} onClose={() => setSubmitting(false)} onWatchFromNothing={onWatchFromNothing} />
         </React.Suspense>
       )}
       {json !== null && (
@@ -354,6 +356,9 @@ const ForcedEffectsEditor: React.FC<{
   );
 };
 
+/** Advanced settings' labels (for the rules notes). */
+const CONFIG_LABELS: Record<string, string> = Object.fromEntries(CONFIG_META.map((m) => [m.key, m.label]));
+
 /** The settings with the profile a rule kind implies (normal = "normal", ironman = none). */
 function withRuleKindProfile(settings: Scenario["settings"], kind: RuleKind): Scenario["settings"] {
   const out = { ...settings };
@@ -362,21 +367,82 @@ function withRuleKindProfile(settings: Scenario["settings"], kind: RuleKind): Sc
   return out;
 }
 
-/** The rules selector: the three engine set-ups, plus the "from nothing" builder (it replaces the flows). */
-type RulesChoice = RuleKind | "builder";
-
-const RULES_HINT: Record<RulesChoice, string> = {
-  strict: "Ironman from an empty inventory: the starting layouts are paid from stock, nothing is borrowed",
-  borrow: "Ironman with the starting items: any mutation item can be placed before you own it (the stock goes negative). The Ironman board's \"I have the starting items\" number",
-  normal: "The normal profile: free starting layouts, shortfalls bought on the Bazaar",
-  builder: "From nothing, builder first: imports the site's builder flow set to make this flow's starting items (found with a borrow run), so you can watch it. Your flows are replaced; Undo brings them back",
-};
-const RULES_LABEL: Record<RulesChoice, string> = { ...RULE_KIND_LABEL, builder: "From nothing (builder first)" };
-
 const GROUP_LABEL: Record<ConfigGroup, string> = {
   verified: "Verified",
   unpublished: "Unpublished - reasoned defaults",
   model: "Model switches",
+};
+
+/**
+ * The leaderboard rules box (Settings): one set of rules, the board the site's Ironman / Normal
+ * switch is on (`profileRuleKind`), applied to the user's own scenario; and "Watch from nothing",
+ * which shows the Ironman board's main number (the builder, then the flow) as a preview without
+ * touching the scenario.
+ */
+export const LeaderboardRulesBox: React.FC<{
+  scenario: Scenario;
+  onChange: (sc: Scenario) => void;
+  onWatchFromNothing?: (every: number) => void;
+  /** A from-nothing preview is open or being prepared. */
+  watching?: boolean;
+}> = ({ scenario, onChange, onWatchFromNothing, watching = false }) => {
+  const { settings } = scenario;
+  const [siteProfile] = useProfileMode();
+  const kind = profileRuleKind(siteProfile);
+  const [rulesEvery, setRulesEvery] = useState<number>(settings.activity.kind === "everyN" ? nearestEvery(settings.activity.n) : 1);
+  // The profile is site-wide (the page applies it from localStorage), so diff with the board's profile set.
+  const differences = ruleDifferenceLines(ruleDifferences({ ...scenario, settings: withRuleKindProfile(settings, kind) }, kind), CONFIG_LABELS);
+  const apply = () => {
+    const ruled = applyRules(scenario, kind, rulesEvery, Math.floor(Math.random() * 2 ** 31));
+    // The profile is site-wide (the page applies it from localStorage), so leave the scenario's own value alone.
+    const next: Scenario = { ...ruled, settings: { ...ruled.settings } };
+    if (settings.profile) next.settings.profile = settings.profile;
+    else delete next.settings.profile;
+    onChange(next);
+  };
+  const board = kind === "normal" ? "Normal" : "Ironman";
+  return (
+    <div className="mb-3 rounded border border-slate-700/60 bg-slate-800/40 p-2" data-testid="leaderboard-rules">
+      <div className="flex items-center gap-1 text-xs text-slate-300 mb-1.5">
+        <Trophy className="w-3.5 h-3.5 text-amber-300" /> Leaderboard rules · {board}
+        <InfoHint title="Leaderboard rules" width={320}>
+          <p>
+            The server measures every flow with wiki-maximum player stats, default advanced settings, an empty starting inventory and the player online every N
+            cycles, on both boards. This box follows the Ironman / Normal switch at the top of the page.
+          </p>
+          <p>
+            <b>Ironman</b>: a mutation item may be placed before you own it, so you see the flow as it runs once you have its starting items (what it needs is
+            listed). The board's main number is <b>from nothing</b>: the site's builder makes those starting items first; <b>Watch from nothing</b> shows both
+            parts without changing your flows. Ironman runs get unlimited Dead Plants and Fermento.
+          </p>
+          <p>
+            <b>Normal</b>: the normal profile, buying shortfalls on the Bazaar. Applying uses your own random seed; the server uses secret seeds of its own.
+          </p>
+        </InfoHint>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <SelectField<string> label="Online every" value={String(rulesEvery)} options={EVERY.map((n) => ({ value: String(n), label: `${n} cycle${n === 1 ? "" : "s"}` }))} onChange={(v) => setRulesEvery(Number(v))} />
+        <button className={buttonClass.neutral} onClick={apply} title={differences.length ? `Changes: ${differences.join("; ")}` : "Already under the rules; re-rolls the seed"}>
+          <Trophy className="w-3.5 h-3.5" /> Apply the {board} rules
+        </button>
+        {kind !== "normal" && onWatchFromNothing && (
+          <button
+            className={buttonClass.neutral}
+            onClick={() => onWatchFromNothing(rulesEvery)}
+            disabled={watching}
+            title="Watch the site's builder make this flow's starting items, then the flow run from exactly those. Your flows stay as they are."
+          >
+            <Eye className="w-3.5 h-3.5" /> Watch from nothing
+          </button>
+        )}
+      </div>
+      {differences.length > 0 ? (
+        <div className="mt-1.5 text-[11px] text-amber-200/90">Not under the {board} rules yet: {differences.join("; ")}.</div>
+      ) : (
+        <div className="mt-1.5 text-[11px] text-emerald-300/90">Your settings match the {board} rules.</div>
+      )}
+    </div>
+  );
 };
 
 export const SettingsPanel: React.FC<{
@@ -384,7 +450,10 @@ export const SettingsPanel: React.FC<{
   onChange: (sc: Scenario) => void;
   /** Cycle length of the current run, for the All-in Aloe preview; from the stats when absent. */
   cycleSecondsNow?: number;
-}> = ({ scenario, onChange, cycleSecondsNow }) => {
+  /** Open the "from nothing" preview (the builder, then the flow), online every N cycles. */
+  onWatchFromNothing?: (every: number) => void;
+  watching?: boolean;
+}> = ({ scenario, onChange, cycleSecondsNow, onWatchFromNothing, watching }) => {
   const [tab, setTab] = useState<SettingsTab>("player");
   const { settings } = scenario;
   const setSettings = (patch: Partial<Scenario["settings"]>) => onChange({ ...scenario, settings: { ...settings, ...patch } });
@@ -395,97 +464,9 @@ export const SettingsPanel: React.FC<{
     (settings.config.freePlacedItems?.length ? 1 : 0) +
     (settings.config.setupFromStock === true ? 1 : 0) +
     (settings.config.leaderboardRules === true ? 1 : 0);
-  // The profile is site-wide (not in the saved scenario): the selector starts on its board.
-  const [siteProfile] = useProfileMode();
-  const [rulesKind, setRulesKind] = useState<RulesChoice>(() => scenarioRuleKind({ ...settings, profile: siteProfile }));
-  const [building, setBuilding] = useState<number | null>(null);
-  const { toast } = useToast();
-  const [rulesEvery, setRulesEvery] = useState<number>(settings.activity.kind === "everyN" ? nearestEvery(settings.activity.n) : 1);
-  // The profile is site-wide (the page applies it from localStorage), so diff with the run kind's profile set.
-  const engineKind: RuleKind = rulesKind === "builder" ? "strict" : rulesKind;
-  const differences = rulesKind === "builder" ? [] : ruleDifferences({ ...scenario, settings: withRuleKindProfile(settings, engineKind) }, engineKind);
-  const importBuilder = async () => {
-    const before = scenario;
-    setBuilding(0);
-    try {
-      // Lazy: the builder flow is a big file the simulator otherwise never needs.
-      const { builderImport, probeKit } = await import("../../leaderboard/worker/builderImport");
-      const kit = await probeKit(submissionFromScenario(scenario), rulesEvery, 2000, (f) => setBuilding(f));
-      const built = builderImport(kit, rulesEvery);
-      const next: Scenario = { ...built, settings: { ...built.settings } };
-      if (settings.profile) next.settings.profile = settings.profile;
-      else delete next.settings.profile;
-      onChange(next);
-      const n = Object.values(kit).reduce((a, b) => a + b, 0);
-      toast({
-        id: "simulator-builder-imported",
-        title: n ? "Imported the starting-items builder" : "This flow needs no starting items",
-        description: n ? `It makes ${n.toLocaleString("en-US")} starting items from nothing (strict rules, free supplies). Undo brings your flows back.` : "From nothing is the same as with the starting items; the builder has nothing to make.",
-        variant: "success",
-        duration: 8000,
-        action: { label: "Undo", onClick: () => onChange(before) },
-      });
-    } catch (e) {
-      toast({ title: "Could not import the builder", description: e instanceof Error ? e.message : String(e), variant: "error" });
-    } finally {
-      setBuilding(null);
-    }
-  };
-  const applyLeaderboardRules = () => {
-    if (rulesKind === "builder") return void importBuilder();
-    const seed = Math.floor(Math.random() * 2 ** 31);
-    const ruled = applyRules(scenario, rulesKind, rulesEvery, seed);
-    // The profile is site-wide (the page applies it from localStorage), so leave the scenario's own value alone.
-    const next: Scenario = { ...ruled, settings: { ...ruled.settings } };
-    if (settings.profile) next.settings.profile = settings.profile;
-    else delete next.settings.profile;
-    onChange(next);
-  };
-
   return (
     <Panel title="Settings" icon={<Settings2 />}>
-      <div className="mb-3 rounded border border-slate-700/60 bg-slate-800/40 p-2">
-        <div className="flex items-center gap-1 text-xs text-slate-300 mb-1.5">
-          <Trophy className="w-3.5 h-3.5 text-amber-300" /> Leaderboard rules
-          <InfoHint title="Leaderboard rules" width={320}>
-            <p>
-              Flows on the leaderboard are measured with wiki-maximum player stats, default advanced settings, an empty starting inventory and the player
-              online every N cycles:
-            </p>
-            <p>
-              <b>With the starting items</b>: ironman, any mutation item may be placed before you own it (what it needs is listed). <b>From nothing</b>:
-              the site's builder makes those starting items first, then the flow runs from exactly them, nothing borrowed; pick "builder first" to watch the
-              builder. <b>Strict</b>: the flow alone from an empty inventory, nothing borrowed. <b>Normal</b>: the normal profile. Ironman runs get unlimited
-              Dead Plants and Fermento.
-            </p>
-            <p>Apply the same rules here to test your flow the way the server will, with your own random seed. The server uses secret seeds of its own.</p>
-          </InfoHint>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SelectField<RulesChoice>
-            label="Rules"
-            value={rulesKind}
-            title={RULES_HINT[rulesKind]}
-            options={[...RULE_KINDS, "builder" as const].map((k) => ({ value: k, label: RULES_LABEL[k] }))}
-            onChange={setRulesKind}
-          />
-          <SelectField<string> label="Online every" value={String(rulesEvery)} options={EVERY.map((n) => ({ value: String(n), label: `${n} cycle${n === 1 ? "" : "s"}` }))} onChange={(v) => setRulesEvery(Number(v))} />
-          <button
-            className={buttonClass.neutral}
-            onClick={applyLeaderboardRules}
-            disabled={building !== null}
-            title={rulesKind === "builder" ? RULES_HINT.builder : differences.length ? `Changes: ${differences.join("; ")}` : "Already under the rules; re-rolls the seed"}
-          >
-            <Trophy className="w-3.5 h-3.5" /> {building !== null ? `Finding the starting items... ${Math.round(building * 100)}%` : rulesKind === "builder" ? "Import the builder" : "Apply leaderboard rules"}
-          </button>
-        </div>
-        {differences.length > 0 && (
-          <div className="mt-1.5 text-[11px] text-amber-200/90">Your settings differ from the rules: {differences.join("; ")}.</div>
-        )}
-        {(engineKind === "normal") !== (siteProfile === "normal") && (
-          <div className="mt-1 text-[11px] text-slate-400">Switch the simulator to {engineKind === "normal" ? "Normal" : "Ironman"} mode (top of the page) to run it like this board.</div>
-        )}
-      </div>
+      <LeaderboardRulesBox scenario={scenario} onChange={onChange} onWatchFromNothing={onWatchFromNothing} watching={watching} />
       <div className="mb-3">
         <CheckboxField
           label={

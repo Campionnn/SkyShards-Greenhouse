@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Dices, Eye, Link2, LogOut, Pencil, Send, T
 import { useAuth } from "../../hooks/useAuth";
 import { useBazaarPrices } from "../../hooks/useBazaarPrices";
 import { useProfileMode } from "../../hooks/useProfileMode";
-import { applyRules, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, ruleDifferences, RULE_KINDS, submissionFile, submissionFromScenario, type CellKind, type RuleKind, type RunKind } from "../../leaderboard/rules";
+import { applyRules, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, ruleDifferences, submissionFile, submissionFromScenario, type CellKind, type RunKind } from "../../leaderboard/rules";
 import { nearestEvery } from "../../leaderboard/tiers";
 import { WALL_MS_BACKSTOP } from "../../leaderboard/verify";
 import {
@@ -15,9 +15,9 @@ import {
   localKindSummary,
   OUTLIER_RATIO,
   readPrep,
+  profileRuleKind,
   ratioText,
-  RULE_KIND_LABEL,
-  scenarioRuleKind,
+  ruleDifferenceLines,
   starvedList,
   stopsAt,
   upkeepNeedText,
@@ -32,7 +32,7 @@ import {
 } from "../../leaderboard/view";
 import { LocalTestPool, randomSeeds, type SeedOutcome } from "../../leaderboard/worker/pool";
 import { flowLink, flowShareLink, submitFlow } from "../../services/flowsService";
-import { defaultGameData, type Scenario } from "../../simulator";
+import { CONFIG_META, defaultGameData, type Scenario } from "../../simulator";
 import { Avatar } from "../flows/FlowControls";
 import { StatusBox } from "../flows/FlowDetailSections";
 import { FlowMarkdown } from "../flows/FlowMarkdown";
@@ -44,6 +44,8 @@ import { buttonClass, inputClass } from "./styles";
 import { clearSubmitDraft, loadSubmitDraft, saveSubmitDraft } from "./submitDraft";
 
 const DATA = defaultGameData();
+/** Advanced settings' labels (for the rules notes). */
+const CONFIG_LABELS: Record<string, string> = Object.fromEntries(CONFIG_META.map((m) => [m.key, m.label]));
 /** Seeds per run kind in the local test (the server uses 5 at the max tier). */
 const TEST_SEEDS = 3;
 /** The cell kinds one run kind's test shows (an ironman seed gives both ironman numbers). */
@@ -51,7 +53,13 @@ const TEST_CELL_KINDS: Record<RunKind, CellKind[]> = { ironman: ["ironman", "iro
 /** The server's wall-clock backstop (the deciding cap is the deterministic script step cap, applied by runOnce). */
 const WALL_MS = WALL_MS_BACKSTOP;
 
-type Props = { scenario: Scenario; onChange: (sc: Scenario) => void; onClose: () => void };
+type Props = {
+  scenario: Scenario;
+  onChange: (sc: Scenario) => void;
+  onClose: () => void;
+  /** Close the dialog and show "from nothing" in the simulator (the builder, then the flow), online every N cycles. */
+  onWatchFromNothing?: (every: number) => void;
+};
 
 export const SubmitFlowDialog: React.FC<Props> = (props) => (
   <ModalDialog labelledBy="submit-flow-title" onClose={props.onClose} maxWidth="max-w-2xl">
@@ -97,6 +105,13 @@ const LoginBox: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
   );
 };
 
+/**
+ * The last local test, kept while the page is open (this module stays loaded), so closing the dialog
+ * to watch the flow and opening it again doesn't throw the result away. Only for the same flow and length.
+ */
+let lastTest: { key: string; test: TestState } | null = null;
+const testKey = (payload: string, cycles: number) => `${cycles}|${payload}`;
+
 /** One run kind of the local test. */
 export interface KindTest {
   runKind: RunKind;
@@ -113,7 +128,14 @@ export interface TestState {
 }
 
 /** What one cell kind of the test found (the server builds its cell the same way). */
-export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: LocalKindSummary; noPrices: boolean; kitPerDay?: number | null }> = ({ test, kind, summary, noPrices, kitPerDay = null }) => {
+export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: LocalKindSummary; noPrices: boolean; kitPerDay?: number | null; onWatch?: () => void }> = ({
+  test,
+  kind,
+  summary,
+  noPrices,
+  kitPerDay = null,
+  onWatch,
+}) => {
   const running = summary.done < summary.total;
   const progress = test.progress.reduce((s, x) => s + x, 0) / Math.max(1, test.progress.length);
   const cell = summary.cell;
@@ -176,6 +198,11 @@ export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: L
           {builderText(prep)}
         </p>
       )}
+      {kind === "ironman" && onWatch && !running && (
+        <button type="button" className={buttonClass.neutral} onClick={onWatch} title="Close this and watch the builder, then your flow, in the simulator. Your flows stay as they are.">
+          <Eye className="w-3.5 h-3.5" /> Watch it in the simulator
+        </button>
+      )}
       {check && !check.ok && <p className="text-amber-200/90">The stitched "from nothing" number differed from a real run by {Math.round(check.diff * 1000) / 10}%: the server runs this flow's "from nothing" for real.</p>}
       {cell && kind === "ironman_kit" && (
         <div className="space-y-0.5 text-slate-400">
@@ -204,7 +231,7 @@ export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: L
 };
 
 /** The dialog body (no portal), so SSR tests can render it. `initialTest` shows a finished test (SSR tests). */
-export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({ scenario, onChange, onClose, initialTest }) => {
+export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({ scenario, onChange, onClose, onWatchFromNothing, initialTest }) => {
   const { toast } = useToast();
   const { user, loading: authLoading, login } = useAuth();
   const [profile] = useProfileMode();
@@ -216,7 +243,11 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
   const [preview, setPreview] = useState(false);
   const [cycles, setCycles] = useState(draft && Number.isFinite(draft.cycles) ? clampCycles(draft.cycles) : DEFAULT_CYCLES);
   const [testNormal, setTestNormal] = useState(false);
-  const [test, setTest] = useState<TestState | null>(initialTest ?? null);
+  const submissionJson = useMemo(() => JSON.stringify(submissionFromScenario(scenario)), [scenario]);
+  const [test, setTest] = useState<TestState | null>(() => initialTest ?? (lastTest && lastTest.key === testKey(submissionJson, clampCycles(cycles)) && !lastTest.test.running ? lastTest.test : null));
+  useEffect(() => {
+    if (test && !test.running && !initialTest) lastTest = { key: testKey(submissionJson, test.cycles), test };
+  }, [test, submissionJson, initialTest]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<{ message: string; errors: string[] } | null>(null);
   const [submitted, setSubmitted] = useState<{ id: string; status: string } | null>(null);
@@ -230,8 +261,10 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
     login("/simulator");
   };
 
-  // The rules to compare with and apply: the run kind the simulator looks like now.
-  const [rulesKind, setRulesKind] = useState<RuleKind>(() => scenarioRuleKind({ ...scenario.settings, profile }));
+  // The rules the simulator should match to show what the server measures: the board the site's
+  // Ironman / Normal switch is on (Ironman = with the starting items; from nothing adds the builder).
+  const rulesKind = profileRuleKind(profile);
+  const board = rulesKind === "normal" ? "Normal" : "Ironman";
   const every = scenario.settings.activity.kind === "everyN" ? nearestEvery(scenario.settings.activity.n) : 1;
   const submission = useMemo(() => submissionFromScenario(scenario), [scenario]);
   const check = useMemo(() => checkSubmission(submission, DATA), [submission]);
@@ -240,7 +273,7 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
     const withKind: Scenario = { ...scenario, settings: { ...scenario.settings } };
     if (rulesKind === "normal") withKind.settings.profile = "normal";
     else delete withKind.settings.profile;
-    return ruleDifferences(withKind, rulesKind);
+    return ruleDifferenceLines(ruleDifferences(withKind, rulesKind), CONFIG_LABELS);
   }, [scenario, rulesKind]);
 
   const apply = () => {
@@ -253,7 +286,7 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
     toast({
       id: "simulator-rules-applied",
       title: "Applied the leaderboard rules",
-      description: `${RULE_KIND_LABEL[rulesKind]}, online every ${every} cycle${every === 1 ? "" : "s"}, a new random seed.`,
+      description: `${board}, online every ${every} cycle${every === 1 ? "" : "s"}, a new random seed.`,
       variant: "success",
       duration: 6000,
       action: { label: "Undo", onClick: () => onChange(before) },
@@ -395,8 +428,9 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
           everything else: empty starting inventory, default advanced settings, its own stat tiers and secret seeds, at every online frequency.
         </p>
         <p className="text-xs text-slate-400 leading-relaxed">
-          Every flow goes on both boards: <span className="text-slate-300">Ironman</span>, ranked from nothing (the site's builder flow makes its starting items first,
-          then it runs from exactly those) or, with "I have the starting items", as if you own them; and <span className="text-slate-300">Normal</span>.
+          It goes on both boards. <span className="text-slate-300">Ironman</span> is ranked from nothing: the site's builder makes your flow's starting items first, then
+          your flow runs from exactly those (the "I have the starting items" switch shows it without the builder). <span className="text-slate-300">Normal</span> buys
+          what it's short of on the Bazaar.
         </p>
         {check.errors.length > 0 && (
           <ul className="rounded-md bg-red-500/10 border border-red-500/30 px-2 py-1.5 text-xs text-red-200 space-y-1" data-testid="submit-errors">
@@ -416,41 +450,20 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
             ))}
           </ul>
         )}
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400" role="group" aria-label="Rules to compare with">
-          <span>Compare with</span>
-          {RULE_KINDS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              aria-pressed={rulesKind === k}
-              onClick={() => setRulesKind(k)}
-              className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                rulesKind === k ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200" : "border-slate-600/40 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
-              }`}
-            >
-              {RULE_KIND_LABEL[k]}
-            </button>
-          ))}
-        </div>
         {differences.length > 0 ? (
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs text-amber-100 space-y-1.5">
-            <div>Your simulator settings differ from the {RULE_KIND_LABEL[rulesKind]} rules, so what you see locally may differ from the server:</div>
-            <ul className="list-disc pl-5 text-amber-200/90">
-              {differences.map((d) => (
-                <li key={d}>{d}</li>
-              ))}
-            </ul>
-            <button type="button" className={buttonClass.neutral} onClick={apply}>
-              <Trophy className="w-3.5 h-3.5" /> Apply the rules here
+          <div className="flex flex-wrap items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs text-amber-100" data-testid="rules-diff">
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <div>Your simulator isn't under the {board} rules, so it may show different numbers than the server:</div>
+              <div className="text-amber-200/90">{differences.join("; ")}.</div>
+            </div>
+            <button type="button" className={buttonClass.neutral} onClick={apply} title="Max stats, empty starting inventory, default advanced settings, online every N cycles. Your flows are unchanged; Undo puts your settings back.">
+              <Trophy className="w-3.5 h-3.5" /> Apply the {board} rules
             </button>
           </div>
         ) : (
           <p className="text-xs text-emerald-300/90 flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Your settings match the {RULE_KIND_LABEL[rulesKind]} rules.
+            <CheckCircle2 className="w-3.5 h-3.5" /> Your simulator is under the {board} rules.
           </p>
-        )}
-        {(profile === "normal") !== (rulesKind === "normal") && (
-          <p className="text-[11px] text-slate-400">The simulator is in {profile === "normal" ? "Normal" : "Ironman"} mode; switch it with the toggle at the top of the page to run it under the {RULE_KIND_LABEL[rulesKind]} rules.</p>
         )}
       </Section>
 
@@ -516,7 +529,22 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
           <div className="space-y-2" data-testid="seed-test">
             <div className={`grid grid-cols-1 gap-2 ${cards.length > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
               {cards.map((c) => (
-                <KindTestCard key={c.kind} test={c.test} kind={c.kind} summary={c.summary} noPrices={noPrices} kitPerDay={cards.find((x) => x.kind === "ironman_kit")?.summary.profitPerDay ?? null} />
+                <KindTestCard
+                  key={c.kind}
+                  test={c.test}
+                  kind={c.kind}
+                  summary={c.summary}
+                  noPrices={noPrices}
+                  kitPerDay={cards.find((x) => x.kind === "ironman_kit")?.summary.profitPerDay ?? null}
+                  onWatch={
+                    onWatchFromNothing
+                      ? () => {
+                          onClose();
+                          onWatchFromNothing(test.every);
+                        }
+                      : undefined
+                  }
+                />
               ))}
             </div>
             {cards.some((c) => c.summary.failed.length > 0) && <p className="text-xs text-red-300">A failed seed makes the server reject the submission.</p>}

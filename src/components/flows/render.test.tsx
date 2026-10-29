@@ -17,6 +17,8 @@ import { DEFAULT_BAZAAR_PRICING } from "../../simulator";
 import { defaultGameData } from "../../simulator/data/default";
 import { SubmitFlowPanel, type TestState } from "../simulator/SubmitFlowDialog";
 import { SettingsPanel } from "../simulator/ScenarioPanels";
+import { FromNothingBanner } from "../simulator/FromNothingBanner";
+import { previewScenarioOf, withPreviewSeed } from "../simulator/fromNothingPreview";
 import { ToastProvider } from "../ui";
 import { ReportPanel } from "./FlowDetailSections";
 import { FilterBar } from "./FlowFilters";
@@ -347,14 +349,17 @@ describe("submit dialog renders", () => {
     expect(html).toContain("Log in with Discord");
     expect(html).toContain("Your 2 plots");
     expect(html).toContain("starting inventory is not empty");
-    expect(html).toContain("Apply the rules here");
+    expect(html).toContain('data-testid="rules-diff"');
+    expect(html).toContain("Apply the Ironman rules");
     expect(html).toContain("0 / 60");
     expect(html).toContain("0 / 2000");
     expect(html).toContain("Leave an empty line to start a new paragraph");
     expect(html).toContain("Test with 3 random seeds");
     expect(html).toContain("Normal too");
     expect(html).toContain("The score averages a secret window just after this length.");
-    for (const s of ["Compare with", "Strict (no borrowing)", "With the starting items", "builder flow makes its starting items first"]) expect(html).toContain(s);
+    expect(html).toContain("the site's builder makes your flow's starting items first");
+    // One set of rules (the site's Ironman / Normal switch), no choice among engine set-ups.
+    expect(html).not.toMatch(/Compare with|Strict \(no borrowing\)|builder first/);
     // No board choice and no payback text any more.
     expect(html).not.toMatch(/Boards<|Pick at least one board|paid back|PAYBACK|on credit/i);
     // Logged out: the footer's action is the Discord login, not a disabled Submit.
@@ -392,8 +397,10 @@ describe("submit dialog renders", () => {
         { runKind: "normal", progress: [1, 1, 0.4], outcomes: [ok(kitCell, null), { seed: 2, ok: false, error: "script error: boom at cycle 12", result: null, wallMs: 1 }, undefined] },
       ],
     };
-    const html = text(wrap(<SubmitFlowPanel scenario={sc} onChange={() => {}} onClose={() => {}} initialTest={initial} />));
+    const html = text(wrap(<SubmitFlowPanel scenario={sc} onChange={() => {}} onClose={() => {}} onWatchFromNothing={() => {}} initialTest={initial} />));
     expect(html).toContain('data-testid="seed-test"');
+    // The from-nothing card offers to watch it in the simulator (the builder, then the flow).
+    expect(html).toContain("Watch it in the simulator");
     for (const k of ["ironman", "ironman_kit", "normal"]) expect(html).toContain(`data-testid="test-${k}"`);
     for (const s of [
       "From nothing",
@@ -425,12 +432,48 @@ describe("submit dialog renders", () => {
 });
 
 describe("simulator settings: the leaderboard rules", () => {
-  it("the run-kind selector and the notes for setupFromStock and leaderboardRules (with a way to clear them)", () => {
+  it("one rules button for the site's board, Watch from nothing, and the notes for setupFromStock and leaderboardRules", () => {
     const base = scenario([flow([step("a", { code: LAYOUT_A_CODE }, [])])]);
     const ruled = { ...base, settings: { ...base.settings, config: { ...base.settings.config, freePlacedItems: ["dead_plant", "fermento"], setupFromStock: true, leaderboardRules: true } } };
     const html = text(wrap(<SettingsPanel scenario={ruled} onChange={() => {}} />));
-    for (const s of ["Apply leaderboard rules", "Strict (no borrowing)", "With the starting items", "From nothing (builder first)", "Normal"]) expect(html).toContain(s);
+    // One button for the board the site switch is on, and the from-nothing preview; no four-way select.
+    expect(html).toContain("Leaderboard rules · Ironman");
+    expect(html).toContain("Apply the Ironman rules");
+    expect(html).not.toMatch(/From nothing \(builder first\)|Strict \(no borrowing\)|Import the builder/);
+    const watch = text(wrap(<SettingsPanel scenario={ruled} onChange={() => {}} onWatchFromNothing={() => {}} />));
+    expect(watch).toContain("Watch from nothing");
     // The Advanced tab holds the notes; render the panel there.
     expect(html).toContain("Advanced (3)");
+  });
+});
+
+describe("simulator: the from-nothing preview", () => {
+  const preview = {
+    kit: { zombud: 3, puffercloud: 2 },
+    every: 4,
+    part: "builder" as const,
+    builder: scenario([flow([step("a", { code: LAYOUT_A_CODE }, [])])]),
+    flow: scenario([flow([step("b", { code: LAYOUT_B_CODE }, [])])]),
+  };
+  it("the banner: both parts, the builder's progress on the starting items, and the way back", () => {
+    const html = text(wrap(<FromNothingBanner preview={preview} inventory={{ zombud: 5, puffercloud: 1 }} onPart={() => {}} onExit={() => {}} />));
+    for (const s of ["From nothing, as the Ironman board runs it", "Back to my flow", "1 · Builder makes the starting items", "2 · Your flow from exactly those", "3 / 3 Zombud", "1 / 2 Puffercloud", "online every 4 cycles", "Your flows are untouched"]) expect(html).toContain(s);
+    expect(html).not.toContain("all made");
+    const done = text(wrap(<FromNothingBanner preview={preview} inventory={{ zombud: 3, puffercloud: 2 }} onPart={() => {}} onExit={() => {}} />));
+    expect(done).toContain("all made: run part 2");
+    const flowPart = text(wrap(<FromNothingBanner preview={{ ...preview, part: "flow" }} inventory={null} onPart={() => {}} onExit={() => {}} />));
+    expect(flowPart).toContain("it starts with exactly these items");
+    expect(flowPart).toContain(">3 Zombud<");
+    const none = text(wrap(<FromNothingBanner preview={{ ...preview, kit: {}, builder: null, part: "flow" }} inventory={null} onPart={() => {}} onExit={() => {}} />));
+    expect(none).toContain("needs no starting items");
+    expect(none).not.toContain("1 · Builder");
+  });
+  it("previewScenarioOf / withPreviewSeed change only the running part", () => {
+    expect(previewScenarioOf(preview)).toBe(preview.builder);
+    const seeded = withPreviewSeed(preview, 42);
+    expect(seeded.builder!.settings.seed).toBe(42);
+    expect(seeded.flow).toBe(preview.flow);
+    expect(previewScenarioOf({ ...preview, part: "flow" })).toBe(preview.flow);
+    expect(previewScenarioOf({ ...preview, builder: null })).toBe(preview.flow);
   });
 });

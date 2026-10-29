@@ -12,6 +12,8 @@ import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
 import { buttonClass } from "../components/simulator/styles";
 import { FlowEditor } from "../components/simulator/FlowEditor";
 import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
+import { FromNothingBanner, FromNothingPreparing } from "../components/simulator/FromNothingBanner";
+import { previewScenarioOf, useFromNothingPreview, withPreviewSeed } from "../components/simulator/fromNothingPreview";
 import { addPlot, importFlows, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
 import { applyRules, boardFrom, type Board, type RuleKind } from "../leaderboard/rules";
 import { getFlow } from "../services/flowsService";
@@ -119,7 +121,12 @@ export const SimulatorPage: React.FC = () => {
   /** Re-renders the price age once a minute. */
   const now = useNow(profile === "normal" ? 60_000 : null);
   const settled = useDebounced(scenario, 300);
-  const engineScenario = useMemo(() => withProfile(settled, profile), [settled, profile]);
+  // "Watch from nothing": runs the builder / the flow from its starting items instead of the user's
+  // scenario, which stays as it is (and saved) underneath.
+  const fromNothing = useFromNothingPreview(scenario);
+  const preview = fromNothing.preview;
+  const previewScenario = useMemo(() => (preview ? previewScenarioOf(preview) : null), [preview]);
+  const engineScenario = useMemo(() => withProfile(previewScenario ?? settled, previewScenario ? "ironman" : profile), [previewScenario, settled, profile]);
   const { view, run, step, stepBack, undo, stop, reset, addItems } = useSimulation(engineScenario);
   /** Live Bazaar quotes with the user's manual prices on top. */
   const quotes = bazaar.quotes;
@@ -317,17 +324,26 @@ export const SimulatorPage: React.FC = () => {
 
       <RunControls
         view={view}
-        plotCount={scenario.plots.length}
+        plotCount={(previewScenario ?? scenario).plots.length}
         onRun={run}
         onStep={step}
         onStepBack={stepBack}
         onUndo={undo}
         onStop={stop}
         onReset={reset}
-        seed={scenario.settings.seed}
-        onSeedChange={(seed) => setScenario((sc) => ({ ...sc, settings: { ...sc.settings, seed } }))}
+        seed={previewScenario ? previewScenario.settings.seed : scenario.settings.seed}
+        onSeedChange={(seed) => (preview ? fromNothing.setPreview(withPreviewSeed(preview, seed)) : setScenario((sc) => ({ ...sc, settings: { ...sc.settings, seed } })))}
         priceSummary={priceSummary}
       />
+      {fromNothing.preparing !== null && <FromNothingPreparing progress={fromNothing.preparing} onCancel={fromNothing.exit} />}
+      {preview && (
+        <FromNothingBanner
+          preview={preview}
+          inventory={state?.inventory ?? null}
+          onPart={(part) => fromNothing.setPreview({ ...preview, part })}
+          onExit={fromNothing.exit}
+        />
+      )}
       {state?.scripts?.halt && (
         <ScriptHaltBanner
           halt={state.scripts.halt}
@@ -373,7 +389,7 @@ export const SimulatorPage: React.FC = () => {
                       runner={state.flows.find((f) => f.plotId === plot.id)}
                       def={state.scenario.plots.find((p) => p.id === plot.id)}
                       events={eventsFor(plot.id)}
-                      onEditFlow={() => setEditingPlot(plot.id)}
+                      onEditFlow={preview ? undefined : () => setEditingPlot(plot.id)}
                       maxCell={focused !== null ? 72 : 52}
                       openDebts={Object.keys(state.openDebts)}
                       cycleSeconds={state.lastCycleSeconds}
@@ -423,13 +439,13 @@ export const SimulatorPage: React.FC = () => {
                 }
                 onAddItems={addItems}
                 busy={view.status === "running"}
-                startingInventory={scenario.startingInventory}
-                onStartingInventoryChange={(startingInventory) => setScenario((sc) => ({ ...sc, startingInventory }))}
+                startingInventory={preview ? undefined : scenario.startingInventory}
+                onStartingInventoryChange={preview ? undefined : (startingInventory) => setScenario((sc) => ({ ...sc, startingInventory }))}
               />
             </>
           )}
 
-          <ScriptPanel scenario={scenario} state={state ?? null} onEdit={setScripting} />
+          {!preview && <ScriptPanel scenario={scenario} state={state ?? null} onEdit={setScripting} />}
 
           {state && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
@@ -447,8 +463,15 @@ export const SimulatorPage: React.FC = () => {
               issues={view.issues}
               warnings={view.warnings}
               error={view.status === "error" ? view.error : null}
+              onWatchFromNothing={(every) => void fromNothing.start(every)}
             />
-            <SettingsPanel scenario={scenario} onChange={setScenario} cycleSecondsNow={state?.lastCycleSeconds} />
+            <SettingsPanel
+              scenario={scenario}
+              onChange={setScenario}
+              cycleSecondsNow={state?.lastCycleSeconds}
+              onWatchFromNothing={(every) => void fromNothing.start(every)}
+              watching={fromNothing.preparing !== null || !!preview}
+            />
           </div>
       </div>
 

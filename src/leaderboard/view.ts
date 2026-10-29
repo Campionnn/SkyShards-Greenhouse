@@ -41,8 +41,39 @@ export const BOARD_LABEL: Record<Board, string> = { ironman: "Ironman", normal: 
 export const CELL_KIND_LABEL: Record<CellKind, string> = { ironman: "Ironman · from nothing", ironman_kit: "Ironman · with the starting items", normal: "Normal" };
 /** The cell kinds without the "Ironman ·" prefix (compact places). */
 export const CELL_KIND_SHORT: Record<CellKind, string> = { ironman: "From nothing", ironman_kit: "With the starting items", normal: "Normal" };
-/** The engine set-ups as the simulator's "Apply leaderboard rules" calls them. */
-export const RULE_KIND_LABEL: Record<RuleKind, string> = { strict: "Strict (no borrowing)", borrow: "With the starting items", normal: "Normal" };
+/** The engine set-ups as the simulator calls them. */
+export const RULE_KIND_LABEL: Record<RuleKind, string> = { strict: "Ironman, strict", borrow: "Ironman", normal: "Normal" };
+
+/**
+ * The set-up the simulator's "Apply the leaderboard rules" uses for the site's Ironman / Normal
+ * switch: Ironman = with the starting items (a mutation item can be placed before you own it, so
+ * the flow runs as it will once you have them; "Watch from nothing" shows the builder part), Normal
+ * = the normal profile. The submit dialog compares with the same one.
+ */
+export const profileRuleKind = (profile: string | undefined): RuleKind => (profile === "normal" ? "normal" : "borrow");
+
+/** The rule-only switches `ruleConfig` sets: one plain-words line instead of one per key. */
+const RULE_SWITCHES = new Set(["allowMutationDebt", "bootstrapDebt", "setupFromStock", "freePlacedItems", "leaderboardRules"]);
+
+/**
+ * `ruleDifferences` in a player's words, for the simulator's rules notes: the leaderboard's own
+ * switches become one line, other advanced settings are named by their labels. (rules.ts is bundled
+ * into the verifier, so the wording lives here.)
+ */
+export function ruleDifferenceLines(diffs: readonly string[], labels: Readonly<Record<string, string>> = {}): string[] {
+  const out: string[] = [];
+  const other: string[] = [];
+  let switches = false;
+  for (const d of diffs) {
+    const m = /^advanced setting "(.+)" differs$/.exec(d);
+    if (!m) out.push(d);
+    else if (RULE_SWITCHES.has(m[1])) switches = true;
+    else other.push(labels[m[1]] ?? m[1]);
+  }
+  if (other.length) out.push(other.length === 1 ? `the advanced setting "${other[0]}" is changed` : `${other.length} advanced settings are changed (${other.join(", ")})`);
+  if (switches) out.push("the leaderboard's own set-up isn't on");
+  return out;
+}
 
 /** The rule kind a simulator scenario's settings look like (the rules selectors' default). */
 export function scenarioRuleKind(settings: { profile?: string; config: { allowMutationDebt?: boolean; bootstrapDebt?: boolean } }): RuleKind {
