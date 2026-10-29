@@ -38,7 +38,7 @@ import { StatusBox } from "../flows/FlowDetailSections";
 import { FlowMarkdown } from "../flows/FlowMarkdown";
 import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 import { DiscordIcon, useToast } from "../ui";
-import { CheckboxField, NumberInput } from "./controls";
+import { NumberInput } from "./controls";
 import { formatCoins, nameOf } from "./format";
 import { buttonClass, inputClass } from "./styles";
 import { clearSubmitDraft, loadSubmitDraft, saveSubmitDraft } from "./submitDraft";
@@ -242,7 +242,6 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
   const [description, setDescription] = useState(draft?.description ?? "");
   const [preview, setPreview] = useState(false);
   const [cycles, setCycles] = useState(draft && Number.isFinite(draft.cycles) ? clampCycles(draft.cycles) : DEFAULT_CYCLES);
-  const [testNormal, setTestNormal] = useState(false);
   const submissionJson = useMemo(() => JSON.stringify(submissionFromScenario(scenario)), [scenario]);
   const [test, setTest] = useState<TestState | null>(() => initialTest ?? (lastTest && lastTest.key === testKey(submissionJson, clampCycles(cycles)) && !lastTest.test.running ? lastTest.test : null));
   useEffect(() => {
@@ -297,7 +296,8 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
     pool.current?.cancel();
     const p = new LocalTestPool();
     pool.current = p;
-    const kinds: RunKind[] = testNormal ? ["ironman", "normal"] : ["ironman"];
+    // Every flow goes on both boards, so the test always runs both.
+    const kinds: RunKind[] = ["ironman", "normal"];
     const seeds = kinds.map(() => randomSeeds(TEST_SEEDS));
     const len = clampCycles(cycles);
     setTest({ running: true, every, cycles: len, kinds: kinds.map((runKind, i) => ({ runKind, progress: seeds[i].map(() => 0), outcomes: seeds[i].map(() => undefined) })), error: null });
@@ -373,7 +373,7 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
         }
       >
         <div className="flex items-start gap-2 text-sm text-emerald-200">
-          <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" /> "{title.trim()}" is in the queue. It goes live when the server has simulated it.
+          <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" /> "{title.trim()}" is in the queue for every board. It goes live when the server has simulated it.
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <a href={`/flows/${submitted.id}`} className="text-emerald-300 hover:underline break-all">
@@ -428,10 +428,18 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
           everything else: empty starting inventory, default advanced settings, its own stat tiers and secret seeds, at every online frequency.
         </p>
         <p className="text-xs text-slate-400 leading-relaxed">
-          It goes on both boards. <span className="text-slate-300">Ironman</span> is ranked from nothing: the site's builder makes your flow's starting items first, then
-          your flow runs from exactly those (the "I have the starting items" switch shows it without the builder). <span className="text-slate-300">Normal</span> buys
-          what it's short of on the Bazaar.
+          <span className="text-slate-300">Ironman</span> is ranked from nothing: the site's builder makes your flow's starting items first, then your flow runs from
+          exactly those (the "I have the starting items" switch shows it without the builder). <span className="text-slate-300">Normal</span> buys what it's short of on
+          the Bazaar.
         </p>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs" data-testid="submit-boards">
+          <span className="text-slate-400">Goes on every board:</span>
+          {["Ironman · from nothing", "Ironman · with the starting items", "Normal"].map((b) => (
+            <span key={b} className="flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-200">
+              <CheckCircle2 className="w-3 h-3" /> {b}
+            </span>
+          ))}
+        </div>
         {check.errors.length > 0 && (
           <ul className="rounded-md bg-red-500/10 border border-red-500/30 px-2 py-1.5 text-xs text-red-200 space-y-1" data-testid="submit-errors">
             {check.errors.map((e, i) => (
@@ -518,12 +526,12 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
           <button type="button" className={buttonClass.neutral} onClick={() => void runTest()} disabled={!check.ok || test?.running}>
             <Dices className="w-3.5 h-3.5" /> {test?.running ? "Testing..." : `Test with ${TEST_SEEDS} random seeds`}
           </button>
-          <CheckboxField label="Normal too" checked={testNormal} onChange={setTestNormal} title={noPrices ? "Priced with Bazaar prices; none are cached yet" : "Priced with your cached Bazaar prices"} />
         </div>
         <p className="text-[11px] text-slate-500">
-          Ironman (with the starting items, then from nothing: the builder makes them first){testNormal ? ", then Normal" : ""}: max stats, online every {every} cycle{every === 1 ? "" : "s"},{" "}
+          Every board, like the server: Ironman (with the starting items, then from nothing: the builder makes them first), then Normal. Max stats, online every {every} cycle
+          {every === 1 ? "" : "s"},{" "}
           {clampCycles(cycles).toLocaleString()} cycles plus the end window, in this browser.
-          {testNormal && noPrices ? " No Bazaar prices are cached: open the simulator in Normal mode once to fetch them, or the Normal number counts items as unpriced." : ""}
+          {noPrices ? " No Bazaar prices are cached: open the simulator in Normal mode once to fetch them, or the Normal number counts items as unpriced." : ""}
         </p>
         {test && (
           <div className="space-y-2" data-testid="seed-test">

@@ -355,7 +355,11 @@ describe("submit dialog renders", () => {
     expect(html).toContain("0 / 2000");
     expect(html).toContain("Leave an empty line to start a new paragraph");
     expect(html).toContain("Test with 3 random seeds");
-    expect(html).toContain("Normal too");
+    // Every flow goes on every board: said, and the local test always runs both (no "Normal too" option).
+    expect(html).toContain('data-testid="submit-boards"');
+    for (const b of ["Ironman · from nothing", "Ironman · with the starting items"]) expect(html).toContain(b);
+    expect(html).not.toContain("Normal too");
+    expect(html).toContain("Every board, like the server");
     expect(html).toContain("The score averages a secret window just after this length.");
     expect(html).toContain("the site's builder makes your flow's starting items first");
     // One set of rules (the site's Ironman / Normal switch), no choice among engine set-ups.
