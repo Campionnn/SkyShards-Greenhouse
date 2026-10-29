@@ -269,9 +269,9 @@ export function ruleSettings(policies: Policies, spec: RunSpec): Settings {
   return settings;
 }
 
-/** The scenario one verification run simulates. */
-export function ruleScenario(s: Submission, spec: RunSpec): Scenario {
-  const sc: Scenario = { plots: structuredClone(s.plots), startingInventory: {}, settings: ruleSettings(s.policies, spec) };
+/** The scenario one verification run simulates (an empty starting inventory unless `inventory` is given). */
+export function ruleScenario(s: Submission, spec: RunSpec, inventory: Readonly<Record<string, number>> = {}): Scenario {
+  const sc: Scenario = { plots: structuredClone(s.plots), startingInventory: { ...inventory }, settings: ruleSettings(s.policies, spec) };
   if (s.script) sc.script = structuredClone(s.script);
   return sc;
 }
