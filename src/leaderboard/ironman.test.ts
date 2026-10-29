@@ -4,7 +4,7 @@ import { createEngine } from "../simulator/engine";
 import type { SimulationState } from "../simulator/sim/state";
 import { flow, layout, scenario, step, TIMER_ONLY } from "../simulator/testHelpers";
 import { builderScenario, ownsKit } from "./builder/builder";
-import { countSnapshot, RunRecorder, stitch, type CountSnapshot } from "./result";
+import { cellResult, countSnapshot, RunRecorder, seedSlowing, stitch, type CountSnapshot, type RunResult } from "./result";
 import { CUT_STEP, endCycles, parseSubmission, ruleScenario, STITCH_TOLERANCE, submissionFromScenario, type Submission } from "./rules";
 import { BUILDER_STEPS_PER_CYCLE, ironmanOutlierChecks, referenceValue, runIronman, runOnce, stitchCheckOf, verifyIronmanJob } from "./verify";
 
@@ -101,14 +101,14 @@ describe("runIronman: from nothing and with the starting items", () => {
     const o = runIronman(engine, baseCrops(), "max", 1, 4, 100, { wallMs: 60_000, check: true });
     expect(o.ok).toBe(true);
     expect(o.result!.startItems).toEqual({});
-    expect(o.fromNothing!.prep).toEqual({ kit: {}, cycles: 0, days: 0, done: true, mode: "stitched" });
+    expect(o.fromNothing!.prep).toEqual({ kit: {}, cycles: 0, days: 0, done: true, mode: "stitched", credit: "timeline" });
     expect(o.fromNothing!.produced).toEqual(o.result!.produced);
     expect(o.stitchCheck).toBeUndefined();
     // The borrow part is exactly v2's borrow run.
     expect(JSON.stringify(o.result)).toBe(JSON.stringify(runOnce(engine, baseCrops(), "borrow", "max", 1, 4, 100, { wallMs: 60_000 }).result));
   });
 
-  it("the timeline by hand: the builder to T*, then the flow from exactly the kit under the strict rules", () => {
+  it("by hand: the builder to T*, then the flow from exactly the kit; the timeline (A) or the flow alone (F), whichever is lower", () => {
     const sub = chloroniteFlow();
     const C = 200;
     const total = endCycles(C);
@@ -130,14 +130,24 @@ describe("runIronman: from nothing and with the starting items", () => {
     // The flow, strict, starting with exactly the kit.
     let f = engine.initState(ruleScenario(sub, { rules: "strict", tier: "max", every: 1, seed: 2 }, prep.kit)).state;
     expect(f.inventory.chloronite).toBe(0); // the setup placed the one Chloronite from the kit
-    const rates: number[] = [];
+    const timeline: number[] = [];
+    const alone: number[] = [];
     for (let t = C; t <= total; t += CUT_STEP) {
       f = engine.run(f, t - T - f.cycle).state;
-      const potato = (b.ledger.potato?.produced ?? 0) + (f.ledger.potato?.produced ?? 0);
-      rates.push(potato / ((b.elapsedSeconds + f.elapsedSeconds) / 86400));
+      const own = f.ledger.potato?.produced ?? 0;
+      timeline.push((b.ledger.potato?.produced ?? 0 + own) / ((b.elapsedSeconds + f.elapsedSeconds) / 86400));
+      alone.push(own / (f.elapsedSeconds / 86400));
     }
-    expect(o.fromNothing!.window).toEqual({ from: C, to: total, cuts: rates.length });
-    expect(o.fromNothing!.produced.potato).toBeCloseTo(rates.reduce((a, x) => a + x, 0) / rates.length, 6);
+    const mean = (xs: number[]) => xs.reduce((a, x) => a + x, 0) / xs.length;
+    expect(o.fromNothing!.window).toEqual({ from: C, to: total, cuts: timeline.length });
+    // The builder (Rose Dragon farms) out-earns a potato plot: its crops don't count. The flow alone, run
+    // from exactly the kit (real: upkeep), is then capped at "with the starting items" (whole results).
+    const k = referenceValue(engine, o.result!, "borrow");
+    expect(mean(alone)).toBeLessThan(mean(timeline));
+    expect(["flow", "kit"]).toContain(prep.credit);
+    if (prep.credit === "kit") expect(o.fromNothing!.produced).toEqual(o.result!.produced); // whole results, never mixed
+    else expect(o.fromNothing!.produced.potato).toBeCloseTo(mean(alone), 6);
+    expect(npc(o.fromNothing!)).toBeLessThanOrEqual(k);
     // It carries the kit's details (the page's starting-items line reads them from either cell).
     expect(o.fromNothing!.startItems).toEqual(o.result!.startItems);
   });
@@ -160,7 +170,10 @@ describe("runIronman: from nothing and with the starting items", () => {
     expect(o.stitchCheck!.ok).toBe(false);
     expect(o.stitchCheck!.diff).toBeGreaterThan(STITCH_TOLERANCE);
     expect(o.fromNothing!.prep!.mode).toBe("real");
-    expect(npc(o.fromNothing!)).toBeCloseTo(o.stitchCheck!.real, 3);
+    // From the kit the stock reads 0, never below: the flow stays rich, far above its borrow run. Capped at "with the starting items".
+    expect(o.stitchCheck!.real).toBeGreaterThan(referenceValue(engine, o.result!, "borrow"));
+    expect(o.fromNothing!.prep!.credit).toBe("kit");
+    expect(npc(o.fromNothing!)).toBeCloseTo(referenceValue(engine, o.result!, "borrow"), 3);
     const job = verifyIronmanJob(engine, {
       submission: sub,
       tier: "max",
@@ -194,16 +207,55 @@ describe("runIronman: from nothing and with the starting items", () => {
     expect(o.fromNothing!.upkeep).toEqual(o.result!.upkeep);
   });
 
-  it("a kit the builder can't make by the author's length: the builder alone is the timeline (done false)", () => {
+  it("a kit the builder can't make by the author's length: an empty result (nothing of the builder's is scored), done false, what it had", () => {
     // Zombud needs the Devourer chain's Fleshtrap: not in 20 cycles.
     const sub = submissionFromScenario(scenario([flow([step("one", layout([["zombud", 5, 5], ["wheat", 0, 0]]))], false)]));
     const C = 20;
     const o = runIronman(engine, sub, "max", 1, 5, C, { wallMs: 60_000 });
     expect(o.ok).toBe(true);
-    expect(o.fromNothing!.prep).toMatchObject({ kit: { zombud: 1 }, done: false, cycles: endCycles(C) });
-    expect(o.fromNothing!.window).toEqual({ from: C, to: endCycles(C), cuts: 1 });
+    expect(o.fromNothing!.prep).toMatchObject({ kit: { zombud: 1 }, done: false, cycles: C, slow: false, have: { zombud: 0 } });
+    expect(o.fromNothing!.produced).toEqual({});
+    expect(o.fromNothing!.bySource).toEqual({});
+    expect(o.fromNothing!.trail).toBeUndefined();
     expect(o.fromNothing!.stepTime).toBeUndefined();
-    expect(o.fromNothing!.produced.zombud ?? 0).toBe(0);
+    expect(npc(o.fromNothing!)).toBe(0);
+    // It still carries the starting items (the page's line).
+    expect(o.fromNothing!.startItems).toEqual(o.result!.startItems);
+  });
+
+  it("v3.1: the builder's crops never lift a flow it out-earns, and from nothing never beats with the starting items", () => {
+    // A potato flow with a 2 Timestalk + 2 Phantomleaf kit: the builder earns ~40M/day for ~2 weeks, the flow ~4M.
+    const plants: [string, number, number][] = [["timestalk", 4, 4], ["timestalk", 4, 6], ["phantomleaf", 6, 4], ["phantomleaf", 6, 6]];
+    for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) if (!(r >= 3 && r <= 7 && c >= 3 && c <= 7) && (r + c) % 2 === 0) plants.push(["potato", r, c]);
+    const sub = submissionFromScenario(scenario([flow([step("one", layout(plants))], false)], { policies: { baseCropUpkeep: "harvestWhenGrown" } }));
+    const o = runIronman(engine, sub, "max", 1, 1, 2000, { wallMs: 600_000 });
+    expect(o.ok).toBe(true);
+    const k = referenceValue(engine, o.result!, "borrow");
+    expect(o.fromNothing!.prep!.done).toBe(true);
+    expect(["flow", "kit"]).toContain(o.fromNothing!.prep!.credit);
+    expect(npc(o.fromNothing!)).toBeLessThanOrEqual(k);
+    expect(npc(o.fromNothing!)).toBeGreaterThan(0.6 * k);
+    // Its end rate is the flow's own: not slowing, so the cell isn't held up or down by the builder.
+    expect(o.fromNothing!.prep!.slow).toBe(false);
+  }, 120_000);
+
+  it("v3.1: prep.slow decides 'still producing' for from-nothing results; other results keep v2's test", () => {
+    const r = (v: number, trail: number, slow?: boolean): RunResult =>
+      ({
+        cycles: 100, days: 10, produced: { wheat: v }, consumed: {}, bought: {}, built: {}, shortfall: {}, uptime: 1, sustainable: true, halted: false,
+        effort: { sessions: 0, avg: 0, peak: 0, byKind: {} },
+        trail: { from: 80, produced: { wheat: trail }, consumed: {}, bought: {}, shortfall: {}, bySource: {} },
+        ...(slow === undefined ? {} : { prep: { kit: {}, cycles: 0, days: 0, done: true, mode: "stitched" as const, slow } }),
+      }) as RunResult;
+    const value = (x: RunResult) => x.produced.wheat ?? 0;
+    // v2: trail 10 < 0.6 × 100.
+    expect(seedSlowing(r(100, 10), value)).toBe(true);
+    // From nothing: the window (lifted or diluted by the builder) doesn't decide; prep.slow does.
+    expect(seedSlowing(r(100, 10, false), value)).toBe(false);
+    expect(seedSlowing(r(10, 100, true), value)).toBe(true);
+    const cell = cellResult([r(100, 5, true), r(100, 6, true), r(100, 7, false)], value);
+    expect(cell.slowing).toBe(true);
+    expect(cell.produced.wheat).toBe(6);
   });
 
   it("the builder has its own script step cap: it never counts towards the author's", () => {

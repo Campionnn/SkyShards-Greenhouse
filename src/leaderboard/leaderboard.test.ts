@@ -653,7 +653,7 @@ describe("cli", () => {
       [true, 1],
     ]);
     // Base crops only: an empty kit, so from nothing is the borrow run (no builder, nothing to check).
-    expect(r.results[0].fromNothing.prep).toEqual({ kit: {}, cycles: 0, days: 0, done: true, mode: "stitched" });
+    expect(r.results[0].fromNothing.prep).toEqual({ kit: {}, cycles: 0, days: 0, done: true, mode: "stitched", credit: "timeline" });
     expect(r.results[0].fromNothing.produced).toEqual(r.results[0].result.produced);
     expect(r.results[0].result.startItems).toEqual({});
     expect(r.outlier.ironman.ok).toBe(true);

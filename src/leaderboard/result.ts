@@ -131,7 +131,7 @@ export interface RunResult {
 export interface PrepInfo {
   /** The starting items, whole units: ceil(startItems) of the same seed's borrow run. */
   kit: Record<ItemId, number>;
-  /** T*: the cycle the flow started (a multiple of CUT_STEP); 0 without a kit; the run's end when not done. */
+  /** T*: the cycle the flow started (a multiple of CUT_STEP); 0 without a kit; the author's length C when not done. */
   cycles: number;
   /** Simulated days at `cycles`. */
   days: number;
@@ -141,6 +141,20 @@ export interface PrepInfo {
   done: boolean;
   /** The flow part came from the borrow run's snapshots (stitched) or from its own strict run from the kit (real). */
   mode: "stitched" | "real";
+  /**
+   * Leaderboard v3.1: which result this seed scores. "timeline" = the builder's days and crops, then
+   * the flow; "flow" = the flow alone (the builder out-earned it, so its crops don't count); "kit" =
+   * capped at the "with the starting items" result.
+   */
+  credit?: "timeline" | "flow" | "kit";
+  /** Leaderboard v3.1: the seed slows down: its trail is under TRAIL_MIN × the flow's own rate (decides `seedSlowing`). */
+  slow?: boolean;
+  /** Not done: how much of each kit item the builder held at the author's length. */
+  have?: Record<ItemId, number>;
+  /** Cells only (the API): the fastest and slowest seeds' `madeDays`. */
+  madeRange?: [number, number];
+  /** Cells only (the API): seeds whose builder made the kit, of all seeds. */
+  doneSeeds?: [number, number];
 }
 
 const perDay = (counts: Readonly<Record<string, number>>, days: number): PerDay => {
@@ -671,9 +685,15 @@ export function trailResult(r: RunResult): RunResult {
   return { ...rest, produced: trail.produced, consumed: trail.consumed, bought: trail.bought, shortfall: trail.shortfall, bySource: trail.bySource };
 }
 
-/** "Still producing" failed: the trailing rate is below TRAIL_MIN × the window-mean rate. */
+/**
+ * "Still producing" failed: the trailing rate is below TRAIL_MIN × the window-mean rate. A "from
+ * nothing" result carries its own verdict (`prep.slow`, Leaderboard v3.1): its trail against the
+ * flow's own rate, so the builder's crops can neither hide nor fake a slowdown. Mirrors
+ * SkyShards-API `stats.seed_slowing`.
+ */
 export function seedSlowing(r: RunResult, value: (r: RunResult) => number): boolean {
   if (!r.trail) return false;
+  if (typeof r.prep?.slow === "boolean") return r.prep.slow;
   const v = value(r);
   return v > 0 && value(trailResult(r)) < TRAIL_MIN * v;
 }

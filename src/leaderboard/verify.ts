@@ -2,11 +2,10 @@ import type { Engine } from "../simulator/engine";
 import { DEFAULT_BAZAAR_PRICING, type BazaarQuote } from "../simulator/economy/bazaar";
 import type { ItemId } from "../simulator/data/types";
 import type { Scenario, SimulationState } from "../simulator/sim/state";
-import { uptimeRatio } from "../simulator/sim/summary";
 import { builderScenario, kitEmpty, kitOf, ownsKit, type Kit } from "./builder/builder";
 import { valueResult } from "./pricing";
-import { countSnapshot, effortResult, RunRecorder, spreadRatio, stitch, timelineCycles, trailStart, type CountSnapshot, type PrepInfo, type RecorderPlan, type RunResult, type TimelineRest } from "./result";
-import { CUT_STEP, endCycles, ruleScenario, STITCH_TOLERANCE, type RuleKind, type Submission } from "./rules";
+import { countSnapshot, RunRecorder, spreadRatio, stitch, timelineCycles, trailResult, trailStart, type CountSnapshot, type PrepInfo, type RecorderPlan, type RunResult, type TimelineRest } from "./result";
+import { CUT_STEP, endCycles, ruleScenario, STITCH_TOLERANCE, TRAIL_MIN, type RuleKind, type Submission } from "./rules";
 import type { TierId } from "./tiers";
 
 /**
@@ -274,15 +273,17 @@ interface BuilderRun {
   end: CountSnapshot | null;
   /** Counts at the timeline cycles the stitch may read before T*. */
   snaps: Map<number, CountSnapshot>;
-  /** The builder's state at `cycles` (for the not-done timeline's effort / uptime). */
+  /** The builder's state at `cycles`. */
   state: SimulationState | null;
+  /** Not done: the builder's stock of each kit item at C (capped at the kit). */
+  have?: Record<string, number>;
 }
 
 /**
  * The builder from an empty inventory (builder.ts builderScenario) until it owns `kit` or reaches
  * cycle `C`. Owned at T ≤ C: it keeps running (its goal met, it sits in its done step) to
- * T* = ceil(T / CUT_STEP) × CUT_STEP, where the flow starts. Not owned by C: it runs to the
- * timeline's end, `to`, and its crops are the whole score (`done` false).
+ * T* = ceil(T / CUT_STEP) × CUT_STEP, where the flow starts. Not owned by C: it stops at C
+ * (`done` false; `have` = what it held of the kit then).
  */
 function runBuilder(engine: Engine, kit: Kit, spec: { tier: TierId; every: number; seed: number }, C: number, to: number, clock: RunClock, stepCap: number, keep: Set<number>, onProgress?: (done: number) => void): BuilderRun {
   const fail = (error: string): BuilderRun => ({ ok: false, error: `the starting-items builder ${error}`, owned: null, madeDays: null, cycles: 0, days: 0, done: false, end: null, snaps: new Map(), state: null });
@@ -323,10 +324,12 @@ function runBuilder(engine: Engine, kit: Kit, spec: { tier: TierId; every: numbe
     onProgress?.(state.cycle);
     // T* never passes the run's end (only possible for lengths under 100 cycles, i.e. tests).
     if (owned !== null) limit = Math.min(tStar(owned), to);
-    // Not owned by C: the builder is the whole timeline.
-    else if (state.cycle >= C) limit = to;
+    // Not owned by C: it stops there (the flow can't start in time; nothing of the builder's is scored).
   }
-  return { ok: true, error: null, owned, madeDays, cycles: state.cycle, days: state.elapsedSeconds / 86400, done: owned !== null, end: countSnapshot(state), snaps, state };
+  const done = owned !== null;
+  const have: Record<string, number> = {};
+  if (!done) for (const item of Object.keys(kit)) have[item] = Math.max(0, Math.min(kit[item], Math.floor(state.inventory[item] ?? 0)));
+  return { ok: true, error: null, owned, madeDays, cycles: state.cycle, days: state.elapsedSeconds / 86400, done, end: countSnapshot(state), snaps, state, have };
 }
 
 /**
@@ -379,49 +382,86 @@ export function runIronman(engine: Engine, submission: Submission, tier: TierId,
   if (prepRun?.madeDays != null) prep.madeDays = prepRun.madeDays;
   const prepAt = prepRun ? (t: number) => prepRun.snaps.get(t) : undefined;
 
-  // Not done by C: the builder alone is the timeline.
-  if (!prep.done && prepRun?.state) {
-    const b = prepRun.state;
-    const rest: TimelineRest = { built: {}, uptime: uptimeRatio(b.summary.uptime), sustainable: engine.analyse(b).sustainable, effort: effortResult(b.summary.effort), halted: false, ...kitFields(kitResult) };
-    // No flow part to stitch or run: "real" only records that the flow would have run real.
-    const fromNothing = stitch({ from: C, to: total, prep: { ...prep, mode: real ? "real" : "stitched" }, prepEnd: null, flowAt: null, prepAt, rest });
+  const npc = (r: RunResult) => referenceValue(engine, r, "strict");
+
+  // Not done by C: the flow can't start in time. An empty result (nothing of the builder's is
+  // scored); the page lists it apart, with what the builder had made by then.
+  if (!prep.done && prepRun) {
+    const empty: RunResult = { ...restOf(kitResult), ...kitFields(kitResult), cycles: total, days: prepRun.days, window: { from: C, to: total, cuts: 0 }, produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {}, built: {} };
+    delete empty.stepTime;
+    delete empty.starved;
+    delete empty.ramp;
+    empty.prep = { ...prep, mode: real ? "real" : "stitched", slow: false, have: prepRun.have ?? {} };
     progress(2 * total);
-    return out(true, null, kitResult, fromNothing);
+    return out(true, null, kitResult, empty);
   }
 
   // An empty kit without upkeep: the flow never owes anything, so from nothing = with the starting items.
   if (kitEmpty(kit) && !real) {
     progress(2 * total);
-    return out(true, null, kitResult, { ...kitResult, prep });
+    return out(true, null, kitResult, { ...kitResult, prep: { ...prep, credit: "timeline" } });
   }
 
   // 3. The flow part from T*: stitched from the borrow run, or a real strict run from exactly the kit.
-  const stitched = (): RunResult => stitch({ from: C, to: total, prep, prepEnd: prepRun?.end ?? null, flowAt: snapsOf(borrow.recorder!), prepAt, rest: { ...restOf(kitResult), ...kitFields(kitResult) } });
-  const runReal = (): { ok: true; result: RunResult } | { ok: false; error: string } => {
+  // Each gives two results over the same cuts (see `score`): A, the timeline (the builder's days
+  // and crops, then the flow), and F, the flow alone at the same ages (no builder at all).
+  const NONE: CountSnapshot = { cycle: 0, seconds: 0, produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {} };
+  const pair = (flowAt: (n: number) => CountSnapshot | undefined, rest: TimelineRest, mode: PrepInfo["mode"]): { A: RunResult; F: RunResult } => {
+    const p = { ...prep, mode };
+    return {
+      A: stitch({ from: C, to: total, prep: p, prepEnd: prepRun?.end ?? null, flowAt, prepAt, rest }),
+      F: stitch({ from: C, to: total, prep: p, prepEnd: NONE, flowAt, prepAt: () => NONE, rest }),
+    };
+  };
+  /**
+   * Leaderboard v3.1: the seed's "from nothing" result. The timeline A, unless the flow alone F is
+   * worth less (the builder out-earns the flow, so its crops mustn't lift it), and never more than
+   * "with the starting items" K (whole results, never mixed). `slow`: the trail (the flow's own end
+   * rate, the same in A and F) under TRAIL_MIN × the flow's own rate (K's when capped).
+   */
+  const score = ({ A, F }: { A: RunResult; F: RunResult }): RunResult => {
+    const vF = npc(F);
+    let chosen = A;
+    let credit: PrepInfo["credit"] = "timeline";
+    if (vF < npc(A)) {
+      chosen = F;
+      credit = "flow";
+    }
+    if (npc(chosen) > npc(kitResult)) {
+      chosen = { ...kitResult };
+      credit = "kit";
+    }
+    const base = credit === "kit" ? npc(kitResult) : vF;
+    const slow = !!chosen.trail && base > 0 && npc(trailResult(chosen)) < TRAIL_MIN * base;
+    return { ...chosen, prep: { ...(A.prep as PrepInfo), credit, slow } };
+  };
+  const stitched = () => pair(snapsOf(borrow.recorder!), { ...restOf(kitResult), ...kitFields(kitResult) }, "stitched");
+  const runReal = (): { ok: true; pair: { A: RunResult; F: RunResult } } | { ok: false; error: string } => {
     const length = total - T;
     const need = timelineCycles(C, total, T);
     const sim = simulate(engine, ruleScenario(submission, { rules: "strict", tier, every, seed }, kit), { from: Math.max(0, C - T), to: length, snapshotAt: (c) => need.has(c) }, length, clock, flowSteps, (d) => progress(total + T + d));
     if (!sim.ok || !sim.result || !sim.recorder) return { ok: false, error: sim.error ?? "the run from the starting items failed" };
-    const result = stitch({ from: C, to: total, prep: { ...prep, mode: "real" }, prepEnd: prepRun?.end ?? null, flowAt: snapsOf(sim.recorder), prepAt, rest: { ...restOf(sim.result), ...kitFields(kitResult) } });
-    return { ok: true, result };
+    return { ok: true, pair: pair(snapsOf(sim.recorder), { ...restOf(sim.result), ...kitFields(kitResult) }, "real") };
   };
 
   if (real) {
     const r = runReal();
     progress(2 * total);
-    return r.ok ? out(true, null, kitResult, r.result) : out(false, r.error, kitResult, null);
+    return r.ok ? out(true, null, kitResult, score(r.pair)) : out(false, r.error, kitResult, null);
   }
   const s = stitched();
   if (!opts.check) {
     progress(2 * total);
-    return out(true, null, kitResult, s);
+    return out(true, null, kitResult, score(s));
   }
   const r = runReal();
   progress(2 * total);
   if (!r.ok) return out(false, r.error, kitResult, null);
-  const check = stitchCheckOf(referenceValue(engine, s, "strict"), referenceValue(engine, r.result, "strict"));
-  const o = out(true, null, kitResult, check.ok ? s : r.result, check);
-  if (check.ok) checkedReal.set(o, r.result);
+  // The check compares the flow alone (F): the builder part is the same in both.
+  const check = stitchCheckOf(npc(s.F), npc(r.pair.F));
+  const real1 = score(r.pair);
+  const o = out(true, null, kitResult, check.ok ? score(s) : real1, check);
+  if (check.ok) checkedReal.set(o, real1);
   return o;
 }
 
