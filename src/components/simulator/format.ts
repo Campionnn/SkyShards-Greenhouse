@@ -67,6 +67,12 @@ export function formatCoins(n: number): string {
   return `${sign}${Math.round(abs).toLocaleString()}`;
 }
 
+/** One item's price: like formatCoins, but small prices keep their fraction (2.5, 4.5, not 3, 5). */
+export function formatUnitPrice(n: number): string {
+  if (Math.abs(n) >= 1000 || Number.isInteger(n)) return formatCoins(n);
+  return String(Math.round(n * 100) / 100);
+}
+
 export function formatCount(n: number): string {
   return Math.round(n).toLocaleString();
 }

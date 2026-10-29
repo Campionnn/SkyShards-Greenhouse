@@ -7,7 +7,7 @@ import { CropImage } from "../shared";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { BazaarPriceControls, BazaarPriceDialog } from "./BazaarPanels";
 import { applyItemDelta, buildItemRows, priceRun, type ItemRow } from "./bazaarFormat";
-import { allItemIds, formatCoins, formatCount, formatRate, nameOf, rarityOf, type ItemCategory } from "./format";
+import { allItemIds, formatCoins, formatCount, formatRate, formatUnitPrice, nameOf, rarityOf, type ItemCategory } from "./format";
 import { Leader, NumberInput } from "./controls";
 import { ItemPicker } from "./ItemPicker";
 import { buttonClass, inputClass } from "./styles";
@@ -533,8 +533,8 @@ const ItemLine: React.FC<{
           <span className={`text-right tabular-nums ${net < 0 ? "text-red-300" : !net ? "text-slate-600" : r.used ? "text-emerald-300" : "text-slate-500"}`}>
             {net ? `${net > 0 ? "+" : "-"}${qty(Math.abs(net))}` : "-"}
           </span>
-          <span className="text-right tabular-nums text-slate-300" title={p && p.sell > 0 ? `${formatCount(p.sell)} coins each` : "Not NPC-sellable"}>
-            {p && p.sell > 0 ? formatCoins(p.sell) : "-"}
+          <span className="text-right tabular-nums text-slate-300" title={p && p.sell > 0 ? `${formatUnitPrice(p.sell)} coins each` : "Not NPC-sellable"}>
+            {p && p.sell > 0 ? formatUnitPrice(p.sell) : "-"}
           </span>
         </>
       )}

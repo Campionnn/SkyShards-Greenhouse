@@ -26,7 +26,7 @@ describe("yield", () => {
   it("Gloomgourd §5: bundle 34 pumpkin + 160 melon at x2.60 x1.86, Evergreen +60% applies to mutation bundles too", () => {
     const drops = harvestYield(data.mutations.gloomgourd.drops, 2.6, 1.86, 0.6);
     expect(drops).toEqual({ pumpkin: 263, melon: 1238 }); // 34*2.6*1.86*1.6=263.08 -> 263; 160*2.6*1.86*1.6=1238.02 -> 1238
-    expect(valueOf(drops, prices)).toBe(263 * 10 + 1238 * 2);
+    expect(valueOf(drops, prices)).toBe(263 * 4.5 + 1238 * 1);
   });
 
   it("improved harvest boost overrides the base one instead of stacking", () => {
@@ -44,10 +44,10 @@ describe("yield", () => {
     );
   });
 
-  it("mutation items are NPC-only: worth 0; crops use sell_price; seeds 3", () => {
+  it("mutation items are NPC-only: worth 0; crops use sell_price; seeds 1", () => {
     expect(prices.price("chloronite")).toBe(0);
-    expect(prices.price("pumpkin")).toBe(10);
-    expect(prices.price("seeds")).toBe(3);
+    expect(prices.price("pumpkin")).toBe(4.5);
+    expect(prices.price("seeds")).toBe(1);
   });
 
   it("Chloronite item count follows the Mining Fortune ladder", () => {
@@ -116,9 +116,9 @@ describe("per-crop fortune", () => {
   });
 
   it("bestTool weighs coins, not drop counts: few valuable drops beat many cheap ones", () => {
-    const cheap: FarmingToolStats = { name: "cheap", fortune: { melon: 100 } }; // melon 2 coins
-    const dear: FarmingToolStats = { name: "dear", fortune: { pumpkin: 100 } }; // pumpkin 10 coins
-    expect(bestTool({ melon: 40, pumpkin: 10 }, [cheap, dear], price)).toBe(dear); // 40*2 = 80 < 10*10 = 100
+    const cheap: FarmingToolStats = { name: "cheap", fortune: { melon: 100 } }; // melon 1 coin
+    const dear: FarmingToolStats = { name: "dear", fortune: { pumpkin: 100 } }; // pumpkin 4.5 coins
+    expect(bestTool({ melon: 40, pumpkin: 10 }, [cheap, dear], price)).toBe(dear); // 40*1 = 40 < 10*4.5 = 45
   });
 
   it("hasPerCropFortune: only a non-zero crop value or a tool turns the per-crop path on", () => {

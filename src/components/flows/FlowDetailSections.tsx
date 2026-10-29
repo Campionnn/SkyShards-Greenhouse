@@ -32,7 +32,7 @@ import { defaultGameData, describeConditions } from "../../simulator";
 import type { FlowStep } from "../../simulator/flow/types";
 import { getFlowStatus, reportFlow } from "../../services/flowsService";
 import { CropImage } from "../shared";
-import { formatCoins, formatRate, nameOf } from "../simulator/format";
+import { formatCoins, formatRate, formatUnitPrice, nameOf } from "../simulator/format";
 import { buttonClass, inputClass } from "../simulator/styles";
 import { useToast } from "../ui";
 import { Badge } from "./FlowControls";
@@ -307,7 +307,7 @@ export const ItemBreakdown: React.FC<{ lines: ItemLine[] }> = ({ lines }) => {
                   {l.kind === "bought" && <span className="text-slate-500"> bought</span>}
                 </span>
                 <span className="whitespace-nowrap tabular-nums text-slate-500">
-                  {formatRate(l.perDay)}/day × {l.unitPrice === null ? "no price" : formatCoins(l.unitPrice)}
+                  {formatRate(l.perDay)}/day × {l.unitPrice === null ? "no price" : formatUnitPrice(l.unitPrice)}
                 </span>
               </div>
               <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-700/40">

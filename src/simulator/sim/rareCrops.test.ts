@@ -110,7 +110,7 @@ describe("NPC prices", () => {
     expect(p.price("helianthus")).toBe(275_000);
     expect(p.price("cropie")).toBe(25_000);
     expect(p.price("ethereal_vine")).toBe(20_000);
-    expect(p.price("wheat")).toBe(6);
+    expect(p.price("wheat")).toBe(2.5);
     expect(p.price("chloronite")).toBe(0);
   });
 });

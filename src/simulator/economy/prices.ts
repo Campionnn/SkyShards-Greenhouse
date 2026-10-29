@@ -14,7 +14,7 @@ export interface PriceSource {
  * Chips are 150,000.
  */
 export const WIKI_NPC_PRICES: Record<string, number> = {
-  seeds: 3,
+  seeds: 1,
   dead_plant: 500,
   cropie: 25_000,
   squash: 75_000,
