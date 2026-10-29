@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ARMOR_SETS, FORTUNE_CROPS, type ArmorSet, type CropFortune, type FarmingToolStats, type PlayerStats, type Scenario } from "../simulator";
-import type { Board } from "../leaderboard/rules";
+import { cellKindOf, type Board, type CellKind } from "../leaderboard/rules";
 import type { Quotes, YieldStats } from "../leaderboard/pricing";
 import { yieldStatsDiffer } from "../leaderboard/pricing";
 import { nearestEvery, snapToTier, tierStats, type TierSnap } from "../leaderboard/tiers";
@@ -140,6 +140,11 @@ export const yieldOf = (s: ViewerStats): YieldStats => ({
 
 export interface FlowViewer {
   board: Board;
+  /** Ironman board: "I have the starting items" (the cells shown are the `ironman_kit` ones). Always false on Normal. */
+  kit: boolean;
+  setKit: (on: boolean) => void;
+  /** The cell kind the board and switch show. */
+  cellKind: CellKind;
   /** The flow isn't entered on the viewer's own board, so `board` is the flow's board instead. */
   boardForced: boolean;
   setBoard: (b: Board) => void;
@@ -170,6 +175,10 @@ export interface FlowViewerOptions {
   board?: Board | null;
   /** Called when the viewer picks a board (the page writes it to its URL). */
   onBoard?: (b: Board) => void;
+  /** The starting-items switch from the page's URL (`kit=1`, or v2's `board=ironman_borrow`). */
+  kit?: boolean;
+  /** Called when the viewer flips the switch (the page writes it to its URL). */
+  onKit?: (on: boolean) => void;
   /** Fetch Bazaar prices on any board (the detail page shows the Normal number next to the others). */
   bazaarAlways?: boolean;
 }
@@ -177,10 +186,10 @@ export interface FlowViewerOptions {
 /**
  * Board, stats and prices shared by /flows and /flows/:id (stats persist in localStorage). The
  * board is the URL's when given, else the last one picked here, else the site profile's default
- * (ironman → "from nothing", normal → Normal).
+ * (ironman → Ironman, normal → Normal). The starting-items switch is the URL's (off by default).
  */
 export function useFlowViewer(opts: FlowViewerOptions = {}): FlowViewer {
-  const { available, board: urlBoard, onBoard, bazaarAlways = false } = opts;
+  const { available, board: urlBoard, onBoard, kit: urlKit, onKit, bazaarAlways = false } = opts;
   const [profile, setProfile] = useProfileMode();
   const [{ stats }, setLoaded] = useState(loadViewerStats);
   const hasSimulatorStats = useMemo(() => statsFromSimulator() !== null, []);
@@ -192,7 +201,8 @@ export function useFlowViewer(opts: FlowViewerOptions = {}): FlowViewer {
     }
   }, [stats]);
   const [picked, setPicked] = useState<Board | null>(null);
-  const preferred: Board = urlBoard ?? picked ?? (profile === "normal" ? "normal" : "ironman_strict");
+  const [pickedKit, setPickedKit] = useState<boolean | null>(null);
+  const preferred: Board = urlBoard ?? picked ?? (profile === "normal" ? "normal" : "ironman");
   // A flow entered on one board only is shown on that board, whatever the site-wide mode is
   // (the saved mode itself is left alone).
   const boardForced = !!available && available.length > 0 && !available.includes(preferred);
@@ -200,13 +210,20 @@ export function useFlowViewer(opts: FlowViewerOptions = {}): FlowViewer {
   const bazaar = useBazaarPrices(bazaarAlways || board === "normal");
   const snap = useMemo(() => snapToTier(stats), [stats]);
   const viewerStats = useMemo(() => yieldOf(stats), [stats]);
+  const kit = board === "ironman" && (urlKit ?? pickedKit ?? false);
   return {
     board,
+    kit,
+    setKit: (on) => {
+      setPickedKit(on);
+      onKit?.(on);
+    },
+    cellKind: cellKindOf(board, kit),
     boardForced,
     setBoard: (b) => {
       setPicked(b);
       onBoard?.(b);
-      // The site-wide mode follows (the simulator opens in it); both ironman boards are "ironman".
+      // The site-wide mode follows (the simulator opens in it).
       setProfile(b === "normal" ? "normal" : "ironman");
     },
     stats,

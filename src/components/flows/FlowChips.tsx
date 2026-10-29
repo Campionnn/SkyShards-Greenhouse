@@ -1,22 +1,24 @@
 import React from "react";
 import { Package, PauseCircle, TrendingDown } from "lucide-react";
-import { kitText, starvedText, stepIdName, upkeepText, type KitGain, type StallInfo, type StepNamer } from "../../leaderboard/view";
+import type { PrepInfo } from "../../leaderboard/result";
+import { kitListText, prepText, starvedText, stepIdName, upkeepText, type StallInfo, type StepNamer } from "../../leaderboard/view";
 import { Badge } from "./FlowControls";
 
 /**
- * The leaderboard v2 row chips (docs/plans/leaderboard-boards-v2.md §7.1): what the starting items
- * add on "from nothing", a plot that stalls for lack of stock, and a cell that slows down at the end.
+ * The ranking row's small pieces (docs/plans/leaderboard-boards-v2.md §7.1, leaderboard-v3.md §8):
+ * the starting-items line, a plot that stalls for lack of stock, and a cell that slows down at the end.
  */
 
 export const SLOWING_TITLE = "Production falls off at the end of the run; scored at its last-20% rate.";
 
-/** "Kit +34%" / "Kit needed" (the "from nothing" board). */
-export const KitChip: React.FC<{ kit: KitGain }> = ({ kit }) => {
-  const t = kitText(kit);
+/** "Starting items: 2 Zombud, 3 Cindershade · made in ~4 days" (or "No starting items"); the tooltip lists the whole kit. */
+export const StartingItemsLine: React.FC<{ prep: PrepInfo; className?: string; title?: string }> = ({ prep, className = "", title }) => {
+  const empty = Object.keys(prep.kit).length === 0;
   return (
-    <Badge tone="info" title={t.title} icon={<Package />}>
-      {t.label}
-    </Badge>
+    <span className={`inline-flex min-w-0 items-center gap-1 ${className}`} title={title ?? (empty ? "Starts from an empty inventory" : `Starting items: ${kitListText(prep.kit)}`)} data-testid="starting-items">
+      <Package className="h-3 w-3 flex-shrink-0 text-slate-500" />
+      <span className={`truncate ${empty ? "text-emerald-300/90" : prep.done ? "text-slate-300" : "text-amber-300"}`}>{prepText(prep)}</span>
+    </span>
   );
 };
 

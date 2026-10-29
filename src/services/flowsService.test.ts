@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FlowDetail, FlowStatusResponse } from "../leaderboard/api";
 import { mockDetail, mockList, mockStatus } from "./flowsMock";
-import { normalizeDetail, normalizeResult, normalizeStatus } from "./flowsService";
+import { normalizeDetail, normalizeListEntries, normalizeResult, normalizeStatus } from "./flowsService";
 
 describe("normalizeDetail", () => {
   it("accepts flat seed rows (API shape) and nested ones, dropping failed runs", () => {
@@ -19,7 +19,7 @@ describe("normalizeDetail", () => {
     expect(d.seeds![0].result.effort.peak).toBe(2);
   });
 
-  it("old cells: the pre-v2 'ironman' board is from nothing, payback fields are dropped, every flow is on all boards", () => {
+  it("old cells: the pre-v2 'ironman' board is from nothing, payback fields are dropped, every flow is on both boards", () => {
     const d = normalizeDetail({
       boards: ["ironman"],
       cells: [
@@ -29,18 +29,18 @@ describe("normalizeDetail", () => {
       ],
       seeds: [{ board: "ironman", tier: "max", every: 1, seedIndex: 0, produced: { wheat: 1 }, solvent: true }],
     } as unknown as FlowDetail);
-    expect(d.boards).toEqual(["ironman_strict", "ironman_borrow", "normal"]);
-    expect(d.cells.map((c) => [c.runKind, c.board])).toEqual([
-      ["strict", "ironman_strict"],
-      ["normal", "normal"],
+    expect(d.boards).toEqual(["ironman", "normal"]);
+    expect(d.cells.map((c) => [c.cellKind, c.runKind, c.board])).toEqual([
+      ["ironman", "ironman", "ironman"],
+      ["normal", "normal", "normal"],
     ]);
     const median = d.cells[0].median as unknown as Record<string, unknown>;
     expect("peakDebt" in median || "paybackCycle" in median || "solvent" in median).toBe(false);
-    expect(d.seeds![0]).toMatchObject({ runKind: "strict", board: "ironman_strict" });
+    expect(d.seeds![0]).toMatchObject({ cellKind: "ironman", runKind: "ironman", board: "ironman" });
     expect("solvent" in d.seeds![0].result).toBe(false);
   });
 
-  it("v2 cells keep their run kind and every new field; malformed ones are dropped", () => {
+  it("v2 cells: strict is from nothing, borrow with the starting items; every v2 field kept, malformed ones dropped", () => {
     const d = normalizeDetail({
       cells: [
         {
@@ -60,11 +60,12 @@ describe("normalizeDetail", () => {
             window: { from: 5000, to: 6250, cuts: 51 },
           },
         },
-        // A cell whose runKind and board disagree: the run kind wins.
+        // A cell whose run kind and board disagree: the run kind wins.
         { runKind: "strict", board: "normal", tier: "max", every: 2, median: { produced: {}, cantStart: { plot: 1, cells: 65, items: ["puffercloud", "zombud", 7] } } },
         { runKind: "strict", board: "ironman_strict", tier: "max", every: 3, median: { produced: {}, cantStart: { plot: "1", cells: 65, items: [] } } },
       ],
     } as unknown as FlowDetail);
+    expect(d.cells.map((c) => c.cellKind)).toEqual(["ironman_kit", "ironman", "ironman"]);
     expect(d.cells[1].median.cantStart).toEqual({ plot: 1, cells: 65, items: ["puffercloud", "zombud"] });
     expect(d.cells[2].median.cantStart).toBeUndefined();
     const m = d.cells[0].median;
@@ -75,56 +76,96 @@ describe("normalizeDetail", () => {
     expect(m.ramp).toEqual({ complete: 220, produced: { wheat: 2 }, bought: {} });
     expect(m.slowing).toBe(true);
     expect(m.window).toEqual({ from: 5000, to: 6250, cuts: 51 });
-    expect(d.cells[1].board).toBe("ironman_strict");
+    expect(d.cells[1].board).toBe("ironman");
     expect(normalizeResult({ produced: {}, ramp: { complete: "soon" } })!.ramp!.complete).toBeNull();
     expect(normalizeResult({ produced: null })).toBeNull();
   });
 
-  it("status jobs get their board from the run kind; old jobs from 'ironman'", () => {
+  it("v3 cells: the cell kind wins; prep is kept when well formed (kit whole units)", () => {
+    const prep = { kit: { zombud: 2, cindershade: 3 }, cycles: 75, days: 5.47, madeDays: 4.3, done: true, mode: "stitched" };
+    const d = normalizeDetail({
+      cells: [
+        { cellKind: "ironman", runKind: "ironman", board: "ironman", tier: "max", every: 1, median: { produced: { wheat: 1 }, prep } },
+        { cellKind: "ironman_kit", runKind: "ironman", board: "ironman", tier: "max", every: 1, median: { produced: { wheat: 2 }, prep: { kit: "x" } } },
+      ],
+      seeds: [{ cellKind: "ironman_kit", runKind: "ironman", board: "ironman", tier: "max", every: 1, seedIndex: 0, ok: true, result: { produced: { wheat: 2 } } }],
+    } as unknown as FlowDetail);
+    expect(d.cells.map((c) => c.cellKind)).toEqual(["ironman", "ironman_kit"]);
+    expect(d.cells[0].median.prep).toEqual(prep);
+    expect(d.cells[1].median.prep).toBeUndefined();
+    expect(d.seeds![0].cellKind).toBe("ironman_kit");
+  });
+
+  it("status jobs: v3 run kinds; v2's strict / borrow jobs and the pre-v2 'ironman' board are ironman", () => {
     const s = normalizeStatus({
       status: "pending",
       rejectReason: null,
-      jobs: [{ runKind: "borrow", board: "ironman_borrow", tier: "max", priority: "A", status: "queued", error: null }, { board: "ironman", tier: "max", priority: "A", status: "done", error: null }],
+      jobs: [
+        { runKind: "ironman", board: "ironman", tier: "max", priority: "A", status: "running", error: null },
+        { runKind: "borrow", board: "ironman_borrow", tier: "max", priority: "A", status: "queued", error: null },
+        { board: "ironman", tier: "max", priority: "A", status: "done", error: null },
+        { runKind: "normal", board: "normal", tier: "max", priority: "A", status: "done", error: null },
+      ],
     } as unknown as FlowStatusResponse);
     expect(s.jobs.map((j) => [j.runKind, j.board])).toEqual([
-      ["borrow", "ironman_borrow"],
-      ["strict", "ironman_strict"],
+      ["ironman", "ironman"],
+      ["ironman", "ironman"],
+      ["ironman", "ironman"],
+      ["normal", "normal"],
     ]);
+  });
+
+  it("list rows: altPoint, borrowPoint and prep are checked", () => {
+    const rows = normalizeListEntries([
+      { id: "a", cell: { produced: { wheat: 1 } }, altPoint: { produced: { wheat: 2 }, bought: {}, consumed: {} }, prep: { kit: { zombud: 2 }, cycles: 50, days: 3.6, done: true, mode: "real" } },
+      { id: "b", cell: null, altPoint: "x", borrowPoint: 3, prep: { kit: {} } },
+      "junk",
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].altPoint).toMatchObject({ produced: { wheat: 2 } });
+    expect(rows[0].prep).toEqual({ kit: { zombud: 2 }, cycles: 50, days: 3.6, done: true, mode: "real" });
+    expect(rows[1]).toMatchObject({ altPoint: null, borrowPoint: null, prep: null, cell: null });
   });
 });
 
 describe("the mock matches the API's shapes", () => {
-  it("list rows: board / runKind echoed, borrowPoint only on ironman_strict, v2 fields on the cell", async () => {
-    const strict = await mockList("ironman", "max", 1);
-    expect(strict).toMatchObject({ board: "ironman_strict", runKind: "strict" });
-    expect(strict.entries.every((e) => e.borrowPoint && typeof e.borrowPoint.produced === "object")).toBe(true);
-    const borrow = await mockList("ironman_borrow", "max", 1);
-    expect(borrow.entries.every((e) => e.borrowPoint === undefined)).toBe(true);
-    const devourer = borrow.entries.find((e) => e.id === "mockDevr0007")!;
+  it("list rows: board / kit / cellKind echoed; ironman rows carry altPoint and prep (borrowPoint on kit=0); both ironman cells carry the starting items", async () => {
+    const fromNothing = await mockList("ironman", "max", 1);
+    expect(fromNothing).toMatchObject({ board: "ironman", kit: false, cellKind: "ironman", runKind: "ironman" });
+    expect(fromNothing.entries.every((e) => e.cellKind === "ironman" && e.altPoint && typeof e.altPoint.produced === "object" && e.borrowPoint === e.altPoint)).toBe(true);
+    expect(fromNothing.entries.every((e) => e.prep && typeof e.prep.done === "boolean")).toBe(true);
+    const kit = await mockList("ironman", "max", 1, undefined, true);
+    expect(kit).toMatchObject({ board: "ironman", kit: true, cellKind: "ironman_kit" });
+    expect(kit.entries.every((e) => e.borrowPoint === undefined && e.altPoint)).toBe(true);
+    // v2's board names are aliases.
+    expect(await mockList("ironman_borrow", "max", 1)).toMatchObject({ board: "ironman", kit: true, cellKind: "ironman_kit" });
+    expect(await mockList("ironman_strict", "max", 1, undefined, true)).toMatchObject({ board: "ironman", kit: false, cellKind: "ironman" });
+    const normal = await mockList("normal", "max", 1, undefined, true);
+    expect(normal).toMatchObject({ board: "normal", kit: false, cellKind: "normal" });
+    expect(normal.entries.every((e) => e.altPoint === undefined && e.prep === undefined)).toBe(true);
+    const devourer = kit.entries.find((e) => e.id === "mockDevr0007")!;
     expect(devourer.cell!.upkeep).toEqual({ zombud: 92.4, puffercloud: 90.2 });
     expect(devourer.cell!.startItems).toEqual({ zombud: 164.2, puffercloud: 115.6 });
     expect(devourer.cell!.usedUp).toEqual({ zombud: 97.3, puffercloud: 10.4 });
-    expect(devourer.cell!.cantStart).toBeUndefined();
-    expect(strict.entries.find((e) => e.id === "mockDevr0007")!.cell!.cantStart).toEqual({ plot: 1, cells: 65, items: ["puffercloud", "zombud"] });
-    const aloe = strict.entries.find((e) => e.id === "mockAloe0002")!;
-    expect(aloe.cell!.slowing).toBe(true);
-    expect(aloe.cell!.cantStart).toEqual({ plot: 1, cells: 28.8, items: ["magic_jellybean"] });
-    expect(aloe.curve!["1"].slowing).toBe(true);
-    expect(aloe.cell!.starved![0].cells).toBeGreaterThan(5);
-    // Healthy flows have no cantStart.
-    expect(strict.entries.filter((e) => e.cell?.cantStart).map((e) => e.id).sort()).toEqual(["mockAloe0002", "mockDevr0007"]);
-    expect(strict.entries.some((e) => e.cell?.bySource?.chorus_fruit)).toBe(true);
-    // Strict cells never carry the borrow-only fields.
-    expect(strict.entries.every((e) => e.cell?.startItems === undefined)).toBe(true);
+    const devFromNothing = fromNothing.entries.find((e) => e.id === "mockDevr0007")!;
+    expect(devFromNothing.cell!.upkeep).toEqual(devourer.cell!.upkeep);
+    expect(devFromNothing.prep).toMatchObject({ kit: { zombud: 165, puffercloud: 116 }, done: true, mode: "real" });
+    expect(devFromNothing.cell!.prep).toEqual(devFromNothing.prep);
+    // The Godseed flow's starting items can't be made within the run.
+    expect(fromNothing.entries.filter((e) => e.prep && !e.prep.done).map((e) => e.id)).toEqual(["mockGods0009"]);
+    expect(fromNothing.entries.find((e) => e.id === "mockNoct0006")!.prep).toEqual({ kit: {}, cycles: 0, days: 0, done: true, mode: "stitched" });
+    expect(fromNothing.entries.some((e) => e.cell?.bySource?.chorus_fruit)).toBe(true);
+    expect(normal.entries.every((e) => e.cell?.startItems === undefined)).toBe(true);
   });
 
-  it("detail: cells and seeds carry runKind + board for all three run kinds; status jobs too", async () => {
+  it("detail: cells and seeds carry cellKind + runKind + board for all three cell kinds; status jobs too", async () => {
     const d = (await mockDetail("mockChorus09"))!;
-    expect(new Set(d.cells.map((c) => `${c.runKind}:${c.board}`))).toEqual(new Set(["strict:ironman_strict", "borrow:ironman_borrow", "normal:normal"]));
-    expect(d.seeds!.every((s) => s.runKind && s.board)).toBe(true);
+    expect(new Set(d.cells.map((c) => `${c.cellKind}:${c.runKind}:${c.board}`))).toEqual(new Set(["ironman:ironman:ironman", "ironman_kit:ironman:ironman", "normal:normal:normal"]));
+    expect(d.seeds!.every((s) => s.cellKind && s.runKind && s.board)).toBe(true);
+    expect(d.boards).toEqual(["ironman", "normal"]);
     // Seed results are not slowing-flagged (cells only), and the normalised detail keeps them.
     expect(normalizeDetail(d).cells).toHaveLength(d.cells.length);
     const st = await mockStatus();
-    expect(st.jobs.map((j) => j.runKind)).toEqual(["strict", "borrow", "normal"]);
+    expect(st.jobs.map((j) => j.runKind)).toEqual(["ironman", "normal"]);
   });
 });

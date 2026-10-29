@@ -1,5 +1,5 @@
-import type { EffortResult, RunResult } from "./result";
-import type { Board, RunKind, SubmissionFile } from "./rules";
+import type { EffortResult, PrepInfo, RunResult } from "./result";
+import type { Board, CellKind, RunKind, SubmissionFile } from "./rules";
 import type { FlowSummary } from "./summary";
 import type { StepLayout } from "../simulator/flow/types";
 import type { TierId } from "./tiers";
@@ -88,17 +88,25 @@ export interface FlowListEntry {
   /** Likes from logged-in users, all time and in the last 30 days (absent on older APIs). */
   likes?: number;
   likes30d?: number;
+  /** Leaderboard v3: the cell kind of `cell` (absent on older APIs). */
+  cellKind?: CellKind;
   /**
-   * `ironman_strict` lists only: the same tier / every on the "with starting items" board (the
-   * borrow run), for the "Kit +N%" chip. Null or absent when that cell isn't verified.
+   * Ironman lists: the other ironman cell kind at the same tier / every ("with the starting items"
+   * when the list is "from nothing", and the other way round). Null or absent when not verified.
    */
+  altPoint?: CurvePoint | null;
+  /** Older APIs (v2 `ironman_strict` lists): the borrow cell's point. Read as `altPoint` on "from nothing". */
   borrowPoint?: CurvePoint | null;
+  /** Ironman lists: how the starting items are made (the "from nothing" cell's median `prep`); null when not verified. */
+  prep?: PrepInfo | null;
 }
 
 export interface FlowListResponse {
   engineVersion: string;
-  /** The canonical board (an alias resolved) and its run kind; absent on older APIs. */
+  /** The canonical board (an alias resolved), the starting-items switch and the cell kind served; absent on older APIs. */
   board?: Board;
+  kit?: boolean;
+  cellKind?: CellKind;
   runKind?: RunKind;
   entries: FlowListEntry[];
   /** More live entries exist than the API sends (it keeps the most recently updated). */
@@ -106,7 +114,8 @@ export interface FlowListResponse {
 }
 
 export interface FlowCell {
-  /** The run the cell measured (absent on old cells: use `board`, where `ironman` = ironman_strict). */
+  /** What the cell measured. Set by flowsService from older APIs' `runKind` / `board` (strict = ironman, borrow = ironman_kit). */
+  cellKind?: CellKind;
   runKind?: RunKind;
   board: Board;
   tier: TierId;
@@ -118,6 +127,7 @@ export interface FlowCell {
 }
 
 export interface FlowSeedResult {
+  cellKind?: CellKind;
   runKind?: RunKind;
   board: Board;
   tier: TierId;
@@ -221,7 +231,7 @@ export interface FlowStatusResponse {
   jobs: FlowJob[];
 }
 
-/** Every flow is verified for all three boards: the body has no board choice (the API ignores an old client's `boards`). */
+/** Every flow is verified for both boards: the body has no board choice (the API ignores an old client's `boards`). */
 export interface FlowSubmitBody {
   title: string;
   description: string;

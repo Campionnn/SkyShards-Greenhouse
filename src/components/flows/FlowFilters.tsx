@@ -12,7 +12,7 @@ import type { OwnedItems } from "./flowsDisplay";
 
 /**
  * The ranking's filter bar (docs/plans/leaderboard-boards-v2.md §7.1): earning crops / mutations,
- * and on the "with starting items" board no upkeep, a starting-items cap and "I own the starting
+ * and on the ironman board no upkeep, a starting-items cap and "I own the starting
  * items". The page keeps the values in its URL; filtering itself is `matchesFilters` (view.ts).
  */
 
@@ -136,7 +136,7 @@ export const FilterBar: React.FC<{
   onChange: (patch: Partial<RowFilters>) => void;
   onImportOwned: () => void;
 }> = ({ board, filters, earningOptions, owned, onChange, onImportOwned }) => {
-  const borrow = board === "ironman_borrow";
+  const borrow = board === "ironman";
   const active = filters.earning.length > 0 || (borrow && (filters.noUpkeep || filters.maxStartItems !== null || filters.owned));
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="filter-bar">
@@ -266,7 +266,7 @@ export const OwnedImportPanel: React.FC<{ owned: OwnedItems | null; onSave: (o: 
     >
       <p className="text-xs text-slate-400">
         Counts the mutations, Dead Plants and Fermento in your sacks, ender chest, backpacks and inventory (the same import as the Rose Dragon Guide). The "with starting
-        items" board then shows only flows whose starting items you already have. Your Inventory API must be on.
+        items" filter then shows only flows whose starting items you already have. Your Inventory API must be on.
       </p>
       {owned && (
         <p className="text-[11px] text-slate-500">

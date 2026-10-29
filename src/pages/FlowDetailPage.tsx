@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Activity, ArrowLeft, BarChart3, Clock, Code2, Coins, Eye, EyeOff, FileText, FlaskConical, Flag, Layers, Link2, Package, PauseCircle, Pencil, Save, ShieldCheck, Sprout, Trash2, X } from "lucide-react";
-import { KitChip, SlowingBadge, StallChip } from "../components/flows/FlowChips";
+import { SlowingBadge, StallChip, StartingItemsLine } from "../components/flows/FlowChips";
 import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { FrequencyChart } from "../components/flows/FrequencyChart";
 import { BoardNumbers, EmptyCells, FlowWalkthrough, ItemBreakdown, RampLine, ReportDialog, SeedTable, SourceBreakdown, StatTile, StatusBox, WhatYouNeed } from "../components/flows/FlowDetailSections";
@@ -16,16 +16,17 @@ import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
 import { useFlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
 import { valueResult } from "../leaderboard/pricing";
-import { boardFrom, BOARD_RUN_KIND } from "../leaderboard/rules";
+import { boardFrom, kitFromBoard, type CellKind } from "../leaderboard/rules";
 import { cycleHours } from "../leaderboard/tiers";
 import {
   BADGE_TITLE,
   BOARD_LABEL,
   boardNumbers,
-  cantStartReason,
+  builderText,
+  CELL_KIND_LABEL,
+  cellKindOfRow,
   DESCRIPTION_MAX,
   earningTargets,
-  kitGain,
   payloadStepNamer,
   stallInfo,
   starvedList,
@@ -166,20 +167,28 @@ const ActionButton: React.FC<{ onClick: () => void; tone?: "primary" | "neutral"
 };
 
 export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDetail) => void; onReload: () => void }> = ({ detail, onChange, onReload }) => {
-  // The board lives in the URL (?board=, the old "ironman" is "from nothing"), so a link shows the same board.
+  // The board and the starting-items switch live in the URL (?board=&kit=1; v2's ironman_strict / ironman_borrow too), so a link shows the same number.
   const [search, setSearch] = useSearchParams();
+  const setQuery = (patch: (q: URLSearchParams) => void) =>
+    setSearch(
+      (cur) => {
+        const next = new URLSearchParams(cur);
+        patch(next);
+        return next;
+      },
+      { replace: true }
+    );
   const viewer = useFlowViewer({
     available: detail.boards,
     board: boardFrom(search.get("board")),
-    onBoard: (b) =>
-      setSearch(
-        (cur) => {
-          const next = new URLSearchParams(cur);
-          next.set("board", b);
-          return next;
-        },
-        { replace: true }
-      ),
+    onBoard: (b) => setQuery((q) => q.set("board", b)),
+    kit: kitFromBoard(search.get("board")) ?? search.get("kit") === "1",
+    onKit: (on) =>
+      setQuery((q) => {
+        q.set("board", "ironman");
+        if (on) q.set("kit", "1");
+        else q.delete("kit");
+      }),
     // The Normal number sits next to the ironman ones, so its prices are needed on every board.
     bazaarAlways: true,
   });
@@ -194,13 +203,14 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const owner = !!user && user.id === detail.author.id;
   const boardListed = detail.boards.includes(viewer.board);
   const settings = { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true };
+  const kind = viewer.cellKind;
   // The viewer's tier, or the max tier standing in while other tiers are still being verified.
-  const exact = findCell(detail.cells, viewer.board, viewer.tier, viewer.every);
-  const cell = exact ?? findCell(detail.cells, viewer.board, "max", viewer.every);
+  const exact = findCell(detail.cells, kind, viewer.tier, viewer.every);
+  const cell = exact ?? findCell(detail.cells, kind, "max", viewer.every);
   const tierShown = exact ? viewer.tier : "max";
   const points = useMemo(
-    () => profitByEvery(DATA, detail.cells, viewer.board, tierShown, { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true }),
-    [detail.cells, viewer.board, tierShown, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats]
+    () => profitByEvery(DATA, detail.cells, kind, tierShown, { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true }),
+    [detail.cells, kind, tierShown, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats]
   );
   const forgiving = slackFrom(points, viewer.every);
   const shown = cell ? viewerResult(DATA, cell.median, settings) : null;
@@ -208,8 +218,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const value = shown ? valueResult(DATA, shown.result, viewer.board, quotes, viewer.bazaar.pricing) : null;
   const split = shown ? revenueSplit(DATA, shown.result, viewer.board, quotes, viewer.bazaar.pricing) : null;
   const lines = shown ? itemBreakdown(DATA, shown.result, viewer.board, viewer.quotes, viewer.bazaar.pricing) : [];
-  const kind = BOARD_RUN_KIND[viewer.board];
-  const seeds = (detail.seeds ?? []).filter((s) => (s.runKind ? s.runKind === kind : boardFrom(s.board) === viewer.board) && s.tier === tierShown && s.every === viewer.every);
+  const seeds = (detail.seeds ?? []).filter((s) => cellKindOfRow(s) === kind && s.tier === tierShown && s.every === viewer.every);
   const numbers = useMemo(
     () => boardNumbers(DATA, detail.cells, viewer.tier, viewer.every, { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true }),
     [detail.cells, viewer.tier, viewer.every, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats]
@@ -217,15 +226,18 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const stepName = useMemo(() => payloadStepNamer(detail.payload?.plots), [detail.payload]);
   const steady = cell ? steadyRate(DATA, cell.median, { board: viewer.board, ...settings }) : null;
   const stall = cell ? stallInfo(cell.median.starved) : null;
-  const strictN = numbers.find((n) => n.board === "ironman_strict")?.profitPerDay ?? null;
-  const borrowN = numbers.find((n) => n.board === "ironman_borrow")?.profitPerDay ?? null;
-  // "From nothing" when the flow never gets going there: no number, Kit or Stall; a note says why.
-  const blocked = viewer.board === "ironman_strict" ? (numbers.find((n) => n.board === "ironman_strict")?.cantStart ?? null) : null;
-  const kit = viewer.board === "ironman_strict" && !blocked ? kitGain(strictN, borrowN) : null;
-  const needPanel = !!cell && viewer.board === "ironman_borrow";
+  // How the starting items are made: the "from nothing" cell's prep (at this tier / every, else max).
+  const prep = numbers.find((n) => n.kind === "ironman")?.prep ?? null;
+  const needPanel = !!cell && viewer.board === "ironman";
+  const selectKind = (k: CellKind) => {
+    if (k === "normal") return viewer.setBoard("normal");
+    if (viewer.board !== "ironman") viewer.setBoard("ironman");
+    viewer.setKit(k === "ironman_kit");
+  };
   const emptyPanel = !!cell && starvedList(cell.median.starved).length > 0;
   const spread = cell ? spreadAt(cell.spread, viewer.every) : null;
   const sources = shown ? moneyBySource(DATA, shown.result.bySource, viewer.board, quotes, viewer.bazaar.pricing) : [];
+  const listQuery = `?board=${viewer.board}${viewer.board === "ironman" && viewer.kit ? "&kit=1" : ""}`;
   const earning = earningTargets(DATA, detail.summary?.targets ?? [], shown?.result.bySource, viewer.board, quotes, viewer.bazaar.pricing);
   const firstThumb = detail.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
   const heroLayout = detail.thumb?.layout ?? (firstThumb ? { code: firstThumb } : (detail.payload?.plots?.[0]?.flow.steps[0]?.layout ?? null));
@@ -268,7 +280,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   return (
     <div className="space-y-4 py-2 sm:py-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link to={`/flows?board=${viewer.board}`} className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-200">
+        <Link to={`/flows${listQuery}`} className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-200">
           <ArrowLeft className="h-3.5 w-3.5" /> Flow rankings
         </Link>
         <AccountControl />
@@ -310,9 +322,8 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                         scripted
                       </Badge>
                     )}
-                    {kit && <KitChip kit={kit} />}
-                    {stall && !blocked && <StallChip stall={stall} stepName={stepName} />}
-                    {cell?.median.slowing && !blocked && <SlowingBadge />}
+                    {stall && <StallChip stall={stall} stepName={stepName} />}
+                    {cell?.median.slowing && <SlowingBadge />}
                   </div>
                   <h1 className="break-words text-2xl font-bold tracking-tight text-slate-50">{detail.title}</h1>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
@@ -325,39 +336,33 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                   </div>
                 </div>
 
-                <BoardNumbers numbers={numbers} current={viewer.board} onSelect={viewer.setBoard} tierLabel={TIER_LABEL[tierShown]} every={viewer.every} />
-                {blocked ? (
-                  <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200" data-testid="cant-start-note">
-                    <b className="font-medium">Can't start from nothing:</b> {cantStartReason(blocked)}. See{" "}
-                    <button type="button" className="text-emerald-300 underline-offset-2 hover:underline" onClick={() => viewer.setBoard("ironman_borrow")}>
-                      "With starting items"
-                    </button>{" "}
-                    for what it makes when you own them.
-                  </p>
-                ) : (
-                  <>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-400">
-                      <span>
-                        coins / day · {TIER_LABEL[tierShown]} tier, online every {viewer.every}
-                        {shown?.scaled ? " · scaled to your yield (est.)" : ""}
-                      </span>
-                      {shown && (
-                        <span className="flex items-center gap-2">
-                          <EffortMeter avg={shown.result.effort.avg} peak={shown.result.effort.peak} />
-                          {forgiving !== null && <span>· {percent(forgiving)} forgiving</span>}
-                        </span>
-                      )}
-                    </div>
-                    {cell && <RampLine result={cell.median} steadyPerDay={steady} />}
-                  </>
+                <BoardNumbers numbers={numbers} current={kind} onSelect={selectKind} tierLabel={TIER_LABEL[tierShown]} every={viewer.every} />
+                {viewer.board === "ironman" && prep && (
+                  <div className="space-y-0.5 text-xs" data-testid="builder-line">
+                    <StartingItemsLine prep={prep} />
+                    <p className={prep.done ? "text-slate-500" : "text-amber-200/90"}>{builderText(prep)}</p>
+                  </div>
                 )}
-                {split && value && !blocked && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-400">
+                  <span>
+                    coins / day · {TIER_LABEL[tierShown]} tier, online every {viewer.every}
+                    {shown?.scaled ? " · scaled to your yield (est.)" : ""}
+                  </span>
+                  {shown && (
+                    <span className="flex items-center gap-2">
+                      <EffortMeter avg={shown.result.effort.avg} peak={shown.result.effort.peak} />
+                      {forgiving !== null && <span>· {percent(forgiving)} forgiving</span>}
+                    </span>
+                  )}
+                </div>
+                {cell && <RampLine result={cell.median} steadyPerDay={steady} />}
+                {split && value && (
                   <div className="max-w-lg">
                     <SplitBar split={split} fraction={1} className="h-2" />
                     <SplitLegend split={split} className="mt-1.5" />
                   </div>
                 )}
-                {earning.length > 0 && !blocked && (
+                {earning.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[11px] uppercase tracking-wide text-slate-500">Top earners</span>
                     {earning.slice(0, 3).map((t) => (
@@ -425,6 +430,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
       <StatsPanel viewer={viewer} defaultOpen={false} />
 
       {!boardListed && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">This flow is not entered on the {BOARD_LABEL[viewer.board]} board.</p>}
+      {boardListed && !cell && <p className="rounded-lg border border-slate-600/40 bg-slate-800/40 px-3 py-2 text-xs text-slate-300">The {CELL_KIND_LABEL[kind]} number isn't verified at this frequency yet.</p>}
       {viewer.boardForced && (
         <p className="rounded-lg border border-slate-600/40 bg-slate-800/40 px-3 py-2 text-xs text-slate-300">Only entered on the {BOARD_LABEL[viewer.board]} board, so it's shown with {BOARD_LABEL[viewer.board]} prices.</p>
       )}
@@ -437,7 +443,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
       {cell && (needPanel || emptyPanel) && (
         <div className={`grid grid-cols-1 items-start gap-4 ${needPanel && emptyPanel ? "lg:grid-cols-2" : ""}`}>
           {needPanel && (
-            <Panel title="What you need" icon={<Package />} description="The items the layouts use before the flow has grown them, with a margin to be safe.">
+            <Panel title="What you need" icon={<Package />} description="The flow's starting items (what its layouts use before it has grown them, with a margin to be safe) and what it uses up. From nothing, the builder makes these first.">
               <WhatYouNeed result={cell.median} />
             </Panel>
           )}

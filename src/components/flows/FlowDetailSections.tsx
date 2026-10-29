@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowRight, Code2, Flag, Loader2, Repeat, RotateCcw, TrendingUp } from "lucide-react";
 import type { FlowDetail, FlowSeedResult, FlowStatusResponse } from "../../leaderboard/api";
-import type { Board } from "../../leaderboard/rules";
+import type { Board, CellKind } from "../../leaderboard/rules";
 import { valueResult, type Quotes } from "../../leaderboard/pricing";
 import { spreadRatio, type RunResult } from "../../leaderboard/result";
 import {
   BOARD_LABEL,
-  boardOf,
-  cantStartText,
+  CELL_KIND_LABEL,
   KIT_MARGIN,
+  prepDays,
   kitSummaryText,
   needLines,
   percent,
@@ -49,65 +49,54 @@ export const StatTile: React.FC<{ label: React.ReactNode; value: React.ReactNode
   </div>
 );
 
-const BOARD_SUB: Record<Board, string> = {
-  ironman_strict: "Ironman · from nothing",
-  ironman_borrow: "Ironman · with starting items",
+const KIND_SUB: Record<CellKind, string> = {
+  ironman: "Ironman · from nothing",
+  ironman_kit: "Ironman · with the starting items",
   normal: "Normal · Bazaar",
 };
 
-/** The three boards' numbers side by side; the current one highlighted, the others switch to theirs. */
-export const BoardNumbers: React.FC<{ numbers: BoardNumber[]; current: Board; onSelect: (b: Board) => void; tierLabel: string; every: number }> = ({ numbers, current, onSelect, tierLabel, every }) => (
+/** The three numbers side by side (from nothing, with the starting items, normal); the current one highlighted, the others switch to theirs. */
+export const BoardNumbers: React.FC<{ numbers: BoardNumber[]; current: CellKind; onSelect: (k: CellKind) => void; tierLabel: string; every: number }> = ({ numbers, current, onSelect, tierLabel, every }) => (
   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="tablist" aria-label="Boards" data-testid="board-numbers">
     {numbers.map((n) => {
-      const active = n.board === current;
+      const active = n.kind === current;
       const negative = n.profitPerDay !== null && n.profitPerDay < 0;
-      if (n.cantStart)
-        return (
-          <button
-            key={n.board}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onSelect(n.board)}
-            title={`${BOARD_LABEL[n.board]}: ${cantStartText(n.cantStart)}`}
-            data-testid="board-cant-start"
-            className={`min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.99] ${
-              active ? "border-slate-500/60 bg-slate-800/60" : "border-slate-700/50 bg-slate-900/40 hover:border-slate-500/50 hover:bg-slate-800/60"
-            }`}
-          >
-            <div className={`text-[10px] font-medium uppercase tracking-wide ${active ? "text-slate-300" : "text-slate-500"}`}>{BOARD_SUB[n.board]}</div>
-            <div className={`mt-0.5 font-bold leading-tight text-slate-500 ${active ? "text-2xl" : "text-xl"}`}>Can't start</div>
-            <div className="mt-0.5 min-h-[1rem] text-[11px] text-slate-500">{cantStartText(n.cantStart)}</div>
-          </button>
-        );
+      const cantMake = n.kind === "ironman" && n.prep !== null && !n.prep.done;
+      const sub =
+        n.profitPerDay === null
+          ? "not verified yet"
+          : n.kind === "normal"
+            ? [n.boughtPerDay > 0 ? `${formatCoins(n.boughtPerDay)}/day bought` : null, n.buildCost > 0 ? `${formatCoins(n.buildCost)} to build` : null].filter(Boolean).join(" · ") || "nothing to buy"
+            : n.slowing
+              ? "slowing down at the end"
+              : n.kind === "ironman"
+                ? n.prep
+                  ? Object.keys(n.prep.kit).length === 0
+                    ? "no starting items needed"
+                    : cantMake
+                      ? "can't make its starting items in time"
+                      : `starting items made in ${Math.max(1, Math.round(prepDays(n.prep)))} day${Math.round(prepDays(n.prep)) <= 1 ? "" : "s"}`
+                  : "builder first, then the flow"
+                : "if you own the starting items";
       return (
         <button
-          key={n.board}
+          key={n.kind}
           type="button"
           role="tab"
           aria-selected={active}
-          onClick={() => onSelect(n.board)}
-          title={active ? `${BOARD_LABEL[n.board]}: ${tierLabel} tier, online every ${every}` : `Show this flow on the ${BOARD_LABEL[n.board]} board`}
+          onClick={() => onSelect(n.kind)}
+          title={active ? `${CELL_KIND_LABEL[n.kind]}: ${tierLabel} tier, online every ${every}` : `Show this flow's ${CELL_KIND_LABEL[n.kind]} number`}
           className={`min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.99] ${
             active ? "border-emerald-500/50 bg-emerald-500/10 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]" : "border-slate-700/50 bg-slate-900/40 hover:border-slate-500/50 hover:bg-slate-800/60"
           }`}
+          data-testid={`board-number-${n.kind}`}
         >
-          <div className={`text-[10px] font-medium uppercase tracking-wide ${active ? "text-emerald-300" : "text-slate-500"}`}>{BOARD_SUB[n.board]}</div>
+          <div className={`text-[10px] font-medium uppercase tracking-wide ${active ? "text-emerald-300" : "text-slate-500"}`}>{KIND_SUB[n.kind]}</div>
           <div className={`mt-0.5 font-bold tabular-nums leading-tight ${active ? "text-3xl" : "text-2xl"} ${n.profitPerDay === null ? "text-slate-500" : negative ? "text-red-300" : active ? "text-amber-300" : "text-amber-200/80"}`}>
             {n.profitPerDay === null ? "—" : formatCoins(n.profitPerDay)}
             <span className="ml-1 text-xs font-normal text-slate-500">/ day</span>
           </div>
-          <div className="mt-0.5 min-h-[1rem] text-[11px] text-slate-500">
-            {n.profitPerDay === null
-              ? "not verified yet"
-              : n.board === "normal"
-                ? [n.boughtPerDay > 0 ? `${formatCoins(n.boughtPerDay)}/day bought` : null, n.buildCost > 0 ? `${formatCoins(n.buildCost)} to build` : null].filter(Boolean).join(" · ") || "nothing to buy"
-                : n.slowing
-                  ? "slowing down at the end"
-                  : n.board === "ironman_strict"
-                    ? "nothing borrowed"
-                    : "if you own the starting items"}
-          </div>
+          <div className={`mt-0.5 min-h-[1rem] text-[11px] ${cantMake ? "text-amber-300/90" : "text-slate-500"}`}>{sub}</div>
         </button>
       );
     })}
@@ -496,7 +485,7 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
           {status.jobs.map((j, i) => {
             const frac = j.total ? Math.min(1, (j.done ?? 0) / j.total) : 0;
             const label = j.status === "queued" && j.queuePosition ? `queued · #${j.queuePosition} in line` : j.status === "running" && j.total ? `running · ${j.done ?? 0}/${j.total} runs` : j.status;
-            const b = boardOf(j);
+            const b = (j.runKind === "normal" || j.board === "normal" ? "normal" : j.runKind || j.board ? "ironman" : null) as Board | null;
             return (
               <li key={j.id ?? i} className="space-y-1">
                 <div className="flex flex-wrap gap-x-2">
@@ -516,7 +505,7 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
           })}
         </ul>
       ) : null}
-      {pending && <p className="text-slate-500">The server simulates every online frequency with 5 secret seeds, for each of the three boards; this takes a few minutes. This updates by itself.</p>}
+      {pending && <p className="text-slate-500">The server simulates every online frequency with 5 secret seeds, for Ironman (with and without the starting items) and Normal; this takes a few minutes. This updates by itself.</p>}
     </div>
   );
 };

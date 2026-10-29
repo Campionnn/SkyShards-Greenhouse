@@ -13,8 +13,7 @@ import { buttonClass } from "../components/simulator/styles";
 import { FlowEditor } from "../components/simulator/FlowEditor";
 import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
 import { addPlot, importFlows, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
-import { applyRules, BOARD_RUN_KIND, boardFrom, type Board } from "../leaderboard/rules";
-import { BOARD_LABEL } from "../leaderboard/view";
+import { applyRules, boardFrom, type Board, type RuleKind } from "../leaderboard/rules";
 import { getFlow } from "../services/flowsService";
 import { ScriptEditor } from "../components/simulator/script/ScriptEditor";
 import { ScriptHaltBanner, ScriptPanel } from "../components/simulator/script/ScriptPanel";
@@ -190,15 +189,16 @@ export const SimulatorPage: React.FC = () => {
     rest.delete("flow");
     rest.delete("board");
     const strip = () => navigate(`${location.pathname}${rest.size ? `?${rest}` : ""}`, { replace: true, state: location.state });
-    const board: Board = boardParam ?? (profile === "normal" ? "normal" : "ironman_strict");
-    const runKind = BOARD_RUN_KIND[board];
+    const board: Board = boardParam ?? (profile === "normal" ? "normal" : "ironman");
+    // Ironman entries open as they run with their starting items (the borrow set-up shows what they need); normal as normal.
+    const rules: RuleKind = board === "normal" ? "normal" : "borrow";
     getFlow(flowParam)
       .then((detail) => {
         const before = scenarioRef.current;
         let next: Scenario;
         try {
           const imported = importFlows(before, JSON.stringify(detail.payload));
-          const ruled = applyRules(imported, runKind, 1, Math.floor(Math.random() * 2 ** 31));
+          const ruled = applyRules(imported, rules, 1, Math.floor(Math.random() * 2 ** 31));
           // The profile is site-wide; keep the scenario's own value.
           next = { ...ruled, settings: { ...ruled.settings } };
           if (before.settings.profile) next.settings.profile = before.settings.profile;
@@ -217,7 +217,7 @@ export const SimulatorPage: React.FC = () => {
         toast({
           id: "simulator-flow-loaded",
           title: `Loaded ${detail.title} by ${detail.author.name}`,
-          description: `Under the ${BOARD_LABEL[board]} rules: max stats, empty inventory, online every cycle, a random seed.`,
+          description: `Under the ${board === "normal" ? "Normal" : "Ironman, with the starting items"} rules: max stats, empty inventory, online every cycle, a random seed.`,
           variant: "success",
           duration: 8000,
           action: { label: "Undo", onClick: () => setScenario(before) },

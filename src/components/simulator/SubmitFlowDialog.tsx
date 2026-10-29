@@ -3,18 +3,21 @@ import { AlertTriangle, CheckCircle2, Dices, Eye, Link2, LogOut, Pencil, Send, T
 import { useAuth } from "../../hooks/useAuth";
 import { useBazaarPrices } from "../../hooks/useBazaarPrices";
 import { useProfileMode } from "../../hooks/useProfileMode";
-import { applyRules, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, ruleDifferences, RUN_KIND_BOARD, RUN_KINDS, submissionFile, submissionFromScenario, type RunKind } from "../../leaderboard/rules";
+import { applyRules, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, ruleDifferences, RULE_KINDS, submissionFile, submissionFromScenario, type CellKind, type RuleKind, type RunKind } from "../../leaderboard/rules";
 import { nearestEvery } from "../../leaderboard/tiers";
 import { WALL_MS_BACKSTOP } from "../../leaderboard/verify";
 import {
-  cantStartText,
+  builderText,
+  CELL_KIND_SHORT,
   DESCRIPTION_MAX,
+  kitListText,
   kitSummaryText,
   localKindSummary,
   OUTLIER_RATIO,
+  readPrep,
   ratioText,
-  RUN_KIND_LABEL,
-  scenarioRunKind,
+  RULE_KIND_LABEL,
+  scenarioRuleKind,
   starvedList,
   starvedText,
   startItemsText,
@@ -41,6 +44,8 @@ import { clearSubmitDraft, loadSubmitDraft, saveSubmitDraft } from "./submitDraf
 const DATA = defaultGameData();
 /** Seeds per run kind in the local test (the server uses 5 at the max tier). */
 const TEST_SEEDS = 3;
+/** The cell kinds one run kind's test shows (an ironman seed gives both ironman numbers). */
+const TEST_CELL_KINDS: Record<RunKind, CellKind[]> = { ironman: ["ironman", "ironman_kit"], normal: ["normal"] };
 /** The server's wall-clock backstop (the deciding cap is the deterministic script step cap, applied by runOnce). */
 const WALL_MS = WALL_MS_BACKSTOP;
 
@@ -105,30 +110,27 @@ export interface TestState {
   error: string | null;
 }
 
-/** What one run kind of the test found (the server builds its cell the same way). */
-export const KindTestCard: React.FC<{ test: KindTest; summary: LocalKindSummary; noPrices: boolean }> = ({ test, summary, noPrices }) => {
-  const board = RUN_KIND_BOARD[test.runKind];
+/** What one cell kind of the test found (the server builds its cell the same way). */
+export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: LocalKindSummary; noPrices: boolean }> = ({ test, kind, summary, noPrices }) => {
   const running = summary.done < summary.total;
   const progress = test.progress.reduce((s, x) => s + x, 0) / Math.max(1, test.progress.length);
   const cell = summary.cell;
   const starved = cell ? starvedList(cell.starved).slice(0, 3) : [];
   const used = cell ? usedUpLines(cell.usedUp) : [];
+  const prep = kind === "ironman" && cell ? readPrep(cell.prep) : null;
+  const check = kind === "ironman" ? test.outcomes.find((o) => o?.stitchCheck)?.stitchCheck : undefined;
   return (
-    <div className="space-y-1.5 rounded-md border border-slate-700/60 bg-slate-900/40 p-2.5 text-xs" data-testid={`test-${test.runKind}`}>
+    <div className="space-y-1.5 rounded-md border border-slate-700/60 bg-slate-900/40 p-2.5 text-xs" data-testid={`test-${kind}`}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-medium text-slate-200">{RUN_KIND_LABEL[test.runKind]}</span>
+        <span className="font-medium text-slate-200">{CELL_KIND_SHORT[kind]}</span>
         {running ? (
           <span className="text-[11px] text-slate-500 tabular-nums">
             {summary.done}/{summary.total} seeds
           </span>
-        ) : summary.cantStart ? (
-          <span className="text-sm font-semibold text-slate-400" title={summary.profitPerDay !== null ? `${formatCoins(summary.profitPerDay)} / day, but it isn't ranked on this board` : undefined}>
-            Can't start
-          </span>
         ) : summary.profitPerDay !== null ? (
           <span className={`text-sm font-semibold tabular-nums ${summary.profitPerDay < 0 ? "text-red-300" : "text-amber-300"}`}>
             {formatCoins(summary.profitPerDay)}
-            <span className="ml-1 text-[11px] font-normal text-slate-500">/ day{board === "normal" && noPrices ? " (no prices)" : ""}</span>
+            <span className="ml-1 text-[11px] font-normal text-slate-500">/ day{kind === "normal" && noPrices ? " (no prices)" : ""}</span>
           </span>
         ) : (
           <span className="text-red-300">—</span>
@@ -151,13 +153,19 @@ export const KindTestCard: React.FC<{ test: KindTest; summary: LocalKindSummary;
           {summary.ratio > OUTLIER_RATIO ? `: over ${OUTLIER_RATIO}×, the server would reject this as inconsistent across seeds.` : ""}
         </p>
       )}
-      {summary.cantStart && (
-        <p className="text-amber-200" data-testid="test-cant-start">
-          Can't start from nothing: {cantStartText(summary.cantStart).replace(/^Never/, "never")}. It is listed apart on the "from nothing" board and ranked on "with
-          starting items".
+      {summary.cantMake && (
+        <p className="text-amber-200" data-testid="test-cant-make">
+          The builder can't make the starting items ({kitListText(summary.cantMake.kit)}) within the run: the server lists it apart on the from-nothing ranking and
+          ranks it with "I have the starting items".
         </p>
       )}
-      {cell && test.runKind === "borrow" && (
+      {prep && !summary.cantMake && (
+        <p className="text-slate-400" data-testid="test-prep" title={`Starting items: ${kitListText(prep.kit)}`}>
+          {builderText(prep)}
+        </p>
+      )}
+      {check && !check.ok && <p className="text-amber-200/90">The stitched "from nothing" number differed from a real run by {Math.round(check.diff * 1000) / 10}%: the server runs this flow's "from nothing" for real.</p>}
+      {cell && kind === "ironman_kit" && (
         <div className="space-y-0.5 text-slate-400">
           <p className="text-slate-200">{kitSummaryText(cell)}</p>
           <p>
@@ -211,7 +219,7 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
   };
 
   // The rules to compare with and apply: the run kind the simulator looks like now.
-  const [rulesKind, setRulesKind] = useState<RunKind>(() => scenarioRunKind({ ...scenario.settings, profile }));
+  const [rulesKind, setRulesKind] = useState<RuleKind>(() => scenarioRuleKind({ ...scenario.settings, profile }));
   const every = scenario.settings.activity.kind === "everyN" ? nearestEvery(scenario.settings.activity.n) : 1;
   const submission = useMemo(() => submissionFromScenario(scenario), [scenario]);
   const check = useMemo(() => checkSubmission(submission, DATA), [submission]);
@@ -233,7 +241,7 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
     toast({
       id: "simulator-rules-applied",
       title: "Applied the leaderboard rules",
-      description: `${RUN_KIND_LABEL[rulesKind]} board, online every ${every} cycle${every === 1 ? "" : "s"}, a new random seed.`,
+      description: `${RULE_KIND_LABEL[rulesKind]}, online every ${every} cycle${every === 1 ? "" : "s"}, a new random seed.`,
       variant: "success",
       duration: 6000,
       action: { label: "Undo", onClick: () => onChange(before) },
@@ -244,7 +252,7 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
     pool.current?.cancel();
     const p = new LocalTestPool();
     pool.current = p;
-    const kinds = RUN_KINDS.filter((k) => k !== "normal" || testNormal);
+    const kinds: RunKind[] = testNormal ? ["ironman", "normal"] : ["ironman"];
     const seeds = kinds.map(() => randomSeeds(TEST_SEEDS));
     const len = clampCycles(cycles);
     setTest({ running: true, every, cycles: len, kinds: kinds.map((runKind, i) => ({ runKind, progress: seeds[i].map(() => 0), outcomes: seeds[i].map(() => undefined) })), error: null });
@@ -252,10 +260,16 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
     try {
       // One kind after the other: each already uses every worker the machine has.
       for (const [k, runKind] of kinds.entries()) {
-        await p.run({ submission, runKind, tier: "max", every, cycles: len, wallMs: WALL_MS }, seeds[k], {
-          onProgress: (i, f) => patch(k, (t) => ({ ...t, progress: t.progress.map((x, j) => (j === i ? f : x)) })),
-          onSeed: (i, o) => patch(k, (t) => ({ ...t, outcomes: t.outcomes.map((x, j) => (j === i ? o : x)) })),
-        });
+        // Ironman: the first seed also runs the server's stitch check.
+        await p.run(
+          { submission, runKind, tier: "max", every, cycles: len, wallMs: WALL_MS },
+          seeds[k],
+          {
+            onProgress: (i, f) => patch(k, (t) => ({ ...t, progress: t.progress.map((x, j) => (j === i ? f : x)) })),
+            onSeed: (i, o) => patch(k, (t) => ({ ...t, outcomes: t.outcomes.map((x, j) => (j === i ? o : x)) })),
+          },
+          runKind === "ironman" ? [true] : []
+        );
       }
       setTest((t) => (t ? { ...t, running: false } : t));
     } catch (e) {
@@ -264,8 +278,9 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
     }
   };
 
-  const summaries = useMemo(
-    () => (test ? test.kinds.map((k) => localKindSummary(DATA, k.outcomes, RUN_KIND_BOARD[k.runKind], bazaar.quotes ?? {}, bazaar.pricing)) : []),
+  // One card per cell kind: an ironman test gives "from nothing" and "with the starting items".
+  const cards = useMemo(
+    () => (test ? test.kinds.flatMap((k) => TEST_CELL_KINDS[k.runKind].map((kind) => ({ test: k, kind, summary: localKindSummary(DATA, k.outcomes, kind, bazaar.quotes ?? {}, bazaar.pricing) }))) : []),
     [test, bazaar.quotes, bazaar.pricing]
   );
 
@@ -368,8 +383,8 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
           everything else: empty starting inventory, default advanced settings, its own stat tiers and secret seeds, at every online frequency.
         </p>
         <p className="text-xs text-slate-400 leading-relaxed">
-          Every flow goes on all three boards: <span className="text-slate-300">Ironman · from nothing</span>, <span className="text-slate-300">Ironman · with starting items</span>{" "}
-          (it may borrow what it needs to get going; the page lists those items and any upkeep) and <span className="text-slate-300">Normal</span>.
+          Every flow goes on both boards: <span className="text-slate-300">Ironman</span>, ranked from nothing (the site's builder flow makes its starting items first,
+          then it runs from exactly those) or, with "I have the starting items", as if you own them; and <span className="text-slate-300">Normal</span>.
         </p>
         {check.errors.length > 0 && (
           <ul className="rounded-md bg-red-500/10 border border-red-500/30 px-2 py-1.5 text-xs text-red-200 space-y-1" data-testid="submit-errors">
@@ -391,7 +406,7 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
         )}
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400" role="group" aria-label="Rules to compare with">
           <span>Compare with</span>
-          {RUN_KINDS.map((k) => (
+          {RULE_KINDS.map((k) => (
             <button
               key={k}
               type="button"
@@ -401,13 +416,13 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
                 rulesKind === k ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200" : "border-slate-600/40 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
               }`}
             >
-              {RUN_KIND_LABEL[k]}
+              {RULE_KIND_LABEL[k]}
             </button>
           ))}
         </div>
         {differences.length > 0 ? (
           <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs text-amber-100 space-y-1.5">
-            <div>Your simulator settings differ from the {RUN_KIND_LABEL[rulesKind]} rules, so what you see locally may differ from the server:</div>
+            <div>Your simulator settings differ from the {RULE_KIND_LABEL[rulesKind]} rules, so what you see locally may differ from the server:</div>
             <ul className="list-disc pl-5 text-amber-200/90">
               {differences.map((d) => (
                 <li key={d}>{d}</li>
@@ -419,11 +434,11 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
           </div>
         ) : (
           <p className="text-xs text-emerald-300/90 flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Your settings match the {RUN_KIND_LABEL[rulesKind]} rules.
+            <CheckCircle2 className="w-3.5 h-3.5" /> Your settings match the {RULE_KIND_LABEL[rulesKind]} rules.
           </p>
         )}
         {(profile === "normal") !== (rulesKind === "normal") && (
-          <p className="text-[11px] text-slate-400">The simulator is in {profile === "normal" ? "Normal" : "Ironman"} mode; switch it with the toggle at the top of the page to run it like the {RUN_KIND_LABEL[rulesKind]} board.</p>
+          <p className="text-[11px] text-slate-400">The simulator is in {profile === "normal" ? "Normal" : "Ironman"} mode; switch it with the toggle at the top of the page to run it under the {RULE_KIND_LABEL[rulesKind]} rules.</p>
         )}
       </Section>
 
@@ -476,23 +491,23 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
       <Section title="Test locally">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <button type="button" className={buttonClass.neutral} onClick={() => void runTest()} disabled={!check.ok || test?.running}>
-            <Dices className="w-3.5 h-3.5" /> {test?.running ? "Testing..." : `Test with ${TEST_SEEDS} random seeds per board`}
+            <Dices className="w-3.5 h-3.5" /> {test?.running ? "Testing..." : `Test with ${TEST_SEEDS} random seeds`}
           </button>
           <CheckboxField label="Normal too" checked={testNormal} onChange={setTestNormal} title={noPrices ? "Priced with Bazaar prices; none are cached yet" : "Priced with your cached Bazaar prices"} />
         </div>
         <p className="text-[11px] text-slate-500">
-          From nothing and with starting items{testNormal ? ", then Normal" : ""}: max stats, online every {every} cycle{every === 1 ? "" : "s"}, {clampCycles(cycles).toLocaleString()} cycles plus the end
-          window, in this browser.
+          Ironman (with the starting items, then from nothing: the builder makes them first){testNormal ? ", then Normal" : ""}: max stats, online every {every} cycle{every === 1 ? "" : "s"},{" "}
+          {clampCycles(cycles).toLocaleString()} cycles plus the end window, in this browser.
           {testNormal && noPrices ? " No Bazaar prices are cached: open the simulator in Normal mode once to fetch them, or the Normal number counts items as unpriced." : ""}
         </p>
         {test && (
           <div className="space-y-2" data-testid="seed-test">
-            <div className={`grid grid-cols-1 gap-2 ${test.kinds.length > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-              {test.kinds.map((k, i) => (
-                <KindTestCard key={k.runKind} test={k} summary={summaries[i]} noPrices={noPrices} />
+            <div className={`grid grid-cols-1 gap-2 ${cards.length > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+              {cards.map((c) => (
+                <KindTestCard key={c.kind} test={c.test} kind={c.kind} summary={c.summary} noPrices={noPrices} />
               ))}
             </div>
-            {summaries.some((s) => s.failed.length > 0) && <p className="text-xs text-red-300">A failed seed makes the server reject the submission.</p>}
+            {cards.some((c) => c.summary.failed.length > 0) && <p className="text-xs text-red-300">A failed seed makes the server reject the submission.</p>}
             {test.error && <p className="text-xs text-red-300">{test.error}</p>}
             <p className="text-[11px] text-slate-500">Your seeds are random; the server uses secret seeds of its own, so its numbers will differ a little.</p>
           </div>

@@ -20,7 +20,7 @@ import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
  * (granular inputs snapped to the nearest stat tier) and small presentational pieces.
  */
 
-/** The three boards; the default follows the site-wide profile mode (ironman → from nothing). */
+/** The two boards; the default follows the site-wide profile mode. */
 export const BoardToggle: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
   <SegmentedControl
     size="xs"
@@ -29,27 +29,36 @@ export const BoardToggle: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
     onChange={viewer.setBoard}
     options={[
       {
-        value: "ironman_strict",
-        label: (
-          <>
-            <span className="hidden sm:inline">Ironman · </span>from nothing
-          </>
-        ),
-        title: "Ironman from an empty inventory: nothing borrowed, a missing item leaves its cell empty. NPC prices; Dead Plants and Fermento are farmed by you",
-      },
-      {
-        value: "ironman_borrow",
-        label: (
-          <>
-            <span className="hidden sm:inline">Ironman · </span>with starting items
-          </>
-        ),
-        title: "Ironman when you already own the items the layouts need to get going (listed per flow). NPC prices",
+        value: "ironman",
+        label: "Ironman",
+        title: "Ironman from nothing: the flow's starting items are made first (with the site's builder), then it runs. NPC prices; Dead Plants and Fermento are farmed by you",
       },
       { value: "normal", label: "Normal", tone: "blue", title: "Bazaar prices; supplies are bought" },
     ]}
   />
 );
+
+/** The ironman board's "I have the starting items" switch: ranks by the number with the starting items already owned. */
+export const KitSwitch: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
+  if (viewer.board !== "ironman") return null;
+  const on = viewer.kit;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => viewer.setKit(!on)}
+      title={on ? "Ranked as if you already own each flow's starting items" : "Ranked from nothing: making each flow's starting items first counts. Turn on if you already own them"}
+      className="inline-flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-700/40"
+      data-testid="kit-switch"
+    >
+      <span className={`relative inline-flex h-4 w-7 flex-shrink-0 items-center rounded-full transition-colors duration-150 ${on ? "bg-emerald-500/80" : "bg-slate-600/70"}`}>
+        <span className={`absolute h-3 w-3 rounded-full bg-slate-100 shadow transition-transform duration-150 ${on ? "translate-x-3.5" : "translate-x-0.5"}`} />
+      </span>
+      I have the starting items
+    </button>
+  );
+};
 
 // ---- Stat inputs ---------------------------------------------------------------------------------
 
@@ -405,6 +414,7 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
           {!open && <span className="min-w-0 text-xs text-slate-500">{summary}</span>}
         </button>
         <div className="flex flex-wrap items-center gap-2">
+          <KitSwitch viewer={viewer} />
           <BoardToggle viewer={viewer} />
         </div>
       </header>

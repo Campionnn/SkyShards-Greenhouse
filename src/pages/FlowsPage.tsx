@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowUpRight, Ban, ChevronDown, Code2, FlaskConical, Layers, Package, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
-import { KitChip, SlowingBadge, StallChip, UpkeepValue } from "../components/flows/FlowChips";
+import { ArrowUpRight, Ban, ChevronDown, Code2, FlaskConical, Layers, RefreshCw, Search, Sprout, Trophy } from "lucide-react";
+import { SlowingBadge, StallChip, StartingItemsLine, UpkeepValue } from "../components/flows/FlowChips";
 import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
 import { FilterBar, OwnedImportDialog } from "../components/flows/FlowFilters";
 import { EffortMeter, LayoutBoxes, MutationChip, Sparkline, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
@@ -15,20 +15,20 @@ import type { FlowListResponse } from "../leaderboard/api";
 import type { Board } from "../leaderboard/rules";
 import {
   BADGE_TITLE,
-  cantStartText,
   DEFAULT_FILTERS,
+  kitListText,
   kitSummaryText,
   earningOptions,
   matchesFilters,
   maxProfit,
   percent,
+  prepText,
   rankEntries,
   readListParams,
   SORT_BOARD,
   SORT_LABEL,
   sortRows,
   splitRanked,
-  startItemsText,
   suppliesText,
   withLikeCounts,
   writeListParams,
@@ -93,7 +93,6 @@ const RowBadges: React.FC<{ row: FlowRow }> = ({ row }) => (
     {row.badges.stale && <Badge tone="stale" title={BADGE_TITLE.stale}>re-verifying</Badge>}
     {row.badges.estimated && <Badge tone="estimated" title={BADGE_TITLE.estimated}>max-tier stand-in</Badge>}
     {row.profitPerDay === null && <Badge tone="pending" title="Not verified at this tier and frequency yet.">pending</Badge>}
-    {row.kit && <KitChip kit={row.kit} />}
     {row.stall && <StallChip stall={row.stall} />}
     {row.slowing && <SlowingBadge />}
   </>
@@ -109,12 +108,15 @@ interface RowLike {
   needsLogin?: boolean;
 }
 
+/** The ranking's link query for a row: the board, and the starting-items switch when on. */
+const boardQuery = (board: Board, kit: boolean) => `?board=${board}${board === "ironman" && kit ? "&kit=1" : ""}`;
+
 /** One ranked flow (exported for the SSR tests: the page itself renders rows only after its fetch effect). */
-export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; board: Board; index: number; like: RowLike; sort: SortKey }> = ({ row, top, every, board, index, like, sort }) => {
+export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; board: Board; kit?: boolean; index: number; like: RowLike; sort: SortKey }> = ({ row, top, every, board, kit = false, index, like, sort }) => {
   const navigate = useNavigate();
   const { entry } = row;
   const normal = board === "normal";
-  const borrow = board === "ironman_borrow";
+  const ironman = board === "ironman";
   const summary = entry.summary ?? null;
   // The layout the flow spends the most time in (server-picked once verified), else plot 1's start.
   const startCode = summary?.plots.find((p) => p.thumb)?.thumb ?? null;
@@ -126,7 +128,9 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
     const t = suppliesText(row.suppliesPerDay);
     return t === "none" ? null : `${t}/day to farm`;
   })();
-  const query = `?board=${board}`;
+  const query = boardQuery(board, kit);
+  // The headline's tooltip on "with the starting items": the from-nothing number beside it.
+  const headlineTitle = ironman && kit && row.altPerDay !== null ? `From nothing: ${formatCoins(row.altPerDay)}/day (making the starting items first)` : undefined;
   const open = () => navigate(`/flows/${entry.id}${query}`);
   // A one-line plain-text taste of the description (Markdown marks stripped).
   const excerpt = (entry.excerpt ?? "")
@@ -156,7 +160,7 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
           </div>
           {/* Phones: the headline number sits beside the title. */}
           <div className="text-right sm:hidden">
-            <div className={`text-base font-semibold tabular-nums leading-tight ${row.profitPerDay !== null && row.profitPerDay < 0 ? "text-red-300" : "text-amber-300"}`}>
+            <div className={`text-base font-semibold tabular-nums leading-tight ${row.profitPerDay !== null && row.profitPerDay < 0 ? "text-red-300" : "text-amber-300"}`} title={headlineTitle}>
               {row.profitPerDay === null ? "—" : formatCoins(row.profitPerDay)}
             </div>
             <div className="text-[10px] text-slate-500">/ day</div>
@@ -195,6 +199,7 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
             )}
           </div>
         )}
+        {ironman && row.prep && <StartingItemsLine prep={row.prep} className="max-w-xl text-xs" />}
         {excerpt && <p className="hidden max-w-xl truncate text-xs italic text-slate-500 md:block">“{excerpt}”</p>}
         <div className="max-w-xl pt-0.5">
           <SplitBar split={row.split} fraction={top > 0 && row.profitPerDay !== null ? row.profitPerDay / top : 0} />
@@ -205,28 +210,16 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
       {/* Numbers: a compact strip under the content on phones, a right-hand column from sm. */}
       <div className="col-span-2 flex flex-wrap items-end justify-between gap-x-4 gap-y-2 sm:col-span-1 sm:block sm:min-w-[11rem] sm:text-right">
         <div className="hidden sm:block">
-          <div className={`text-xl font-semibold tabular-nums leading-tight ${row.profitPerDay !== null && row.profitPerDay < 0 ? "text-red-300" : "text-amber-300"}`}>
+          <div className={`text-xl font-semibold tabular-nums leading-tight ${row.profitPerDay !== null && row.profitPerDay < 0 ? "text-red-300" : "text-amber-300"}`} title={headlineTitle}>
             {row.profitPerDay === null ? "—" : formatCoins(row.profitPerDay)}
           </div>
           <div className="text-[11px] text-slate-500">coins / day{row.scaled ? " · est." : ""}</div>
         </div>
         <div className="space-y-0.5 text-[11px] tabular-nums text-slate-400 sm:mt-1.5">
-          {borrow && entry.cell && (
-            <div data-testid="row-kit" className="space-y-0.5" title={kitSummaryText(entry.cell)}>
-              <div className="sm:flex sm:justify-end" title={`To start with: ${startItemsText(entry.cell.startItems)}`}>
-                <span className="inline-flex items-center gap-1">
-                  <Package className="h-3 w-3 text-slate-500" />
-                  {row.startItemsCount === 0 ? (
-                    <span className="text-emerald-300">Nothing to start with</span>
-                  ) : (
-                    <span className="text-slate-300">{row.startItemsCount.toLocaleString("en-US")} items to start</span>
-                  )}
-                </span>
-              </div>
-              <div className="sm:flex sm:justify-end">
-                <span className="text-slate-500">then </span>
-                <UpkeepValue upkeep={entry.cell.upkeep} className="ml-1" noneText="nothing per day" />
-              </div>
+          {ironman && entry.cell && (
+            <div data-testid="row-upkeep" className="sm:flex sm:justify-end" title={kitSummaryText(entry.cell)}>
+              <span className="text-slate-500">Upkeep </span>
+              <UpkeepValue upkeep={entry.cell.upkeep} className="ml-1" />
             </div>
           )}
           {supply && <div>{supply}</div>}
@@ -262,41 +255,45 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
 };
 
 /**
- * A flow that can't start from nothing (the "from nothing" board's set-aside list): no rank, a
- * muted line with why, and a way to its "with starting items" number.
+ * A flow whose starting items the builder can't make within the run (the "from nothing" set-aside
+ * list): no rank, a muted line with the items, and its "with the starting items" number.
  */
-export const CantStartRow: React.FC<{ row: FlowRow }> = ({ row }) => {
+export const CantMakeRow: React.FC<{ row: FlowRow }> = ({ row }) => {
   const { entry } = row;
   const startCode = entry.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
   const thumbLayout = entry.thumb?.layout ?? (startCode ? { code: startCode } : null);
   return (
-    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-2 py-2 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-3" data-testid="cant-start-row">
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-2 py-2 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-3" data-testid="cant-make-row">
       <div className="hidden opacity-60 sm:block" aria-hidden>
         <LayoutBoxes layout={thumbLayout} cell={4} />
       </div>
       <div className="min-w-0 space-y-0.5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <Link to={`/flows/${entry.id}?board=ironman_strict`} className="break-words font-medium text-slate-300 transition-colors hover:text-emerald-200">
+          <Link to={`/flows/${entry.id}?board=ironman`} className="break-words font-medium text-slate-300 transition-colors hover:text-emerald-200">
             {entry.title}
           </Link>
           <span className="text-slate-500">
             <AuthorLabel author={entry.author} size={14} />
           </span>
         </div>
-        {row.cantStart && <p className="text-amber-200/80">{cantStartText(row.cantStart)}</p>}
+        {row.cantMake && (
+          <p className="text-amber-200/80" title={`Starting items: ${kitListText(row.cantMake.kit)}`}>
+            {prepText(row.cantMake)}
+          </p>
+        )}
       </div>
       <Link
-        to={`/flows/${entry.id}?board=ironman_borrow`}
+        to={`/flows/${entry.id}?board=ironman&kit=1`}
         className="whitespace-nowrap rounded-md border border-slate-600/40 px-2 py-1 text-right text-[11px] text-slate-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-200"
-        title="This flow on the 'with starting items' board"
+        title="This flow when you already own the starting items"
       >
-        {row.borrowPerDay !== null ? (
+        {row.altPerDay !== null ? (
           <>
-            <span className="tabular-nums text-amber-300">{formatCoins(row.borrowPerDay)}</span>
-            <span className="text-slate-500">/day with starting items</span>
+            <span className="tabular-nums text-amber-300">{formatCoins(row.altPerDay)}</span>
+            <span className="text-slate-500">/day with the starting items</span>
           </>
         ) : (
-          "With starting items"
+          "With the starting items"
         )}
         <ArrowUpRight className="ml-0.5 inline h-3 w-3 opacity-70" />
       </Link>
@@ -304,28 +301,29 @@ export const CantStartRow: React.FC<{ row: FlowRow }> = ({ row }) => {
   );
 };
 
-/** The "from nothing" board's collapsed list of flows that can't start there. */
-export const CantStartSection: React.FC<{ rows: FlowRow[]; onSwitch: () => void; defaultOpen?: boolean }> = ({ rows, onSwitch, defaultOpen = false }) => {
+/** The "from nothing" ranking's collapsed list of flows whose starting items can't be made within the run. */
+export const CantMakeSection: React.FC<{ rows: FlowRow[]; onSwitch: () => void; defaultOpen?: boolean }> = ({ rows, onSwitch, defaultOpen = false }) => {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="mt-2 rounded-lg border border-slate-700/50 bg-slate-900/30" data-testid="cant-start-section">
+    <section className="mt-2 rounded-lg border border-slate-700/50 bg-slate-900/30" data-testid="cant-make-section">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">
         <Ban className="h-3.5 w-3.5 text-slate-500" />
-        <span className="font-medium text-slate-300">Can't start from nothing ({rows.length})</span>
+        <span className="font-medium text-slate-300">Can't make its starting items within the run ({rows.length})</span>
         <ChevronDown className={`ml-auto h-3.5 w-3.5 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div className="border-t border-slate-700/40">
           <p className="px-3 pt-2 text-[11px] text-slate-500">
-            These flows place items they never grow, so a fresh ironman can't run them. They are ranked on{" "}
+            The builder couldn't make these flows' starting items before the scored part of the run, so they aren't ranked from nothing. They are ranked
+            with{" "}
             <button type="button" className="text-emerald-300 hover:underline" onClick={onSwitch}>
-              "with starting items"
+              "I have the starting items"
             </button>
             .
           </p>
           <ul className="divide-y divide-slate-700/30 pb-1">
             {rows.map((r) => (
-              <CantStartRow key={r.entry.id} row={r} />
+              <CantMakeRow key={r.entry.id} row={r} />
             ))}
           </ul>
         </div>
@@ -356,9 +354,9 @@ const Legend: React.FC = () => (
   </div>
 );
 
-const BOARD_INTRO: Record<Board, string> = {
-  ironman_strict: "A fresh ironman start: nothing borrowed, a missing item leaves its cell empty.",
-  ironman_borrow: "For ironman players who already own the items a flow's layouts need to get going. Upkeep is what it keeps needing every day.",
+const BOARD_INTRO: Record<"ironman" | "ironman_kit" | "normal", string> = {
+  ironman: "From nothing: each flow's starting items are made first with the site's builder flow, then the flow runs; the time it takes counts. Upkeep is what it keeps needing every day.",
+  ironman_kit: "As if you already own each flow's starting items. Upkeep is what it keeps needing every day.",
   normal: "Bazaar prices: shortfalls are bought and the starting layouts' cost is shown separately.",
 };
 
@@ -377,8 +375,9 @@ function useListParams(): [ListParams, (patch: Partial<ListParams>) => void] {
 
 export const FlowsPage: React.FC = () => {
   const [params, setParams] = useListParams();
-  const viewer = useFlowViewer({ board: params.board, onBoard: (board) => setParams({ board }) });
+  const viewer = useFlowViewer({ board: params.board, onBoard: (board) => setParams({ board }), kit: params.kit, onKit: (kit) => setParams({ kit }) });
   const board = viewer.board;
+  const kit = viewer.kit;
   const now = useMinuteClock();
   const { user } = useAuth();
   const likes = useFlowLikes();
@@ -409,26 +408,26 @@ export const FlowsPage: React.FC = () => {
   const [reload, setReload] = useState(0);
   /** The reload count already served: only a new Refresh click bypasses the session cache. */
   const servedReload = useRef(0);
-  const key = `${board}|${viewer.tier}|${viewer.every}|${plots}|${reload}`;
+  const key = `${board}|${kit ? 1 : 0}|${viewer.tier}|${viewer.every}|${plots}|${reload}`;
 
   useEffect(() => {
     let live = true;
     const force = reload !== servedReload.current;
     servedReload.current = reload;
-    listFlows({ board, tier: viewer.tier, every: viewer.every, plots: plots === "any" ? undefined : Number(plots) }, { force })
+    listFlows({ board, kit, tier: viewer.tier, every: viewer.every, plots: plots === "any" ? undefined : Number(plots) }, { force })
       .then((data) => live && setResult({ key, data }))
       .catch((e: unknown) => live && setResult({ key, error: e instanceof Error ? e.message : String(e) }));
     return () => {
       live = false;
     };
-  }, [key, board, viewer.tier, viewer.every, plots, reload]);
+  }, [key, board, kit, viewer.tier, viewer.every, plots, reload]);
 
   const loading = !result || result.key !== key;
   const all = useMemo(() => (result && !loading ? (result.data?.entries ?? []) : []), [result, loading]);
   const entries = useMemo(() => withLikeCounts(all, likes.counts), [all, likes.counts]);
   const ranked = useMemo(
-    () => rankEntries(DATA, entries, { board, quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true, now }, viewer.every),
-    [entries, board, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.every, now]
+    () => rankEntries(DATA, entries, { board, kit, quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true, now }, viewer.every),
+    [entries, board, kit, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.every, now]
   );
   const options = useMemo(() => earningOptions(ranked), [ranked]);
   const effective = useMemo<RowFilters>(() => ({ ...filters, query }), [filters, query]);
@@ -436,8 +435,8 @@ export const FlowsPage: React.FC = () => {
     () => sortRows(ranked.filter((r) => matchesFilters(r, effective, board, owned?.items ?? null)), sortShown),
     [ranked, effective, board, owned, sortShown]
   );
-  // "From nothing": flows that can't start there take no place; they are listed apart (filtered and sorted the same way).
-  const { ranked: shownRanked, cantStart: shownBlocked } = useMemo(() => splitRanked(shown), [shown]);
+  // "From nothing": flows whose starting items can't be made within the run take no place; they are listed apart (filtered and sorted the same way).
+  const { ranked: shownRanked, cantMake: shownBlocked } = useMemo(() => splitRanked(shown), [shown]);
   const top = maxProfit(ranked);
   const filtered = effective.query.trim() !== "" || JSON.stringify({ ...effective, query: "" }) !== JSON.stringify(DEFAULT_FILTERS);
 
@@ -450,7 +449,8 @@ export const FlowsPage: React.FC = () => {
             <InfoHint title="How flows are ranked" width={360}>
               <p className="mb-1.5">
                 Every flow was simulated by the server under the same rules (empty start, default settings, secret seeds) at each online frequency and
-                four stat tiers, three times: from nothing, with starting items, and on the normal profile.
+                four stat tiers. Ironman ranks from nothing: the site's builder makes the flow's starting items first, then the flow runs from exactly them.
+                "I have the starting items" ranks as if you already own them. Normal uses the normal profile.
               </p>
               <p>The server stores item counts per day; your browser prices them for your board and stats, so the ranking follows your inputs instantly.</p>
             </InfoHint>
@@ -523,10 +523,10 @@ export const FlowsPage: React.FC = () => {
           </div>
         </div>
         <p className="px-3 pt-1 text-[11px] text-slate-500 sm:px-4" data-testid="board-intro">
-          {BOARD_INTRO[board]}
+          {BOARD_INTRO[viewer.cellKind]}
         </p>
         {viewer.scaling && <p className="px-3 pt-1 text-[11px] text-amber-200/70 sm:px-4">Crop and rare-crop numbers are scaled to your yield stats (an estimate).</p>}
-        {board === "ironman_borrow" && filters.owned && !owned && (
+        {board === "ironman" && filters.owned && !owned && (
           <p className="px-3 pt-1 text-[11px] text-amber-200/80 sm:px-4">
             "I own the starting items" needs your items:{" "}
             <button type="button" className="text-emerald-300 hover:underline" onClick={() => setImporting(true)}>
@@ -600,7 +600,7 @@ export const FlowsPage: React.FC = () => {
             <>
             {shownRanked.length === 0 && (
               <p className="px-3 py-6 text-center text-xs text-slate-400">
-                {filtered ? "No flow that starts from nothing matches these filters." : "No flow on this board starts from nothing yet."}
+                {filtered ? "No flow whose starting items can be made in time matches these filters." : "No flow's starting items can be made in time yet."}
               </p>
             )}
             <ol className="divide-y divide-slate-700/30" data-testid="flows-list">
@@ -611,6 +611,7 @@ export const FlowsPage: React.FC = () => {
                   top={top}
                   every={viewer.every}
                   board={board}
+                  kit={kit}
                   index={i}
                   sort={sortShown}
                   like={{
@@ -628,7 +629,7 @@ export const FlowsPage: React.FC = () => {
                 />
               ))}
             </ol>
-            {shownBlocked.length > 0 && <CantStartSection rows={shownBlocked} onSwitch={() => viewer.setBoard("ironman_borrow")} />}
+            {shownBlocked.length > 0 && <CantMakeSection rows={shownBlocked} onSwitch={() => viewer.setKit(true)} />}
             </>
           )}
         </div>

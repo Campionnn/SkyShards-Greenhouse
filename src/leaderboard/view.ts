@@ -5,8 +5,8 @@ import { RARE_CROP_ITEMS } from "../simulator/economy/rareCrops";
 import { formatCoins, nameOf } from "../components/simulator/format";
 import type { AuthUser, CurvePoint, FlowAuthor, FlowCell, FlowListEntry, Spread, SpreadInfo, Timestamp } from "./api";
 import { buyPrice, scaleResult, sellPrice, slack, valueResult, yieldStatsDiffer, type Quotes, type YieldStats } from "./pricing";
-import { CANT_START_CELLS, cellResult, spreadRatio, type RunResult, type StarvedCells } from "./result";
-import { BOARD_RUN_KIND, boardFrom, RUN_KIND_BOARD, runKindFrom, type Board, type RunKind } from "./rules";
+import { CANT_START_CELLS, cellResult, spreadRatio, type PrepInfo, type RunResult, type StarvedCells } from "./result";
+import { boardFrom, CELL_KIND_RUN_KIND, cellKindFrom, cellKindOf, kitFromBoard, type Board, type CellKind, type RuleKind } from "./rules";
 import { EVERY, type TierId } from "./tiers";
 
 /**
@@ -36,14 +36,16 @@ export const BADGE_TITLE = {
 };
 
 export const TIER_LABEL: Record<TierId, string> = { max: "Max", high: "High", mid: "Mid", low: "Low" };
-export const BOARD_LABEL: Record<Board, string> = { ironman_strict: "Ironman · from nothing", ironman_borrow: "Ironman · with starting items", normal: "Normal" };
-/** The boards without the "Ironman ·" prefix (selectors, compact places). */
-export const BOARD_SHORT: Record<Board, string> = { ironman_strict: "From nothing", ironman_borrow: "With starting items", normal: "Normal" };
-/** A run kind as the submit dialog and the simulator's rules selector call it. */
-export const RUN_KIND_LABEL: Record<RunKind, string> = { strict: "From nothing", borrow: "With starting items", normal: "Normal" };
+export const BOARD_LABEL: Record<Board, string> = { ironman: "Ironman", normal: "Normal" };
+/** What a cell measured, as the page calls it. */
+export const CELL_KIND_LABEL: Record<CellKind, string> = { ironman: "Ironman · from nothing", ironman_kit: "Ironman · with the starting items", normal: "Normal" };
+/** The cell kinds without the "Ironman ·" prefix (compact places). */
+export const CELL_KIND_SHORT: Record<CellKind, string> = { ironman: "From nothing", ironman_kit: "With the starting items", normal: "Normal" };
+/** The engine set-ups as the simulator's "Apply leaderboard rules" calls them. */
+export const RULE_KIND_LABEL: Record<RuleKind, string> = { strict: "Strict (no borrowing)", borrow: "With the starting items", normal: "Normal" };
 
-/** The run kind a simulator scenario's settings look like (the rules selectors' default). */
-export function scenarioRunKind(settings: { profile?: string; config: { allowMutationDebt?: boolean; bootstrapDebt?: boolean } }): RunKind {
+/** The rule kind a simulator scenario's settings look like (the rules selectors' default). */
+export function scenarioRuleKind(settings: { profile?: string; config: { allowMutationDebt?: boolean; bootstrapDebt?: boolean } }): RuleKind {
   if (settings.profile === "normal") return "normal";
   return settings.config.allowMutationDebt === true || settings.config.bootstrapDebt === true ? "borrow" : "strict";
 }
@@ -52,15 +54,16 @@ export function scenarioRunKind(settings: { profile?: string; config: { allowMut
 export function boardsText(boards: readonly string[]): string {
   if (!boards.length) return "—";
   if (boards.includes("all")) return "All boards";
-  return boards.map((b) => (b === "ironman" ? "Ironman" : (BOARD_LABEL[b as Board] ?? b))).join(" + ");
+  return boards.map((b) => (BOARD_LABEL[boardFrom(b) ?? ("" as Board)] ?? b)).join(" + ");
 }
 
-/** The board a cell, seed row or job belongs to: its run kind, else its (possibly old) board name. */
-export function boardOf(x: { runKind?: unknown; board?: unknown }): Board | null {
-  const kind = runKindFrom(x.runKind);
-  if (kind && x.runKind === kind) return RUN_KIND_BOARD[kind];
-  return boardFrom(x.board);
+/** The cell kind of a cell, seed row or job: its `cellKind`, else what an older API sent (`runKind` strict / borrow, or a board). */
+export function cellKindOfRow(x: { cellKind?: unknown; runKind?: unknown; board?: unknown }): CellKind | null {
+  return cellKindFrom(x.cellKind) ?? cellKindFrom(x.runKind) ?? cellKindFrom(x.board);
 }
+
+/** The board a cell kind is shown on. */
+export const boardOfCellKind = (k: CellKind): Board => (CELL_KIND_RUN_KIND[k] === "normal" ? "normal" : "ironman");
 
 /** Discord avatar (64 px), or Discord's default avatar for the account when it has none. */
 export function avatarUrl(id: string, avatar: string | null | undefined): string {
@@ -95,6 +98,8 @@ export function formatDate(t: Timestamp): string {
 
 export interface ViewSettings {
   board: Board;
+  /** Ironman board: "I have the starting items" (the cells are the `ironman_kit` ones). */
+  kit?: boolean;
   /** Normal board: Bazaar quotes (with the user's overrides); ignored for ironman. */
   quotes: Quotes;
   pricing: BazaarPricing;
@@ -151,8 +156,6 @@ export interface FlowRow {
   unpriced: ItemId[];
   /** Every harvested plant kind that earns coins on this board, most first (`earningItems`). */
   sources: EarningItem[];
-  /** "From nothing" board: how much more the same flow makes with the starting items (null: under KIT_MIN_GAIN, or unknown). */
-  kit: KitGain | null;
   /** A plot whose layout cells sit empty for lack of stock (≥ STALL_CELLS on average). */
   stall: StallInfo | null;
   /** The cell is scored at its trailing rate (most seeds slowed down at the end). */
@@ -166,12 +169,14 @@ export interface FlowRow {
   /** Lower-case text the search box matches: title, author, excerpt and item ids / names. */
   search: string;
   /**
-   * "From nothing" board: the flow never gets going from an empty inventory (`cantStartOf`). Such
-   * rows are not ranked (`rank` 0): the page lists them apart.
+   * "From nothing": the builder couldn't make the starting items within the run (`prep.done`
+   * false). Such rows are not ranked (`rank` 0): the page lists them apart.
    */
-  cantStart: CantStart | null;
-  /** "From nothing" board: the same tier / every on "with starting items" (`borrowPoint`), priced; null when unknown. */
-  borrowPerDay: number | null;
+  cantMake: PrepInfo | null;
+  /** Ironman: the other ironman variant at the same tier / every (`altPoint`), priced; null when unknown. */
+  altPerDay: number | null;
+  /** Ironman: how the starting items are made (the "from nothing" cell's `prep`); null when unknown. */
+  prep: PrepInfo | null;
 }
 
 export type SortKey = "profit" | "perEffort" | "effort" | "forgiving" | "steady" | "upkeep" | "liked" | "liked30d" | "newest";
@@ -188,7 +193,7 @@ export const SORT_LABEL: Record<SortKey, string> = {
   newest: "Newest",
 };
 /** Sort keys that only mean something on one board. */
-export const SORT_BOARD: Partial<Record<SortKey, Board>> = { upkeep: "ironman_borrow" };
+export const SORT_BOARD: Partial<Record<SortKey, Board>> = { upkeep: "ironman" };
 
 /** Like counts the viewer changed locally (server replies), over the possibly cached list. */
 export type LikeCounts = Record<string, { likes: number; likes30d: number }>;
@@ -312,28 +317,29 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
       scaled: false,
       unpriced: [],
       sources: [],
-      kit: null,
       stall: null,
       slowing: false,
       upkeepPerDay: 0,
       startItemsCount: 0,
       steadyPerDay: null,
       search,
-      cantStart: null,
-      borrowPerDay: null,
+      cantMake: null,
+      altPerDay: null,
+      prep: s.board === "ironman" ? prepOf(entry, null, !!s.kit) : null,
     };
   const cell = entry.cell;
   const { result, scaled } = viewerResult(data, cell, s);
   const quotes = s.board === "normal" ? s.quotes : {};
   const pricing = s.pricing ?? DEFAULT_BAZAAR_PRICING;
   const v = valueResult(data, result, s.board, quotes, pricing);
-  const borrow = s.board === "ironman_strict" && entry.borrowPoint && typeof entry.borrowPoint === "object" ? pricePoint(data, entry.borrowPoint, { ...s, board: "ironman_borrow" }) : null;
+  const alt = s.board === "ironman" ? altPointOf(entry, !!s.kit) : null;
+  const prep = s.board === "ironman" ? prepOf(entry, cell, !!s.kit) : null;
   return {
     ...base,
-    cantStart: s.board === "ironman_strict" ? cantStartOf(cell) : null,
-    borrowPerDay: borrow,
+    cantMake: s.board === "ironman" && !s.kit && prep && !prep.done ? prep : null,
+    altPerDay: alt ? pricePoint(data, alt, s) : null,
+    prep,
     sources: earningItems(data, result.bySource, s.board, quotes, pricing),
-    kit: borrow === null ? null : kitGain(v.profitPerDay, borrow),
     stall: stallInfo(cell.starved),
     slowing: cell.slowing === true,
     upkeepPerDay: sumValues(cell.upkeep),
@@ -353,10 +359,73 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
   };
 }
 
+/** The other ironman variant's curve point of a list row: `altPoint`, or an older API's `borrowPoint` on "from nothing". */
+function altPointOf(entry: FlowListEntry, kit: boolean): CurvePoint | null {
+  const p = entry.altPoint ?? (kit ? null : entry.borrowPoint);
+  return p && typeof p === "object" ? p : null;
+}
+
+/** A valid `prep` (the "from nothing" cell's), else null. */
+export function readPrep(raw: unknown): PrepInfo | null {
+  if (!isRecord(raw) || !isRecord(raw.kit) || !finite(raw.cycles) || !finite(raw.days) || typeof raw.done !== "boolean") return null;
+  const kit: Record<ItemId, number> = {};
+  for (const [item, n] of Object.entries(raw.kit)) if (finite(n) && n > 0) kit[item] = Math.ceil(n - 1e-9);
+  const out: PrepInfo = { kit, cycles: raw.cycles, days: raw.days, done: raw.done, mode: raw.mode === "real" ? "real" : "stitched" };
+  if (finite(raw.madeDays)) out.madeDays = raw.madeDays;
+  return out;
+}
+
+/** A list row's `prep`: the row's own field, else (on "from nothing") its cell's. */
+function prepOf(entry: FlowListEntry, cell: RunResult | null, kit: boolean): PrepInfo | null {
+  return readPrep(entry.prep) ?? (kit ? null : readPrep(cell?.prep));
+}
+
+/** Days the builder took to make the kit (the first time it owned it), else the days to T*. */
+export const prepDays = (p: PrepInfo): number => p.madeDays ?? p.days;
+
+/** "~4 days", "under a day", "~1 day". */
+function aboutDays(days: number): string {
+  if (days < 1) return "under a day";
+  const n = Math.round(days);
+  return `~${n.toLocaleString("en-US")} day${n === 1 ? "" : "s"}`;
+}
+
+/** Kit items, largest first (ties by id). */
+const kitLines = (kit: Readonly<Record<ItemId, number>>) => positiveEntries(kit);
+
+/**
+ * The ranking's starting-items line: "Starting items: 2 Zombud, 3 Cindershade · made in ~4 days"
+ * (at most three items, then "+ N more"); "No starting items" for an empty kit; "Starting items:
+ * ... · can't be made within the run" when the builder didn't finish.
+ */
+export function prepText(p: PrepInfo): string {
+  const lines = kitLines(p.kit);
+  if (!lines.length) return "No starting items";
+  const shown = lines.slice(0, 3).map(([item, n]) => `${n.toLocaleString("en-US")} ${nameOf(item)}`);
+  if (lines.length > 3) shown.push(`+ ${lines.length - 3} more`);
+  return `Starting items: ${shown.join(", ")} · ${p.done ? `made in ${aboutDays(prepDays(p))}` : "can't be made within the run"}`;
+}
+
+/** The whole kit for a tooltip: "41 Duskbloom, 7 Shadevine, 6 Dustgrain, 3 Cindershade, 2 Zombud". */
+export function kitListText(kit: Readonly<Record<ItemId, number>>): string {
+  const lines = kitLines(kit);
+  return lines.length ? lines.map(([item, n]) => `${n.toLocaleString("en-US")} ${nameOf(item)}`).join(", ") : "None";
+}
+
+/** Whole items in a kit. */
+export const kitCount = (kit: Readonly<Record<ItemId, number>>): number => kitLines(kit).reduce((a, [, n]) => a + n, 0);
+
+/** The detail page's builder line: "Starting items made with the builder in ~4 days (stitched)". */
+export function builderText(p: PrepInfo): string {
+  if (!kitLines(p.kit).length) return "No starting items: it starts from an empty inventory.";
+  if (!p.done) return `The builder couldn't make the starting items within the run (${kitCount(p.kit).toLocaleString("en-US")} items); the score is the builder's own crops.`;
+  return `Starting items made with the builder in ${aboutDays(prepDays(p))} (${p.mode === "real" ? "real run" : "stitched"})`;
+}
+
 /**
  * Standard competition ranks ("1, 2, 2, 4") over rows already sorted best first; rows without a
- * value share the last rank after every valued one. (`rankEntries` gives rows that can't start
- * from nothing rank 0 instead.)
+ * value share the last rank after every valued one. (`rankEntries` gives rows whose starting
+ * items can't be made within the run rank 0 instead.)
  */
 export function rank<T extends { profitPerDay: number | null }>(sorted: readonly T[]): (T & { rank: number })[] {
   let last: number | null | undefined;
@@ -372,7 +441,8 @@ export function rank<T extends { profitPerDay: number | null }>(sorted: readonly
 /**
  * Rows ranked by profit per day, best first (unverified entries last, by title). The rank is always
  * the profit rank; `sortRows` reorders for other views without changing it. On "from nothing",
- * rows that can't start (`cantStart`) take no place: they come last with rank 0 (`splitRanked`).
+ * rows whose starting items can't be made within the run (`cantMake`) take no place: they come
+ * last with rank 0 (`splitRanked`).
  */
 export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s: ViewSettings, every = 1): FlowRow[] {
   const rows = entries.map((e) => flowRow(data, e, s, every));
@@ -382,13 +452,13 @@ export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s
     if (b.profitPerDay === null) return -1;
     return b.profitPerDay - a.profitPerDay || a.entry.title.localeCompare(b.entry.title);
   });
-  const blocked = rows.filter((r) => r.cantStart).map((r) => ({ ...r, rank: 0 }));
-  return [...rank(rows.filter((r) => !r.cantStart)), ...blocked];
+  const blocked = rows.filter((r) => r.cantMake).map((r) => ({ ...r, rank: 0 }));
+  return [...rank(rows.filter((r) => !r.cantMake)), ...blocked];
 }
 
-/** Ranked rows and the ones that can't start from nothing (rank 0), each in the given order. */
-export function splitRanked<T extends { cantStart: CantStart | null }>(rows: readonly T[]): { ranked: T[]; cantStart: T[] } {
-  return { ranked: rows.filter((r) => !r.cantStart), cantStart: rows.filter((r) => !!r.cantStart) };
+/** Ranked rows and the ones whose starting items can't be made within the run (rank 0), each in the given order. */
+export function splitRanked<T extends { cantMake: PrepInfo | null }>(rows: readonly T[]): { ranked: T[]; cantMake: T[] } {
+  return { ranked: rows.filter((r) => !r.cantMake), cantMake: rows.filter((r) => !!r.cantMake) };
 }
 
 /** Missing values always sort last, whichever way the key goes. */
@@ -432,9 +502,9 @@ export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
   }
 }
 
-/** The largest profit in a set of rows (for the relative bars); rows that can't start from nothing don't count. */
+/** The largest profit in a set of rows (for the relative bars); rows set apart (`cantMake`) don't count. */
 export function maxProfit(rows: readonly FlowRow[]): number {
-  return rows.reduce((m, r) => (r.cantStart ? m : Math.max(m, r.profitPerDay ?? 0)), 0);
+  return rows.reduce((m, r) => (r.cantMake ? m : Math.max(m, r.profitPerDay ?? 0)), 0);
 }
 
 /**
@@ -495,29 +565,6 @@ export function earningOptions(rows: readonly { entry: FlowListEntry }[]): ItemI
     if (isRecord(by)) for (const k of Object.keys(by)) ids.add(k);
   }
   return [...ids].sort((a, b) => nameOf(a).localeCompare(nameOf(b)) || a.localeCompare(b));
-}
-
-/** "From nothing" rows: the borrow cell must beat the strict one by this much for the Kit chip. */
-export const KIT_MIN_GAIN = 0.05;
-
-/**
- * What the starting items add on the "from nothing" board: `gain` (borrow / strict − 1) when the
- * strict cell makes something, or `needed` when it makes nothing and the borrow cell does.
- */
-export type KitGain = { kind: "gain"; gain: number; strict: number; borrow: number } | { kind: "needed"; strict: number; borrow: number };
-
-export function kitGain(strict: number | null, borrow: number | null): KitGain | null {
-  if (!finite(strict) || !finite(borrow) || borrow <= 0) return null;
-  if (strict <= 0) return { kind: "needed", strict, borrow };
-  const gain = borrow / strict - 1;
-  return finite(gain) && gain >= KIT_MIN_GAIN ? { kind: "gain", gain, strict, borrow } : null;
-}
-
-/** The Kit chip's label and tooltip. */
-export function kitText(k: KitGain): { label: string; title: string } {
-  if (k.kind === "needed") return { label: "Kit needed", title: `Makes nothing from scratch; with the starting items: ${formatCoins(k.borrow)}/day (see the "with starting items" board).` };
-  const pct = Math.round(k.gain * 100);
-  return { label: `Kit +${pct.toLocaleString("en-US")}%`, title: `With the starting items this flow makes ${pct.toLocaleString("en-US")}% more (see the "with starting items" board).` };
 }
 
 /** A plot with this many layout cells empty for lack of stock (on average) gets the Stall chip. */
@@ -743,11 +790,11 @@ export interface RowFilters {
   /** Plant kinds whose harvests must be among the row's earners. Empty = off. */
   earning: ItemId[];
   earningIn: EarningIn;
-  /** "With starting items" board: hide rows with any upkeep. */
+  /** Ironman board: hide rows with any upkeep. */
   noUpkeep: boolean;
-  /** "With starting items" board: at most this many starting items (null = any). */
+  /** Ironman board: at most this many starting items (null = any). */
   maxStartItems: number | null;
-  /** "With starting items" board: only rows whose starting items the viewer owns (and no upkeep). */
+  /** Ironman board: only rows whose starting items the viewer owns (and no upkeep). */
   owned: boolean;
 }
 
@@ -762,8 +809,9 @@ type FilterRow = Pick<FlowRow, "entry" | "sources" | "upkeepPerDay" | "startItem
 
 /**
  * Whether a row passes the filters on `board`. The starting-item filters only apply on the
- * "with starting items" board; any filter that needs a cell drops rows without one. `ownedItems`
- * is the viewer's imported items (the "I own" filter is off without them).
+ * ironman board (both modes: either cell carries the starting items); any filter that needs a cell
+ * drops rows without one. `ownedItems` is the viewer's imported items (the "I own" filter is off
+ * without them).
  */
 export function matchesFilters(row: FilterRow, f: RowFilters, board: Board, ownedItems: Readonly<Record<ItemId, number>> | null = null): boolean {
   const q = f.query.trim().toLowerCase();
@@ -774,7 +822,7 @@ export function matchesFilters(row: FilterRow, f: RowFilters, board: Board, owne
     const pool = f.earningIn === "any" ? row.sources : row.sources.slice(0, 3);
     if (!pool.some((s) => f.earning.includes(s.id))) return false;
   }
-  if (board !== "ironman_borrow") return true;
+  if (board !== "ironman") return true;
   const owned = f.owned && ownedItems !== null;
   if ((f.noUpkeep || owned || f.maxStartItems !== null) && !cell) return false;
   if ((f.noUpkeep || owned) && row.upkeepPerDay > 0) return false;
@@ -787,6 +835,8 @@ export function matchesFilters(row: FilterRow, f: RowFilters, board: Board, owne
 export interface ListParams {
   /** Null: the site profile's default board. */
   board: Board | null;
+  /** Ironman board: "I have the starting items" (`kit=1`; v2's `board=ironman_borrow` too). */
+  kit: boolean;
   sort: SortKey;
   plots: "any" | "1" | "2" | "3";
   filters: RowFilters;
@@ -794,7 +844,7 @@ export interface ListParams {
 
 const SORT_KEYS = Object.keys(SORT_LABEL) as SortKey[];
 
-/** Read the ranking's URL query (unknown or malformed values fall back to the defaults; `board=ironman` is the strict board). */
+/** Read the ranking's URL query (unknown or malformed values fall back to the defaults; v2's `ironman_strict` / `ironman_borrow` are the ironman board without / with the starting items). */
 export function readListParams(params: URLSearchParams): ListParams {
   const sort = params.get("sort") as SortKey | null;
   const plots = params.get("plots");
@@ -803,6 +853,7 @@ export function readListParams(params: URLSearchParams): ListParams {
   const earning = [...new Set(params.getAll("earning").flatMap((v) => v.split(",")).map((v) => v.trim()).filter((v) => /^[a-z0-9_]{1,64}$/.test(v)))];
   return {
     board: boardFrom(params.get("board")),
+    kit: kitFromBoard(params.get("board")) ?? params.get("kit") === "1",
     sort: sort && SORT_KEYS.includes(sort) ? sort : "profit",
     plots: plots === "1" || plots === "2" || plots === "3" ? plots : "any",
     filters: {
@@ -820,6 +871,7 @@ export function readListParams(params: URLSearchParams): ListParams {
 export function writeListParams(p: ListParams): URLSearchParams {
   const out = new URLSearchParams();
   if (p.board) out.set("board", p.board);
+  if (p.kit && p.board !== "normal") out.set("kit", "1");
   if (p.sort !== "profit") out.set("sort", p.sort);
   if (p.plots !== "any") out.set("plots", p.plots);
   const f = p.filters;
@@ -838,7 +890,10 @@ export function writeListParams(p: ListParams): URLSearchParams {
 export interface LocalSeed {
   ok: boolean;
   error: string | null;
+  /** Ironman: the borrow run ("with the starting items"); normal: the normal run. */
   result: RunResult | null;
+  /** Ironman: the "from nothing" timeline. */
+  fromNothing?: RunResult | null;
 }
 
 export interface LocalKindSummary {
@@ -852,28 +907,34 @@ export interface LocalKindSummary {
   profitPerDay: number | null;
   /** best / median over the seeds' window values (the outlier check). */
   ratio: number | null;
-  /** "From nothing": the cell never got going (the server keeps it off that board's ranking). */
-  cantStart: CantStart | null;
+  /** "From nothing": the starting items can't be made within the run (the server lists the flow apart). */
+  cantMake: PrepInfo | null;
 }
 
-/** A local test of one run kind, summarised the way the server builds a cell (`cellResult`, `spreadRatio`). */
-export function localKindSummary(data: GameData, seeds: readonly (LocalSeed | undefined)[], board: Board, quotes: Quotes, pricing: BazaarPricing): LocalKindSummary {
+/**
+ * A local test of one cell kind, summarised the way the server builds a cell (`cellResult`,
+ * `spreadRatio`): `ironman` reads each seed's `fromNothing`, the others its `result`. A seed
+ * fails both ironman variants.
+ */
+export function localKindSummary(data: GameData, seeds: readonly (LocalSeed | undefined)[], kind: CellKind, quotes: Quotes, pricing: BazaarPricing): LocalKindSummary {
+  const board = boardOfCellKind(kind);
   const value = (r: RunResult) => valueResult(data, r, board, board === "normal" ? quotes : {}, pricing).profitPerDay;
+  const pick = (s: LocalSeed) => (kind === "ironman" ? (s.fromNothing ?? null) : s.result);
   const finished = seeds.filter((s): s is LocalSeed => !!s);
-  const failed = seeds.flatMap((s, i) => (s && (!s.ok || !s.result) ? [{ seed: i + 1, error: s.error || "no result" }] : []));
-  const results = finished.filter((s) => s.ok && s.result).map((s) => s.result!);
+  const failed = seeds.flatMap((s, i) => (s && (!s.ok || !pick(s)) ? [{ seed: i + 1, error: s.error || "no result" }] : []));
+  const results = finished.filter((s) => s.ok && pick(s)).map((s) => pick(s)!);
   const complete = results.length === seeds.length && seeds.length > 0;
   const cell = complete ? cellResult(results, value) : null;
   const ratio = complete ? spreadRatio(results.map(value)) : null;
-  return { done: finished.length, total: seeds.length, failed, cell, profitPerDay: cell ? value(cell) : null, ratio, cantStart: cell && board === "ironman_strict" ? cantStartOf(cell) : null };
+  const prep = kind === "ironman" && cell ? readPrep(cell.prep) : null;
+  return { done: finished.length, total: seeds.length, failed, cell, profitPerDay: cell ? value(cell) : null, ratio, cantMake: prep && !prep.done ? prep : null };
 }
 
 // ---- Detail page helpers ----------------------------------------------------------------------
 
-/** A board's cell: matched by run kind (cells carry both), else by an old cell's board name. */
-export function findCell(cells: readonly FlowCell[], board: Board, tier: TierId, every: number): FlowCell | undefined {
-  const kind = BOARD_RUN_KIND[board];
-  return cells.find((c) => c.tier === tier && c.every === every && (c.runKind ? c.runKind === kind : boardFrom(c.board) === board));
+/** A cell kind's cell (matched by `cellKind`, else what an older API sent: run kind strict / borrow or a board name). */
+export function findCell(cells: readonly FlowCell[], kind: CellKind, tier: TierId, every: number): FlowCell | undefined {
+  return cells.find((c) => c.tier === tier && c.every === every && cellKindOfRow(c) === kind);
 }
 
 /**
@@ -898,10 +959,11 @@ export interface FrequencyPoint {
   effortAvg?: number | null;
 }
 
-/** Profit per day at every grid frequency of one board / tier (null where no cell exists). */
-export function profitByEvery(data: GameData, cells: readonly FlowCell[], board: Board, tier: TierId, s: Omit<ViewSettings, "board" | "now">): FrequencyPoint[] {
+/** Profit per day at every grid frequency of one cell kind / tier (null where no cell exists). */
+export function profitByEvery(data: GameData, cells: readonly FlowCell[], kind: CellKind, tier: TierId, s: Omit<ViewSettings, "board" | "now">): FrequencyPoint[] {
+  const board = boardOfCellKind(kind);
   return EVERY.map((every) => {
-    const cell = findCell(cells, board, tier, every);
+    const cell = findCell(cells, kind, tier, every);
     if (!cell) return { every, profitPerDay: null };
     const { result } = viewerResult(data, cell.median, s);
     return {
@@ -913,35 +975,39 @@ export function profitByEvery(data: GameData, cells: readonly FlowCell[], board:
 }
 
 export interface BoardNumber {
-  board: Board;
-  /** Null when that board has no cell at this tier / every yet. */
+  kind: CellKind;
+  /** Null when that cell kind has no cell at this tier / every yet. */
   profitPerDay: number | null;
   boughtPerDay: number;
   buildCost: number;
   slowing: boolean;
-  /** "From nothing" only: the flow never got going (the tile shows "Can't start" instead of coins). */
-  cantStart: CantStart | null;
+  /** "From nothing" only: how the starting items are made (null: unknown, an old cell). */
+  prep: PrepInfo | null;
 }
 
-/** The detail page's three numbers: each board's cell at `tier` (else max) and `every`, priced for the viewer. */
+/** The detail page's three numbers: each cell kind's cell at `tier` (else max) and `every`, priced for the viewer. */
 export function boardNumbers(data: GameData, cells: readonly FlowCell[], tier: TierId, every: number, s: Omit<ViewSettings, "board" | "now">): BoardNumber[] {
-  return BOARDS_IN_ORDER.map((board) => {
-    const cell = findCell(cells, board, tier, every) ?? findCell(cells, board, "max", every);
-    if (!cell) return { board, profitPerDay: null, boughtPerDay: 0, buildCost: 0, slowing: false, cantStart: null };
+  return CELL_KINDS_IN_ORDER.map((kind) => {
+    const board = boardOfCellKind(kind);
+    const cell = findCell(cells, kind, tier, every) ?? findCell(cells, kind, "max", every);
+    if (!cell) return { kind, profitPerDay: null, boughtPerDay: 0, buildCost: 0, slowing: false, prep: null };
     const { result } = viewerResult(data, cell.median, s);
     const v = valueResult(data, result, board, board === "normal" ? s.quotes : {}, s.pricing);
     return {
-      board,
+      kind,
       profitPerDay: v.profitPerDay,
       boughtPerDay: v.boughtPerDay,
       buildCost: v.buildCost,
       slowing: cell.median.slowing === true,
-      cantStart: board === "ironman_strict" ? cantStartOf(cell.median) : null,
+      prep: kind === "ironman" ? readPrep(cell.median.prep) : null,
     };
   });
 }
 
-const BOARDS_IN_ORDER: readonly Board[] = ["ironman_strict", "ironman_borrow", "normal"];
+const CELL_KINDS_IN_ORDER: readonly CellKind[] = ["ironman", "ironman_kit", "normal"];
+
+/** The cell kind the detail page and the ranking show for a board and the starting-items switch. */
+export const viewCellKind = (board: Board, kit: boolean): CellKind => cellKindOf(board, kit);
 
 /** The ramp's second-half rate priced on a board (null without ramp data). */
 export function steadyRate(data: GameData, r: RunResult, s: Pick<ViewSettings, "board" | "quotes" | "pricing" | "viewerStats" | "useMyStats">): number | null {

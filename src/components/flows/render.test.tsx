@@ -10,7 +10,7 @@ import { normalizeDetail } from "../../services/flowsService";
 import { AuthCallbackPage } from "../../pages/AuthCallbackPage";
 import { FlowDetailView, ModerationBox } from "../../pages/FlowDetailPage";
 import { AdminCards, AdminTable, FlowsAdminPage } from "../../pages/FlowsAdminPage";
-import { CantStartSection, FlowRowItem, FlowsPage } from "../../pages/FlowsPage";
+import { CantMakeSection, FlowRowItem, FlowsPage } from "../../pages/FlowsPage";
 import { DEFAULT_FILTERS, maxProfit, rankEntries, splitRanked, type ViewSettings } from "../../leaderboard/view";
 import type { Board } from "../../leaderboard/rules";
 import { DEFAULT_BAZAAR_PRICING } from "../../simulator";
@@ -38,7 +38,7 @@ class MemoryStorage {
   }
 }
 
-const fetchMock = vi.fn(async () => new Response(JSON.stringify(await mockList("ironman_strict", "max", 1)), { status: 200 }));
+const fetchMock = vi.fn(async () => new Response(JSON.stringify(await mockList("ironman", "max", 1)), { status: 200 }));
 beforeAll(() => {
   vi.stubGlobal("localStorage", new MemoryStorage());
   vi.stubGlobal("fetch", fetchMock);
@@ -57,102 +57,114 @@ const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/&#x27;/g, 
 const DATA = defaultGameData();
 
 /**
- * The mock list on a board, rendered like the page: ranked rows with the page's row component,
- * then (from nothing) the open "Can't start" section. `ranked` / `blocked` are the split rows.
+ * The mock list on a board (and the starting-items switch), rendered like the page: ranked rows
+ * with the page's row component, then (from nothing) the open "can't make its starting items"
+ * section. `ranked` / `blocked` are the split rows.
  */
-async function renderRows(board: Board) {
-  const list = await mockList(board, "max", 1);
-  const s: ViewSettings = { board, quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false, now: Date.now() };
-  const { ranked, cantStart } = splitRanked(rankEntries(DATA, list.entries, s, 1));
+async function renderRows(board: Board, kit = false) {
+  const list = await mockList(board, "max", 1, undefined, kit);
+  const s: ViewSettings = { board, kit, quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false, now: Date.now() };
+  const { ranked, cantMake } = splitRanked(rankEntries(DATA, list.entries, s, 1));
   const like = { liked: false, busy: false };
   const top = maxProfit(ranked);
-  const ranks = text(wrap(<ol>{ranked.map((r, i) => <FlowRowItem key={r.entry.id} row={r} top={top} every={1} board={board} index={i} like={like} sort="profit" />)}</ol>));
-  const section = cantStart.length ? text(wrap(<CantStartSection rows={cantStart} onSwitch={() => {}} defaultOpen />)) : "";
-  return { html: ranks + section, ranks, section, ranked, blocked: cantStart };
+  const ranks = text(wrap(<ol>{ranked.map((r, i) => <FlowRowItem key={r.entry.id} row={r} top={top} every={1} board={board} kit={kit} index={i} like={like} sort="profit" />)}</ol>));
+  const section = cantMake.length ? text(wrap(<CantMakeSection rows={cantMake} onSwitch={() => {}} defaultOpen />)) : "";
+  return { html: ranks + section, ranks, section, ranked, blocked: cantMake };
 }
 
 describe("leaderboard pages render", () => {
-  it("/flows renders the stats panel, the three boards, sorting, filters and a loading state", () => {
+  it("/flows renders the stats panel, the two boards, the starting-items switch, sorting, filters and a loading state", () => {
     const html = text(wrap(<FlowsPage />));
     for (const s of ["Flow rankings", "Your stats", "How often you log in", "Crop Growth", "Farming Fortune", "Per-crop fortune", "Import from Hypixel", "Farming armor", "Scored at", "Profit per effort", "Most forgiving", "Steady rate", "Search flows, authors, crops", "Loading the rankings..."]) {
       expect(html).toContain(s);
     }
-    for (const s of ["from nothing", "with starting items", "Normal", "Earning"]) expect(html).toContain(s);
+    for (const s of ["Ironman", "Normal", "Earning", "I have the starting items"]) expect(html).toContain(s);
+    expect(html).not.toMatch(/from nothing<\/button>|with starting items<\/button>/);
+    expect(html).toMatch(/role="switch" aria-checked="false"[^>]*>.{0,600}I have the starting items/s);
     expect(html).toContain('data-testid="filter-bar"');
     expect(html).toContain('data-testid="tier-meter"');
-    // "Least upkeep" and the starting-item filters only exist on the "with starting items" board.
-    expect(html).not.toContain("Least upkeep");
-    expect(html).not.toContain("No upkeep");
+    // Ironman (the default) has the upkeep sort and the starting-item filters in both modes.
+    for (const s of ["Least upkeep", "No upkeep", "I own the starting items"]) expect(html).toContain(s);
+    expect(html).toContain("each flow's starting items are made first");
     // Friendly inputs: Bioanalysis is a dropdown of the accessories, the upgrades are tier lists.
     for (const s of ["Bioanalysis", "Artifact · +15%", "Talisman · +5%", "Tier 9 · +50%", "Evergreen Chip"]) expect(html).toContain(s);
   });
 
-  it("/flows?board=ironman_borrow: the starting-item filters and the upkeep sort; ?board=ironman is from nothing", () => {
-    const html = text(wrap(<FlowsPage />, "/flows?board=ironman_borrow&noUpkeep=1&maxStart=60"));
-    for (const s of ["Least upkeep", "No upkeep", "Starting items", "≤ 60", "≤ 200", "I own the starting items", "already own the items"]) expect(html).toContain(s);
+  it("/flows?board=ironman&kit=1 and v2's links: the switch on, the filters kept; Normal has neither", () => {
+    const html = text(wrap(<FlowsPage />, "/flows?board=ironman&kit=1&noUpkeep=1&maxStart=60"));
+    for (const s of ["Least upkeep", "No upkeep", "Starting items", "≤ 60", "≤ 200", "I own the starting items", "As if you already own each flow's starting items"]) expect(html).toContain(s);
     expect(html).toMatch(/aria-pressed="true"[^>]*>No upkeep/);
-    const old = text(wrap(<FlowsPage />, "/flows?board=ironman"));
-    expect(old).toContain("A fresh ironman start");
-    expect(old).not.toContain("I own the starting items");
+    expect(html).toMatch(/role="switch" aria-checked="true"/);
+    // v2's links open the right view.
+    expect(text(wrap(<FlowsPage />, "/flows?board=ironman_borrow"))).toMatch(/role="switch" aria-checked="true"/);
+    const strict = text(wrap(<FlowsPage />, "/flows?board=ironman_strict"));
+    expect(strict).toMatch(/role="switch" aria-checked="false"/);
+    expect(strict).toContain("each flow's starting items are made first");
+    const normal = text(wrap(<FlowsPage />, "/flows?board=normal&kit=1"));
+    expect(normal).not.toContain("I have the starting items");
+    expect(normal).not.toContain("No upkeep");
+    expect(normal).toContain("Bazaar prices");
   });
 
-  it("ranking rows on 'from nothing': Kit +N% and Stall on ranked rows; flows that can't start are set apart", async () => {
-    const r = await renderRows("ironman_strict");
-    // 7 mock flows: Devourer and the aloe flow can't start from nothing; the other 5 are ranked 1-5.
-    expect(r.ranked.map((x) => x.rank)).toEqual([1, 2, 3, 4, 5]);
-    expect(r.blocked.map((x) => x.entry.id).sort()).toEqual(["mockAloe0002", "mockDevr0007"]);
+  it("ranking rows from nothing: the starting-items line, upkeep and Stall; flows whose starting items can't be made are set apart", async () => {
+    const r = await renderRows("ironman");
+    // 8 mock flows: the Godseed flow's starting items can't be made; the other 7 are ranked 1-7.
+    expect(r.ranked.map((x) => x.rank)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(r.blocked.map((x) => x.entry.id)).toEqual(["mockGods0009"]);
     expect(r.blocked.every((x) => x.rank === 0)).toBe(true);
-    expect(r.ranks).not.toContain("Devourer root farm");
-    expect(r.ranks).toMatch(/Kit \+\d+%/);
+    expect(r.ranks).not.toContain("Godseed showcase");
+    // The starting-items line: the kit, largest first, and how long the builder takes; the tooltip lists the whole kit.
+    expect(r.ranks).toContain('data-testid="starting-items"');
+    expect(r.ranks).toMatch(/Starting items: 165 Zombud, 116 Puffercloud · made in ~\d+ days/);
+    expect(r.ranks).toMatch(/Starting items: 141 Magic Jellybean, 2 All-in Aloe, 1 Blastberry · made in ~12 days/);
+    expect(r.ranks).toMatch(/Starting items: 26 Witherbloom, 15 Chloronite, 9 Magic Jellybean · made in ~5 days/);
+    expect(r.ranks).toContain('title="Starting items: 141 Magic Jellybean, 2 All-in Aloe, 1 Blastberry"');
+    expect(r.ranks).toContain("No starting items");
+    // Upkeep in both modes, Stall as before, and no v2 Kit chip.
+    expect(r.ranks).toContain('data-testid="row-upkeep"');
+    expect(r.ranks).toContain("93 Zombud + 91 Puffercloud /day");
     expect(r.ranks).toContain(">Stall<");
-    // The ranking has no step labels: the step id names it.
     expect(r.ranks).toContain("Plot 3, step-1: 5.6 Magic Jellybean cells empty on average.");
-    expect(r.html).not.toMatch(/Infinity|NaN/);
-    // The set-apart section: its count, the explanation, each row's reason and a way to the other board.
-    expect(r.section).toContain('data-testid="cant-start-section"');
-    expect(r.section).toContain("Can't start from nothing (2)");
-    expect(r.section).toContain("These flows place items they never grow, so a fresh ironman can't run them. They are ranked on");
-    expect(r.section).toContain("Never grows Puffercloud, Zombud: 65 cells empty on plot 1");
-    expect(r.section).toContain("Never grows Magic Jellybean: 28.8 cells empty on plot 1");
-    expect(r.section).toContain('href="/flows/mockDevr0007?board=ironman_borrow"');
-    expect(r.section).toContain("/day with starting items");
-    // No Kit or Stall chips there: the reason line replaces them.
-    expect(r.section).not.toMatch(/Kit |>Stall</);
+    expect(r.html).not.toMatch(/Kit \+|Kit needed|Infinity|NaN/);
+    // The set-apart section: its count, the explanation, the kit and the number with the starting items.
+    expect(r.section).toContain('data-testid="cant-make-section"');
+    expect(r.section).toContain("Can't make its starting items within the run (1)");
+    expect(r.section).toContain("The builder couldn't make these flows' starting items before the scored part of the run");
+    expect(r.section).toContain("Starting items: 1 Godseed · can't be made within the run");
+    expect(r.section).toContain('href="/flows/mockGods0009?board=ironman&kit=1"');
+    expect(r.section).toContain("/day with the starting items");
   });
 
-  it("ranking rows on 'with starting items': to start, then per day; nothing set apart", async () => {
-    const r = await renderRows("ironman_borrow");
-    const html = r.html;
+  it("ranking rows with the starting items: the same line, the from-nothing number in the tooltip, nothing set apart", async () => {
+    const r = await renderRows("ironman", true);
     expect(r.blocked).toHaveLength(0);
-    expect(r.ranked.map((x) => x.entry.id)).toContain("mockDevr0007");
-    expect(html).toContain('data-testid="row-kit"');
-    expect(html).toContain("281 items to start");
-    expect(html).toContain('title="To start with: 281 items: 165 Zombud, 116 Puffercloud"');
-    expect(html).toContain('title="Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day."');
+    expect(r.ranked.map((x) => x.entry.id)).toContain("mockGods0009");
+    const html = r.html;
+    expect(html).toMatch(/Starting items: 165 Zombud, 116 Puffercloud · made in/);
+    expect(html).toMatch(/title="From nothing: [\d.]+[kMB]?\/day \(making the starting items first\)"/);
     expect(html).toContain("93 Zombud + 91 Puffercloud /day");
-    expect(html).toContain("nothing per day");
-    expect(html).toContain("Nothing to start with");
-    expect(html).not.toContain("Kit ");
-    expect(html).not.toContain("Can't start");
+    expect(html).toContain('href="/flows/mockDevr0007?board=ironman&kit=1"');
+    expect(html).not.toContain("Can't make its starting items");
   });
 
   it("ranking rows on Normal: no ironman parts; links keep the board", async () => {
     const { html, blocked } = await renderRows("normal");
     expect(blocked).toHaveLength(0);
     expect(html).toContain("coins / day");
-    expect(html).not.toContain('data-testid="row-kit"');
+    expect(html).not.toContain('data-testid="row-upkeep"');
+    expect(html).not.toContain('data-testid="starting-items"');
     expect(html).not.toMatch(/Kit |>Stall</);
     expect(html).toContain('href="/flows/mockDevr0007?board=normal"');
   });
 
   it("the filter bar on each board, and the owned-items import", () => {
     const none = () => {};
-    const strict = text(wrap(<FilterBar board="ironman_strict" filters={{ ...DEFAULT_FILTERS, earning: ["chorus_fruit"] }} earningOptions={["chorus_fruit"]} owned={null} onChange={none} onImportOwned={none} />));
-    expect(strict).toContain("Chorus Fruit");
-    expect(strict).toContain("top 3");
-    expect(strict).toContain("Clear filters");
-    expect(strict).not.toContain("No upkeep");
-    const borrow = text(wrap(<FilterBar board="ironman_borrow" filters={DEFAULT_FILTERS} earningOptions={[]} owned={{ username: "Ke5o", profile: "Banana", items: { zombud: 3 }, at: 1 }} onChange={none} onImportOwned={none} />));
+    const normal = text(wrap(<FilterBar board="normal" filters={{ ...DEFAULT_FILTERS, earning: ["chorus_fruit"] }} earningOptions={["chorus_fruit"]} owned={null} onChange={none} onImportOwned={none} />));
+    expect(normal).toContain("Chorus Fruit");
+    expect(normal).toContain("top 3");
+    expect(normal).toContain("Clear filters");
+    expect(normal).not.toContain("No upkeep");
+    const borrow = text(wrap(<FilterBar board="ironman" filters={DEFAULT_FILTERS} earningOptions={[]} owned={{ username: "Ke5o", profile: "Banana", items: { zombud: 3 }, at: 1 }} onChange={none} onImportOwned={none} />));
     for (const s of ["No upkeep", "Starting items", "Any", "I own the starting items", "Import your items again"]) expect(borrow).toContain(s);
     const panel = text(wrap(<OwnedImportPanel owned={{ username: "Ke5o", profile: "Banana", items: { zombud: 3 }, at: 1 }} onSave={none} onClose={none} />));
     for (const s of ["Items you own", "Minecraft username", "Look up", "Forget my items", "1 item types from Ke5o (Banana)"]) expect(panel).toContain(s);
@@ -164,10 +176,17 @@ describe("leaderboard pages render", () => {
     for (const s of ["Chloronite engine with wheat filler", "Open in simulator", "Copy link", "Profit by online frequency", "forgiving", "What you earn", "Where it comes from", "Top earners", "The flow", "Plot 1", "Consistency across seeds", "Work per login", "Description", "Mutations / day", "Seed spread"]) {
       expect(html).toContain(s);
     }
-    // Three numbers, one per board; the current (the default: from nothing) highlighted.
+    // Three numbers: from nothing, with the starting items, normal; the current (the default: from nothing) highlighted.
     expect(html).toContain('data-testid="board-numbers"');
-    for (const s of ["Ironman · from nothing", "Ironman · with starting items", "Normal · Bazaar"]) expect(html).toContain(s);
+    for (const s of ["Ironman · from nothing", "Ironman · with the starting items", "Normal · Bazaar"]) expect(html).toContain(s);
     expect(html).toMatch(/aria-selected="true"[^>]*>.{0,400}Ironman · from nothing/s);
+    // The builder line under the numbers.
+    expect(html).toContain('data-testid="builder-line"');
+    expect(html).toMatch(/Starting items: 6 Magic Jellybean, 4 Chloronite · made in ~3 days/);
+    expect(html).toContain("Starting items made with the builder in ~3 days (stitched)");
+    expect(html).toContain("starting items made in 3 days");
+    // "What you need" on both ironman variants.
+    expect(html).toContain('data-testid="what-you-need"');
     expect(html).toContain("Layout complete after ~");
     expect(html).not.toMatch(/paid back|on credit|Infinity|NaN/i);
     // Restricted Markdown: headings and emphasis render; links are unwrapped to text.
@@ -180,54 +199,56 @@ describe("leaderboard pages render", () => {
     expect(html).not.toContain(">Report<");
   });
 
-  it("/flows/:id?board=ironman_borrow: What you need, upkeep, used up, returned each session", async () => {
+  it("/flows/:id with the starting items (and v2's ?board=ironman_borrow): What you need, upkeep, used up, returned each session", async () => {
     const devourer = normalizeDetail((await mockDetail("mockDevr0007"))!);
-    const html = text(wrap(<FlowDetailView detail={devourer} onChange={() => {}} onReload={() => {}} />, "/flows/mockDevr0007?board=ironman_borrow"));
-    expect(html).toContain('data-testid="what-you-need"');
-    for (const s of [
-      "What you need",
-      "Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day.",
-      "To start with",
-      "needs 165",
-      "bring 207",
-      "uses up",
-      "98</span> Zombud once",
-      "Then per day (upkeep)",
-      "93</span> Zombud / day",
-    ]) expect(html).toContain(s);
-    // The current board is the highlighted number; "from nothing" can't start.
-    expect(html).toMatch(/aria-selected="true"[^>]*>.{0,400}Ironman · with starting items/s);
-    expect(html).toContain('data-testid="board-cant-start"');
-    expect(html).not.toContain('data-testid="cant-start-note"');
+    for (const url of ["/flows/mockDevr0007?board=ironman&kit=1", "/flows/mockDevr0007?board=ironman_borrow"]) {
+      const html = text(wrap(<FlowDetailView detail={devourer} onChange={() => {}} onReload={() => {}} />, url));
+      expect(html).toContain('data-testid="what-you-need"');
+      for (const s of [
+        "What you need",
+        "Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day.",
+        "To start with",
+        "needs 165",
+        "bring 207",
+        "uses up",
+        "98</span> Zombud once",
+        "Then per day (upkeep)",
+        "93</span> Zombud / day",
+      ]) expect(html).toContain(s);
+      // The current number is "with the starting items"; the builder line says it ran real (upkeep).
+      expect(html).toMatch(/aria-selected="true"[^>]*>.{0,400}Ironman · with the starting items/s);
+      expect(html).toMatch(/Starting items made with the builder in ~\d+ days \(real run\)/);
+    }
     const aloe = normalizeDetail((await mockDetail("mockAloe0002"))!);
-    const a = text(wrap(<FlowDetailView detail={aloe} onChange={() => {}} onReload={() => {}} />, "/flows/mockAloe0002?board=ironman_borrow"));
+    const a = text(wrap(<FlowDetailView detail={aloe} onChange={() => {}} onReload={() => {}} />, "/flows/mockAloe0002?board=ironman&kit=1"));
     expect(a).toContain("returned each session");
     expect(a).toContain("None: it gives back everything it borrows.");
   });
 
-  it("/flows/:id on from nothing for a flow that can't start: the 'Can't start' tile and note, the empty cells kept", async () => {
+  it("/flows/:id from nothing: the number, the builder line, What you need and the empty cells; a kit that can't be made is said so", async () => {
     const devourer = normalizeDetail((await mockDetail("mockDevr0007"))!);
-    const html = text(wrap(<FlowDetailView detail={devourer} onChange={() => {}} onReload={() => {}} />, "/flows/mockDevr0007?board=ironman"));
-    expect(html).toContain('data-testid="board-cant-start"');
-    expect(html).toMatch(/data-testid="board-cant-start"[^>]*>.{0,300}Can't start.{0,200}Never grows Puffercloud, Zombud: 65 cells empty on plot 1/s);
-    expect(html).toContain('data-testid="cant-start-note"');
-    expect(html).toContain("Can't start from nothing:</b> it places Puffercloud and Zombud but never grows them (65 cells empty on plot 1). See");
-    expect(html).not.toContain("Top earners");
-    expect(html).toContain("for what it makes when you own them.");
-    // The ranking-related bits are replaced: no Kit / Stall / Slowing chips, ramp line or forgiving.
-    expect(html).not.toMatch(/Kit needed|Kit \+|>Stall<|>Slowing<|Layout complete|Layout never/);
-    // The empty-cells panel stays (author feedback).
-    for (const s of ["Empty layout cells", 'data-testid="empty-cells"', "Plot 1, step 1: 38 Zombud cells empty on average", "Plot 1, step 1: 27 Puffercloud cells empty on average"]) expect(html).toContain(s);
-    expect(html).not.toContain('data-testid="what-you-need"');
-    // A flow that starts keeps its number and chips: Stall on the Chloronite engine.
+    const html = text(wrap(<FlowDetailView detail={devourer} onChange={() => {}} onReload={() => {}} />, "/flows/mockDevr0007?board=ironman_strict"));
+    expect(html).toMatch(/aria-selected="true"[^>]*>.{0,400}Ironman · from nothing/s);
+    expect(html).toContain('data-testid="what-you-need"');
+    expect(html).toContain("Top earners");
+    for (const s of ["Empty layout cells", 'data-testid="empty-cells"', "Plot 1, step 1: 30 Zombud cells empty on average"]) expect(html).toContain(s);
+    expect(html).not.toMatch(/Kit needed|Kit \+|Can't start/);
+    // A flow that stalls keeps its chips.
     const chloro = normalizeDetail((await mockDetail("mockChloro01"))!);
-    const c = text(wrap(<FlowDetailView detail={chloro} onChange={() => {}} onReload={() => {}} />, "/flows/mockChloro01?board=ironman_strict"));
-    expect(c).not.toContain("Can't start");
+    const c = text(wrap(<FlowDetailView detail={chloro} onChange={() => {}} onReload={() => {}} />, "/flows/mockChloro01?board=ironman"));
     expect(c).toContain(">Stall<");
     expect(c).toContain("Plot 3, step 1: 5.6 Magic Jellybean cells empty on average");
-    // A flow with no empty cells hides the panel.
+    // The Godseed flow: the builder can't make its kit within the run.
+    const gods = normalizeDetail((await mockDetail("mockGods0009"))!);
+    const g = text(wrap(<FlowDetailView detail={gods} onChange={() => {}} onReload={() => {}} />, "/flows/mockGods0009?board=ironman"));
+    expect(g).toContain("can't make its starting items in time");
+    expect(g).toContain("The builder couldn't make the starting items within the run (1 items)");
+    // A flow with no empty cells hides the panel; one with no starting items says so.
     const veil = normalizeDetail((await mockDetail("mockVeil0008"))!);
-    expect(text(wrap(<FlowDetailView detail={veil} onChange={() => {}} onReload={() => {}} />))).not.toContain("Empty layout cells");
+    const v = text(wrap(<FlowDetailView detail={veil} onChange={() => {}} onReload={() => {}} />));
+    expect(v).not.toContain("Empty layout cells");
+    expect(v).toContain("No starting items");
+    expect(v).toContain("no starting items needed");
   });
 
   it("an old entry (pre-v2 'ironman' cells with payback fields) still renders", async () => {
@@ -236,10 +257,11 @@ describe("leaderboard pages render", () => {
       ...d,
       boards: ["ironman"] as unknown as typeof d.boards,
       cells: d.cells
-        .filter((c) => c.runKind === "strict")
+        .filter((c) => c.cellKind === "ironman")
         .map((c) => {
-          const old: Record<string, unknown> = { ...c, board: "ironman", median: { ...c.median, ramp: undefined, starved: undefined, peakDebt: { glasscorn: 1 }, paybackCycle: 120, solvent: true } };
+          const old: Record<string, unknown> = { ...c, board: "ironman", median: { ...c.median, ramp: undefined, starved: undefined, prep: undefined, peakDebt: { glasscorn: 1 }, paybackCycle: 120, solvent: true } };
           delete old.runKind;
+          delete old.cellKind;
           return old;
         }) as unknown as typeof d.cells,
       seeds: [],
@@ -322,10 +344,10 @@ describe("submit dialog renders", () => {
     expect(html).toContain("0 / 60");
     expect(html).toContain("0 / 2000");
     expect(html).toContain("Leave an empty line to start a new paragraph");
-    expect(html).toContain("Test with 3 random seeds per board");
+    expect(html).toContain("Test with 3 random seeds");
     expect(html).toContain("Normal too");
     expect(html).toContain("The score averages a secret window just after this length.");
-    for (const s of ["Compare with", "From nothing", "With starting items"]) expect(html).toContain(s);
+    for (const s of ["Compare with", "Strict (no borrowing)", "With the starting items", "builder flow makes its starting items first"]) expect(html).toContain(s);
     // No board choice and no payback text any more.
     expect(html).not.toMatch(/Boards<|Pick at least one board|paid back|PAYBACK|on credit/i);
     // Logged out: the footer's action is the Discord login, not a disabled Submit.
@@ -347,44 +369,49 @@ describe("submit dialog renders", () => {
     expect(html).toContain("forceEffects() is a debugging tool");
   });
 
-  it("the local test panels: numbers per board, spread, starting items, upkeep, used up, starved cells, seed errors", async () => {
-    const list = async (b: Board) => (await mockList(b, "max", 1)).entries.find((e) => e.id === "mockDevr0007")!.cell!;
-    const strict = await list("ironman_strict");
-    const borrow = await list("ironman_borrow");
-    const ok = (r: typeof strict) => ({ seed: 1, ok: true, error: null, result: r, wallMs: 1 });
+  it("the local test panels: both ironman numbers per seed, the builder, spread, starting items, upkeep, used up, starved cells, seed errors", async () => {
+    const cellOf = async (kit: boolean, id = "mockDevr0007") => (await mockList("ironman", "max", 1, undefined, kit)).entries.find((e) => e.id === id)!.cell!;
+    const kitCell = await cellOf(true);
+    const fromNothing = await cellOf(false);
+    const never = await cellOf(false, "mockGods0009");
+    const ok = (r: typeof kitCell, f: typeof kitCell | null) => ({ seed: 1, ok: true, error: null, result: r, fromNothing: f, wallMs: 1 });
     const initial: TestState = {
       running: false,
       every: 1,
       cycles: 2000,
       error: null,
       kinds: [
-        { runKind: "strict", progress: [1, 1, 1], outcomes: [ok(strict), ok(strict), ok(strict)] },
-        { runKind: "borrow", progress: [1, 1, 1], outcomes: [ok(borrow), ok(borrow), ok(borrow)] },
-        { runKind: "normal", progress: [1, 1, 0.4], outcomes: [ok(strict), { seed: 2, ok: false, error: "script error: boom at cycle 12", result: null, wallMs: 1 }, undefined] },
+        { runKind: "ironman", progress: [1, 1, 1], outcomes: [{ ...ok(kitCell, fromNothing), stitchCheck: { stitched: 1, real: 1.2, diff: 0.2, ok: false } }, ok(kitCell, fromNothing), ok(kitCell, fromNothing)] },
+        { runKind: "normal", progress: [1, 1, 0.4], outcomes: [ok(kitCell, null), { seed: 2, ok: false, error: "script error: boom at cycle 12", result: null, wallMs: 1 }, undefined] },
       ],
     };
     const html = text(wrap(<SubmitFlowPanel scenario={sc} onChange={() => {}} onClose={() => {}} initialTest={initial} />));
     expect(html).toContain('data-testid="seed-test"');
-    for (const k of ["strict", "borrow", "normal"]) expect(html).toContain(`data-testid="test-${k}"`);
+    for (const k of ["ironman", "ironman_kit", "normal"]) expect(html).toContain(`data-testid="test-${k}"`);
     for (const s of [
+      "From nothing",
+      "With the starting items",
       "Seed 2 failed: script error: boom at cycle 12",
       "A failed seed makes the server reject the submission.",
       "2/3 seeds",
       "Spread (best / median): 1.00×",
-      // The strict devourer run can't start: said instead of only the number.
-      'data-testid="test-cant-start"',
-      "Can't start from nothing: never grows Puffercloud, Zombud: 65 cells empty on plot 1.",
+      'data-testid="test-prep"',
+      "(real run)",
+      "differed from a real run by 20%",
       "Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day.",
       "To start with: <span",
       "281 items: 165 Zombud, 116 Puffercloud",
       "93 Zombud + 91 Puffercloud /day",
       "Used up once: 98 Zombud, 11 Puffercloud",
-      "Plot 1, step-1: 38 Zombud cells empty on average",
     ]) {
       expect(html).toContain(s);
     }
-    expect(html).toMatch(/data-testid="test-strict".{0,300}Can't start/s);
-    expect(html).not.toMatch(/Infinity|NaN/);
+    expect(html).not.toMatch(/Infinity|NaN|Can't start/);
+    // A kit the builder can't make: said on the from-nothing card.
+    const cant: TestState = { ...initial, kinds: [{ runKind: "ironman", progress: [1, 1, 1], outcomes: [ok(kitCell, never), ok(kitCell, never), ok(kitCell, never)] }] };
+    const c = text(wrap(<SubmitFlowPanel scenario={sc} onChange={() => {}} onClose={() => {}} initialTest={cant} />));
+    expect(c).toContain('data-testid="test-cant-make"');
+    expect(c).toContain("The builder can't make the starting items (1 Godseed) within the run");
   });
 });
 
@@ -393,7 +420,7 @@ describe("simulator settings: the leaderboard rules", () => {
     const base = scenario([flow([step("a", { code: LAYOUT_A_CODE }, [])])]);
     const ruled = { ...base, settings: { ...base.settings, config: { ...base.settings.config, freePlacedItems: ["dead_plant", "fermento"], setupFromStock: true, leaderboardRules: true } } };
     const html = text(wrap(<SettingsPanel scenario={ruled} onChange={() => {}} />));
-    for (const s of ["Apply leaderboard rules", "From nothing", "With starting items", "Normal"]) expect(html).toContain(s);
+    for (const s of ["Apply leaderboard rules", "Strict (no borrowing)", "With the starting items", "From nothing (builder first)", "Normal"]) expect(html).toContain(s);
     // The Advanced tab holds the notes; render the panel there.
     expect(html).toContain("Advanced (3)");
   });

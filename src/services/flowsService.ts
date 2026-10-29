@@ -1,11 +1,12 @@
 /**
  * Typed wrappers for the leaderboard endpoints (docs/plans/flow-leaderboard.md §6.5). The list is
- * cached in memory per (board, tier, every, plots) for the session; `force` refetches (Refresh).
+ * cached in memory per (board, kit, tier, every, plots) for the session; `force` refetches (Refresh).
  * In development, `localStorage["skyshards-flows-mock"] = "1"` serves canned data (flowsMock.ts).
  */
 import type { FlowCell, FlowDetail, FlowListResponse, FlowSeedResult, FlowStatusResponse, FlowSubmitBody } from "../leaderboard/api";
 import type { RunResult } from "../leaderboard/result";
-import { BOARD_RUN_KIND, BOARDS, boardFrom, RUN_KIND_BOARD, runKindFrom, type Board, type RunKind } from "../leaderboard/rules";
+import { BOARDS, CELL_KIND_RUN_KIND, cellKindFrom, type Board, type CellKind, type RunKind } from "../leaderboard/rules";
+import { boardOfCellKind, readPrep } from "../leaderboard/view";
 import type { TierId } from "../leaderboard/tiers";
 import { SHARE_BASE_URL } from "../utilities/shareLink";
 import { ApiError, apiFetch } from "./authService";
@@ -15,6 +16,8 @@ const mock = () => import.meta.env.DEV && flowsMockEnabled();
 
 export interface ListQuery {
   board: Board;
+  /** Ironman board: "I have the starting items" (the `ironman_kit` cells). */
+  kit?: boolean;
   tier: TierId;
   every: number;
   /** 1, 2 or 3; undefined = any. */
@@ -22,7 +25,7 @@ export interface ListQuery {
 }
 
 const listCache = new Map<string, Promise<FlowListResponse>>();
-const listKey = (q: ListQuery) => `${q.board}|${q.tier}|${q.every}|${q.plots ?? "any"}`;
+const listKey = (q: ListQuery) => `${q.board}|${q.board === "ironman" && q.kit ? 1 : 0}|${q.tier}|${q.every}|${q.plots ?? "any"}`;
 
 export function listFlows(q: ListQuery, opts: { force?: boolean } = {}): Promise<FlowListResponse> {
   const key = listKey(q);
@@ -30,10 +33,12 @@ export function listFlows(q: ListQuery, opts: { force?: boolean } = {}): Promise
     const hit = listCache.get(key);
     if (hit) return hit;
   }
+  const kit = q.board === "ironman" && !!q.kit;
   const params = new URLSearchParams({ board: q.board, tier: q.tier, every: String(q.every) });
+  if (kit) params.set("kit", "1");
   if (q.plots) params.set("plots", String(q.plots));
   const p = mock()
-    ? mockList(q.board, q.tier, q.every, q.plots)
+    ? mockList(q.board, q.tier, q.every, q.plots, kit)
     : apiFetch(`/flows?${params}`, {}, { auth: false }).then((r) => r.json() as Promise<FlowListResponse>);
   const guarded = p.then((res) => ({ engineVersion: res?.engineVersion ?? "", entries: normalizeListEntries(res?.entries), truncated: res?.truncated === true }));
   listCache.set(key, guarded);
@@ -116,6 +121,8 @@ export function normalizeResult(raw: unknown): RunResult | null {
     result.ramp = { complete: c === null ? null : isNum(c) ? c : null, produced: counts(src.ramp.produced) ?? {}, bought: counts(src.ramp.bought) ?? {} };
   }
   if (src.slowing === true) result.slowing = true;
+  const prep = readPrep(src.prep);
+  if (prep) result.prep = prep;
   const cs = src.cantStart as unknown;
   if (isObj(cs) && isNum(cs.plot) && isNum(cs.cells) && Array.isArray(cs.items)) {
     result.cantStart = { plot: cs.plot, cells: cs.cells, items: cs.items.filter((x): x is string => typeof x === "string") };
@@ -123,12 +130,20 @@ export function normalizeResult(raw: unknown): RunResult | null {
   return result;
 }
 
-/** A cell's or seed row's run kind and board: `runKind` when sent, else the (possibly old) board name. */
-function kindAndBoard(row: Record<string, unknown>): { runKind: RunKind; board: Board } | null {
-  const kind = runKindFrom(row.runKind);
-  if (kind && row.runKind === kind) return { runKind: kind, board: RUN_KIND_BOARD[kind] };
-  const board = boardFrom(row.board);
-  return board ? { runKind: BOARD_RUN_KIND[board], board } : null;
+/**
+ * A cell's or seed row's cell kind, run kind and board: `cellKind` when sent, else what older APIs
+ * sent (v2's run kind strict = from nothing, borrow = with the starting items, or a board name; the
+ * pre-v2 board "ironman" is from nothing).
+ */
+function kindAndBoard(row: Record<string, unknown>): { cellKind: CellKind; runKind: RunKind; board: Board } | null {
+  const kind = cellKindFrom(row.cellKind) ?? cellKindFrom(row.runKind) ?? cellKindFrom(row.board) ?? (row.board === "ironman" ? "ironman" : null);
+  return kind ? { cellKind: kind, runKind: CELL_KIND_RUN_KIND[kind], board: boardOfCellKind(kind) } : null;
+}
+
+/** A job's run kind and board (v2's strict / borrow jobs are ironman). */
+function jobKind(row: Record<string, unknown>): { runKind: RunKind; board: Board } | null {
+  const kind = cellKindFrom(row.runKind) ?? cellKindFrom(row.board) ?? (row.runKind === "ironman" || row.board === "ironman" ? "ironman" : null);
+  return kind ? { runKind: CELL_KIND_RUN_KIND[kind], board: boardOfCellKind(kind) } : null;
 }
 
 /** One seed row as a `FlowSeedResult` with a full `result`, or null for a failed run without counts. */
@@ -150,9 +165,9 @@ function normalizeCell(raw: unknown): FlowCell | null {
 }
 
 /**
- * Defensive shape fixes for the detail response: cells and seeds get a run kind and a v2 board
- * (old `ironman` cells are the "from nothing" board's), cells without a median are dropped, and
- * every flow is on all three boards.
+ * Defensive shape fixes for the detail response: cells and seeds get a cell kind, run kind and v3
+ * board (v2's strict cells are "from nothing", borrow ones "with the starting items"), cells without
+ * a median are dropped, and every flow is on both boards.
  */
 export function normalizeDetail(d: FlowDetail): FlowDetail {
   return {
@@ -163,24 +178,30 @@ export function normalizeDetail(d: FlowDetail): FlowDetail {
   };
 }
 
-/** List rows: drop the retired payback fields and malformed v2 fields from each cell. */
-function normalizeListEntries(entries: unknown): FlowListResponse["entries"] {
+/** List rows: drop the retired payback fields and malformed fields from each cell; `altPoint` / `borrowPoint` / `prep` checked. */
+export function normalizeListEntries(entries: unknown): FlowListResponse["entries"] {
   if (!Array.isArray(entries)) return [];
   return entries
     .filter(isObj)
     .map((e) => {
       const entry = e as unknown as FlowListResponse["entries"][number];
-      return { ...entry, cell: entry.cell ? normalizeResult(entry.cell) : null, borrowPoint: isObj(entry.borrowPoint) ? entry.borrowPoint : null };
+      return {
+        ...entry,
+        cell: entry.cell ? normalizeResult(entry.cell) : null,
+        altPoint: isObj(entry.altPoint) ? entry.altPoint : null,
+        borrowPoint: isObj(entry.borrowPoint) ? entry.borrowPoint : null,
+        prep: readPrep(entry.prep),
+      };
     });
 }
 
-/** Status jobs get a v2 board from their run kind (older APIs sent `board: "ironman"`). */
+/** Status jobs get a v3 run kind and board (v2's strict / borrow jobs are ironman; older APIs sent `board` only). */
 export function normalizeStatus(s: FlowStatusResponse): FlowStatusResponse {
   const jobs: unknown[] = Array.isArray(s?.jobs) ? s.jobs : [];
   return {
     ...s,
     jobs: jobs.filter(isObj).map((j) => {
-      const kb = kindAndBoard(j);
+      const kb = jobKind(j);
       return { ...(j as unknown as FlowStatusResponse["jobs"][number]), ...(kb ?? {}) };
     }),
   };

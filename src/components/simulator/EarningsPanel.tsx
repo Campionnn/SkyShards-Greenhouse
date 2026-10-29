@@ -16,7 +16,7 @@ const data = defaultGameData();
 export const EarningsPanel: React.FC<{ summary: RunSummary; quotes: Record<string, BazaarQuote> | null; pricing: BazaarPricing | null }> = ({ summary, quotes, pricing }) => {
   const [only, setOnly] = useState<"mutations" | "all">("mutations");
   const days = summary.elapsedSeconds / 86400;
-  const board = quotes ? "normal" : "ironman_strict";
+  const board = quotes ? "normal" : "ironman";
   const lines = useMemo(() => {
     if (!summary.bySource || !(days > 0)) return [];
     const perDay = Object.fromEntries(Object.entries(summary.bySource).map(([k, m]) => [k, Object.fromEntries(Object.entries(m).map(([i, n]) => [i, n / days]))]));

@@ -4,13 +4,18 @@
  * test restarted).
  */
 import type { RunResult } from "../result";
+import type { StitchCheck } from "../verify";
 import type { LocalTestRequest, LocalTestResponse } from "./protocol";
 
 export interface SeedOutcome {
   seed: number;
   ok: boolean;
   error: string | null;
+  /** Ironman: the borrow run ("with the starting items"); normal: the normal run. */
   result: RunResult | null;
+  /** Ironman: the "from nothing" timeline. */
+  fromNothing?: RunResult | null;
+  stitchCheck?: StitchCheck;
   wallMs: number;
 }
 
@@ -46,8 +51,8 @@ export class LocalTestPool {
     this.create = create;
   }
 
-  /** Run every seed; resolves with the outcomes in seed order (rejects only when cancelled). */
-  run(base: Omit<LocalTestRequest, "reqId" | "seed">, seeds: number[], cb: LocalTestCallbacks = {}): Promise<SeedOutcome[]> {
+  /** Run every seed; resolves with the outcomes in seed order (rejects only when cancelled). `checks[i]` marks seed i as a stitch-check run. */
+  run(base: Omit<LocalTestRequest, "reqId" | "seed" | "check">, seeds: number[], cb: LocalTestCallbacks = {}, checks: readonly boolean[] = []): Promise<SeedOutcome[]> {
     this.cancel();
     this.cancelled = false;
     const outcomes: (SeedOutcome | undefined)[] = seeds.map(() => undefined);
@@ -74,13 +79,18 @@ export class LocalTestPool {
         worker.onmessage = (event) => {
           const m = event.data;
           if (m.type === "progress") cb.onProgress?.(index, m.total ? m.done / m.total : 0);
-          else done({ seed: seeds[index], ok: m.ok, error: m.error, result: m.result, wallMs: m.wallMs });
+          else {
+            const o: SeedOutcome = { seed: seeds[index], ok: m.ok, error: m.error, result: m.result, wallMs: m.wallMs };
+            if (m.fromNothing !== undefined) o.fromNothing = m.fromNothing;
+            if (m.stitchCheck) o.stitchCheck = m.stitchCheck;
+            done(o);
+          }
         };
         worker.onerror = (event) => {
           event.preventDefault?.();
           done({ seed: seeds[index], ok: false, error: event.message || "The test worker crashed.", result: null, wallMs: 0 });
         };
-        worker.postMessage({ ...base, reqId: index, seed: seeds[index] });
+        worker.postMessage({ ...base, reqId: index, seed: seeds[index], ...(checks[index] ? { check: true } : {}) });
       };
       this.rejectActive = reject;
       for (let i = 0; i < Math.min(this.size, seeds.length); i++) startOne();
