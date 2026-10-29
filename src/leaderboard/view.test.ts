@@ -410,10 +410,18 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(prepText(noMade)).toMatch(/made in ~5 days$/);
     expect(kitListText(maga.kit)).toBe("41 Duskbloom, 7 Shadevine, 6 Dustgrain, 3 Cindershade, 2 Zombud");
     expect(kitListText({})).toBe("None");
-    expect(builderText(maga)).toBe("Starting items made with the builder in ~4 days (stitched)");
-    expect(builderText({ ...maga, mode: "real" })).toBe("Starting items made with the builder in ~4 days (real run)");
-    expect(builderText({ ...maga, done: false })).toMatch(/couldn't make the starting items within the run \(59 items\)/);
+    expect(builderText(maga)).toBe("The site's builder makes the starting items in ~4 days, then this flow runs from exactly them. The builder's crops meanwhile count.");
+    expect(builderText({ ...maga, credit: "flow" })).toMatch(/The builder earns more than this flow meanwhile, so those days count at this flow's own rate\.$/);
+    expect(builderText({ ...maga, credit: "kit" })).toMatch(/Capped at its number with the starting items\.$/);
+    expect(builderText({ ...maga, done: false, have: { zombud: 1, duskbloom: 41 } })).toBe(
+      "The site's builder couldn't make the starting items before the scored part of the run (it had 0 of 7 Shadevine, 0 of 6 Dustgrain, 0 of 3 Cindershade, 1 of 2 Zombud), so this flow has no from-nothing number."
+    );
     expect(builderText({ kit: {}, cycles: 0, days: 0, done: true, mode: "stitched" })).toMatch(/^No starting items/);
+    // A range when the seeds differ more than 2×, and how many runs made it.
+    expect(prepText({ ...maga, madeDays: 115, madeRange: [32, 170], doneSeeds: [5, 5] })).toMatch(/made in ~115 days \(32–170\)$/);
+    expect(prepText({ ...maga, madeRange: [4, 5], doneSeeds: [3, 5] })).toMatch(/made in ~4 days on 3 of 5 runs$/);
+    expect(readPrep({ ...maga, credit: "flow", slow: true, have: { zombud: 1.7 }, madeRange: [4, 5], doneSeeds: [5, 5] })).toMatchObject({ credit: "flow", slow: true, have: { zombud: 1 }, madeRange: [4, 5], doneSeeds: [5, 5] });
+    expect(readPrep({ ...maga, credit: "nope", madeRange: [1] })).not.toHaveProperty("credit");
     // readPrep checks the shape (old or malformed cells have none).
     expect(readPrep(maga)).toEqual(maga);
     expect(readPrep({ kit: { a: 1.2 }, cycles: 25, days: 1, done: true })).toEqual({ kit: { a: 2 }, cycles: 25, days: 1, done: true, mode: "stitched" });

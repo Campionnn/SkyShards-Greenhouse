@@ -173,6 +173,12 @@ export interface FlowRow {
    * false). Such rows are not ranked (`rank` 0): the page lists them apart.
    */
   cantMake: PrepInfo | null;
+  /**
+   * "From nothing": the flow stops once its starting items run out (a slowing cell worth under
+   * STOPS_SHARE of the same flow with the starting items, e.g. a Devourer farm that needs ~91 Zombud a
+   * day it never grows). Listed apart with `cantMake`, not ranked.
+   */
+  stops: boolean;
   /** Ironman: the other ironman variant at the same tier / every (`altPoint`), priced; null when unknown. */
   altPerDay: number | null;
   /** Ironman: how the starting items are made (the "from nothing" cell's `prep`); null when unknown. */
@@ -324,6 +330,7 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
       steadyPerDay: null,
       search,
       cantMake: null,
+      stops: false,
       altPerDay: null,
       prep: s.board === "ironman" ? prepOf(entry, null, !!s.kit) : null,
     };
@@ -333,11 +340,13 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
   const pricing = s.pricing ?? DEFAULT_BAZAAR_PRICING;
   const v = valueResult(data, result, s.board, quotes, pricing);
   const alt = s.board === "ironman" ? altPointOf(entry, !!s.kit) : null;
+  const altPerDay = alt ? pricePoint(data, alt, s) : null;
   const prep = s.board === "ironman" ? prepOf(entry, cell, !!s.kit) : null;
   return {
     ...base,
     cantMake: s.board === "ironman" && !s.kit && prep && !prep.done ? prep : null,
-    altPerDay: alt ? pricePoint(data, alt, s) : null,
+    stops: s.board === "ironman" && !s.kit && stopsAt(cell.slowing === true, v.profitPerDay, altPerDay),
+    altPerDay,
     prep,
     sources: earningItems(data, result.bySource, s.board, quotes, pricing),
     stall: stallInfo(cell.starved),
@@ -365,6 +374,16 @@ function altPointOf(entry: FlowListEntry, kit: boolean): CurvePoint | null {
   return p && typeof p === "object" ? p : null;
 }
 
+/** A "from nothing" cell that is slowing and worth under this share of the same flow with the starting items: it stops. */
+export const STOPS_SHARE = 0.1;
+
+/** Whether a slowing from-nothing value stops (see `FlowRow.stops`); false without the other number to compare with. */
+export function stopsAt(slowing: boolean, fromNothing: number | null, withItems: number | null): boolean {
+  return slowing && fromNothing !== null && withItems !== null && withItems > 0 && fromNothing < STOPS_SHARE * withItems;
+}
+
+const numPair = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && finite(v[0]) && finite(v[1]) ? [v[0], v[1]] : null);
+
 /** A valid `prep` (the "from nothing" cell's), else null. */
 export function readPrep(raw: unknown): PrepInfo | null {
   if (!isRecord(raw) || !isRecord(raw.kit) || !finite(raw.cycles) || !finite(raw.days) || typeof raw.done !== "boolean") return null;
@@ -372,6 +391,17 @@ export function readPrep(raw: unknown): PrepInfo | null {
   for (const [item, n] of Object.entries(raw.kit)) if (finite(n) && n > 0) kit[item] = Math.ceil(n - 1e-9);
   const out: PrepInfo = { kit, cycles: raw.cycles, days: raw.days, done: raw.done, mode: raw.mode === "real" ? "real" : "stitched" };
   if (finite(raw.madeDays)) out.madeDays = raw.madeDays;
+  if (raw.credit === "timeline" || raw.credit === "flow" || raw.credit === "kit") out.credit = raw.credit;
+  if (typeof raw.slow === "boolean") out.slow = raw.slow;
+  if (isRecord(raw.have)) {
+    const have: Record<ItemId, number> = {};
+    for (const [item, n] of Object.entries(raw.have)) if (finite(n) && n >= 0) have[item] = Math.floor(n);
+    out.have = have;
+  }
+  const range = numPair(raw.madeRange);
+  if (range) out.madeRange = range;
+  const doneSeeds = numPair(raw.doneSeeds);
+  if (doneSeeds) out.doneSeeds = doneSeeds;
   return out;
 }
 
@@ -393,17 +423,39 @@ function aboutDays(days: number): string {
 /** Kit items, largest first (ties by id). */
 const kitLines = (kit: Readonly<Record<ItemId, number>>) => positiveEntries(kit);
 
+/** "~4 days", or "~115 days (32–170)" when the seeds' build times differ more than 2×. */
+function madeText(p: PrepInfo): string {
+  const r = p.madeRange;
+  const spread = r && r[0] > 0 && r[1] > 2 * r[0] ? ` (${Math.round(r[0])}–${Math.round(r[1])})` : "";
+  return `${aboutDays(prepDays(p))}${spread}`;
+}
+
 /**
  * The ranking's starting-items line: "Starting items: 2 Zombud, 3 Cindershade · made in ~4 days"
- * (at most three items, then "+ N more"); "No starting items" for an empty kit; "Starting items:
- * ... · can't be made within the run" when the builder didn't finish.
+ * (at most three items, then "+ N more"; a range when the seeds differ more than 2×; "· on 3 of 5
+ * runs" when some couldn't); "No starting items" for an empty kit; "... · can't be made within the
+ * run" when the builder didn't finish.
  */
 export function prepText(p: PrepInfo): string {
   const lines = kitLines(p.kit);
   if (!lines.length) return "No starting items";
   const shown = lines.slice(0, 3).map(([item, n]) => `${n.toLocaleString("en-US")} ${nameOf(item)}`);
   if (lines.length > 3) shown.push(`+ ${lines.length - 3} more`);
-  return `Starting items: ${shown.join(", ")} · ${p.done ? `made in ${aboutDays(prepDays(p))}` : "can't be made within the run"}`;
+  const runs = p.doneSeeds && p.doneSeeds[0] < p.doneSeeds[1] ? ` on ${p.doneSeeds[0]} of ${p.doneSeeds[1]} runs` : "";
+  return `Starting items: ${shown.join(", ")} · ${p.done ? `made in ${madeText(p)}${runs}` : "can't be made within the run"}`;
+}
+
+/** What the builder had of a kit it couldn't finish: "1 of 3 Timestalk, 0 of 2 Devourer" (null without `have`). */
+export function haveText(p: PrepInfo): string | null {
+  if (!p.have) return null;
+  const short = kitLines(p.kit).filter(([item, n]) => (p.have![item] ?? 0) < n);
+  return short.length ? short.map(([item, n]) => `${(p.have![item] ?? 0).toLocaleString("en-US")} of ${n.toLocaleString("en-US")} ${nameOf(item)}`).join(", ") : null;
+}
+
+/** "93 Zombud + 91 Puffercloud a day" from a cell's upkeep (rounded up), or null when none. */
+export function upkeepNeedText(upkeep: unknown): string | null {
+  const lines = positiveEntries(upkeep);
+  return lines.length ? `${lines.map(([item, n]) => `${countUp(n)} ${nameOf(item)}`).join(" + ")} a day` : null;
 }
 
 /** The whole kit for a tooltip: "41 Duskbloom, 7 Shadevine, 6 Dustgrain, 3 Cindershade, 2 Zombud". */
@@ -415,11 +467,20 @@ export function kitListText(kit: Readonly<Record<ItemId, number>>): string {
 /** Whole items in a kit. */
 export const kitCount = (kit: Readonly<Record<ItemId, number>>): number => kitLines(kit).reduce((a, [, n]) => a + n, 0);
 
-/** The detail page's builder line: "Starting items made with the builder in ~4 days (stitched)". */
+/**
+ * The detail page's builder line: "The site's builder makes the starting items in ~4 days, then this
+ * flow runs from exactly them." plus why the builder's crops don't count when they don't.
+ */
 export function builderText(p: PrepInfo): string {
   if (!kitLines(p.kit).length) return "No starting items: it starts from an empty inventory.";
-  if (!p.done) return `The builder couldn't make the starting items within the run (${kitCount(p.kit).toLocaleString("en-US")} items); the score is the builder's own crops.`;
-  return `Starting items made with the builder in ${aboutDays(prepDays(p))} (${p.mode === "real" ? "real run" : "stitched"})`;
+  if (!p.done) {
+    const have = haveText(p);
+    return `The site's builder couldn't make the starting items before the scored part of the run${have ? ` (it had ${have})` : ""}, so this flow has no from-nothing number.`;
+  }
+  const base = `The site's builder makes the starting items in ${madeText(p)}, then this flow runs from exactly them.`;
+  if (p.credit === "flow") return `${base} The builder earns more than this flow meanwhile, so those days count at this flow's own rate.`;
+  if (p.credit === "kit") return `${base} Capped at its number with the starting items.`;
+  return `${base} The builder's crops meanwhile count.`;
 }
 
 /**
@@ -452,13 +513,15 @@ export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s
     if (b.profitPerDay === null) return -1;
     return b.profitPerDay - a.profitPerDay || a.entry.title.localeCompare(b.entry.title);
   });
-  const blocked = rows.filter((r) => r.cantMake).map((r) => ({ ...r, rank: 0 }));
-  return [...rank(rows.filter((r) => !r.cantMake)), ...blocked];
+  const apart = (r: Pick<FlowRow, "cantMake" | "stops">) => !!r.cantMake || r.stops;
+  const blocked = rows.filter(apart).map((r) => ({ ...r, rank: 0 }));
+  return [...rank(rows.filter((r) => !apart(r))), ...blocked];
 }
 
-/** Ranked rows and the ones whose starting items can't be made within the run (rank 0), each in the given order. */
-export function splitRanked<T extends { cantMake: PrepInfo | null }>(rows: readonly T[]): { ranked: T[]; cantMake: T[] } {
-  return { ranked: rows.filter((r) => !r.cantMake), cantMake: rows.filter((r) => !!r.cantMake) };
+/** Ranked rows and the ones set apart from "from nothing" (can't make its starting items, or stops; rank 0), each in the given order. */
+export function splitRanked<T extends { cantMake: PrepInfo | null; stops?: boolean }>(rows: readonly T[]): { ranked: T[]; cantMake: T[] } {
+  const apart = (r: T) => !!r.cantMake || r.stops === true;
+  return { ranked: rows.filter((r) => !apart(r)), cantMake: rows.filter(apart) };
 }
 
 /** Missing values always sort last, whichever way the key goes. */
@@ -502,9 +565,9 @@ export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
   }
 }
 
-/** The largest profit in a set of rows (for the relative bars); rows set apart (`cantMake`) don't count. */
+/** The largest profit in a set of rows (for the relative bars); rows set apart (`cantMake`, `stops`) don't count. */
 export function maxProfit(rows: readonly FlowRow[]): number {
-  return rows.reduce((m, r) => (r.cantMake ? m : Math.max(m, r.profitPerDay ?? 0)), 0);
+  return rows.reduce((m, r) => (r.cantMake || r.stops ? m : Math.max(m, r.profitPerDay ?? 0)), 0);
 }
 
 /**

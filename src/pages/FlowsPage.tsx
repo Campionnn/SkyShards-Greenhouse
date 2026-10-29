@@ -16,6 +16,7 @@ import type { Board } from "../leaderboard/rules";
 import {
   BADGE_TITLE,
   DEFAULT_FILTERS,
+  haveText,
   kitListText,
   kitSummaryText,
   earningOptions,
@@ -30,6 +31,7 @@ import {
   sortRows,
   splitRanked,
   suppliesText,
+  upkeepNeedText,
   withLikeCounts,
   writeListParams,
   type FlowRow,
@@ -255,8 +257,9 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
 };
 
 /**
- * A flow whose starting items the builder can't make within the run (the "from nothing" set-aside
- * list): no rank, a muted line with the items, and its "with the starting items" number.
+ * A flow set apart from the "from nothing" ranking: its starting items can't be made within the run,
+ * or it stops once they run out (upkeep it never grows). No rank, a muted line saying which, and its
+ * "with the starting items" number.
  */
 export const CantMakeRow: React.FC<{ row: FlowRow }> = ({ row }) => {
   const { entry } = row;
@@ -276,11 +279,15 @@ export const CantMakeRow: React.FC<{ row: FlowRow }> = ({ row }) => {
             <AuthorLabel author={entry.author} size={14} />
           </span>
         </div>
-        {row.cantMake && (
-          <p className="text-amber-200/80" title={`Starting items: ${kitListText(row.cantMake.kit)}`}>
+        {row.cantMake ? (
+          <p className="text-amber-200/80" title={haveText(row.cantMake) ? `By then the builder had ${haveText(row.cantMake)}` : `Starting items: ${kitListText(row.cantMake.kit)}`}>
             {prepText(row.cantMake)}
           </p>
-        )}
+        ) : row.stops ? (
+          <p className="text-amber-200/80" data-testid="stops-line" title={row.prep ? prepText(row.prep) : undefined}>
+            Stops once its starting items run out{upkeepNeedText(entry.cell?.upkeep) ? `: it needs ${upkeepNeedText(entry.cell?.upkeep)} it doesn't grow` : ""}
+          </p>
+        ) : null}
       </div>
       <Link
         to={`/flows/${entry.id}?board=ironman&kit=1`}
@@ -301,21 +308,21 @@ export const CantMakeRow: React.FC<{ row: FlowRow }> = ({ row }) => {
   );
 };
 
-/** The "from nothing" ranking's collapsed list of flows whose starting items can't be made within the run. */
+/** The "from nothing" ranking's collapsed list of flows set apart (can't make its starting items in time, or stops without them). */
 export const CantMakeSection: React.FC<{ rows: FlowRow[]; onSwitch: () => void; defaultOpen?: boolean }> = ({ rows, onSwitch, defaultOpen = false }) => {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section className="mt-2 rounded-lg border border-slate-700/50 bg-slate-900/30" data-testid="cant-make-section">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs">
         <Ban className="h-3.5 w-3.5 text-slate-500" />
-        <span className="font-medium text-slate-300">Can't make its starting items within the run ({rows.length})</span>
+        <span className="font-medium text-slate-300">Not ranked from nothing ({rows.length})</span>
         <ChevronDown className={`ml-auto h-3.5 w-3.5 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div className="border-t border-slate-700/40">
           <p className="px-3 pt-2 text-[11px] text-slate-500">
-            The builder couldn't make these flows' starting items before the scored part of the run, so they aren't ranked from nothing. They are ranked
-            with{" "}
+            From an empty inventory these flows either can't get their starting items before the scored part of the run, or stop earning once the
+            starting items run out (they use items every day that they don't grow). They are ranked with{" "}
             <button type="button" className="text-emerald-300 hover:underline" onClick={onSwitch}>
               "I have the starting items"
             </button>
@@ -600,7 +607,7 @@ export const FlowsPage: React.FC = () => {
             <>
             {shownRanked.length === 0 && (
               <p className="px-3 py-6 text-center text-xs text-slate-400">
-                {filtered ? "No flow whose starting items can be made in time matches these filters." : "No flow's starting items can be made in time yet."}
+                {filtered ? "No flow ranked from nothing matches these filters." : "No flow is ranked from nothing yet."}
               </p>
             )}
             <ol className="divide-y divide-slate-700/30" data-testid="flows-list">

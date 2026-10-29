@@ -19,6 +19,8 @@ import {
   RULE_KIND_LABEL,
   scenarioRuleKind,
   starvedList,
+  stopsAt,
+  upkeepNeedText,
   starvedText,
   startItemsText,
   STALL_CELLS,
@@ -111,7 +113,7 @@ export interface TestState {
 }
 
 /** What one cell kind of the test found (the server builds its cell the same way). */
-export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: LocalKindSummary; noPrices: boolean }> = ({ test, kind, summary, noPrices }) => {
+export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: LocalKindSummary; noPrices: boolean; kitPerDay?: number | null }> = ({ test, kind, summary, noPrices, kitPerDay = null }) => {
   const running = summary.done < summary.total;
   const progress = test.progress.reduce((s, x) => s + x, 0) / Math.max(1, test.progress.length);
   const cell = summary.cell;
@@ -119,6 +121,10 @@ export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: L
   const used = cell ? usedUpLines(cell.usedUp) : [];
   const prep = kind === "ironman" && cell ? readPrep(cell.prep) : null;
   const check = kind === "ironman" ? test.outcomes.find((o) => o?.stitchCheck)?.stitchCheck : undefined;
+  // The server doesn't reject on the from-nothing spread (the site's builder sets it, not the author).
+  const rejects = kind !== "ironman";
+  const stops = kind === "ironman" && !!cell && stopsAt(cell.slowing === true, summary.profitPerDay, kitPerDay);
+  const need = stops ? upkeepNeedText(cell?.upkeep) : null;
   return (
     <div className="space-y-1.5 rounded-md border border-slate-700/60 bg-slate-900/40 p-2.5 text-xs" data-testid={`test-${kind}`}>
       <div className="flex items-baseline justify-between gap-2">
@@ -147,16 +153,22 @@ export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: L
         </p>
       ))}
       {summary.ratio !== null && (
-        <p className={summary.ratio > OUTLIER_RATIO ? "flex items-start gap-1 text-red-300" : "text-slate-400"}>
-          {summary.ratio > OUTLIER_RATIO && <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />}
+        <p className={rejects && summary.ratio > OUTLIER_RATIO ? "flex items-start gap-1 text-red-300" : "text-slate-400"}>
+          {rejects && summary.ratio > OUTLIER_RATIO && <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />}
           Spread (best / median): {ratioText(summary.ratio)}
-          {summary.ratio > OUTLIER_RATIO ? `: over ${OUTLIER_RATIO}×, the server would reject this as inconsistent across seeds.` : ""}
+          {rejects && summary.ratio > OUTLIER_RATIO ? `: over ${OUTLIER_RATIO}×, the server would reject this as inconsistent across seeds.` : ""}
         </p>
       )}
       {summary.cantMake && (
         <p className="text-amber-200" data-testid="test-cant-make">
           The builder can't make the starting items ({kitListText(summary.cantMake.kit)}) within the run: the server lists it apart on the from-nothing ranking and
           ranks it with "I have the starting items".
+        </p>
+      )}
+      {stops && (
+        <p className="text-amber-200" data-testid="test-stops">
+          From nothing it stops once the starting items run out{need ? ` (it uses ${need} that it doesn't grow)` : ""}: the server lists it apart on the from-nothing
+          ranking. Leftover placed items that never helped enough mutations don't decay; a last full-clear step frees the plots.
         </p>
       )}
       {prep && !summary.cantMake && (
@@ -504,7 +516,7 @@ export const SubmitFlowPanel: React.FC<Props & { initialTest?: TestState }> = ({
           <div className="space-y-2" data-testid="seed-test">
             <div className={`grid grid-cols-1 gap-2 ${cards.length > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
               {cards.map((c) => (
-                <KindTestCard key={c.kind} test={c.test} kind={c.kind} summary={c.summary} noPrices={noPrices} />
+                <KindTestCard key={c.kind} test={c.test} kind={c.kind} summary={c.summary} noPrices={noPrices} kitPerDay={cards.find((x) => x.kind === "ironman_kit")?.summary.profitPerDay ?? null} />
               ))}
             </div>
             {cards.some((c) => c.summary.failed.length > 0) && <p className="text-xs text-red-300">A failed seed makes the server reject the submission.</p>}

@@ -108,28 +108,29 @@ describe("leaderboard pages render", () => {
 
   it("ranking rows from nothing: the starting-items line, upkeep and Stall; flows whose starting items can't be made are set apart", async () => {
     const r = await renderRows("ironman");
-    // 8 mock flows: the Godseed flow's starting items can't be made; the other 7 are ranked 1-7.
-    expect(r.ranked.map((x) => x.rank)).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    expect(r.blocked.map((x) => x.entry.id)).toEqual(["mockGods0009"]);
+    // 8 mock flows: the Godseed flow's starting items can't be made and the Devourer flow stops once its
+    // starting items run out (upkeep): both set apart; the other 6 are ranked 1-6.
+    expect(r.ranked.map((x) => x.rank)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(r.blocked.map((x) => x.entry.id).sort()).toEqual(["mockDevr0007", "mockGods0009"]);
     expect(r.blocked.every((x) => x.rank === 0)).toBe(true);
     expect(r.ranks).not.toContain("Godseed showcase");
     // The starting-items line: the kit, largest first, and how long the builder takes; the tooltip lists the whole kit.
     expect(r.ranks).toContain('data-testid="starting-items"');
-    expect(r.ranks).toMatch(/Starting items: 165 Zombud, 116 Puffercloud · made in ~\d+ days/);
+    expect(r.section).toMatch(/Stops once its starting items run out: it needs 93 Zombud \+ 91 Puffercloud a day it doesn't grow/);
     expect(r.ranks).toMatch(/Starting items: 141 Magic Jellybean, 2 All-in Aloe, 1 Blastberry · made in ~12 days/);
     expect(r.ranks).toMatch(/Starting items: 26 Witherbloom, 15 Chloronite, 9 Magic Jellybean · made in ~5 days/);
     expect(r.ranks).toContain('title="Starting items: 141 Magic Jellybean, 2 All-in Aloe, 1 Blastberry"');
     expect(r.ranks).toContain("No starting items");
     // Upkeep in both modes, Stall as before, and no v2 Kit chip.
     expect(r.ranks).toContain('data-testid="row-upkeep"');
-    expect(r.ranks).toContain("93 Zombud + 91 Puffercloud /day");
+    expect(r.ranks).toContain("0.04 Cindershade /day");
     expect(r.ranks).toContain(">Stall<");
     expect(r.ranks).toContain("Plot 3, step-1: 5.6 Magic Jellybean cells empty on average.");
     expect(r.html).not.toMatch(/Kit \+|Kit needed|Infinity|NaN/);
     // The set-apart section: its count, the explanation, the kit and the number with the starting items.
     expect(r.section).toContain('data-testid="cant-make-section"');
-    expect(r.section).toContain("Can't make its starting items within the run (1)");
-    expect(r.section).toContain("The builder couldn't make these flows' starting items before the scored part of the run");
+    expect(r.section).toContain("Not ranked from nothing (2)");
+    expect(r.section).toContain("can't get their starting items before the scored part of the run, or stop earning once the");
     expect(r.section).toContain("Starting items: 1 Godseed · can't be made within the run");
     expect(r.section).toContain('href="/flows/mockGods0009?board=ironman&kit=1"');
     expect(r.section).toContain("/day with the starting items");
@@ -183,7 +184,7 @@ describe("leaderboard pages render", () => {
     // The builder line under the numbers.
     expect(html).toContain('data-testid="builder-line"');
     expect(html).toMatch(/Starting items: 6 Magic Jellybean, 4 Chloronite · made in ~3 days/);
-    expect(html).toContain("Starting items made with the builder in ~3 days (stitched)");
+    expect(html).toContain("The site's builder makes the starting items in ~3 days, then this flow runs from exactly them. The builder's crops meanwhile count.");
     expect(html).toContain("starting items made in 3 days");
     // "What you need" on both ironman variants.
     expect(html).toContain('data-testid="what-you-need"');
@@ -217,7 +218,7 @@ describe("leaderboard pages render", () => {
       ]) expect(html).toContain(s);
       // The current number is "with the starting items"; the builder line says it ran real (upkeep).
       expect(html).toMatch(/aria-selected="true"[^>]*>.{0,400}Ironman · with the starting items/s);
-      expect(html).toMatch(/Starting items made with the builder in ~\d+ days \(real run\)/);
+      expect(html).toMatch(/The site's builder makes the starting items in ~\d+ days \(\d+–\d+\), then this flow runs from exactly them/);
     }
     const aloe = normalizeDetail((await mockDetail("mockAloe0002"))!);
     const a = text(wrap(<FlowDetailView detail={aloe} onChange={() => {}} onReload={() => {}} />, "/flows/mockAloe0002?board=ironman&kit=1"));
@@ -233,6 +234,10 @@ describe("leaderboard pages render", () => {
     expect(html).toContain("Top earners");
     for (const s of ["Empty layout cells", 'data-testid="empty-cells"', "Plot 1, step 1: 30 Zombud cells empty on average"]) expect(html).toContain(s);
     expect(html).not.toMatch(/Kit needed|Kit \+|Can't start/);
+    // It stops from nothing: the tile and the note say why, in the game's terms.
+    expect(html).toContain("stops once its starting items run out");
+    expect(html).toContain('data-testid="stops-note"');
+    expect(html).toMatch(/it uses 93 Zombud \+ 91 Puffercloud a day that it doesn't grow\. Leftover placed items that never helped enough mutations don't decay/);
     // A flow that stalls keeps its chips.
     const chloro = normalizeDetail((await mockDetail("mockChloro01"))!);
     const c = text(wrap(<FlowDetailView detail={chloro} onChange={() => {}} onReload={() => {}} />, "/flows/mockChloro01?board=ironman"));
@@ -242,7 +247,7 @@ describe("leaderboard pages render", () => {
     const gods = normalizeDetail((await mockDetail("mockGods0009"))!);
     const g = text(wrap(<FlowDetailView detail={gods} onChange={() => {}} onReload={() => {}} />, "/flows/mockGods0009?board=ironman"));
     expect(g).toContain("can't make its starting items in time");
-    expect(g).toContain("The builder couldn't make the starting items within the run (1 items)");
+    expect(g).toContain("The site's builder couldn't make the starting items before the scored part of the run (it had 0 of 1 Godseed), so this flow has no from-nothing number.");
     // A flow with no empty cells hides the panel; one with no starting items says so.
     const veil = normalizeDetail((await mockDetail("mockVeil0008"))!);
     const v = text(wrap(<FlowDetailView detail={veil} onChange={() => {}} onReload={() => {}} />));
@@ -396,7 +401,6 @@ describe("submit dialog renders", () => {
       "2/3 seeds",
       "Spread (best / median): 1.00×",
       'data-testid="test-prep"',
-      "(real run)",
       "differed from a real run by 20%",
       "Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day.",
       "To start with: <span",
@@ -407,6 +411,9 @@ describe("submit dialog renders", () => {
       expect(html).toContain(s);
     }
     expect(html).not.toMatch(/Infinity|NaN|Can't start/);
+    // The Devourer from nothing stops once its starting items run out: said on the from-nothing card.
+    expect(html).toContain('data-testid="test-stops"');
+    expect(html).toContain("it uses 93 Zombud + 91 Puffercloud a day that it doesn't grow");
     // A kit the builder can't make: said on the from-nothing card.
     const cant: TestState = { ...initial, kinds: [{ runKind: "ironman", progress: [1, 1, 1], outcomes: [ok(kitCell, never), ok(kitCell, never), ok(kitCell, never)] }] };
     const c = text(wrap(<SubmitFlowPanel scenario={sc} onChange={() => {}} onClose={() => {}} initialTest={cant} />));

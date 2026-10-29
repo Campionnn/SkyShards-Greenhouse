@@ -9,6 +9,7 @@ import {
   CELL_KIND_LABEL,
   KIT_MARGIN,
   prepDays,
+  stopsAt,
   kitSummaryText,
   needLines,
   percent,
@@ -62,22 +63,26 @@ export const BoardNumbers: React.FC<{ numbers: BoardNumber[]; current: CellKind;
       const active = n.kind === current;
       const negative = n.profitPerDay !== null && n.profitPerDay < 0;
       const cantMake = n.kind === "ironman" && n.prep !== null && !n.prep.done;
+      const kitValue = numbers.find((x) => x.kind === "ironman_kit")?.profitPerDay ?? null;
+      const stops = n.kind === "ironman" && stopsAt(n.slowing, n.profitPerDay, kitValue);
       const sub =
         n.profitPerDay === null
           ? "not verified yet"
           : n.kind === "normal"
             ? [n.boughtPerDay > 0 ? `${formatCoins(n.boughtPerDay)}/day bought` : null, n.buildCost > 0 ? `${formatCoins(n.buildCost)} to build` : null].filter(Boolean).join(" · ") || "nothing to buy"
-            : n.slowing
-              ? "slowing down at the end"
-              : n.kind === "ironman"
-                ? n.prep
-                  ? Object.keys(n.prep.kit).length === 0
-                    ? "no starting items needed"
-                    : cantMake
-                      ? "can't make its starting items in time"
-                      : `starting items made in ${Math.max(1, Math.round(prepDays(n.prep)))} day${Math.round(prepDays(n.prep)) <= 1 ? "" : "s"}`
-                  : "builder first, then the flow"
-                : "if you own the starting items";
+            : cantMake
+              ? "can't make its starting items in time"
+              : stops
+                ? "stops once its starting items run out"
+                : n.slowing
+                  ? "settles lower once its starting items run out"
+                  : n.kind === "ironman"
+                    ? n.prep
+                      ? Object.keys(n.prep.kit).length === 0
+                        ? "no starting items needed"
+                        : `starting items made in ${Math.max(1, Math.round(prepDays(n.prep)))} day${Math.round(prepDays(n.prep)) <= 1 ? "" : "s"}`
+                      : "builder first, then the flow"
+                    : "if you own the starting items";
       return (
         <button
           key={n.kind}
@@ -96,7 +101,7 @@ export const BoardNumbers: React.FC<{ numbers: BoardNumber[]; current: CellKind;
             {n.profitPerDay === null ? "—" : formatCoins(n.profitPerDay)}
             <span className="ml-1 text-xs font-normal text-slate-500">/ day</span>
           </div>
-          <div className={`mt-0.5 min-h-[1rem] text-[11px] ${cantMake ? "text-amber-300/90" : "text-slate-500"}`}>{sub}</div>
+          <div className={`mt-0.5 min-h-[1rem] text-[11px] ${cantMake || stops ? "text-amber-300/90" : "text-slate-500"}`}>{sub}</div>
         </button>
       );
     })}

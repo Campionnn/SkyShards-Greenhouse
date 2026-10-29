@@ -153,7 +153,11 @@ describe("the mock matches the API's shapes", () => {
     expect(devFromNothing.cell!.prep).toEqual(devFromNothing.prep);
     // The Godseed flow's starting items can't be made within the run.
     expect(fromNothing.entries.filter((e) => e.prep && !e.prep.done).map((e) => e.id)).toEqual(["mockGods0009"]);
-    expect(fromNothing.entries.find((e) => e.id === "mockNoct0006")!.prep).toEqual({ kit: {}, cycles: 0, days: 0, done: true, mode: "stitched" });
+    expect(fromNothing.entries.find((e) => e.id === "mockNoct0006")!.prep).toEqual({ kit: {}, cycles: 0, days: 0, done: true, mode: "stitched", credit: "timeline", slow: false });
+    // v3.1: a kit the builder can't make is an empty result (no builder crops), with what it had.
+    const gods = fromNothing.entries.find((e) => e.id === "mockGods0009")!;
+    expect(gods.cell!.produced).toEqual({});
+    expect(gods.prep).toMatchObject({ done: false, have: { godseed: 0 }, doneSeeds: [0, 5] });
     expect(fromNothing.entries.some((e) => e.cell?.bySource?.chorus_fruit)).toBe(true);
     expect(normal.entries.every((e) => e.cell?.startItems === undefined)).toBe(true);
   });

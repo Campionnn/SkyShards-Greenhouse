@@ -6,7 +6,7 @@
  */
 import type { AuthUser, CurvePoint, FlowCell, FlowDetail, FlowListEntry, FlowListResponse, FlowSeedResult, FlowStatusResponse } from "../leaderboard/api";
 import type { PrepInfo, RunResult } from "../leaderboard/result";
-import { boardFrom, BOARDS, CELL_KIND_RUN_KIND, CELL_KINDS, cellKindOf, endCycles, kitFromBoard, parseSubmission, type Board, type CellKind, type SubmissionFile } from "../leaderboard/rules";
+import { boardFrom, BOARDS, CELL_KIND_RUN_KIND, CELL_KINDS, cellKindOf, kitFromBoard, parseSubmission, type Board, type CellKind, type SubmissionFile } from "../leaderboard/rules";
 import { summarizeSubmission, type FlowSummary } from "../leaderboard/summary";
 import { EVERY, TIERS, type TierId } from "../leaderboard/tiers";
 import { defaultGameData } from "../simulator/data/default";
@@ -206,9 +206,9 @@ const SPECS: Spec[] = [
     effort: [140, 620],
     description: "Heavy: clear roots every login and rebuild the Zombud ring after each Devourer.",
     kinds: {
-      // From nothing: ~2 months making the ring's 281 items, then it runs until they're used up (upkeep): real run.
+      // From nothing: ~2 months making the ring's 281 items, which last ~2 days (upkeep): then ~0 (it stops).
       ironman: {
-        factor: 0.055,
+        factor: 0.003,
         complete: null,
         steady: 0,
         slowing: true,
@@ -272,7 +272,10 @@ const SPECS: Spec[] = [
 
 const KIND_BOARD = (k: CellKind): Board => (k === "normal" ? "normal" : "ironman");
 
-/** The "from nothing" cell's `prep` at a tier and frequency (rarer logins take longer; the kit from the ironman_kit cell). */
+/**
+ * The "from nothing" cell's `prep` at a tier and frequency (rarer logins take longer; the kit from
+ * the ironman_kit cell), as the API stores it on a cell: with the cell-only madeRange / doneSeeds.
+ */
 function prepFor(s: Spec, tier: TierId, every: number): PrepInfo {
   const p = s.prep ?? { days: 0, mode: "stitched" as const };
   const kit: Record<string, number> = {};
@@ -281,10 +284,16 @@ function prepFor(s: Spec, tier: TierId, every: number): PrepInfo {
   const tierF = { max: 1, high: 0.85, mid: 0.65, low: 0.45 }[tier];
   const made = empty ? 0 : (p.days * (1 + 0.12 * (every - 1))) / tierF;
   const dayPerCycle = 1.75 / 24 / tierF;
-  if (p.never) return { kit, cycles: endCycles(s.cycles), days: endCycles(s.cycles) * dayPerCycle, done: false, mode: p.mode };
+  const slow = s.kinds?.ironman?.slowing === true;
+  if (p.never) return { kit, cycles: s.cycles, days: s.cycles * dayPerCycle, done: false, mode: p.mode, slow: false, have: Object.fromEntries(Object.keys(kit).map((k) => [k, 0])), doneSeeds: [0, 5] };
   const cycles = empty ? 0 : Math.ceil(made / dayPerCycle / 25) * 25;
-  const out: PrepInfo = { kit, cycles, days: cycles * dayPerCycle, done: true, mode: p.mode };
-  if (!empty) out.madeDays = made;
+  const out: PrepInfo = { kit, cycles, days: cycles * dayPerCycle, done: true, mode: p.mode, credit: "timeline", slow };
+  if (!empty) {
+    out.madeDays = made;
+    // The Devourer kit's build time varies a lot between seeds (as on the server: 33-68 days).
+    out.madeRange = s.id === "mockDevr0007" ? [made * 0.56, made * 1.17] : [made * 0.9, made * 1.1];
+    out.doneSeeds = [5, 5];
+  }
   return out;
 }
 
@@ -331,7 +340,18 @@ function resultFor(s: Spec, kind: CellKind, tier: TierId, every: number, noise =
     r.usedUp = kitSpec.usedUp ?? {};
     r.upkeep = scale(kitSpec.upkeep ?? {}, tierF);
   }
-  if (kind === "ironman") r.prep = prepFor(s, tier, every);
+  if (kind === "ironman") {
+    r.prep = prepFor(s, tier, every);
+    // v3.1: a kit the builder can't make in time is an empty result (nothing of the builder's is scored).
+    if (!r.prep.done) {
+      r.produced = {};
+      r.bySource = {};
+      r.consumed = {};
+      delete r.stepTime;
+      delete r.starved;
+      delete r.ramp;
+    }
+  }
   if (seed && k.slowing) r.trail = { from: Math.floor(end * 0.8), produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {} };
   if (!seed && k.slowing) r.slowing = true;
   return r;

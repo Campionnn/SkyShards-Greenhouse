@@ -31,6 +31,8 @@ import {
   stallInfo,
   starvedList,
   steadyRate,
+  stopsAt,
+  upkeepNeedText,
   moneyBySource,
   findCell,
   formatDate,
@@ -227,7 +229,16 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const steady = cell ? steadyRate(DATA, cell.median, { board: viewer.board, ...settings }) : null;
   const stall = cell ? stallInfo(cell.median.starved) : null;
   // How the starting items are made: the "from nothing" cell's prep (at this tier / every, else max).
-  const prep = numbers.find((n) => n.kind === "ironman")?.prep ?? null;
+  const fromNothingN = numbers.find((n) => n.kind === "ironman");
+  const prep = fromNothingN?.prep ?? null;
+  // From nothing it stops once the starting items run out: say why, in the game's terms.
+  const kitN = numbers.find((n) => n.kind === "ironman_kit")?.profitPerDay ?? null;
+  const fnCell = findCell(detail.cells, "ironman", viewer.tier, viewer.every) ?? findCell(detail.cells, "ironman", "max", viewer.every);
+  const need = upkeepNeedText(fnCell?.median.upkeep);
+  const stopsNote =
+    fromNothingN && prep?.done && stopsAt(fromNothingN.slowing, fromNothingN.profitPerDay, kitN)
+      ? `From nothing it stops once the starting items run out${need ? `: it uses ${need} that it doesn't grow` : ""}. Leftover placed items that never helped enough mutations don't decay, so the plots stay blocked (no room for Lonelily). With the items topped up: ${kitN !== null ? formatCoins(kitN) : "?"}/day.`
+      : null;
   const needPanel = !!cell && viewer.board === "ironman";
   const selectKind = (k: CellKind) => {
     if (k === "normal") return viewer.setBoard("normal");
@@ -341,6 +352,11 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
                   <div className="space-y-0.5 text-xs" data-testid="builder-line">
                     <StartingItemsLine prep={prep} />
                     <p className={prep.done ? "text-slate-500" : "text-amber-200/90"}>{builderText(prep)}</p>
+                    {stopsNote && (
+                      <p className="text-amber-200/90" data-testid="stops-note">
+                        {stopsNote}
+                      </p>
+                    )}
                   </div>
                 )}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-400">
