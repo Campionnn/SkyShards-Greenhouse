@@ -402,7 +402,7 @@
         "carrot": 613,
         "pumpkin": 298
       },
-      "spawn_weight": 6
+      "spawn_weight": 0.6
     },
     "scourroot": {
       "name": "Scourroot",

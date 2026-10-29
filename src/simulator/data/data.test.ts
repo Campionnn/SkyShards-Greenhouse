@@ -17,7 +17,7 @@ describe("game data", () => {
 
   it("carries spawn weights and NPC sell prices (the fields the old frontend copy lacked)", () => {
     expect(data.mutations.gloomgourd.spawnWeight).toBe(30);
-    expect(data.mutations.lonelily.spawnWeight).toBe(6);
+    expect(data.mutations.lonelily.spawnWeight).toBe(0.6);
     expect(data.crops.pumpkin.sellPrice).toBe(4.5);
   });
 
