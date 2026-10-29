@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { CropImage } from "../shared/CropImage";
+import { PortalHost } from "../ui/Portal";
 import { inputClass } from "./format";
 
 /** An item icon with a count: "[icon] 7× Dead Plant". */
@@ -42,9 +43,12 @@ export const Dialog: React.FC<{
   size?: "md" | "lg";
 }> = ({ open, onClose, title, children, footer, size = "lg" }) => {
   const ref = useRef<HTMLDialogElement>(null);
+  // Tooltips inside (FarmPicture cells, stat hints) portal into the dialog: it is in the top layer.
+  const [host, setHost] = useState<HTMLDialogElement | null>(null);
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
+    setHost(dialog);
     if (open && !dialog.open) {
       dialog.showModal();
       const previous = document.body.style.overflow;
@@ -70,6 +74,7 @@ export const Dialog: React.FC<{
       }}
     >
       {open && (
+        <PortalHost container={host}>
         <div className="guide-root flex h-full max-h-[inherit] flex-col overflow-hidden border-slate-700 bg-slate-900 text-slate-200 shadow-2xl sm:rounded-xl sm:border">
           <header className="flex items-center justify-between gap-3 border-b border-slate-700 px-4 py-3 sm:px-6 sm:py-4">
             <h2 className="text-base font-semibold text-slate-100 sm:text-lg">{title}</h2>
@@ -80,6 +85,7 @@ export const Dialog: React.FC<{
           <div className="scrollbar-dark min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">{children}</div>
           {footer && <footer className="guide-safe-bottom border-t border-slate-700 px-4 pt-3 sm:px-6">{footer}</footer>}
         </div>
+        </PortalHost>
       )}
     </dialog>
   );

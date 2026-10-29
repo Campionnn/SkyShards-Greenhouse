@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { buttonClass } from "../simulator/styles";
-import { Portal } from "./Portal";
+import { BodyPortal, PortalHost } from "./Portal";
 
 /**
  * A native modal `<dialog>` in a portal (Escape, inert background, backdrop click closes), like
@@ -9,9 +9,12 @@ import { Portal } from "./Portal";
  */
 export const ModalDialog: React.FC<{ labelledBy: string; onClose: () => void; maxWidth?: string; children: React.ReactNode }> = ({ labelledBy, onClose, maxWidth = "max-w-lg", children }) => {
   const dialog = useRef<HTMLDialogElement>(null);
+  // Tooltips / popovers inside portal into the dialog: it is in the top layer, above <body>.
+  const [host, setHost] = useState<HTMLDialogElement | null>(null);
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
+    setHost(element);
     const previousFocus = document.activeElement;
     const previousOverflow = document.body.style.overflow;
     element.showModal();
@@ -23,7 +26,7 @@ export const ModalDialog: React.FC<{ labelledBy: string; onClose: () => void; ma
     };
   }, []);
   return (
-    <Portal>
+    <BodyPortal>
       <dialog
         ref={dialog}
         aria-labelledby={labelledBy}
@@ -38,9 +41,9 @@ export const ModalDialog: React.FC<{ labelledBy: string; onClose: () => void; ma
           if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) onClose();
         }}
       >
-        {children}
+        <PortalHost container={host}>{children}</PortalHost>
       </dialog>
-    </Portal>
+    </BodyPortal>
   );
 };
 

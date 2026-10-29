@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Coins, Pencil, RefreshCw, RotateCcw, Search, X } from "lucide-react";
 import { BAZAAR_PRODUCTS, COMPACTED_CROPS, defaultGameData, type BazaarOverride, type BazaarPricing, type MarketValuation, type RunSummary } from "../../simulator";
 import type { BazaarPricesView } from "../../hooks/useBazaarPrices";
-import { InfoHint, Panel, Portal, SegmentedControl } from "../ui";
+import { BodyPortal, InfoHint, Panel, PortalHost, SegmentedControl } from "../ui";
 import { CropImage } from "../shared";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { priceAge, priceRun, type Quotes } from "./bazaarFormat";
@@ -192,10 +192,12 @@ type PriceEditorProps = { bazaar: BazaarPricesView; focusItem: string | null; it
 /** Native modal dialog (Escape, inert background) around the price editor. */
 export const BazaarPriceDialog: React.FC<PriceEditorProps> = (props) => {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [host, setHost] = useState<HTMLDialogElement | null>(null);
   const { onClose } = props;
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
+    setHost(element);
     const previousFocus = document.activeElement;
     const previousOverflow = document.body.style.overflow;
     element.showModal();
@@ -207,7 +209,7 @@ export const BazaarPriceDialog: React.FC<PriceEditorProps> = (props) => {
     };
   }, []);
   return (
-    <Portal>
+    <BodyPortal>
       <dialog
         ref={dialog}
         aria-labelledby="bazaar-prices-title"
@@ -222,9 +224,11 @@ export const BazaarPriceDialog: React.FC<PriceEditorProps> = (props) => {
           if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) onClose();
         }}
       >
-        <BazaarPricePanel {...props} />
+        <PortalHost container={host}>
+          <BazaarPricePanel {...props} />
+        </PortalHost>
       </dialog>
-    </Portal>
+    </BodyPortal>
   );
 };
 

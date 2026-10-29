@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
-import { Portal } from "../ui";
+import { BodyPortal, PortalHost } from "../ui";
 import { DEFAULT_FLOW_EXPORT_OPTIONS, type FlowExportOptions } from "./scenarioEdit";
 import { buttonClass } from "./styles";
 
@@ -18,10 +18,12 @@ type ExportProps = { onClose: () => void; onExport: (options: FlowExportOptions)
 /** Native modal dialog supplies Escape dismissal and an inert background; Tab wraps within it. */
 export const FlowExportDialog: React.FC<ExportProps> = (props) => {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [host, setHost] = useState<HTMLDialogElement | null>(null);
   const { onClose } = props;
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
+    setHost(element);
     const previousFocus = document.activeElement;
     const previousOverflow = document.body.style.overflow;
     element.showModal();
@@ -34,7 +36,7 @@ export const FlowExportDialog: React.FC<ExportProps> = (props) => {
   }, []);
 
   return (
-    <Portal>
+    <BodyPortal>
       <dialog
         ref={dialog}
         aria-labelledby="flow-export-title"
@@ -57,9 +59,11 @@ export const FlowExportDialog: React.FC<ExportProps> = (props) => {
           if (e.clientX < bounds.left || e.clientX > bounds.right || e.clientY < bounds.top || e.clientY > bounds.bottom) onClose();
         }}
       >
-        <FlowExportPanel {...props} />
+        <PortalHost container={host}>
+          <FlowExportPanel {...props} />
+        </PortalHost>
       </dialog>
-    </Portal>
+    </BodyPortal>
   );
 };
 

@@ -82,9 +82,8 @@ export const InfoHint: React.FC<InfoHintProps> = ({
     };
   }, [open, place]);
 
-  // A modal <dialog> sits in the browser's top layer: a popover portaled to <body> renders
-  // underneath it (no z-index helps) and the inert background swallows its hover. So when the
-  // trigger is inside a dialog, portal into that dialog instead.
+  // Inside a modal <dialog> (top layer) the popover must render in that dialog, not <body>.
+  // Dialogs provide themselves through PortalHost; this also covers one that doesn't.
   const [host, setHost] = useState<Element | null>(null);
   useLayoutEffect(() => {
     setHost(triggerRef.current?.closest("dialog") ?? null);
