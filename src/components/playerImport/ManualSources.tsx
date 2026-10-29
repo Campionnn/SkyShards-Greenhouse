@@ -10,6 +10,7 @@ import {
   type ManualValue,
 } from "../../services/playerImport";
 import { InfoHint } from "../ui";
+import { MANUAL_SOURCE_INFO } from "./manualSourceInfo";
 
 /**
  * "Not in the API" sources (MANUAL_SOURCES.md): one compact input per source, grouped Permanent /
@@ -75,9 +76,14 @@ const SourceRow: React.FC<{ source: ManualSource; choices: ManualChoices; onChan
       <div className="min-w-0">
         <div className="flex items-center gap-1 text-xs text-slate-300">
           <span className="truncate">{source.label}</span>
-          {source.hint && (
-            <InfoHint title={source.label} width={260}>
-              {source.hint}
+          {(source.hint || MANUAL_SOURCE_INFO[source.id]) && (
+            <InfoHint title={source.label} width={300}>
+              {source.hint && <p>{source.hint}</p>}
+              {MANUAL_SOURCE_INFO[source.id]?.map((line, i) => (
+                <p key={i} className="text-slate-400">
+                  {line}
+                </p>
+              ))}
             </InfoHint>
           )}
         </div>

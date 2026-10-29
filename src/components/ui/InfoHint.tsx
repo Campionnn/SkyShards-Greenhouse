@@ -82,6 +82,14 @@ export const InfoHint: React.FC<InfoHintProps> = ({
     };
   }, [open, place]);
 
+  // A modal <dialog> sits in the browser's top layer: a popover portaled to <body> renders
+  // underneath it (no z-index helps) and the inert background swallows its hover. So when the
+  // trigger is inside a dialog, portal into that dialog instead.
+  const [host, setHost] = useState<Element | null>(null);
+  useLayoutEffect(() => {
+    setHost(triggerRef.current?.closest("dialog") ?? null);
+  }, []);
+
   const enter = () => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current);
     setHover(true);
@@ -116,7 +124,7 @@ export const InfoHint: React.FC<InfoHintProps> = ({
         {trigger ?? <HelpCircle className="w-3.5 h-3.5" />}
       </span>
       {open && (
-        <Portal>
+        <Portal container={host}>
           <div
             ref={popRef}
             id={id}
