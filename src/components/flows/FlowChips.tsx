@@ -15,10 +15,10 @@ export const SLOWING_TITLE = "Production falls off at the end of the run; scored
 export const StartingItemsLine: React.FC<{ prep: PrepInfo; className?: string; title?: string }> = ({ prep, className = "", title }) => {
   const empty = Object.keys(prep.kit).length === 0;
   return (
-    <span className={`inline-flex min-w-0 items-center gap-1 ${className}`} title={title ?? (empty ? "Starts from an empty inventory" : `Starting items: ${kitListText(prep.kit)}`)} data-testid="starting-items">
+    <div className={`flex min-w-0 items-center gap-1 ${className}`} title={title ?? (empty ? "Starts from an empty inventory" : `Starting items: ${kitListText(prep.kit)}`)} data-testid="starting-items">
       <Package className="h-3 w-3 flex-shrink-0 text-slate-500" />
-      <span className={`truncate ${empty ? "text-emerald-300/90" : prep.done ? "text-slate-300" : "text-amber-300"}`}>{prepText(prep)}</span>
-    </span>
+      <span className={`min-w-0 truncate ${empty ? "text-emerald-300/90" : prep.done ? "text-slate-300" : "text-amber-300"}`}>{prepText(prep)}</span>
+    </div>
   );
 };
 
