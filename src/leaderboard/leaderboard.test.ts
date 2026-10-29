@@ -10,9 +10,18 @@ import { cellResult, median, RunRecorder, runResult, seedSlowing, spreadRatio, t
 import {
   applyRules,
   boardFrom,
+  BOARDS,
+  CELL_KIND_RUN_KIND,
+  CELL_KINDS,
+  cellKindFrom,
+  cellKindOf,
   checkSubmission,
   clampCycles,
   CUT_STEP,
+  kitFromBoard,
+  RUN_KINDS,
+  STITCH_SAMPLE_SEED_INDEX,
+  STITCH_TOLERANCE,
   debugApiErrors,
   END_WINDOW,
   endCycles,
@@ -66,7 +75,7 @@ describe("rules: parse and normalise a submission", () => {
     };
     const parsed = parseSubmission(raw);
     expect(parsed.submission).not.toBeNull();
-    const sc = ruleScenario(parsed.submission!, { runKind: "strict", tier: "max", every: 1, seed: 123 });
+    const sc = ruleScenario(parsed.submission!, { rules: "strict", tier: "max", every: 1, seed: 123 });
     expect(sc.startingInventory).toEqual({});
     expect(sc.settings.seed).toBe(123);
     expect(sc.settings.playerStats.cropGrowth).toBe(210);
@@ -86,11 +95,11 @@ describe("rules: parse and normalise a submission", () => {
 
   it("ironman runs get free dead plants and fermento; normal runs get the Bazaar profile", () => {
     const s = submissionFromScenario(twoStep());
-    const strict = ruleScenario(s, { runKind: "strict", tier: "max", every: 2, seed: 1 });
+    const strict = ruleScenario(s, { rules: "strict", tier: "max", every: 2, seed: 1 });
     expect(strict.settings.config.freePlacedItems).toEqual([...IRONMAN_FREE_ITEMS]);
     expect(strict.settings.profile).toBeUndefined();
     expect(strict.settings.activity).toEqual({ kind: "everyN", n: 2, offset: 0 });
-    const normal = ruleScenario(s, { runKind: "normal", tier: "low", every: 1, seed: 1 });
+    const normal = ruleScenario(s, { rules: "normal", tier: "low", every: 1, seed: 1 });
     expect(normal.settings.config.freePlacedItems).toBeUndefined();
     expect(normal.settings.profile).toBe("normal");
     expect(normal.settings.playerStats).toEqual(tierStats("low"));
@@ -104,23 +113,46 @@ describe("rules: parse and normalise a submission", () => {
     // Normal: exactly the pre-v2 normal-board config, plus only the rules flag (the debug APIs and hidden credit settings).
     expect(ruleConfig("normal")).toEqual({ ...DEFAULT_CONFIG, leaderboardRules: true });
     expect(Object.keys(ruleConfig("normal"))).toEqual([...Object.keys(DEFAULT_CONFIG), "leaderboardRules"]);
-    const normal = ruleScenario(submissionFromScenario(twoStep()), { runKind: "normal", tier: "max", every: 1, seed: 9 }).settings;
+    const normal = ruleScenario(submissionFromScenario(twoStep()), { rules: "normal", tier: "max", every: 1, seed: 9 }).settings;
     expect(normal.profile).toBe("normal");
     expect(normal.reserve).toBeUndefined();
   });
 
-  it("board names: the old 'ironman' is from nothing; requests may send a board or a run kind", () => {
-    expect(boardFrom("ironman")).toBe("ironman_strict");
-    expect(boardFrom("ironman_borrow")).toBe("ironman_borrow");
+  it("v3 names: two boards, two run kinds, three cell kinds; v2's names are aliases", () => {
+    expect(boardFrom("ironman")).toBe("ironman");
+    expect(boardFrom("ironman_strict")).toBe("ironman");
+    expect(boardFrom("ironman_borrow")).toBe("ironman");
     expect(boardFrom("normal")).toBe("normal");
     expect(boardFrom("nope")).toBeNull();
-    expect(runKindFrom("borrow")).toBe("borrow");
-    expect(runKindFrom("ironman")).toBe("strict");
-    expect(runKindFrom("ironman_borrow")).toBe("borrow");
+    expect(kitFromBoard("ironman_borrow")).toBe(true);
+    expect(kitFromBoard("ironman_strict")).toBe(false);
+    expect(kitFromBoard("ironman")).toBeNull();
+    expect(cellKindOf("ironman", false)).toBe("ironman");
+    expect(cellKindOf("ironman", true)).toBe("ironman_kit");
+    expect(cellKindOf("normal", true)).toBe("normal");
+    expect(runKindFrom("ironman")).toBe("ironman");
+    expect(runKindFrom("strict")).toBe("ironman");
+    expect(runKindFrom("borrow")).toBe("ironman");
+    expect(runKindFrom("ironman_borrow")).toBe("ironman");
+    expect(runKindFrom("normal")).toBe("normal");
     expect(runKindFrom(undefined)).toBeNull();
+    expect(cellKindFrom("ironman_kit")).toBe("ironman_kit");
+    expect(cellKindFrom("strict")).toBe("ironman");
+    expect(cellKindFrom("ironman_strict")).toBe("ironman");
+    expect(cellKindFrom("borrow")).toBe("ironman_kit");
+    expect(cellKindFrom("ironman_borrow")).toBe("ironman_kit");
+    expect(cellKindFrom("nope")).toBeNull();
   });
 
-  it("the end window constants are the API's (leaderboard/config.py)", () => {
+  it("the constants are the API's (leaderboard/config.py)", () => {
+    expect({ RUN_KINDS, CELL_KINDS, BOARDS, STITCH_TOLERANCE, STITCH_SAMPLE_SEED_INDEX }).toEqual({
+      RUN_KINDS: ["ironman", "normal"],
+      CELL_KINDS: ["ironman", "ironman_kit", "normal"],
+      BOARDS: ["ironman", "normal"],
+      STITCH_TOLERANCE: 0.01,
+      STITCH_SAMPLE_SEED_INDEX: 0,
+    });
+    expect(CELL_KIND_RUN_KIND).toEqual({ ironman: "ironman", ironman_kit: "ironman", normal: "normal" });
     expect({ END_WINDOW, CUT_STEP, TRAIL_SHARE, TRAIL_MIN }).toEqual({ END_WINDOW: 1.25, CUT_STEP: 25, TRAIL_SHARE: 0.2, TRAIL_MIN: 0.6 });
     expect(endCycles(2000)).toBe(2500);
     expect(endCycles(4999)).toBe(6249);
@@ -241,7 +273,7 @@ describe("results: median and spread", () => {
     expect(median([])).toBe(0);
   });
 
-  const npc = (r: RunResult) => valueResult(engine.data, r, "ironman_strict").profitPerDay;
+  const npc = (r: RunResult) => valueResult(engine.data, r, "ironman").profitPerDay;
 
   it("must-fix: a cell is its median seed's counts, never a per-item mix of seeds", () => {
     // Disjoint farms per seed (the "Frankenstein median" attack): per-item medians would give
@@ -289,7 +321,7 @@ describe("results: median and spread", () => {
 describe("pricing", () => {
   it("values ironman at NPC prices (mutation items 0) and normal at Bazaar prices minus purchases", () => {
     const r = result({ wheat: 100, chloronite: 2 }, { bought: { dead_plant: 4 }, built: { fermento: 2 } });
-    const iron = valueResult(engine.data, r, "ironman_strict");
+    const iron = valueResult(engine.data, r, "ironman");
     expect(iron.profitPerDay).toBe(100 * engine.data.crops.wheat.sellPrice);
     expect(iron.boughtPerDay).toBe(0);
     const quotes = {
@@ -389,7 +421,7 @@ describe("verify", () => {
     const r = runOnce(engine, submissionFromScenario(sc), "strict", "max", 1, 5, 40, { wallMs: 60_000 }).result!;
     expect(r.bySource!.potato.potato).toBeGreaterThan(0);
     // A cell keeps both nested maps (it is one seed's result).
-    const m = cellResult([r, r, r], (x) => valueResult(engine.data, x, "ironman_strict").profitPerDay);
+    const m = cellResult([r, r, r], (x) => valueResult(engine.data, x, "ironman").profitPerDay);
     expect(m.bySource).toEqual(r.bySource);
     expect(m.stepTime).toEqual(r.stepTime);
   });
@@ -413,7 +445,7 @@ describe("verify", () => {
     const C = 100;
     const res = runOnce(engine, sub, "strict", "max", 1, 5, C, { wallMs: 60_000 }).result!;
     expect(res.window).toEqual({ from: 100, to: 125, cuts: 2 });
-    let state = engine.initState(ruleScenario(sub, { runKind: "strict", tier: "max", every: 1, seed: 5 })).state;
+    let state = engine.initState(ruleScenario(sub, { rules: "strict", tier: "max", every: 1, seed: 5 })).state;
     const rates: number[] = [];
     for (const t of [100, 125]) {
       state = engine.run(state, t - state.cycle).state;
@@ -488,7 +520,7 @@ describe("verify", () => {
   it("the recorder reads the state only: a recorded run equals an unrecorded one", () => {
     const sc = twoStep();
     sc.settings.policies = { ...sc.settings.policies, baseCropUpkeep: "harvestWhenGrown" };
-    const ruled = ruleScenario(submissionFromScenario(sc), { runKind: "borrow", tier: "max", every: 2, seed: 3 });
+    const ruled = ruleScenario(submissionFromScenario(sc), { rules: "borrow", tier: "max", every: 2, seed: 3 });
     const plain = engine.run(engine.initState(ruled).state, 120).state;
     const s0 = engine.initState(ruled).state;
     const rec = new RunRecorder(engine.data, { from: 100, to: 120 });
@@ -538,7 +570,7 @@ describe("verify", () => {
     expect(runOnce(engine, sub, "strict", "max", 1, 5, 400, { wallMs: 1e9, scriptSteps: 50_000 }).error).toBe(capped.error);
     expect(runOnce(engine, sub, "strict", "max", 1, 5, 40, { wallMs: 1e9 }).ok).toBe(true);
     // The runtime counts steps in the state, the same across a split run.
-    const state = engine.initState(ruleScenario(sub, { runKind: "strict", tier: "max", every: 1, seed: 5 })).state;
+    const state = engine.initState(ruleScenario(sub, { rules: "strict", tier: "max", every: 1, seed: 5 })).state;
     const whole = engine.run(state, 20).state.scripts!.steps!;
     const split = engine.run(engine.run(state, 10).state, 10).state.scripts!.steps!;
     expect(whole).toBeGreaterThan(20_000);
@@ -556,7 +588,7 @@ describe("verify", () => {
   it("verifyJob runs every cell and the outlier check compares seeds per frequency", () => {
     const outcomes = verifyJob(engine, {
       submission,
-      runKind: "strict",
+      rules: "strict",
       tier: "max",
       cycles: 30,
       runs: [
@@ -579,9 +611,11 @@ describe("verify", () => {
 
 describe("cli", () => {
   it("version, check and verify modes", () => {
-    const v = handle({ mode: "version" }) as { every: number[]; tiers: string[]; runKinds: string[] };
+    const v = handle({ mode: "version" }) as { every: number[]; tiers: string[]; runKinds: string[]; cellKinds: string[]; stitchTolerance: number };
     expect(v.every).toEqual([...EVERY]);
-    expect(v.runKinds).toEqual(["strict", "borrow", "normal"]);
+    expect(v.runKinds).toEqual(["ironman", "normal"]);
+    expect(v.cellKinds).toEqual(["ironman", "ironman_kit", "normal"]);
+    expect(v.stitchTolerance).toBe(0.01);
     const file = submissionFile(submissionFromScenario(twoStep()));
     const c = handle({ mode: "check", payload: file }) as { ok: boolean };
     expect(c.ok).toBe(true);
@@ -597,11 +631,33 @@ describe("cli", () => {
     expect(r.results[0].result.cycles).toBe(2500);
     expect(r.results[0].result.window).toEqual({ from: 2000, to: 2500, cuts: 21 });
     expect(lines).toEqual(["progress 1/1"]);
-    // Old requests send a board: "ironman" is the strict run.
-    const old = handle({ mode: "verify", payload: file, board: "ironman", tier: "max", cycles: 2000, runs: [] }) as { runKind: string };
-    expect(old.runKind).toBe("strict");
+    // Old requests: v2's run kinds and board names are the ironman run.
+    for (const old of [{ runKind: "strict" as const }, { runKind: "borrow" as const }, { board: "ironman_strict" }, { board: "ironman_borrow" }]) {
+      expect((handle({ mode: "verify", payload: file, tier: "max", cycles: 2000, runs: [], ...old }) as { runKind: string }).runKind).toBe("ironman");
+    }
     expect(() => handle({ mode: "verify", payload: file, runKind: "x" as never, tier: "max", runs: [] })).toThrow(/runKind/);
+    expect(() => handle({ mode: "verify", payload: file, runKind: "ironman", tier: "max", runs: [], stitch: "maybe" as never })).toThrow(/stitch/);
     expect(() => handle({ mode: "nope" as never })).toThrow(/unknown mode/);
+  });
+
+  it("an ironman verify returns both variants per seed, the sampled check on check runs, and both outlier checks", () => {
+    const file = submissionFile(submissionFromScenario(twoStep()));
+    const r = handle({ mode: "verify", payload: file, runKind: "ironman", tier: "max", cycles: 2000, runs: [{ every: 3, seed: 9, seedIndex: 0, check: true }, { every: 3, seed: 10, seedIndex: 1 }] }) as {
+      runKind: string;
+      results: { ok: boolean; seedIndex: number; result: RunResult; fromNothing: RunResult; stitchCheck?: unknown }[];
+      outlier: { ironman: { ok: boolean }; ironman_kit: { ok: boolean } };
+    };
+    expect(r.runKind).toBe("ironman");
+    expect(r.results.map((x) => [x.ok, x.seedIndex])).toEqual([
+      [true, 0],
+      [true, 1],
+    ]);
+    // Base crops only: an empty kit, so from nothing is the borrow run (no builder, nothing to check).
+    expect(r.results[0].fromNothing.prep).toEqual({ kit: {}, cycles: 0, days: 0, done: true, mode: "stitched" });
+    expect(r.results[0].fromNothing.produced).toEqual(r.results[0].result.produced);
+    expect(r.results[0].result.startItems).toEqual({});
+    expect(r.outlier.ironman.ok).toBe(true);
+    expect(r.outlier.ironman_kit.ok).toBe(true);
   });
 
   it("a check of a broken payload reports errors instead of throwing", () => {

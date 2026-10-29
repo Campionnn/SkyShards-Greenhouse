@@ -6,15 +6,17 @@ import { uptimeRatio } from "../simulator/sim/summary";
 import { builderScenario, kitEmpty, kitOf, ownsKit, type Kit } from "./builder/builder";
 import { valueResult } from "./pricing";
 import { countSnapshot, effortResult, RunRecorder, spreadRatio, stitch, timelineCycles, trailStart, type CountSnapshot, type PrepInfo, type RecorderPlan, type RunResult, type TimelineRest } from "./result";
-import { CUT_STEP, endCycles, ruleScenario, RUN_KIND_BOARD, STITCH_TOLERANCE, type RunKind, type Submission } from "./rules";
+import { CUT_STEP, endCycles, ruleScenario, STITCH_TOLERANCE, type RuleKind, type Submission } from "./rules";
 import type { TierId } from "./tiers";
 
 /**
  * Verification runs (docs/plans/flow-leaderboard.md §6.2, §6.3, docs/plans/leaderboard-boards-v2.md
- * §4.3): simulate a submission under the rules of one run kind for a list of (every, seed) cells
- * and summarise each as a `RunResult`. Each run goes `endCycles(cycles)` cycles: the author's
- * length plus the secret end window the score is averaged over. Framework-free so the CLI bundle
- * and the page's local test both use it.
+ * §4.3, docs/plans/leaderboard-v3.md §3): simulate a submission under the rules for a list of
+ * (every, seed) cells and summarise each as a `RunResult`. Each run goes `endCycles(cycles)`
+ * cycles: the author's length plus the secret end window the score is averaged over. A normal job
+ * is one engine set-up (`verifyJob`); an ironman job is the borrow run plus the "from nothing"
+ * timeline (`verifyIronmanJob`). Framework-free so the CLI bundle and the page's local test both
+ * use it.
  */
 
 export interface VerifyRun {
@@ -25,7 +27,8 @@ export interface VerifyRun {
 
 export interface VerifyJob {
   submission: Submission;
-  runKind: RunKind;
+  /** The engine set-up every run uses. */
+  rules: RuleKind;
   tier: TierId;
   /** The author's length C (already clamped); each run simulates `endCycles(C)`. */
   cycles: number;
@@ -175,10 +178,10 @@ function simulate(engine: Engine, scenario: Scenario, plan: RecorderPlan, total:
  * Simulate one cell to the end of its window (or the cap). `cycles` is the author's length C.
  * Never throws for a scenario the engine rejects: returns the error.
  */
-export function runOnce(engine: Engine, submission: Submission, runKind: RunKind, tier: TierId, every: number, seed: number, cycles: number, opts: RunOnceOptions): VerifyRunOutcome {
+export function runOnce(engine: Engine, submission: Submission, rules: RuleKind, tier: TierId, every: number, seed: number, cycles: number, opts: RunOnceOptions): VerifyRunOutcome {
   const clock = startClock(opts);
   const total = endCycles(cycles);
-  const sim = simulate(engine, ruleScenario(submission, { runKind, tier, every, seed }), { from: Math.max(1, Math.floor(cycles)), to: total }, total, clock, opts.scriptSteps ?? scriptStepCap(total), opts.onProgress);
+  const sim = simulate(engine, ruleScenario(submission, { rules, tier, every, seed }), { from: Math.max(1, Math.floor(cycles)), to: total }, total, clock, opts.scriptSteps ?? scriptStepCap(total), opts.onProgress);
   return { every, seedIndex: -1, seed, ok: sim.ok, error: sim.error, result: sim.result, wallMs: clock.now() - clock.t0, cpuMs: clock.cpuUsed() };
 }
 
@@ -261,6 +264,8 @@ interface BuilderRun {
   error: string | null;
   /** The cycle the builder first owned the kit (null: not by the limit). */
   owned: number | null;
+  /** Simulated days at `owned`. */
+  madeDays: number | null;
   /** T*: where the flow starts (a multiple of CUT_STEP), or the timeline's end when not done. */
   cycles: number;
   days: number;
@@ -280,7 +285,7 @@ interface BuilderRun {
  * timeline's end, `to`, and its crops are the whole score (`done` false).
  */
 function runBuilder(engine: Engine, kit: Kit, spec: { tier: TierId; every: number; seed: number }, C: number, to: number, clock: RunClock, stepCap: number, keep: Set<number>, onProgress?: (done: number) => void): BuilderRun {
-  const fail = (error: string): BuilderRun => ({ ok: false, error: `the starting-items builder ${error}`, owned: null, cycles: 0, days: 0, done: false, end: null, snaps: new Map(), state: null });
+  const fail = (error: string): BuilderRun => ({ ok: false, error: `the starting-items builder ${error}`, owned: null, madeDays: null, cycles: 0, days: 0, done: false, end: null, snaps: new Map(), state: null });
   let state: SimulationState;
   try {
     state = engine.initState(builderScenario(kit, spec)).state;
@@ -294,6 +299,7 @@ function runBuilder(engine: Engine, kit: Kit, spec: { tier: TierId; every: numbe
   watch(state);
   // Only owning the kit by cycle C counts; T* = the next multiple of CUT_STEP.
   let owned: number | null = null;
+  let madeDays: number | null = null;
   const tStar = (t: number) => Math.ceil(t / CUT_STEP) * CUT_STEP;
   let limit = C;
   while (state.cycle < limit) {
@@ -303,6 +309,7 @@ function runBuilder(engine: Engine, kit: Kit, spec: { tier: TierId; every: numbe
         watch(s);
         if (owned === null && s.cycle <= C && ownsKit(s.inventory, kit)) {
           owned = s.cycle;
+          madeDays = s.elapsedSeconds / 86400;
           return true; // re-plan the limit: run on to T*
         }
       },
@@ -319,7 +326,7 @@ function runBuilder(engine: Engine, kit: Kit, spec: { tier: TierId; every: numbe
     // Not owned by C: the builder is the whole timeline.
     else if (state.cycle >= C) limit = to;
   }
-  return { ok: true, error: null, owned, cycles: state.cycle, days: state.elapsedSeconds / 86400, done: owned !== null, end: countSnapshot(state), snaps, state };
+  return { ok: true, error: null, owned, madeDays, cycles: state.cycle, days: state.elapsedSeconds / 86400, done: owned !== null, end: countSnapshot(state), snaps, state };
 }
 
 /**
@@ -352,7 +359,7 @@ export function runIronman(engine: Engine, submission: Submission, tier: TierId,
   };
 
   // 1. The borrow run, with snapshots at every cycle a stitched timeline may read.
-  const borrow = simulate(engine, ruleScenario(submission, { runKind: "borrow", tier, every, seed }), { from: C, to: total, snapshotAt: keep }, total, clock, flowSteps, (d) => progress(d));
+  const borrow = simulate(engine, ruleScenario(submission, { rules: "borrow", tier, every, seed }), { from: C, to: total, snapshotAt: keep }, total, clock, flowSteps, (d) => progress(d));
   if (!borrow.ok || !borrow.result || !borrow.recorder) return out(false, borrow.error, borrow.result, null);
   const kitResult = borrow.result;
   const kit = kitOf(kitResult.startItems);
@@ -369,6 +376,7 @@ export function runIronman(engine: Engine, submission: Submission, tier: TierId,
   }
   const T = prepRun ? prepRun.cycles : 0;
   const prep: PrepInfo = { kit, cycles: T, days: prepRun ? prepRun.days : 0, done: prepRun ? prepRun.done : true, mode: "stitched" };
+  if (prepRun?.madeDays != null) prep.madeDays = prepRun.madeDays;
   const prepAt = prepRun ? (t: number) => prepRun.snaps.get(t) : undefined;
 
   // Not done by C: the builder alone is the timeline.
@@ -392,7 +400,7 @@ export function runIronman(engine: Engine, submission: Submission, tier: TierId,
   const runReal = (): { ok: true; result: RunResult } | { ok: false; error: string } => {
     const length = total - T;
     const need = timelineCycles(C, total, T);
-    const sim = simulate(engine, ruleScenario(submission, { runKind: "strict", tier, every, seed }, kit), { from: Math.max(0, C - T), to: length, snapshotAt: (c) => need.has(c) }, length, clock, flowSteps, (d) => progress(total + T + d));
+    const sim = simulate(engine, ruleScenario(submission, { rules: "strict", tier, every, seed }, kit), { from: Math.max(0, C - T), to: length, snapshotAt: (c) => need.has(c) }, length, clock, flowSteps, (d) => progress(total + T + d));
     if (!sim.ok || !sim.result || !sim.recorder) return { ok: false, error: sim.error ?? "the run from the starting items failed" };
     const result = stitch({ from: C, to: total, prep: { ...prep, mode: "real" }, prepEnd: prepRun?.end ?? null, flowAt: snapsOf(sim.recorder), prepAt, rest: { ...restOf(sim.result), ...kitFields(kitResult) } });
     return { ok: true, result };
@@ -425,7 +433,7 @@ export interface IronmanRun extends VerifyRun {
   check?: boolean;
 }
 
-export interface IronmanJob extends Omit<VerifyJob, "runKind" | "runs"> {
+export interface IronmanJob extends Omit<VerifyJob, "rules" | "runs"> {
   runs: IronmanRun[];
   /** "real": every run's flow part runs for real (the API asks after a failed check in another lane). */
   stitch?: "auto" | "real";
@@ -482,7 +490,7 @@ export function ironmanOutlierChecks(engine: Engine, outcomes: readonly IronmanO
 export function verifyJob(engine: Engine, job: VerifyJob, onProgress?: (done: number, total: number) => void): VerifyRunOutcome[] {
   const outcomes: VerifyRunOutcome[] = [];
   job.runs.forEach((r, i) => {
-    const o = runOnce(engine, job.submission, job.runKind, job.tier, r.every, r.seed, job.cycles, { wallMs: job.wallMsPerRun, cpuMs: job.cpuMsPerRun, scriptSteps: job.scriptStepsPerRun });
+    const o = runOnce(engine, job.submission, job.rules, job.tier, r.every, r.seed, job.cycles, { wallMs: job.wallMsPerRun, cpuMs: job.cpuMsPerRun, scriptSteps: job.scriptStepsPerRun });
     o.seedIndex = r.seedIndex;
     outcomes.push(o);
     onProgress?.(i + 1, job.runs.length);
@@ -491,8 +499,8 @@ export function verifyJob(engine: Engine, job: VerifyJob, onProgress?: (done: nu
 }
 
 /** A run kind's reference valuation of a result (coins per day): NPC for the ironman kinds, the given Bazaar quotes for normal. */
-export function referenceValue(engine: Engine, r: RunResult, runKind: RunKind, quotes: Readonly<Record<ItemId, BazaarQuote>> = {}): number {
-  return valueResult(engine.data, r, RUN_KIND_BOARD[runKind], quotes, DEFAULT_BAZAAR_PRICING).profitPerDay;
+export function referenceValue(engine: Engine, r: RunResult, rules: RuleKind, quotes: Readonly<Record<ItemId, BazaarQuote>> = {}): number {
+  return valueResult(engine.data, r, rules === "normal" ? "normal" : "ironman", quotes, DEFAULT_BAZAAR_PRICING).profitPerDay;
 }
 
 export interface OutlierCheck {
@@ -510,14 +518,14 @@ export interface OutlierCheck {
 export function outlierCheck(
   engine: Engine,
   outcomes: readonly VerifyRunOutcome[],
-  runKind: RunKind,
+  rules: RuleKind,
   quotes: Readonly<Record<ItemId, BazaarQuote>>,
   ratio: number
 ): OutlierCheck {
   const byEvery = new Map<number, number[]>();
   for (const o of outcomes) {
     if (!o.ok || !o.result) continue;
-    const v = referenceValue(engine, o.result, runKind, quotes);
+    const v = referenceValue(engine, o.result, rules, quotes);
     (byEvery.get(o.every) ?? byEvery.set(o.every, []).get(o.every)!).push(v);
   }
   const ratios: Record<number, number> = {};

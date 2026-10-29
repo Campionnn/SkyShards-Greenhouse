@@ -42,7 +42,7 @@ const baseCrops = () => submissionFromScenario(scenario([flow([step("one", layou
 describe("recorder snapshots and the stitched timeline", () => {
   it("snapshot mode keeps the counts at the chosen cycles and leaves the result unchanged", () => {
     const sub = baseCrops();
-    const sc = ruleScenario(sub, { runKind: "borrow", tier: "max", every: 2, seed: 3 });
+    const sc = ruleScenario(sub, { rules: "borrow", tier: "max", every: 2, seed: 3 });
     const run = (rec: RunRecorder) => {
       const s0 = engine.initState(sc).state;
       rec.observe(s0);
@@ -60,7 +60,7 @@ describe("recorder snapshots and the stitched timeline", () => {
   it("stitch of a run with no builder part reproduces the run's own window means and trail", () => {
     const sub = baseCrops();
     const rec = new RunRecorder(engine.data, { from: 100, to: endCycles(100), snapshotAt: () => true });
-    const s0 = engine.initState(ruleScenario(sub, { runKind: "borrow", tier: "max", every: 1, seed: 9 })).state;
+    const s0 = engine.initState(ruleScenario(sub, { rules: "borrow", tier: "max", every: 1, seed: 9 })).state;
     rec.observe(s0);
     const end = engine.run(s0, endCycles(100), { onCycle: (s) => rec.observe(s) }).state;
     const own = rec.result(end, true);
@@ -128,7 +128,7 @@ describe("runIronman: from nothing and with the starting items", () => {
     expect(T).toBe(prep.cycles);
     expect(b.elapsedSeconds / 86400).toBeCloseTo(prep.days, 9);
     // The flow, strict, starting with exactly the kit.
-    let f = engine.initState(ruleScenario(sub, { runKind: "strict", tier: "max", every: 1, seed: 2 }, prep.kit)).state;
+    let f = engine.initState(ruleScenario(sub, { rules: "strict", tier: "max", every: 1, seed: 2 }, prep.kit)).state;
     expect(f.inventory.chloronite).toBe(0); // the setup placed the one Chloronite from the kit
     const rates: number[] = [];
     for (let t = C; t <= total; t += CUT_STEP) {

@@ -134,5 +134,5 @@ export const builderSeed = (seed: number): number => derivedSeed(seed, "builder"
  * frequency, its own seed (`builderSeed`), unlimited supplies in stock.
  */
 export function builderScenario(kit: Readonly<Kit>, spec: { tier: TierId; every: number; seed: number }): Scenario {
-  return ruleScenario(builderFor(kit), { runKind: "strict", tier: spec.tier, every: spec.every, seed: builderSeed(spec.seed) }, BUILDER_SUPPLIES);
+  return ruleScenario(builderFor(kit), { rules: "strict", tier: spec.tier, every: spec.every, seed: builderSeed(spec.seed) }, BUILDER_SUPPLIES);
 }

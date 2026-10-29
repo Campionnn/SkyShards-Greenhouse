@@ -1,26 +1,30 @@
 import { parseBazaar, type BazaarQuote } from "../simulator/economy/bazaar";
 import type { ItemId } from "../simulator/data/types";
 import { createEngine } from "../simulator/engine";
-import { checkSubmission, clampCycles, parseSubmission, RUN_KINDS, runKindFrom, type RunKind } from "./rules";
+import { CELL_KINDS, checkSubmission, clampCycles, parseSubmission, RUN_KINDS, runKindFrom, STITCH_TOLERANCE, type RunKind } from "./rules";
 import { summarizeSubmission } from "./summary";
 import { EVERY, TIERS, type TierId } from "./tiers";
-import { CPU_MS_BACKSTOP, outlierCheck, verifyJob, WALL_MS_BACKSTOP, type VerifyRun } from "./verify";
+import { CPU_MS_BACKSTOP, ironmanOutlierChecks, outlierCheck, verifyIronmanJob, verifyJob, WALL_MS_BACKSTOP, type IronmanRun } from "./verify";
 
 /**
- * The verifier CLI (docs/plans/flow-leaderboard.md §5.3, §6.2, docs/plans/leaderboard-boards-v2.md).
- * One JSON request on stdin, one JSON reply on stdout, progress lines on stderr. Bundled by
- * scripts/build-verify.mjs into a self-contained `verify.mjs` that the API runs as a subprocess;
- * `ENGINE_VERSION` is baked in by the bundler (a hash of the bundle's engine sources).
+ * The verifier CLI (docs/plans/flow-leaderboard.md §5.3, §6.2, docs/plans/leaderboard-boards-v2.md,
+ * docs/plans/leaderboard-v3.md). One JSON request on stdin, one JSON reply on stdout, progress
+ * lines on stderr. Bundled by scripts/build-verify.mjs into a self-contained `verify.mjs` that the
+ * API runs as a subprocess; `ENGINE_VERSION` is baked in by the bundler (a hash of the bundle's
+ * engine sources).
  *
  * Requests:
  *   {mode: "version"}
- *     -> {engineVersion, every, tiers, runKinds}
+ *     -> {engineVersion, every, tiers, runKinds, cellKinds, stitchTolerance}
  *   {mode: "check", payload}
  *     -> {ok, errors, warnings, plots, bytes, summary: FlowSummary | null}  (summary.ts)
- *   {mode: "verify", payload, runKind, tier, cycles, runs: [{every, seed, seedIndex}], wallMsPerRun?, cpuMsPerRun?, scriptStepsPerRun?,
- *     bazaar?: {item: {buy, sell}} | raw Hypixel response | null, outlierRatio?}
- *     -> {engineVersion, runKind, results: [{every, seedIndex, seed, ok, error, result, wallMs, cpuMs}], outlier?}
- *   `runKind` is strict | borrow | normal; old requests may send `board` instead (ironman = strict).
+ *   {mode: "verify", payload, runKind, tier, cycles, runs: [{every, seed, seedIndex, check?}], wallMsPerRun?, cpuMsPerRun?, scriptStepsPerRun?,
+ *     stitch?: "auto" | "real", builderStepsPerRun?, bazaar?: {item: {buy, sell}} | raw Hypixel response | null, outlierRatio?}
+ *     normal  -> {engineVersion, runKind, results: [{every, seedIndex, seed, ok, error, result, wallMs, cpuMs}], outlier}
+ *     ironman -> {engineVersion, runKind, results: [{..., result (with the starting items), fromNothing, stitchCheck?}],
+ *                 outlier: {ironman, ironman_kit}}
+ *   `runKind` is ironman | normal; old requests may send `strict` / `borrow` (both ironman) or a
+ *   board name in `board`. `check` marks a sampled stitch-check run (verify.ts runIronman).
  *   `cycles` is the author's length; each run simulates it plus the secret end window (rules.ts endCycles).
  */
 
@@ -30,15 +34,19 @@ export const ENGINE_VERSION: string = typeof __ENGINE_VERSION__ === "string" ? _
 export interface CliRequest {
   mode: "version" | "check" | "verify";
   payload?: unknown;
-  runKind?: RunKind;
-  /** Old requests: a board name (`ironman` = strict). */
+  runKind?: RunKind | "strict" | "borrow";
+  /** Old requests: a board name. */
   board?: string;
   tier?: TierId;
   cycles?: number;
-  runs?: VerifyRun[];
+  runs?: IronmanRun[];
   wallMsPerRun?: number;
   cpuMsPerRun?: number;
   scriptStepsPerRun?: number;
+  /** Ironman: "real" runs every flow part for real (default "auto": stitched where valid, with the sampled check). */
+  stitch?: "auto" | "real";
+  /** Ironman: the starting-items builder's own script step cap per run. */
+  builderStepsPerRun?: number;
   bazaar?: unknown;
   outlierRatio?: number;
 }
@@ -68,11 +76,13 @@ function readQuotes(raw: unknown): Record<ItemId, BazaarQuote> {
   return out;
 }
 
+const positive = (v: unknown): number | undefined => (typeof v === "number" && v > 0 ? v : undefined);
+
 export function handle(req: CliRequest, progress: (line: string) => void = () => {}): unknown {
   const engine = createEngine();
   switch (req.mode) {
     case "version":
-      return { engineVersion: ENGINE_VERSION, every: [...EVERY], tiers: [...TIERS], runKinds: [...RUN_KINDS] };
+      return { engineVersion: ENGINE_VERSION, every: [...EVERY], tiers: [...TIERS], runKinds: [...RUN_KINDS], cellKinds: [...CELL_KINDS], stitchTolerance: STITCH_TOLERANCE };
     case "check": {
       const parsed = parseSubmission(req.payload);
       if (!parsed.submission) return { ok: false, errors: parsed.errors, warnings: [], plots: 0, bytes: 0, summary: null };
@@ -92,19 +102,24 @@ export function handle(req: CliRequest, progress: (line: string) => void = () =>
       for (const r of runs) {
         if (!Number.isInteger(r.every) || r.every < 1 || !Number.isInteger(r.seed) || !Number.isInteger(r.seedIndex)) throw new Error("each run needs integer every, seed and seedIndex");
       }
-      const job = {
+      if (req.stitch !== undefined && req.stitch !== "auto" && req.stitch !== "real") throw new Error('stitch must be "auto" or "real"');
+      const base = {
         submission: parsed.submission,
-        runKind,
         tier,
         cycles: clampCycles(req.cycles),
-        runs,
-        wallMsPerRun: typeof req.wallMsPerRun === "number" && req.wallMsPerRun > 0 ? req.wallMsPerRun : DEFAULT_WALL_MS,
-        cpuMsPerRun: typeof req.cpuMsPerRun === "number" && req.cpuMsPerRun > 0 ? req.cpuMsPerRun : DEFAULT_CPU_MS,
-        scriptStepsPerRun: typeof req.scriptStepsPerRun === "number" && req.scriptStepsPerRun > 0 ? req.scriptStepsPerRun : undefined,
+        wallMsPerRun: positive(req.wallMsPerRun) ?? DEFAULT_WALL_MS,
+        cpuMsPerRun: positive(req.cpuMsPerRun) ?? DEFAULT_CPU_MS,
+        scriptStepsPerRun: positive(req.scriptStepsPerRun),
       };
-      const results = verifyJob(engine, job, (done, total) => progress(`progress ${done}/${total}`));
-      const quotes = readQuotes(req.bazaar);
-      const outlier = outlierCheck(engine, results, runKind, quotes, typeof req.outlierRatio === "number" ? req.outlierRatio : DEFAULT_OUTLIER_RATIO);
+      const ratio = typeof req.outlierRatio === "number" ? req.outlierRatio : DEFAULT_OUTLIER_RATIO;
+      const onProgress = (done: number, total: number) => progress(`progress ${done}/${total}`);
+      if (runKind === "ironman") {
+        const job = { ...base, runs: runs.map((r) => ({ every: r.every, seed: r.seed, seedIndex: r.seedIndex, check: r.check === true })), stitch: req.stitch ?? "auto", builderStepsPerRun: positive(req.builderStepsPerRun) };
+        const results = verifyIronmanJob(engine, job, onProgress);
+        return { engineVersion: ENGINE_VERSION, runKind, results, outlier: ironmanOutlierChecks(engine, results, ratio) };
+      }
+      const results = verifyJob(engine, { ...base, rules: "normal", runs: runs.map((r) => ({ every: r.every, seed: r.seed, seedIndex: r.seedIndex })) }, onProgress);
+      const outlier = outlierCheck(engine, results, "normal", readQuotes(req.bazaar), ratio);
       return { engineVersion: ENGINE_VERSION, runKind, results, outlier };
     }
     default:

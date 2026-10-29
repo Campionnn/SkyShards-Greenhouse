@@ -135,6 +135,8 @@ export interface PrepInfo {
   cycles: number;
   /** Simulated days at `cycles`. */
   days: number;
+  /** Simulated days when the builder first owned the kit (before the CUT_STEP padding to T*); missing when not done or without a kit. */
+  madeDays?: number;
   /** The builder owned the kit by the first scored cut (the author's length). */
   done: boolean;
   /** The flow part came from the borrow run's snapshots (stitched) or from its own strict run from the kit (real). */

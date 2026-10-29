@@ -12,58 +12,100 @@ import type { ScriptDef } from "../simulator/script/types";
 import { activityEvery, tierStats, type TierId } from "./tiers";
 
 /**
- * The leaderboard rules (docs/plans/flow-leaderboard.md §4, docs/plans/leaderboard-boards-v2.md):
- * what a submission may contain and the settings every verification run uses. Shared by the
- * server CLI (which enforces them) and the page (which previews them and applies them locally
- * with "Apply leaderboard rules").
+ * The leaderboard rules (docs/plans/flow-leaderboard.md §4, docs/plans/leaderboard-boards-v2.md,
+ * docs/plans/leaderboard-v3.md): what a submission may contain and the settings every
+ * verification run uses. Shared by the server CLI (which enforces them) and the page (which
+ * previews them and applies them locally with "Apply leaderboard rules").
  *
  * A submission is a flows file (`skyshards-greenhouse-flows`, v1 or v2): `plots` (flows, steps,
  * layouts, triggers, watch lists, policy overrides, plot scripts), the controller `script` and
  * `settings.policies` (action defaults). Everything else in the file is ignored: the server sets
  * the seed, online schedule, player stats, starting inventory, config and profile per run.
  *
- * Every flow is verified under three run kinds, one per board, and appears on all three boards:
- * - `strict` ("Ironman · from nothing"): empty inventory, the starting layouts paid from it, no
- *   borrowing ever; a missing item leaves its cell empty.
- * - `borrow` ("Ironman · with starting items"): empty inventory, but any mutation item can be
- *   placed before it is owned (the stock goes negative). Results show the starting items it needs.
- * - `normal` ("Normal"): the normal profile; free starting layouts (their cost shown as the build
- *   cost), shortfalls bought on the Bazaar, surplus sold.
+ * Three engine set-ups (rule kinds, `ruleConfig`):
+ * - `strict`: empty inventory, the starting layouts paid from it, no borrowing ever; a missing
+ *   item leaves its cell empty.
+ * - `borrow`: empty inventory, but any mutation item can be placed before it is owned (the stock
+ *   goes negative). Results show the starting items it needs.
+ * - `normal`: the normal profile; free starting layouts (their cost shown as the build cost),
+ *   shortfalls bought on the Bazaar, surplus sold.
+ *
+ * Leaderboard v3: two boards and two verify jobs (run kinds) per flow.
+ * - `ironman`: the borrow run (cell kind `ironman_kit`, "with the starting items"), then the frozen
+ *   builder makes those starting items from nothing and the flow runs from them under the strict
+ *   rules (cell kind `ironman`, "from nothing"; verify.ts runIronman).
+ * - `normal`: the normal set-up (cell kind `normal`), exactly v2's.
  */
 
-export type RunKind = "strict" | "borrow" | "normal";
-export const RUN_KINDS: readonly RunKind[] = ["strict", "borrow", "normal"];
+/** The engine set-ups a leaderboard run uses (`ruleConfig`). Internal: the API never sees them. */
+export type RuleKind = "strict" | "borrow" | "normal";
+export const RULE_KINDS: readonly RuleKind[] = ["strict", "borrow", "normal"];
 
-/** The three boards, one per run kind. */
-export type Board = "ironman_strict" | "ironman_borrow" | "normal";
-export const BOARDS: readonly Board[] = ["ironman_strict", "ironman_borrow", "normal"];
-export const BOARD_RUN_KIND: Readonly<Record<Board, RunKind>> = { ironman_strict: "strict", ironman_borrow: "borrow", normal: "normal" };
-export const RUN_KIND_BOARD: Readonly<Record<RunKind, Board>> = { strict: "ironman_strict", borrow: "ironman_borrow", normal: "normal" };
+/** Verify jobs (Leaderboard v3). Mirrored in SkyShards-API leaderboard/config.py RUN_KINDS. */
+export type RunKind = "ironman" | "normal";
+export const RUN_KINDS: readonly RunKind[] = ["ironman", "normal"];
 
-/** A board from a URL, an old client or an old entry: `ironman` (the one ironman board before v2) is `ironman_strict`. */
+/**
+ * What a cell measured: `ironman` = from nothing (the builder makes the starting items first),
+ * `ironman_kit` = with the starting items (the borrow run), `normal`. One ironman job writes the
+ * first two. Mirrored in config.py CELL_KINDS.
+ */
+export type CellKind = "ironman" | "ironman_kit" | "normal";
+export const CELL_KINDS: readonly CellKind[] = ["ironman", "ironman_kit", "normal"];
+export const CELL_KIND_RUN_KIND: Readonly<Record<CellKind, RunKind>> = { ironman: "ironman", ironman_kit: "ironman", normal: "normal" };
+
+/** The two boards. The ironman board's "I have the starting items" switch (`kit`) picks its cell kind. Mirrored in config.py BOARDS. */
+export type Board = "ironman" | "normal";
+export const BOARDS: readonly Board[] = ["ironman", "normal"];
+export const BOARD_RUN_KIND: Readonly<Record<Board, RunKind>> = { ironman: "ironman", normal: "normal" };
+
+/**
+ * The sampled stitch check (verify.ts): a stitched "from nothing" value may differ from the real
+ * run's by at most this share (reference NPC valuation), else the whole job runs real. The sample
+ * is seed index STITCH_SAMPLE_SEED_INDEX at the job's lowest and highest frequency. Mirrored in
+ * config.py.
+ */
+export const STITCH_TOLERANCE = 0.01;
+export const STITCH_SAMPLE_SEED_INDEX = 0;
+
+/** A board from a URL, an old client or an old entry: v2's `ironman_strict` and `ironman_borrow` are the ironman board. */
 export function boardFrom(raw: unknown): Board | null {
-  if (raw === "ironman") return "ironman_strict";
+  if (raw === "ironman_strict" || raw === "ironman_borrow") return "ironman";
   return BOARDS.includes(raw as Board) ? (raw as Board) : null;
 }
 
-/** A run kind from a request: a run kind, or a board name (old clients send `board`). */
+/** The starting-items switch an old board name implies: `ironman_borrow` on, `ironman_strict` off, anything else null. */
+export function kitFromBoard(raw: unknown): boolean | null {
+  if (raw === "ironman_borrow") return true;
+  if (raw === "ironman_strict") return false;
+  return null;
+}
+
+/** The cell kind a board shows: ironman with the switch on is `ironman_kit`. */
+export const cellKindOf = (board: Board, kit: boolean): CellKind => (board === "normal" ? "normal" : kit ? "ironman_kit" : "ironman");
+
+/** A run kind from a request: a run kind, an old one (strict, borrow) or a board name (old clients send `board`). */
 export function runKindFrom(raw: unknown): RunKind | null {
   if (RUN_KINDS.includes(raw as RunKind)) return raw as RunKind;
+  if (raw === "strict" || raw === "borrow") return "ironman";
   const board = boardFrom(raw);
   return board ? BOARD_RUN_KIND[board] : null;
 }
 
+/**
+ * A cell kind from a stored row: a cell kind, or what older APIs sent: run kind `strict` (from
+ * nothing) / `borrow` (with the starting items), board `ironman_strict` / `ironman_borrow`, or the
+ * pre-v2 board `ironman`.
+ */
+export function cellKindFrom(raw: unknown): CellKind | null {
+  if (CELL_KINDS.includes(raw as CellKind)) return raw as CellKind;
+  if (raw === "strict" || raw === "ironman_strict") return "ironman";
+  if (raw === "borrow" || raw === "ironman_borrow") return "ironman_kit";
+  return null;
+}
+
 /** Ironman boards are priced at NPC prices (mutation items 0); normal at the Bazaar. */
 export const isIronmanBoard = (b: Board): boolean => b !== "normal";
-
-/**
- * Leaderboard v3's sampled stitch check (verify.ts runIronman): a stitched "from nothing" value
- * may differ from the real run's by at most this share (reference NPC valuation), else the whole
- * job runs real. The sample is seed index STITCH_SAMPLE_SEED_INDEX at the job's lowest and highest
- * frequency. Mirrored in SkyShards-API leaderboard/config.py.
- */
-export const STITCH_TOLERANCE = 0.01;
-export const STITCH_SAMPLE_SEED_INDEX = 0;
 
 export const MIN_CYCLES = 2000;
 export const MAX_CYCLES = 5000;
@@ -236,27 +278,28 @@ export function submissionFile(s: Submission): SubmissionFile {
 
 /** A run's settings under the rules: everything except the submission's policies is fixed. */
 export interface RunSpec {
-  runKind: RunKind;
+  /** The engine set-up. */
+  rules: RuleKind;
   tier: TierId;
   every: number;
   seed: number;
 }
 
 /**
- * The config every verification run of a run kind uses: the defaults, plus
- * - ironman kinds: unlimited Dead Plants and Fermento; strict pays the starting layouts from the
- *   (empty) stock, borrow may place any mutation item before it is owned;
+ * The config every verification run of a rule kind uses: the defaults, plus
+ * - strict and borrow (ironman): unlimited Dead Plants and Fermento; strict pays the starting
+ *   layouts from the (empty) stock, borrow may place any mutation item before it is owned;
  * - normal: nothing else (the normal profile buys and sells instead).
  * `leaderboardRules` refuses the debug script APIs and hides the credit settings from scripts.
  */
-export function ruleConfig(runKind: RunKind): SimConfig {
+export function ruleConfig(rules: RuleKind): SimConfig {
   const config: SimConfig = structuredClone(DEFAULT_CONFIG);
   delete config.forcedEffects;
   config.leaderboardRules = true;
-  if (runKind === "strict") {
+  if (rules === "strict") {
     config.freePlacedItems = [...IRONMAN_FREE_ITEMS];
     config.setupFromStock = true;
-  } else if (runKind === "borrow") {
+  } else if (rules === "borrow") {
     config.freePlacedItems = [...IRONMAN_FREE_ITEMS];
     config.bootstrapDebt = true;
     config.allowMutationDebt = true;
@@ -271,8 +314,8 @@ export function ruleSettings(policies: Policies, spec: RunSpec): Settings {
   settings.activity = activityEvery(spec.every);
   settings.playerActions = true;
   settings.policies = structuredClone(policies);
-  settings.config = ruleConfig(spec.runKind);
-  if (spec.runKind === "normal") settings.profile = "normal";
+  settings.config = ruleConfig(spec.rules);
+  if (spec.rules === "normal") settings.profile = "normal";
   else delete settings.profile;
   delete settings.reserve;
   return settings;
@@ -290,18 +333,18 @@ export function ruleScenario(s: Submission, spec: RunSpec, inventory: Readonly<R
  * leaderboard rules" button. `seed` and `every` are the user's own test values (the server's
  * seeds are secret).
  */
-export function applyRules(sc: Scenario, runKind: RunKind, every: number, seed: number, tier: TierId = "max"): Scenario {
+export function applyRules(sc: Scenario, rules: RuleKind, every: number, seed: number, tier: TierId = "max"): Scenario {
   return {
     ...sc,
     startingInventory: {},
-    settings: ruleSettings(mergePolicies(DEFAULT_POLICIES, sanitizePolicies(sc.settings.policies)), { runKind, tier, every, seed }),
+    settings: ruleSettings(mergePolicies(DEFAULT_POLICIES, sanitizePolicies(sc.settings.policies)), { rules, tier, every, seed }),
   };
 }
 
 /** Which rule settings a scenario differs in (for the page's "your settings differ" note). */
-export function ruleDifferences(sc: Scenario, runKind: RunKind): string[] {
+export function ruleDifferences(sc: Scenario, kind: RuleKind): string[] {
   const diffs: string[] = [];
-  const rules = ruleSettings(sc.settings.policies, { runKind, tier: "max", every: 1, seed: sc.settings.seed });
+  const rules = ruleSettings(sc.settings.policies, { rules: kind, tier: "max", every: 1, seed: sc.settings.seed });
   if (Object.values(sc.startingInventory).some((n) => n > 0)) diffs.push("starting inventory is not empty");
   const stats = sc.settings.playerStats;
   const ruleStats = rules.playerStats;
@@ -312,7 +355,7 @@ export function ruleDifferences(sc: Scenario, runKind: RunKind): string[] {
   const ruleCfg = rules.config as unknown as Record<string, unknown>;
   const keys = new Set([...Object.keys(cfg), ...Object.keys(ruleCfg)]);
   for (const k of keys) if (JSON.stringify(cfg[k]) !== JSON.stringify(ruleCfg[k])) diffs.push(`advanced setting "${k}" differs`);
-  if ((sc.settings.profile === "normal") !== (runKind === "normal")) diffs.push(`profile is not ${runKind === "normal" ? "normal" : "ironman"}`);
+  if ((sc.settings.profile === "normal") !== (kind === "normal")) diffs.push(`profile is not ${kind === "normal" ? "normal" : "ironman"}`);
   return diffs;
 }
 
@@ -378,7 +421,7 @@ export function checkSubmission(s: Submission, data: GameData): SubmissionCheck 
   if (!errors.length) {
     let issues: ScenarioIssue[];
     try {
-      issues = validateScenario(ruleScenario(s, { runKind: "strict", tier: "max", every: 1, seed: 1 }), data);
+      issues = validateScenario(ruleScenario(s, { rules: "strict", tier: "max", every: 1, seed: 1 }), data);
     } catch (e) {
       issues = [{ level: "error", path: "Scenario", message: e instanceof Error ? e.message : String(e) }];
     }

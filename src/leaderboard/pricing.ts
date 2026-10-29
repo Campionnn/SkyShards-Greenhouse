@@ -31,7 +31,7 @@ export interface Valuation {
   unpriced: ItemId[];
 }
 
-/** Unit sell price under a board: NPC (both ironman boards; mutation items are worth 0) or the Bazaar top of book (normal, NPC as a floor for crops). */
+/** Unit sell price under a board: NPC (ironman; mutation items are worth 0) or the Bazaar top of book (normal, NPC as a floor for crops). */
 export function sellPrice(data: GameData, item: ItemId, board: Board, quotes: Quotes, pricing: BazaarPricing): number | null {
   const npc = data.mutations[item] ? 0 : defaultNpcPrice(data, item);
   if (board !== "normal") return npc;
