@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { surface } from "./surface";
 
 interface TooltipProps {
   content: string;
@@ -8,6 +9,7 @@ interface TooltipProps {
   visible?: boolean;
 }
 
+/** @deprecated Legacy. Use `InfoHint` for explanations and `title` for names (docs/design-system/migration.md). */
 export const Tooltip: React.FC<TooltipProps> = ({
   content,
   title,
@@ -85,17 +87,17 @@ export const Tooltip: React.FC<TooltipProps> = ({
         {children || (
           <button
             type="button"
-            className="inline-flex border border-slate-400/20 cursor-pointer items-center justify-center w-4 h-4 rounded-full bg-slate-600/50 hover:bg-slate-500/50 text-slate-400 hover:text-slate-300 transition-colors duration-200"
+            className="hit-area focus-ring inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border border-line-strong bg-surface-control text-fg-muted transition-colors duration-(--duration-hover) hover:bg-surface-hover hover:text-fg-body"
             aria-label="Show tooltip"
           >
-            <span className="text-[10px]">?</span>
+            <span className="text-meta">?</span>
           </button>
         )}
       </div>
 
       <div
         ref={tooltipRef}
-        className={`fixed z-[9999] max-w-xs bg-slate-800 border border-slate-600 rounded-md shadow-xl p-3 transition-opacity duration-200 ${
+        className={`${surface.raised} fixed z-(--z-tooltip) max-w-xs p-3 transition-opacity duration-(--duration-ink) ${
           isVisible ? "opacity-100" : "opacity-0 pointer-events-none select-none"
         }`}
         style={{
@@ -108,9 +110,9 @@ export const Tooltip: React.FC<TooltipProps> = ({
         }}
       >
         {title && (
-          <div className="font-medium text-sm text-white mb-2">{title}</div>
+          <div className="mb-1 text-body font-semibold text-fg">{title}</div>
         )}
-        <div className="text-slate-300 text-xs text-left">
+        <div className="text-secondary text-fg-muted text-left">
           <div dangerouslySetInnerHTML={{ __html: content }} />
         </div>
       </div>

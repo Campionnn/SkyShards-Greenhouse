@@ -1,12 +1,13 @@
 import React from "react";
 import { ChevronDown } from "lucide-react";
+import { cn } from "./cn";
 import { InfoHint } from "./InfoHint";
 import { surface } from "./surface";
 
-// The simulator page's result card: `surface.card` with 16px padding and a one-line header
-// (13px semibold title, a "?" InfoHint for the explanation, 12px slate-500 meta, actions on the
-// right). Conventions: docs/simulator/UI-CONVENTIONS.md and docs/plans/simulator-page-revamp.md:
-// no icons in titles, no eyebrow labels, explanations live in the hint, subtitles only for data.
+// The result card: `surface.card` with 16px padding and a one-line header (text-body semibold
+// title, a "?" InfoHint for the explanation, text-secondary meta, actions on the right).
+// Conventions: docs/design-system/ (components.md "Card"): no icons in titles, no eyebrow labels,
+// explanations live in the hint, subtitles only carry data.
 
 export interface CardProps {
   title: React.ReactNode;
@@ -26,19 +27,21 @@ export interface CardProps {
   children?: React.ReactNode;
 }
 
-export const Card: React.FC<CardProps> = ({ title, hint, hintTitle, hintWidth = 300, meta, actions, className = "", bodyClassName = "", label, children }) => (
-  <section className={`${surface.card} min-w-0 p-4 ${className}`} aria-label={label ?? (typeof title === "string" ? title : undefined)}>
-    <header className={`flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1.5 ${children ? "mb-3" : ""}`}>
-      <h3 className="text-[13px] font-semibold text-slate-100">{title}</h3>
+const hasMeta = (meta: React.ReactNode) => meta !== undefined && meta !== null && meta !== false;
+
+export const Card: React.FC<CardProps> = ({ title, hint, hintTitle, hintWidth = 300, meta, actions, className, bodyClassName, label, children }) => (
+  <section className={cn(surface.card, "min-w-0 p-4", className)} aria-label={label ?? (typeof title === "string" ? title : undefined)}>
+    <header className={cn("flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1.5", children ? "mb-3" : null)}>
+      <h3 className="text-body font-semibold text-fg">{title}</h3>
       {hint && (
         <InfoHint title={hintTitle ?? (typeof title === "string" ? title : undefined)} width={hintWidth}>
           {hint}
         </InfoHint>
       )}
-      {meta !== undefined && meta !== null && meta !== false && <span className="min-w-0 text-[12px] tabular-nums text-slate-500">{meta}</span>}
+      {hasMeta(meta) && <span className="min-w-0 text-secondary tabular-nums text-fg-meta">{meta}</span>}
       {actions && <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">{actions}</div>}
     </header>
-    {children !== undefined && <div className={`min-w-0 ${bodyClassName}`}>{children}</div>}
+    {children !== undefined && <div className={cn("min-w-0", bodyClassName)}>{children}</div>}
   </section>
 );
 
@@ -49,35 +52,39 @@ export const Card: React.FC<CardProps> = ({ title, hint, hintTitle, hintWidth = 
 export const DisclosureCard: React.FC<Omit<CardProps, "actions" | "hint" | "hintTitle" | "hintWidth"> & { defaultOpen?: boolean }> = ({
   title,
   meta,
-  className = "",
-  bodyClassName = "",
+  className,
+  bodyClassName,
   defaultOpen,
   children,
 }) => (
-  <details className={`group ${surface.card} min-w-0 ${className}`} open={defaultOpen}>
-    <summary className="flex min-h-[60px] cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-4 transition-colors duration-150 hover:bg-slate-700/20 focus-visible:outline-2 focus-visible:outline-emerald-400/70 [&::-webkit-details-marker]:hidden">
-      <span className="text-[13px] font-semibold text-slate-100">{title}</span>
-      {meta !== undefined && meta !== null && meta !== false && <span className="min-w-0 text-[12px] tabular-nums text-slate-500">{meta}</span>}
-      <ChevronDown aria-hidden className="ml-auto h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform duration-200 ease-snappy group-open:rotate-180" />
+  <details className={cn("group", surface.card, "min-w-0", className)} open={defaultOpen}>
+    <summary className="focus-ring flex min-h-[60px] cursor-pointer list-none items-center gap-2 rounded-container px-4 py-4 transition-colors duration-(--duration-hover) hover:bg-surface-hover/40 [&::-webkit-details-marker]:hidden">
+      <span className="text-body font-semibold text-fg">{title}</span>
+      {hasMeta(meta) && <span className="min-w-0 text-secondary tabular-nums text-fg-meta">{meta}</span>}
+      <ChevronDown aria-hidden className="ml-auto size-3.5 shrink-0 text-fg-meta transition-transform duration-(--duration-ink) ease-snappy group-open:rotate-180" />
     </summary>
-    <div className={`min-w-0 px-4 pb-4 ${bodyClassName}`}>{children}</div>
+    <div className={cn("min-w-0 px-4 pb-4", bodyClassName)}>{children}</div>
   </details>
 );
 
-/** A quiet text button ("Per plot", "Expand all", "Set online to every 2"): underlined, slate. */
-export const LinkButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({ className = "", type = "button", ...rest }) => (
+/** A quiet text button ("Per plot", "Expand all", "Set online to every 2"): underlined, muted. */
+export const LinkButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({ className, type = "button", ...rest }) => (
   <button
     type={type}
-    className={`cursor-pointer text-[12px] text-slate-300 underline decoration-slate-600 underline-offset-[3px] transition-colors duration-150 hover:text-slate-100 hover:decoration-slate-400 disabled:cursor-default disabled:opacity-40 ${className}`}
+    className={cn(
+      "hit-area focus-ring cursor-pointer rounded-inner text-secondary text-fg-body underline decoration-fg-meta underline-offset-[3px] transition-colors duration-(--duration-hover)",
+      "enabled:hover:text-fg enabled:hover:decoration-fg-muted active:text-fg-muted disabled:cursor-default disabled:opacity-40",
+      className,
+    )}
     {...rest}
   />
 );
 
 /** "label value" facts under a card ("Cycle 1h 45m · 13.7 cycles/day"). */
 export const Fact: React.FC<{ label?: React.ReactNode; value: React.ReactNode; suffix?: React.ReactNode; title?: string; tone?: "bad" }> = ({ label, value, suffix, title, tone }) => (
-  <span className="whitespace-nowrap text-[12px] text-slate-500" title={title}>
+  <span className="whitespace-nowrap text-secondary text-fg-meta" title={title}>
     {label && <>{label} </>}
-    <b className={`font-semibold tabular-nums ${tone === "bad" ? "text-red-300" : "text-slate-200"}`}>{value}</b>
+    <b className={cn("font-semibold tabular-nums", tone === "bad" ? "text-problem" : "text-fg-body")}>{value}</b>
     {suffix && <> {suffix}</>}
   </span>
 );

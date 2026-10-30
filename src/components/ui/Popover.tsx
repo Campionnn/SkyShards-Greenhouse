@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
+import { cn } from "./cn";
+import { floatingLayers, focusablesIn, focusMenuItem, focusNextAfter, insideLayerAbove, MENU_ITEM, menuNavigate, menuRowClass } from "./contextMenuContext";
 import { Portal } from "./Portal";
 import { surface } from "./surface";
 
@@ -7,6 +9,17 @@ import { surface } from "./surface";
 // scroll area never clips it), menus inside it and a dropdown button that owns one. Popovers scale
 // in from their trigger (kit-pop-in, transform-origin at the anchor) and close on Escape, outside
 // press or choosing an item. Nothing here touches window/document during render (SSR-safe).
+//
+// Keyboard (docs/design-system/components.md "Popover"):
+// - role="menu": once the panel is placed, focus goes to the checked item (or the first; the last
+//   when opened with ArrowUp). Arrows / Home / End move with a roving tabindex, a letter jumps to the
+//   next item starting with it, Enter / Space choose, Tab closes and moves on from the trigger,
+//   Escape closes and focuses the trigger.
+// - role="dialog": focus moves into the content (its first control when opened from the keyboard;
+//   the panel itself when opened with a pointer, so a phone keyboard doesn't pop up), Tab cycles
+//   inside the popover, Escape closes and focuses the trigger.
+// - Closing while focus is inside puts it back on the trigger. Escape and outside presses belong to
+//   the topmost floating layer, so a menu opened inside a popover closes on its own.
 
 export interface PopoverProps {
   anchor: HTMLElement | null;
@@ -21,23 +34,53 @@ export interface PopoverProps {
   role?: "menu" | "dialog";
   /** No surface of its own (the content brings one). */
   bare?: boolean;
+  /** Where focus goes once the popover is shown. Default "auto" (see above); "none" leaves it to the content. */
+  initialFocus?: "auto" | "first" | "last" | "none";
   className?: string;
   children: React.ReactNode;
 }
 
-export const Popover: React.FC<PopoverProps> = (props) => (props.open && props.anchor ? <PopoverBody {...props} anchor={props.anchor} /> : null);
+export const Popover: React.FC<PopoverProps> = (props) => {
+  useEffect(trackInput, []);
+  return props.open && props.anchor ? <PopoverBody {...props} anchor={props.anchor} /> : null;
+};
 
 const MARGIN = 8;
 const MENU_MAX = 420;
-const ITEM_SELECTOR = '[role^="menuitem"]:not([disabled])';
 
-const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({ anchor, onClose, label, align = "start", width, reserve, role = "dialog", bare, className = "", children }) => {
+// Was the popover opened with the keyboard? `:focus-visible` on the trigger is not enough: it stays
+// true when a keyboard-focused trigger is then clicked. So remember the last kind of input instead.
+let lastInput: "key" | "pointer" = "pointer";
+let tracking = false;
+function trackInput() {
+  if (tracking || typeof document === "undefined") return;
+  tracking = true;
+  document.addEventListener("keydown", () => (lastInput = "key"), true);
+  document.addEventListener("pointerdown", () => (lastInput = "pointer"), true);
+}
+
+const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({
+  anchor,
+  onClose,
+  label,
+  align = "start",
+  width,
+  reserve,
+  role = "dialog",
+  bare,
+  initialFocus = "auto",
+  className,
+  children,
+}) => {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; origin: string; maxHeight?: number } | null>(null);
   const closeRef = useRef(onClose);
   useLayoutEffect(() => {
     closeRef.current = onClose;
   });
+  const typeahead = useRef({ text: "", at: 0 });
+  // Read once, at open: was it opened from the keyboard?
+  const [fromKeyboard] = useState(() => lastInput === "key");
 
   const place = useCallback(() => {
     const el = ref.current;
@@ -72,18 +115,31 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({ anchor,
 
   useLayoutEffect(() => place(), [place]);
 
+  // One stack of floating layers; closing with focus inside returns it to the trigger. Layout
+  // effect cleanup runs before React removes the panel, so focus is still readable here.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    floatingLayers.push(el);
+    return () => {
+      floatingLayers.splice(floatingLayers.indexOf(el), 1);
+      if (el.contains(document.activeElement) && anchor.isConnected) anchor.focus({ preventScroll: true });
+    };
+  }, [anchor]);
+
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (ref.current?.contains(t) || anchor.contains(t)) return;
+      const el = ref.current;
+      if (!el || el.contains(t) || anchor.contains(t) || insideLayerAbove(el, t)) return;
       closeRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
-      // One Escape closes the popover, even when its content (an item search) also handled it.
-      if (e.key !== "Escape") return;
+      // One Escape closes the top popover, even when its content (an item search) also handled it.
+      if (e.key !== "Escape" || floatingLayers[floatingLayers.length - 1] !== ref.current) return;
       e.preventDefault();
+      anchor.focus({ preventScroll: true });
       closeRef.current();
-      anchor.focus();
     };
     const onMove = () => place();
     document.addEventListener("mousedown", onDown);
@@ -98,24 +154,56 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({ anchor,
     };
   }, [anchor, place]);
 
-  // Menus: focus the chosen item (or the first) so arrows work at once.
-  useEffect(() => {
-    if (role !== "menu") return;
+  // Move focus in once the panel is placed: before that it is visibility: hidden and can't take focus.
+  const placed = pos !== null;
+  useLayoutEffect(() => {
     const el = ref.current;
-    const first = el?.querySelector<HTMLElement>(`${ITEM_SELECTOR}[aria-checked="true"]`) ?? el?.querySelector<HTMLElement>(ITEM_SELECTOR);
-    first?.focus({ preventScroll: true });
-    first?.scrollIntoView({ block: "nearest" });
-  }, [role]);
+    if (!placed || !el || initialFocus === "none") return;
+    if (role === "menu") {
+      const items = [...el.querySelectorAll<HTMLElement>(MENU_ITEM)];
+      const checked = items.findIndex((it) => it.getAttribute("aria-checked") === "true");
+      if (items.length) focusMenuItem(items, initialFocus === "last" ? items.length - 1 : checked >= 0 && initialFocus !== "first" ? checked : 0);
+      else el.focus({ preventScroll: true });
+      return;
+    }
+    // Content that already moved focus inside (an autofocused search box) keeps it.
+    if (el.contains(document.activeElement)) return;
+    const controls = focusablesIn(el);
+    const pick = initialFocus === "first" || (initialFocus === "auto" && fromKeyboard) ? controls[0] : initialFocus === "last" ? controls[controls.length - 1] : null;
+    (pick ?? el).focus({ preventScroll: true });
+    // Only once, when it appears.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placed]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (role !== "menu" || !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
-    const items = [...(ref.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR) ?? [])];
-    if (!items.length) return;
-    e.preventDefault();
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    const next =
-      e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : e.key === "ArrowDown" ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
-    items[next].focus();
+    const el = ref.current;
+    // React bubbles keys from a nested popover (another portal) through here: not ours.
+    if (!el || !el.contains(e.target as Node)) return;
+    if (role === "menu") {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        focusNextAfter(anchor, e.shiftKey);
+        closeRef.current();
+        return;
+      }
+      menuNavigate(e, el, typeahead.current);
+      return;
+    }
+    if (e.key !== "Tab") return;
+    // Dialog: Tab cycles inside the popover (it is not modal; Escape or an outside press leaves).
+    const controls = focusablesIn(el);
+    if (!controls.length) {
+      e.preventDefault();
+      return;
+    }
+    const at = controls.indexOf(document.activeElement as HTMLElement);
+    if (e.shiftKey && at <= 0) {
+      e.preventDefault();
+      controls[controls.length - 1].focus();
+    } else if (!e.shiftKey && (at === -1 || at === controls.length - 1)) {
+      e.preventDefault();
+      controls[0].focus();
+    }
   };
 
   return (
@@ -124,11 +212,12 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({ anchor,
         ref={ref}
         role={role}
         aria-label={label}
+        tabIndex={-1}
         onKeyDown={onKeyDown}
         // React events bubble through portals to the trigger's ancestors (an exit card's header);
         // a click inside the popover belongs to the popover only.
         onClick={(e) => e.stopPropagation()}
-        className={`kit-pop-in fixed z-[70] ${bare ? "" : `${surface.raised} p-1`} ${className}`}
+        className={cn("kit-pop-in fixed outline-none", role === "menu" ? "z-(--z-menu)" : "z-(--z-popover)", !bare && `${surface.raised} p-1`, className)}
         style={{
           top: pos?.top ?? 0,
           left: pos?.left ?? 0,
@@ -162,32 +251,30 @@ export const MenuItem: React.FC<{
     disabled={disabled}
     title={title}
     onClick={onSelect}
-    className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] outline-none transition-colors duration-150 hover:bg-slate-400/10 focus-visible:bg-slate-400/10 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent ${
-      tone === "danger" ? "text-red-300" : "text-slate-200"
-    }`}
+    className={menuRowClass(tone === "danger")}
   >
-    {icon !== undefined && <span className="grid h-5 w-5 shrink-0 place-items-center text-slate-400 [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>}
+    {icon !== undefined && <span className="grid h-5 w-5 shrink-0 place-items-center text-fg-muted [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>}
     <span className="min-w-0 flex-1">
       <span className="block truncate">{children}</span>
-      {hint && <span className="block text-[11px] leading-snug text-slate-500">{hint}</span>}
+      {hint && <span className="block text-meta text-fg-meta">{hint}</span>}
     </span>
-    {checked && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />}
+    {checked && <Check className="h-3.5 w-3.5 shrink-0 text-go-fg" />}
   </button>
 );
 
 export const MenuLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="px-2 pt-2 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500 first:pt-1">{children}</div>
+  <div className="px-2 pt-2 pb-1 text-label uppercase text-fg-meta first:pt-1">{children}</div>
 );
 
-export const MenuSeparator: React.FC = () => <div className="mx-1 my-1 h-px bg-slate-700/60" />;
+export const MenuSeparator: React.FC = () => <div role="separator" className="mx-1 my-1 h-px bg-line" />;
 
 const DROPDOWN_LOOK = {
-  /** A recessed select-like field ("Go to [step ▾]"). */
+  /** A recessed select-like field ("Go to [step ▾]"). 26px tall to sit in a 28px row. */
   field:
-    "inline-flex h-[26px] min-w-0 max-w-full items-center gap-1.5 rounded-[7px] border border-slate-600/40 bg-slate-950/50 pl-1.5 pr-2 text-[12.5px] font-medium text-slate-100 transition-colors duration-150 hover:border-slate-500/60 hover:bg-slate-900",
-  /** An inline token inside a condition sentence. */
+    "inline-flex h-[26px] min-w-0 max-w-full items-center gap-1.5 rounded-control border border-line-control bg-surface-well pl-1.5 pr-2 text-body font-medium text-fg transition-colors duration-(--duration-hover) hover:bg-surface-panel",
+  /** An inline token inside a condition sentence (22px: one line of a 13px sentence). */
   token:
-    "inline-flex h-[22px] max-w-full items-center gap-1 rounded-[5px] bg-slate-700/60 px-1.5 align-middle font-medium text-slate-100 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)] transition-colors duration-150 hover:bg-slate-600/70",
+    "inline-flex h-[22px] max-w-full items-center gap-1 rounded-inner bg-surface-hover px-1.5 align-middle font-medium text-fg ring-1 ring-line-strong ring-inset transition-colors duration-(--duration-hover) hover:ring-line-control",
   /** Caller styles the whole button (e.g. a list row). */
   plain: "",
 } as const;
@@ -205,9 +292,9 @@ export const Dropdown: React.FC<{
   menuClassName?: string;
   disabled?: boolean;
   children: (close: () => void) => React.ReactNode;
-}> = ({ label, button, look = "field", chevron = true, title, width = 260, align = "start", className = "", menuClassName = "", disabled, children }) => {
+}> = ({ label, button, look = "field", chevron = true, title, width = 260, align = "start", className, menuClassName, disabled, children }) => {
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<false | "auto" | "last">(false);
   const close = () => setOpen(false);
   return (
     <>
@@ -215,17 +302,33 @@ export const Dropdown: React.FC<{
         ref={setAnchor}
         type="button"
         aria-haspopup="menu"
-        aria-expanded={open}
+        aria-expanded={!!open}
         aria-label={label}
         title={title}
         disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
-        className={`cursor-pointer disabled:cursor-default disabled:opacity-50 ${DROPDOWN_LOOK[look]} ${className}`}
+        onClick={() => setOpen((o) => (o ? false : "auto"))}
+        onKeyDown={(e) => {
+          // A menu button also opens with the arrows (ArrowUp lands on the last item).
+          if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+          e.preventDefault();
+          setOpen(e.key === "ArrowUp" ? "last" : "auto");
+        }}
+        className={cn("cursor-pointer focus-ring disabled:cursor-default disabled:opacity-50", DROPDOWN_LOOK[look], className)}
       >
         {button}
-        {chevron && <ChevronDown className={`h-3 w-3 shrink-0 text-slate-500 transition-transform duration-200 ease-snappy ${open ? "rotate-180" : ""}`} />}
+        {chevron && <ChevronDown className={cn("h-3 w-3 shrink-0 text-fg-meta transition-transform duration-(--duration-ink) ease-snappy", open && "rotate-180")} />}
       </button>
-      <Popover anchor={anchor} open={open} onClose={close} label={label} role="menu" width={width} align={align} className={`overflow-y-auto overscroll-contain scrollbar-dark ${menuClassName}`}>
+      <Popover
+        anchor={anchor}
+        open={!!open}
+        onClose={close}
+        label={label}
+        role="menu"
+        width={width}
+        align={align}
+        initialFocus={open === "last" ? "last" : "auto"}
+        className={cn("overflow-y-auto overscroll-contain scrollbar-dark", menuClassName)}
+      >
         {children(close)}
       </Popover>
     </>

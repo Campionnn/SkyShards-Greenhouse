@@ -1,6 +1,9 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
-import { ToastContext, type ToastAction, type ToastContextValue } from "./toastContext";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
+import { cn } from "./cn";
+import { IconButton, KitButton } from "./kit";
+import { surface } from "./surface";
+import { TOAST_MAX, ToastContext, toastDuration, type ToastAction, type ToastContextValue } from "./toastContext";
 
 export type ToastVariant = "success" | "error" | "info" | "warning";
 
@@ -9,140 +12,257 @@ export type ToastOptions = {
   title: string;
   description?: string;
   variant?: ToastVariant;
-  duration?: number; // ms
+  /** Time on screen in ms (paused while hovered, focused or the tab is hidden). Floors below apply. */
+  duration?: number;
   action?: ToastAction;
 };
 
 export type Toast = Required<Omit<ToastOptions, "id" | "action">> & { id: string; action?: ToastAction };
 
-const variantStyles: Record<ToastVariant, { container: string; badge: string }> = {
-  success: {
-    container: "bg-emerald-900 border border-emerald-700 text-emerald-100 shadow-lg",
-    badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-  },
-  error: {
-    container: "bg-rose-900 border border-rose-700 text-rose-100 shadow-lg",
-    badge: "bg-rose-500/20 text-rose-300 border-rose-500/30",
-  },
-  info: {
-    container: "bg-slate-800 border border-slate-600 text-slate-100 shadow-lg",
-    badge: "bg-sky-500/20 text-sky-300 border-sky-500/30",
-  },
-  warning: {
-    container: "bg-amber-900 border border-amber-700 text-amber-100 shadow-lg",
-    badge: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-  },
+const EXIT_MS = 150;
+
+// One role colour per kind, as a small icon only (the surface stays the neutral raised one).
+const VARIANT: Record<ToastVariant, { icon: React.ReactNode; bar: string }> = {
+  success: { icon: <CheckCircle2 className="text-go-fg" />, bar: "bg-go-fg/40" },
+  error: { icon: <XCircle className="text-problem" />, bar: "bg-problem/40" },
+  warning: { icon: <AlertTriangle className="text-warn" />, bar: "bg-warn/40" },
+  info: { icon: <Info className="text-fg-muted" />, bar: "bg-fg-muted/30" },
 };
 
 const genId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const timers = useRef<Map<string, number>>(new Map());
+type Clock = { remaining: number; startedAt: number; timer: number | null };
+/** A toast on screen; `stamp` changes when the same id is shown again, restarting its time bar. */
+type Shown = Toast & { stamp: number };
+let stampSeq = 0;
 
-  const clearTimer = useCallback((id: string) => {
-    const m = timers.current;
-    const t = m.get(id);
-    if (t) {
-      window.clearTimeout(t);
-      m.delete(id);
-    }
+export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
+  const [toasts, setToasts] = useState<Shown[]>([]);
+  const [leaving, setLeaving] = useState<ReadonlySet<string>>(() => new Set());
+  const clocks = useRef<Map<string, Clock>>(new Map());
+  const exitTimers = useRef<Map<string, number>>(new Map());
+  // The list as of the last change, read synchronously by toast() / dismiss() (state lags a render).
+  const toastsRef = useRef<Shown[]>([]);
+  const commit = useCallback((next: Shown[]) => {
+    toastsRef.current = next;
+    setToasts(next);
   }, []);
 
-  const dismiss = useCallback<ToastContextValue["dismiss"]>((id) => {
-    clearTimer(id);
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, [clearTimer]);
+  // Paused while the pointer is over the stack, focus is inside it, or the tab is hidden.
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [hidden, setHidden] = useState(() => typeof document !== "undefined" && document.visibilityState === "hidden");
+  const paused = hovered || focused || hidden;
+  const pausedRef = useRef(paused);
+  // A toast closed from under the pointer (Undo, ×) never fires pointerleave: once the stack is
+  // empty, nothing can be hovered or focused, so the next toast must not start paused.
+  if (toasts.length === 0 && (hovered || focused)) {
+    setHovered(false);
+    setFocused(false);
+  }
+
+  useEffect(() => {
+    const onVisibility = () => setHidden(document.visibilityState === "hidden");
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  const remove = useCallback((id: string) => {
+    const c = clocks.current.get(id);
+    if (c?.timer) window.clearTimeout(c.timer);
+    clocks.current.delete(id);
+    const e = exitTimers.current.get(id);
+    if (e) window.clearTimeout(e);
+    exitTimers.current.delete(id);
+    commit(toastsRef.current.filter((t) => t.id !== id));
+    setLeaving((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, [commit]);
+
+  /** Fades the toast out, then removes it. */
+  const dismiss = useCallback<ToastContextValue["dismiss"]>(
+    (id) => {
+      const c = clocks.current.get(id);
+      if (c?.timer) window.clearTimeout(c.timer);
+      if (c) c.timer = null;
+      if (exitTimers.current.has(id) || !toastsRef.current.some((t) => t.id === id)) return;
+      setLeaving((prev) => new Set(prev).add(id));
+      exitTimers.current.set(id, window.setTimeout(() => remove(id), EXIT_MS));
+    },
+    [remove]
+  );
 
   const dismissAll = useCallback<ToastContextValue["dismissAll"]>(() => {
-    timers.current.forEach((t) => window.clearTimeout(t));
-    timers.current.clear();
-    setToasts([]);
-  }, []);
+    clocks.current.forEach((c) => c.timer && window.clearTimeout(c.timer));
+    clocks.current.clear();
+    exitTimers.current.forEach((t) => window.clearTimeout(t));
+    exitTimers.current.clear();
+    commit([]);
+    setLeaving(new Set());
+  }, [commit]);
 
-  const toast = useCallback<ToastContextValue["toast"]>((opts) => {
-    const id = opts.id ?? genId();
-    const variant: ToastVariant = opts.variant ?? "info";
-    const duration = Math.max(800, opts.duration ?? 2500);
-    const entry: Toast = {
-      id,
-      title: opts.title,
-      description: opts.description ?? "",
-      variant,
-      duration,
-      action: opts.action,
-    };
+  const arm = useCallback(
+    (id: string) => {
+      const c = clocks.current.get(id);
+      if (!c) return;
+      if (c.timer) window.clearTimeout(c.timer);
+      c.startedAt = Date.now();
+      c.timer = window.setTimeout(() => dismiss(id), Math.max(0, c.remaining));
+    },
+    [dismiss]
+  );
 
-    // Re-using an id replaces that toast instead of stacking a duplicate.
-    clearTimer(id);
-    setToasts((prev) => {
-      const arr = [...prev.filter((t) => t.id !== id), entry];
-      if (arr.length > 5) arr.shift();
-      return arr;
+  // Pause / resume every running clock.
+  useEffect(() => {
+    pausedRef.current = paused;
+    const now = Date.now();
+    clocks.current.forEach((c, id) => {
+      if (exitTimers.current.has(id)) return;
+      if (paused) {
+        if (c.timer) {
+          window.clearTimeout(c.timer);
+          c.timer = null;
+          c.remaining -= now - c.startedAt;
+        }
+      } else if (!c.timer) arm(id);
     });
+  }, [paused, arm]);
 
-    const timeout = window.setTimeout(() => dismiss(id), duration);
-    timers.current.set(id, timeout);
+  useEffect(
+    () => () => {
+      clocks.current.forEach((c) => c.timer && window.clearTimeout(c.timer));
+      exitTimers.current.forEach((t) => window.clearTimeout(t));
+    },
+    []
+  );
 
-    return id;
-  }, [dismiss, clearTimer]);
+  const toast = useCallback<ToastContextValue["toast"]>(
+    (opts) => {
+      const description = opts.description ?? "";
+      const variant: ToastVariant = opts.variant ?? "info";
+      // The same message again (without an id) restarts the one on screen instead of stacking a copy.
+      const same = opts.id ? undefined : toastsRef.current.find((t) => t.title === opts.title && t.description === description && t.variant === variant);
+      const id = opts.id ?? same?.id ?? genId();
+      const duration = toastDuration(opts);
+      const entry: Shown = { id, title: opts.title, description, variant, duration, action: opts.action, stamp: ++stampSeq };
+
+      const exit = exitTimers.current.get(id);
+      if (exit) {
+        window.clearTimeout(exit);
+        exitTimers.current.delete(id);
+        setLeaving((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+      const old = clocks.current.get(id);
+      if (old?.timer) window.clearTimeout(old.timer);
+
+      const kept = toastsRef.current.filter((t) => t.id !== id);
+      const dropped = kept.length >= TOAST_MAX ? kept.slice(0, kept.length - TOAST_MAX + 1) : [];
+      for (const t of dropped) {
+        const c = clocks.current.get(t.id);
+        if (c?.timer) window.clearTimeout(c.timer);
+        clocks.current.delete(t.id);
+      }
+      commit([...kept.slice(dropped.length), entry]);
+
+      clocks.current.set(id, { remaining: duration, startedAt: Date.now(), timer: null });
+      if (!pausedRef.current) arm(id);
+      return id;
+    },
+    [arm, commit]
+  );
 
   const value = useMemo<ToastContextValue>(() => ({ toast, dismiss, dismissAll }), [toast, dismiss, dismissAll]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <style>{`
-        @keyframes toastProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-      `}</style>
-      <div className="fixed top-3 right-3 z-[60] flex flex-col gap-2 w-[min(92vw,380px)]">
-        {toasts.map((t) => {
-          const s = variantStyles[t.variant];
-          return (
-            <div
-              key={t.id}
-              className={`relative overflow-hidden rounded-md border px-3 py-2 ${s.container}`}
-              role="status"
-              aria-live="polite"
-            >
-              <div className="flex items-start gap-2">
-                <span className={`px-1.5 py-0.5 text-xs border rounded-md flex-shrink-0 self-center ${s.badge}`}>{t.variant.toUpperCase()}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{t.title}</div>
-                  {t.description && <div className="text-xs text-slate-300/90 mt-0.5 break-words whitespace-pre-wrap">{t.description}</div>}
-                </div>
-                {t.action && (
-                  <button
-                    onClick={() => {
-                      t.action!.onClick();
-                      dismiss(t.id);
-                    }}
-                    className="px-2 py-1 text-xs font-medium rounded-md border border-white/20 bg-white/10 hover:bg-white/20 self-center flex-shrink-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/30"
-                  >
-                    {t.action.label}
-                  </button>
-                )}
-                <button
-                  onClick={() => dismiss(t.id)}
-                  aria-label="Close"
-                  className="p-1 rounded hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/30 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+      {/* Phones: top, so the stack never covers a bottom action bar. md+: bottom-right, above the bottom ad.
+          Sized in vw, not with left+right insets: a page that overflows sideways widens the layout
+          viewport, and an inset-x box would grow with it (and keep the overflow). 100vw is the
+          initial containing block's width here (mobile viewport), so the stack always fits it. */}
+      <section
+        aria-label="Notifications"
+        className="pointer-events-none fixed top-2 left-2 z-(--z-toast) flex w-[calc(100vw-1rem)] md:top-auto md:right-3 md:bottom-(--toast-bottom) md:left-auto md:w-[min(380px,calc(100vw-1.5rem))] md:justify-end"
+        style={{ ["--toast-bottom" as string]: "calc(var(--ad-bottom, 0px) + 12px)" }}
+      >
+        {/* One persistent polite live region (it must exist before a toast lands in it to be announced);
+            an error is its own role=alert, the nearest live region for its text, so it is read at once. */}
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex w-full min-w-0 flex-col-reverse gap-2 md:flex-col"
+          onPointerEnter={() => setHovered(true)}
+          onPointerLeave={() => setHovered(false)}
+          onFocus={() => setFocused(true)}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
+          }}
+        >
+          {toasts.map((t) => {
+            const v = VARIANT[t.variant];
+            const out = leaving.has(t.id);
+            return (
               <div
-                className="absolute left-0 bottom-0 h-0.5 w-full bg-white origin-left"
-                style={{
-                  animationName: "toastProgress",
-                  animationDuration: `${t.duration}ms`,
-                  animationTimingFunction: "linear",
-                  animationFillMode: "forwards",
-                }}
-              />
-            </div>
-          );
-        })}
-      </div>
+                key={t.id}
+                role={t.variant === "error" ? "alert" : undefined}
+                aria-atomic="true"
+                className={cn(
+                  surface.raised,
+                  "pointer-events-auto relative overflow-hidden py-2.5 pr-2 pl-3 transition-opacity duration-(--duration-pop) ease-snappy",
+                  out ? "opacity-0" : "kit-rise-in"
+                )}
+              >
+                <div className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex shrink-0 [&>svg]:h-4 [&>svg]:w-4" aria-hidden>
+                    {v.icon}
+                  </span>
+                  <div className="min-w-0 flex-1 py-px">
+                    <div className="text-body font-medium break-words text-fg">{t.title}</div>
+                    {t.description && <div className="mt-0.5 text-secondary break-words whitespace-pre-wrap text-fg-muted">{t.description}</div>}
+                  </div>
+                  {t.action && (
+                    <KitButton
+                      variant="neutral"
+                      className="shrink-0"
+                      onClick={() => {
+                        t.action!.onClick();
+                        dismiss(t.id);
+                      }}
+                    >
+                      {t.action.label}
+                    </KitButton>
+                  )}
+                  <IconButton aria-label="Dismiss notification" title="Dismiss" className="shrink-0" onClick={() => dismiss(t.id)}>
+                    <X />
+                  </IconButton>
+                </div>
+                {/* Time left. Hidden for reduced motion; pauses with the clock. */}
+                <div
+                  key={t.stamp}
+                  aria-hidden
+                  className={cn("absolute bottom-0 left-0 h-0.5 w-full origin-left motion-reduce:hidden", v.bar)}
+                  style={{
+                    animationName: "toast-time-left",
+                    animationDuration: `${t.duration}ms`,
+                    animationTimingFunction: "linear",
+                    animationFillMode: "forwards",
+                    animationPlayState: paused ? "paused" : "running",
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </section>
+      <style>{"@keyframes toast-time-left { from { transform: scaleX(1); } to { transform: scaleX(0); } }"}</style>
     </ToastContext.Provider>
   );
 };

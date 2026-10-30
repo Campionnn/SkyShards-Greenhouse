@@ -15,3 +15,4 @@ export { Dropdown, MenuItem, MenuLabel, MenuSeparator, Popover } from "./Popover
 export { ContextMenuProvider } from "./ContextMenu";
 export { useContextMenu, type ContextMenuEntry } from "./contextMenuContext";
 export { surface } from "./surface";
+export { cn } from "./cn";

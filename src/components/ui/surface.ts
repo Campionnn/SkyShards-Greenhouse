@@ -1,9 +1,10 @@
-// Surface classes of the redesigned simulator UI (see kit.tsx and docs/simulator/UI-CONVENTIONS.md):
-// panel = docked side panels, card = a block inside a panel, well = inputs and recessed areas,
-// raised = anything floating (menus, popovers, canvas nodes).
+// The four surfaces (docs/design-system/foundations.md "Surfaces"). Built on the semantic tokens in
+// index.css @theme, so a palette change re-skins them without touching this file.
+// panel = docked side panels and bars, card = a self-contained block of results or settings,
+// well = inputs and recessed areas, raised = anything floating (menus, popovers, canvas nodes).
 export const surface = {
-  panel: "bg-slate-900 border-slate-700/60",
-  card: "rounded-xl bg-slate-800/40 border border-slate-700/50",
-  well: "rounded-lg bg-slate-950/50 border border-slate-700/60",
-  raised: "rounded-xl bg-slate-900/95 border border-slate-600/40 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.9)] backdrop-blur-md",
+  panel: "bg-surface-panel border-line",
+  card: "rounded-container bg-surface-card border border-line",
+  well: "rounded-control bg-surface-well border border-line-control",
+  raised: "rounded-container bg-surface-raised border border-line-strong shadow-raised backdrop-blur-md",
 } as const;
