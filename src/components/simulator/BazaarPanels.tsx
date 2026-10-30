@@ -2,12 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Coins, Pencil, RefreshCw, RotateCcw, Search, X } from "lucide-react";
 import { BAZAAR_PRODUCTS, COMPACTED_CROPS, defaultGameData, type BazaarOverride, type BazaarPricing, type MarketValuation, type RunSummary } from "../../simulator";
 import type { BazaarPricesView } from "../../hooks/useBazaarPrices";
-import { BodyPortal, InfoHint, Panel, PortalHost, SegmentedControl } from "../ui";
+import { BodyPortal, PortalHost, SegmentedControl } from "../ui";
+import { KitButton, Segmented } from "../ui/kit";
 import { CropImage } from "../shared";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { priceAge, priceRun, type Quotes } from "./bazaarFormat";
 import { formatCoins, formatCount, nameOf, rarityOf } from "./format";
-import { Leader, LeadValue, NumberInput, Stat } from "./controls";
+import { Leader, NumberInput } from "./controls";
+import { Fact, ResultCard } from "./page/ResultCard";
+import { MoneyTable, type MoneyRow } from "./ReportPanels";
 import { buttonClass, inputClass } from "./styles";
 
 // Normal-profile (Bazaar) panels. The engine counts what was produced, bought, sold and built
@@ -16,19 +19,35 @@ import { buttonClass, inputClass } from "./styles";
 // re-runs the simulation. The inventory table (both profiles) is in InventoryTable.tsx.
 
 const data = defaultGameData();
-const perDayOf = (value: number, s: RunSummary) => (s.elapsedSeconds > 0 ? value / (s.elapsedSeconds / 86400) : 0);
 
-/** Buy / sell side, tax, price age, Refresh and the price editor. */
-export const BazaarPriceControls: React.FC<{ bazaar: BazaarPricesView; now: number; onEditPrices: () => void }> = ({ bazaar, now, onEditPrices }) => {
+/**
+ * Buy / sell side, tax, price age, Refresh and the price editor, as one compact bar (the
+ * Inventory & Bazaar card puts it under its header; the leaderboard's controls reuse it).
+ */
+export const BazaarPriceControls: React.FC<{ bazaar: BazaarPricesView; now: number; onEditPrices: () => void; className?: string }> = ({ bazaar, now, onEditPrices, className = "" }) => {
   const { pricing, setPricing, prices, loading, error, refresh, overrides } = bazaar;
   const overrideCount = Object.keys(overrides).length;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-      <label className="flex items-center gap-2 text-slate-400" title="What buying costs: an instant buy pays the cheapest sell offer now; a buy order matches the highest buy order and you wait.">
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-slate-700/50 bg-slate-950/40 px-2.5 py-2 text-[12px] text-slate-400 ${className}`}>
+      <span
+        className={`flex items-center gap-2 ${error ? "text-amber-200" : ""}`}
+        title={prices ? `Bazaar data from ${new Date(prices.lastUpdated || prices.fetchedAt).toLocaleString()}` : undefined}
+      >
+        <Coins className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+        {loading
+          ? "Fetching prices..."
+          : error
+            ? prices
+              ? `Couldn't refresh (${error}); prices from ${priceAge(prices.fetchedAt, now)}`
+              : `Couldn't load prices: ${error}`
+            : prices
+              ? <span>Prices <b className="font-medium text-slate-200">{priceAge(prices.fetchedAt, now)}</b></span>
+              : "No prices yet"}
+      </span>
+      <span className="flex items-center gap-2" title="What buying costs: an instant buy pays the cheapest sell offer now; a buy order matches the highest buy order and you wait.">
         Buy
-        <SegmentedControl
-          size="xs"
-          nowrap
+        <Segmented
+          label="Buy side"
           value={pricing.buy}
           onChange={(buy) => setPricing({ ...pricing, buy })}
           options={[
@@ -36,12 +55,11 @@ export const BazaarPriceControls: React.FC<{ bazaar: BazaarPricesView; now: numb
             { value: "order", label: "Buy order" },
           ]}
         />
-      </label>
-      <label className="flex items-center gap-2 text-slate-400" title="What selling brings: a sell order matches the cheapest sell offer and you wait; an instant sell takes the highest buy order now.">
+      </span>
+      <span className="flex items-center gap-2" title="What selling brings: a sell order matches the cheapest sell offer and you wait; an instant sell takes the highest buy order now.">
         Sell
-        <SegmentedControl
-          size="xs"
-          nowrap
+        <Segmented
+          label="Sell side"
           value={pricing.sell}
           onChange={(sell) => setPricing({ ...pricing, sell })}
           options={[
@@ -49,38 +67,30 @@ export const BazaarPriceControls: React.FC<{ bazaar: BazaarPricesView; now: numb
             { value: "instant", label: "Instant sell" },
           ]}
         />
-      </label>
-      <label className="flex items-center gap-1.5 text-slate-400" title="Bazaar sales tax, taken from every sale. Buying is untaxed.">
+      </span>
+      <label className="flex items-center gap-1.5" title="Bazaar sales tax, taken from every sale. Buying is untaxed.">
         Tax
-        <NumberInput
-          min={0}
-          max={100}
-          step={0.125}
-          className={`${inputClass} w-16 text-right`}
-          value={pricing.taxPercent}
-          onChange={(taxPercent) => setPricing({ ...pricing, taxPercent })}
-          aria-label="Bazaar sales tax in percent"
-        />
-        %
-      </label>
-      <span className="flex flex-wrap items-center gap-2 ml-auto">
-        <span className={error ? "text-amber-300" : "text-slate-500"} title={prices ? `Bazaar data from ${new Date(prices.lastUpdated || prices.fetchedAt).toLocaleString()}` : undefined}>
-          {loading
-            ? "Fetching prices..."
-            : error
-              ? prices
-                ? `Couldn't refresh (${error}); prices from ${priceAge(prices.fetchedAt, now)}`
-                : `Couldn't load prices: ${error}`
-              : prices
-                ? `Prices ${priceAge(prices.fetchedAt, now)}`
-                : "No prices yet"}
+        <span className="relative">
+          <NumberInput
+            min={0}
+            max={100}
+            step={0.125}
+            className="h-7 w-[4.5rem] rounded-lg border border-slate-700/60 bg-slate-950/50 pr-6 pl-2 text-right text-[12.5px] font-medium tabular-nums text-slate-100 transition-colors duration-150 focus:border-emerald-500/60 focus:outline-none"
+            value={pricing.taxPercent}
+            onChange={(taxPercent) => setPricing({ ...pricing, taxPercent })}
+            aria-label="Bazaar sales tax in percent"
+          />
+          <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-slate-500">%</span>
         </span>
-        <button className={buttonClass.neutral} onClick={onEditPrices} title="Set your own price for an item, e.g. when its Bazaar price is being manipulated">
-          <Pencil className="w-3 h-3" /> Edit prices{overrideCount > 0 ? ` (${overrideCount} set)` : ""}
-        </button>
-        <button className={buttonClass.neutral} onClick={refresh} disabled={loading} title="Fetch the latest Bazaar prices (does not restart the simulation; your own prices stay)">
-          <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} /> Refresh
-        </button>
+      </label>
+      <span className="ml-auto flex items-center gap-1.5">
+        <KitButton variant="ghost" onClick={refresh} disabled={loading} title="Fetch the latest Bazaar prices (does not restart the simulation; your own prices stay)">
+          <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
+        </KitButton>
+        <KitButton onClick={onEditPrices} title="Set your own price for an item, e.g. when its Bazaar price is being manipulated">
+          <Pencil /> Edit prices
+          {overrideCount > 0 && <span className="rounded bg-sky-400/10 px-1 text-[10.5px] tabular-nums text-sky-300">{overrideCount} set</span>}
+        </KitButton>
       </span>
     </div>
   );
@@ -93,12 +103,14 @@ export const BazaarMoneyPanel: React.FC<{
   quotes: Quotes | null;
   pricing: BazaarPricing;
   cycleSeconds?: number;
-}> = ({ summary, previous, quotes, pricing, cycleSeconds }) => {
+  className?: string;
+}> = ({ summary, previous, quotes, pricing, cycleSeconds, className }) => {
+  const [mode, setMode] = useState<"total" | "perDay">("total");
   const now = priceRun(summary, quotes, pricing);
   const before = priceRun(previous, quotes, pricing);
   if (!summary.market) return null;
 
-  const rows: { label: string; get: (v: MarketValuation) => number; strong?: boolean; hint?: string }[] = [
+  const rows: MoneyRow<MarketValuation>[] = [
     { label: "Crops", get: (v) => v.revenue.crops, hint: "Base-crop drops (including mutation bundles), each at the better of its NPC price and its Bazaar price." },
     { label: "Rare crops", get: (v) => v.revenue.rareCrops, hint: "Armor bonus drops (Cropie, Squash, Fermento, Helianthus) and Ethereal Vine, at the better of NPC and Bazaar." },
     { label: "Harvest Bounty", get: (v) => v.revenue.rareDrops, hint: "Bonus Drops rolls (chips, spores, Iridium...), at the better of NPC and Bazaar." },
@@ -118,60 +130,51 @@ export const BazaarMoneyPanel: React.FC<{
   ];
 
   return (
-    <Panel
-      title="Money (Bazaar)"
-      icon={<Coins />}
-      description="Normal profile: prices from the Bazaar. Delta = the last Step / Run."
+    <ResultCard
+      title="Money"
+      className={className}
+      meta="Bazaar prices"
+      hintTitle="How profit is counted"
+      hintWidth={340}
+      hint={
+        <>
+          <p>
+            Everything the run produces is valued at what it sells for (mutation items on the Bazaar, everything else at the better of NPC and Bazaar, after tax).
+            Items you place from your own stock cost what you could have sold them for, and items you have to buy cost the Bazaar buy price. So profit doesn't depend
+            on when you sell.
+          </p>
+          <p>The starting layouts are free in the run; what buying them costs is shown separately as a one-off. Last run is the change from the last Step / Run.</p>
+        </>
+      }
       actions={
-        <InfoHint title="How profit is counted" width={320}>
-          Everything the run produces is valued at what it sells for (mutation items on the Bazaar, everything else at the better of NPC and Bazaar, after
-          tax). Items you place from your own stock cost what you could have sold them for, and items you have to buy cost the Bazaar buy price. So
-          profit doesn't depend on when you sell. The starting layouts are free in the run; what buying them costs is shown separately as a one-off.
-        </InfoHint>
+        now ? (
+          <Segmented
+            label="Money figures"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "total", label: "Total" },
+              { value: "perDay", label: "Per day", title: "Divide every figure by the simulated days" },
+            ]}
+          />
+        ) : undefined
       }
     >
       {!now ? (
-        <p className="text-xs text-slate-400">Waiting for Bazaar prices...</p>
+        <p className="text-[12.5px] text-slate-400">Waiting for Bazaar prices...</p>
       ) : (
         <>
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 gap-y-0.5 text-xs">
-            <span />
-            <span className="text-slate-500 text-right">delta</span>
-            <span className="text-slate-500 text-right">total</span>
-            <span className="text-slate-500 text-right">/day</span>
-            {rows.map((r) => {
-              const total = r.get(now);
-              const delta = total - (before ? r.get(before) : 0);
-              const cls = r.strong ? "text-slate-100 font-medium" : "text-slate-300";
-              const day = perDayOf(total, summary);
-              return (
-                <React.Fragment key={r.label}>
-                  <span className={`${cls} flex items-center gap-1`}>
-                    {r.label}
-                    {r.hint && (
-                      <InfoHint title={r.label} width={260}>
-                        {r.hint}
-                      </InfoHint>
-                    )}
-                    <Leader className="-mr-3" />
-                  </span>
-                  <LeadValue className="text-slate-400">{formatCoins(delta)}</LeadValue>
-                  <span className={`text-right ${cls}`}>{formatCoins(total)}</span>
-                  <span className={`text-right ${r.strong ? (day < 0 ? "text-red-300" : "text-emerald-300") : "text-slate-400"}`}>{formatCoins(day)}</span>
-                </React.Fragment>
-              );
-            })}
-          </div>
-          <div className="border-t border-slate-700/60 mt-3 pt-2">
-            <Stat
+          <MoneyTable rows={rows} now={now} before={before} mode={mode} days={summary.elapsedSeconds / 86400} />
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <Fact
               label="Cost to build (one-off)"
               value={formatCoins(now.buildCost)}
               title="Buying every item the starting layouts place, at the buy price. Not part of the profit: the run starts with them placed."
             />
-            <Stat label="Mutations sold so far" value={formatCoins(now.sold)} title="Mutation items sold above the reserve after each online session. Already counted in the profit." />
-            {cycleSeconds !== undefined && cycleSeconds > 0 && <Stat label="Cycles per day" value={`~${(86400 / cycleSeconds).toFixed(1)}`} />}
+            <Fact label="Mutations sold so far" value={formatCoins(now.sold)} title="Mutation items sold above the reserve after each online session. Already counted in the profit." />
+            {cycleSeconds !== undefined && cycleSeconds > 0 && <Fact value={`~${(86400 / cycleSeconds).toFixed(1)}`} suffix="cycles/day" />}
             {now.unpriced.length > 0 && (
-              <Stat
+              <Fact
                 label="No price for"
                 tone="bad"
                 value={now.unpriced.map(nameOf).join(", ")}
@@ -181,10 +184,9 @@ export const BazaarMoneyPanel: React.FC<{
           </div>
         </>
       )}
-    </Panel>
+    </ResultCard>
   );
 };
-
 // ---- Price editor -------------------------------------------------------------
 
 type PriceEditorProps = { bazaar: BazaarPricesView; focusItem: string | null; itemIds: string[]; onClose: () => void };

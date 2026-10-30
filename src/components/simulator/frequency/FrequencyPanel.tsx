@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Loader2, Play, Square } from "lucide-react";
+import { Loader2, Play, RotateCcw, Square } from "lucide-react";
 import type { RunSummary, Scenario } from "../../../simulator";
 import { slackFrom, percent } from "../../../leaderboard/view";
 import { FrequencyChart } from "../../flows/FrequencyChart";
-import { InfoHint, Panel } from "../../ui";
+import { KitButton } from "../../ui/kit";
 import { NumberInput } from "../controls";
-import { buttonClass, inputClass } from "../styles";
+import { LinkButton, ResultCard } from "../page/ResultCard";
 import {
   clampSweepParams,
   DEFAULT_SWEEP_CYCLES,
@@ -42,7 +42,10 @@ export const FrequencyPanel: React.FC<{
   scenario: Scenario;
   /** Normal profile: price a summary at Bazaar prices (profit per day); null when there are no prices yet. */
   priceSummary?: (s: RunSummary) => { perDay: number } | null;
-}> = ({ scenario, priceSummary }) => {
+  /** Switch the scenario to "online every N cycles" (shown beside the Forgiving line). */
+  onUseEvery?: (n: number) => void;
+  className?: string;
+}> = ({ scenario, priceSummary, onUseEvery, className }) => {
   const [params, setParams] = useState<SweepParams>({ seeds: DEFAULT_SWEEP_SEEDS, cycles: DEFAULT_SWEEP_CYCLES });
   const [result, setResult] = useState<SweepResult | null>(null);
   const [running, setRunning] = useState(false);
@@ -102,88 +105,77 @@ export const FrequencyPanel: React.FC<{
   const done = progress.length ? progress.reduce((s, f) => s + f, 0) / progress.length : 0;
   const totalRuns = SWEEP_EVERY.length * clampSweepParams(params).seeds;
 
+  // "Set online to every N": the point you picked, else the most profitable one, when it isn't the schedule already.
+  const best = points.reduce<{ every: number; v: number } | null>((b, p) => (p.profitPerDay !== null && (!b || p.profitPerDay > b.v) ? { every: p.every, v: p.profitPerDay } : b), null);
+  const useTarget = selected ?? best?.every ?? null;
+  const activity = scenario.settings.activity;
+  const canUse = !!onUseEvery && result !== null && !running && !stale && useTarget !== null && !(activity.kind === "everyN" && activity.n === useTarget);
+  const num = "h-7 rounded-lg border border-slate-700/60 bg-slate-950/50 px-2 text-right text-[12.5px] tabular-nums text-slate-100 transition-colors duration-150 focus:border-emerald-500/60 focus:outline-none disabled:opacity-50";
+
   return (
-    <Panel
+    <ResultCard
       title="Profit by online frequency"
-      icon={<BarChart3 />}
-      actions={
-        result && result.runs.length > 0 ? (
-          <span className="flex items-center gap-1 text-xs text-slate-300">
-            <span className="font-medium text-emerald-300">{forgiving === null ? "n/a" : percent(forgiving)}</span> forgiving
-            <InfoHint title="Forgiving" width={300}>
-              How much of your profit you keep when you come back later than planned. It compares the points in the shaded Forgiving range (the
-              selected frequency up to twice it) with the selected one, counting the slightly-late ones the most. 100% means being late costs nothing;
-              a low % means the flow falls apart if you miss a login. Shows n/a at 12 cycles (nothing slower is simulated) or with no profit.
-            </InfoHint>
-          </span>
-        ) : undefined
+      className={className}
+      hint={
+        <>
+          <p>
+            Your scenario as it is, re-run with the online schedule set to every N cycles for each frequency the leaderboard tests. Each point is the median over the
+            seeds. Click a point to measure Forgiving from it.
+          </p>
+          <p>
+            Forgiving: how much of your profit you keep when you come back later than planned. It compares the points in the shaded Forgiving range (the selected
+            frequency up to twice it) with the selected one, counting the slightly-late ones the most. 100% means being late costs nothing; a low % means the flow
+            falls apart if you miss a login. Shows n/a at 12 cycles (nothing slower is simulated) or with no profit.
+          </p>
+        </>
       }
-      description="Your scenario as it is, re-run with the online schedule set to every N cycles for each frequency the leaderboard tests. Each point is the median over the seeds. Click a point to measure Forgiving from it."
+      hintWidth={340}
+      meta={result && !running ? `${result.params.seeds} seeds · ${result.params.cycles.toLocaleString()} cycles${stale ? " · out of date" : ""}` : undefined}
+      actions={
+        <>
+          <label className="flex items-center gap-1.5 text-[12px] text-slate-500" title="Seeds per frequency: the scenario's seed and the ones after it">
+            Seeds
+            <NumberInput className={`${num} w-11`} value={params.seeds} min={MIN_SWEEP_SEEDS} max={MAX_SWEEP_SEEDS} integer disabled={running} onChange={(seeds) => setParams((p) => ({ ...p, seeds }))} />
+          </label>
+          <label className="mr-1 flex items-center gap-1.5 text-[12px] text-slate-500" title="Cycles each run simulates">
+            Cycles
+            <NumberInput className={`${num} w-16`} value={params.cycles} min={MIN_SWEEP_CYCLES} max={MAX_SWEEP_CYCLES} integer disabled={running} onChange={(cycles) => setParams((p) => ({ ...p, cycles }))} />
+          </label>
+          {running ? (
+            <KitButton onClick={cancel}>
+              <Square /> Cancel
+            </KitButton>
+          ) : (
+            <KitButton variant={result && !stale ? "neutral" : "accent"} onClick={start}>
+              {result ? <RotateCcw /> : <Play />}
+              {result ? "Recompute" : "Compute"}
+            </KitButton>
+          )}
+        </>
+      }
     >
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <label className="flex items-center gap-1.5 text-xs text-slate-400" title="Seeds per frequency: the scenario's seed and the ones after it">
-            seeds
-            <NumberInput
-              className={`${inputClass} w-14 text-right`}
-              value={params.seeds}
-              min={MIN_SWEEP_SEEDS}
-              max={MAX_SWEEP_SEEDS}
-              integer
-              disabled={running}
-              onChange={(seeds) => setParams((p) => ({ ...p, seeds }))}
-            />
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-slate-400" title="Cycles each run simulates">
-            cycles
-            <NumberInput
-              className={`${inputClass} w-20 text-right`}
-              value={params.cycles}
-              min={MIN_SWEEP_CYCLES}
-              max={MAX_SWEEP_CYCLES}
-              integer
-              disabled={running}
-              onChange={(cycles) => setParams((p) => ({ ...p, cycles }))}
-            />
-          </label>
-          <span className="text-xs text-slate-500">
-            {totalRuns} runs ({SWEEP_EVERY.length} frequencies × {clampSweepParams(params).seeds} seeds)
-          </span>
-          <div className="ml-auto flex items-center gap-2">
-            {running ? (
-              <button type="button" className={buttonClass.neutral} onClick={cancel}>
-                <Square className="h-3 w-3" />
-                Cancel
-              </button>
-            ) : (
-              <button type="button" className={buttonClass.primary} onClick={start}>
-                <Play className="h-3 w-3" />
-                {result ? "Recompute" : "Compute"}
-              </button>
-            )}
-          </div>
-        </div>
-
         {running && (
-          <div className="space-y-1" aria-live="polite">
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Loader2 className="h-3 w-3 animate-spin text-emerald-400" />
+          <div className="space-y-1.5" aria-live="polite">
+            <div className="flex items-center gap-2 text-[12px] text-slate-400">
+              <Loader2 className="h-3 w-3 animate-spin text-slate-300" />
               Simulating {result?.runs.length ?? 0} / {progress.length} runs · {Math.round(done * 100)}%
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-slate-700/40">
-              <div className="h-full rounded-full bg-emerald-400/70 transition-[width] duration-200" style={{ width: `${done * 100}%` }} />
+            <div className="h-1 overflow-hidden rounded-full bg-slate-400/10">
+              <div className="h-full rounded-full bg-emerald-400 transition-[width] duration-200" style={{ width: `${done * 100}%` }} />
             </div>
           </div>
         )}
 
         {stale && !running && (
-          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-200">
-            The scenario or settings changed since this was computed. Recompute to update it.
+          <p className="text-[12px] text-slate-400">
+            The scenario or settings changed since this was computed.{" "}
+            <LinkButton onClick={start}>Recompute</LinkButton> to update it.
           </p>
         )}
 
         {result && !running && noProfit ? (
-          <p className="text-xs text-slate-500">The scenario makes no profit at any frequency, so there is nothing to chart.</p>
+          <p className="text-[12.5px] text-slate-500">The scenario makes no profit at any frequency, so there is nothing to chart.</p>
         ) : result ? (
           <div className={stale && !running ? "opacity-60" : undefined}>
             <FrequencyChart
@@ -196,14 +188,30 @@ export const FrequencyPanel: React.FC<{
             />
           </div>
         ) : (
-          <p className="text-xs text-slate-500">
-            Press Compute to simulate the scenario at every frequency. It runs {totalRuns} full simulations in the background; the rest of the page stays
-            usable.
+          <p className="text-[12.5px] text-slate-500">
+            Press Compute to simulate the scenario at every frequency: {totalRuns} runs ({SWEEP_EVERY.length} frequencies × {clampSweepParams(params).seeds} seeds) in the background, while the rest of the page stays usable.
+          </p>
+        )}
+
+        {result && result.runs.length > 0 && !noProfit && (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-500">
+            <span>
+              Online every N cycles. Forgiving:{" "}
+              {forgiving === null ? (
+                <span className="text-slate-300">n/a</span>
+              ) : (
+                <>
+                  you keep <span className="font-semibold tabular-nums text-slate-200">{percent(forgiving)}</span> of the profit when you're late from every {shown}
+                </>
+              )}
+              .
+            </span>
+            {canUse && <LinkButton onClick={() => onUseEvery!(useTarget!)}>Set online to every {useTarget}</LinkButton>}
           </p>
         )}
 
         {failures.length > 0 && (
-          <details className="text-xs text-red-300">
+          <details className="text-[12px] text-red-300">
             <summary className="cursor-pointer">
               {failures.length} run{failures.length === 1 ? "" : "s"} failed and {failures.length === 1 ? "is" : "are"} left out
             </summary>
@@ -217,6 +225,6 @@ export const FrequencyPanel: React.FC<{
           </details>
         )}
       </div>
-    </Panel>
+    </ResultCard>
   );
 };

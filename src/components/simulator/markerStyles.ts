@@ -57,3 +57,10 @@ export type GridMarker = { mark: Mark; label?: string } | { indicator: Indicator
 
 /** Stable id of a marker's legend entry (ignores the hover-specific label). */
 export const markerKey = (m: GridMarker): string => ("mark" in m ? `mark:${m.mark}` : `indicator:${m.indicator}`);
+
+/** Marks only a normal (Bazaar) profile can produce. */
+export const NORMAL_ONLY_MARKS: readonly Mark[] = ["bought"];
+
+/** How many entries the full grid legend has. */
+export const legendSize = (normalProfile: boolean): number =>
+  (Object.keys(MARK_STYLE) as Mark[]).filter((m) => normalProfile || !NORMAL_ONLY_MARKS.includes(m)).length + Object.keys(INDICATOR_LABEL).length;

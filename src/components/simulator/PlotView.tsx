@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, Pencil } from "lucide-react";
+import { Eye, MoreHorizontal, Pencil } from "lucide-react";
+import { IconButton, KitButton } from "../ui/kit";
+import { Popover } from "../ui/Popover";
+import type { PlotUptime } from "./page/plotUptime";
 import { useFitCellSize } from "../../hooks";
 import {
   defaultGameData,
@@ -24,7 +27,6 @@ import { hoveredCellOffset } from "./sanityFormat";
 import { PlotMarkLegend } from "./markers";
 import { DRY_FILTER, MARK_STYLE, markerKey, type GridMarker, type Mark } from "./markerStyles";
 import { SimTooltip, type TooltipTarget } from "./SimTooltip";
-import { buttonClass } from "./styles";
 
 /** Footprint size of a plant or item id, so large mutations mark their whole footprint. */
 const sizeOf = (id: string): number => kindData(id)?.size ?? 1;
@@ -67,7 +69,23 @@ export interface PlotViewProps {
   sanityState?: SimulationState;
   /** Reports the legend entries (`markerKey`s) drawn on the hovered element; `[]` when nothing is hovered. */
   onHoverMarkers?: (plotId: number, keys: string[]) => void;
+  /** Items of the header's ⋯ menu (Replace layout, Duplicate, Remove); call `close` after choosing. No menu when omitted or it returns nothing. */
+  menu?: (close: () => void) => React.ReactNode;
+  /** Cap the cell size so the whole grid fits the viewport height under the sticky page header, with the results tabs peeking in. */
+  fitHeight?: boolean;
+  /** Uptime of this plot's checked targets so far (`plotUptime`); the footer shows it when given. */
+  uptime?: PlotUptime | null;
 }
+
+/**
+ * Height around the grid that must stay on screen with `fitHeight`: site nav 56, sticky command bar
+ * and KPI strip ~100, the plot header 38 and footer 28, the legend row 40 and the results tab bar
+ * peeking in under it 52.
+ */
+export const FIT_HEIGHT_RESERVE = 56 + 100 + 38 + 28 + 40 + 52;
+
+/** One decimal, never rounding a not-quite-full uptime up to "100%" (that would read as perfect). */
+const formatUptime = (r: number) => `${r >= 1 ? "100" : (Math.floor(r * 1000) / 10).toFixed(1)}%`;
 
 /** One plot, read-only: standing plants, empty labelled target cells, and what changed this cycle. */
 export const PlotView: React.FC<PlotViewProps> = ({
@@ -82,12 +100,30 @@ export const PlotView: React.FC<PlotViewProps> = ({
   config,
   sanityState,
   onHoverMarkers,
+  menu,
+  fitHeight,
+  uptime,
 }) => {
   const fitRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   // The hovered cell, not the hovered thing: the card is re-derived from the current plot on every
   // render, so it follows the snapshot live (e.g. holding → to step) without the mouse moving.
   const [hoverCell, setHoverCell] = useState<{ row: number; col: number } | null>(null);
-  const { cellSize, gap } = useFitCellSize(fitRef, { max: maxCell, min: 16 });
+  const { cellSize, gap } = useFitCellSize(fitRef, { max: maxCell, min: 16, ...(fitHeight ? { heightReserve: FIT_HEIGHT_RESERVE } : {}) });
+  const [menuAnchor, setMenuAnchor] = useState<HTMLButtonElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuItems = menu && menuOpen ? menu(() => setMenuOpen(false)) : null;
+
+  // Touch has no hover: a tap inspects the cell (tap it again, or anywhere else, to close).
+  const touchTap = useRef(false);
+  useEffect(() => {
+    if (!hoverCell) return;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" && !gridRef.current?.contains(e.target as Node)) setHoverCell(null);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [hoverCell]);
   const { width, height } = getGridDimensions(cellSize, gap);
   const marks = useMemo(() => marksFrom(events), [events]);
   // Sanity Check results, memoised per cell for the current snapshot state.
@@ -109,9 +145,20 @@ export const PlotView: React.FC<PlotViewProps> = ({
   };
 
   /** Tracks the cell under the mouse (scale-aware); state changes only when the cell does. */
-  const trackHover = (e: React.MouseEvent<HTMLDivElement>) => {
+  const cellAt = (e: React.PointerEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>) => {
     const { dr: row, dc: col } = hoveredCellOffset(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), GRID_SIZE, cellSize, gap);
+    return { row, col };
+  };
+  const trackHover = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse") return;
+    const { row, col } = cellAt(e);
     setHoverCell((prev) => (prev && prev.row === row && prev.col === col ? prev : { row, col }));
+  };
+  const onTap = (e: React.PointerEvent<HTMLDivElement>) => {
+    touchTap.current = e.pointerType !== "mouse";
+    if (!touchTap.current) return;
+    const { row, col } = cellAt(e);
+    setHoverCell((prev) => (prev && prev.row === row && prev.col === col ? null : { row, col }));
   };
 
   const step = def && runner ? def.flow.steps[runner.stepIndex] : undefined;
@@ -227,32 +274,64 @@ export const PlotView: React.FC<PlotViewProps> = ({
   }, [hoverKeys, plot.id, onHoverMarkers]);
 
   return (
-    <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 min-w-0 flex flex-col">
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-slate-200">Plot {plot.id}</h3>
-          {step && (
-            <p className="text-xs text-slate-400 break-words">
-              <span className="text-slate-500">
-                Step {runner!.stepIndex + 1}/{def!.flow.steps.length}
-              </span>{" "}
+    <div className="@container min-w-0 flex flex-col">
+      <div className="mb-2 flex h-[30px] min-w-0 items-center gap-2 text-[13px]">
+        <h3 className="shrink-0 font-semibold text-slate-100">Plot {plot.id}</h3>
+        {step && (
+          <>
+            <span className="min-w-0 truncate text-slate-300" title={step.label || step.id}>
               {step.label || step.id}
-              <span className="text-slate-500"> · {runner!.cyclesInStep} cycles in</span>
-              {runner!.pendingTransition && <span className="text-amber-300"> · change pending</span>}
-              {runner!.finished && <span className="text-slate-500"> · holding final step</span>}
-            </p>
-          )}
-        </div>
-        {onEditFlow && (
-          <button className={`${buttonClass.neutral} flex-shrink-0`} onClick={onEditFlow} title="Edit this plot's flow">
-            <Pencil className="w-3 h-3" />
-            Flow
-          </button>
+            </span>
+            <span className="shrink-0 whitespace-nowrap text-[12px] tabular-nums text-slate-500">
+              · step {runner!.stepIndex + 1}/{def!.flow.steps.length}
+            </span>
+            {def!.flow.steps.length <= 8 && def!.flow.steps.length > 1 && (
+              <span className="hidden shrink-0 items-center gap-[3px] @[420px]:flex" aria-hidden title={`Step ${runner!.stepIndex + 1} of ${def!.flow.steps.length}`}>
+                {def!.flow.steps.map((s, i) => (
+                  <i key={s.id} className={`h-1.5 w-1.5 rounded-[2px] ${i === runner!.stepIndex ? "bg-slate-100" : "bg-slate-400/20"}`} />
+                ))}
+              </span>
+            )}
+            {runner!.pendingTransition && <span className="shrink-0 whitespace-nowrap text-[11px] text-amber-300">change pending</span>}
+            {runner!.finished && <span className="shrink-0 whitespace-nowrap text-[11px] text-slate-500">holding final step</span>}
+          </>
         )}
+        <span className="ml-auto flex shrink-0 items-center gap-0.5">
+          {onEditFlow && (
+            <KitButton variant="ghost" onClick={onEditFlow} title="Edit this plot's flow" className="!h-[26px] !px-2">
+              <Pencil />
+              Flow
+            </KitButton>
+          )}
+          {menu && (
+            <>
+              <IconButton
+                ref={setMenuAnchor}
+                aria-label={`Plot ${plot.id} actions`}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((o) => !o)}
+                className="!h-[26px] !w-[26px]"
+              >
+                <MoreHorizontal />
+              </IconButton>
+              <Popover anchor={menuAnchor} open={menuOpen && !!menuItems} onClose={() => setMenuOpen(false)} label={`Plot ${plot.id} actions`} role="menu" align="end" width={240}>
+                {menuItems}
+              </Popover>
+            </>
+          )}
+        </span>
       </div>
 
       <div ref={fitRef} className="w-full">
-        <div className="relative select-none mx-auto" style={{ width, height }} onMouseMove={trackHover} onMouseLeave={() => setHoverCell(null)}>
+        <div
+          ref={gridRef}
+          className="relative mx-auto select-none rounded-xl bg-slate-950/60 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]"
+          style={{ width, height }}
+          onPointerMove={trackHover}
+          onPointerDown={onTap}
+          onMouseLeave={() => setHoverCell(null)}
+        >
           {Array.from({ length: 100 }, (_, i) => {
             const r = Math.floor(i / 10);
             const c = i % 10;
@@ -410,13 +489,42 @@ export const PlotView: React.FC<PlotViewProps> = ({
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
-        <span>{counts.standing} placed/planted</span>
-        <span className="text-cyan-300/90">{counts.spawns} natural spawns</span>
-        <span>{counts.openSlots} open target cells</span>
-        {counts.dead > 0 && <span className="text-red-300/90">{counts.dead} dead plants</span>}
-        {counts.dry > 0 && <span className="text-amber-400/90">{counts.dry} dried out (halted)</span>}
-        {missing.length > 0 && <span className="text-red-300">{missing.length} missing (no stock)</span>}
+      <div className="mx-auto mt-2 flex min-h-5 w-full flex-wrap items-baseline gap-x-3.5 gap-y-0.5 text-[12px] text-slate-500" style={{ maxWidth: width }}>
+        <span title="Placed and planted layout plants">
+          <b className="font-semibold tabular-nums text-slate-300">{counts.standing}</b> planted
+        </span>
+        <span title="Natural spawns standing on the plot">
+          <b className="font-semibold tabular-nums text-slate-300">{counts.spawns}</b> spawned
+        </span>
+        {runner && (
+          <span className="hidden @[420px]:inline">
+            <b className="font-semibold tabular-nums text-slate-300">{runner.cyclesInStep}</b> cycles in step
+          </span>
+        )}
+        {counts.openSlots > 0 && (
+          <span className="hidden @[340px]:inline" title="Target cells without their mutation">
+            <b className="font-semibold tabular-nums text-slate-300">{counts.openSlots}</b> open
+          </span>
+        )}
+        {counts.dead > 0 && <span className="text-red-300/90">{counts.dead} dead</span>}
+        {counts.dry > 0 && (
+          <span className="text-amber-400/90" title="Dried out: halted until watered">
+            {counts.dry} dried out
+          </span>
+        )}
+        {missing.length > 0 && (
+          <span className="text-red-300" title="Layout plants the player could not re-place (no stock)">
+            {missing.length} missing
+          </span>
+        )}
+        {uptime && (
+          <span
+            className={`ml-auto font-semibold tabular-nums ${uptime.unsustainable ? "text-red-300" : "text-slate-200"}`}
+            title={`Uptime of this plot's checked targets so far${uptime.unsustainable ? ": a checked target lacked its requirements (not sustainable)" : ""}`}
+          >
+            {formatUptime(uptime.ratio)} up
+          </span>
+        )}
       </div>
     </div>
   );

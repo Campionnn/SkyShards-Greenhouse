@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, Code2, PauseCircle, Pencil } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, PauseCircle, Pencil } from "lucide-react";
 import { inspectScriptVariables, type InspectedVariable, type Scenario, type ScriptHalt, type ScriptMetric, type SimulationState } from "../../../simulator";
-import { Panel, SectionLabel } from "../../ui";
-import { buttonClass, inputClass } from "../styles";
+import { KitButton, KitInput } from "../../ui/kit";
+import { ResultCard } from "../page/ResultCard";
 import { getScript, haltText, scriptLabel, scriptTargetLabel, type ScriptTarget } from "./scriptEdit";
 
 
@@ -10,19 +10,19 @@ import { getScript, haltText, scriptLabel, scriptTargetLabel, type ScriptTarget 
 export const ScriptHaltBanner: React.FC<{ halt: ScriptHalt; onEdit: () => void }> = ({ halt, onEdit }) => (
   <div
     role="status"
-    className={`rounded-lg border px-3 py-2 text-xs flex flex-wrap items-center gap-2 ${
-      halt.kind === "error" ? "bg-red-500/10 border-red-500/30 text-red-200" : "bg-sky-500/10 border-sky-500/30 text-sky-200"
+    className={`flex flex-wrap items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-[12.5px] ${
+      halt.kind === "error" ? "border-red-400/25 bg-red-500/[0.06] text-red-100" : "border-sky-400/25 bg-sky-500/[0.06] text-sky-100"
     }`}
   >
-    {halt.kind === "error" ? <AlertTriangle className="w-4 h-4 flex-shrink-0" /> : <PauseCircle className="w-4 h-4 flex-shrink-0" />}
+    {halt.kind === "error" ? <AlertTriangle className="h-4 w-4 shrink-0 text-red-300" /> : <PauseCircle className="h-4 w-4 shrink-0 text-sky-300" />}
     <span className="flex-1 min-w-[200px] break-words">
       {haltText(halt)}
       {halt.kind === "error" ? " Fix the script to continue (Back / Undo still work)." : " Run or Step continues."}
     </span>
     {halt.kind === "error" && (
-      <button className={buttonClass.neutral} onClick={onEdit}>
-        <Pencil className="w-3.5 h-3.5" /> Open the script
-      </button>
+      <KitButton onClick={onEdit}>
+        <Pencil /> Open the script
+      </KitButton>
     )}
   </div>
 );
@@ -41,14 +41,14 @@ const Sparkline: React.FC<{ metric: ScriptMetric }> = ({ metric }) => {
     .join(" ");
   return (
     <svg width={W} height={H} className="flex-shrink-0" aria-hidden>
-      <path d={d} fill="none" stroke="rgb(52 211 153)" strokeWidth={1.5} />
+      <path d={d} fill="none" stroke="rgb(56 189 248)" strokeWidth={1.5} />
     </svg>
   );
 };
 
 const ValueTree: React.FC<{ value: unknown; depth?: number }> = ({ value, depth = 0 }) => {
   if (value === null || typeof value !== "object") {
-    return <span className="text-sky-300 break-all">{value === undefined ? "undefined" : typeof value === "string" ? (value.startsWith("[") ? value : JSON.stringify(value)) : String(value)}</span>;
+    return <span className="text-slate-200 break-all">{value === undefined ? "undefined" : typeof value === "string" ? (value.startsWith("[") ? value : JSON.stringify(value)) : String(value)}</span>;
   }
   const entries = Array.isArray(value) ? value.map((v, i) => [String(i), v] as const) : Object.entries(value);
   if (entries.length === 0) return <span className="text-slate-500">{Array.isArray(value) ? "[]" : "{}"}</span>;
@@ -71,7 +71,7 @@ const VariableRow: React.FC<{ v: InspectedVariable }> = ({ v }) => {
     <li className="font-mono text-[11px]">
       <button type="button" className={`flex w-full text-left gap-1 ${expandable ? "cursor-pointer" : "cursor-default"}`} onClick={() => expandable && setOpen((o) => !o)}>
         <span className="w-3 flex-shrink-0 text-slate-500">{expandable ? open ? <ChevronDown className="w-3 h-3 mt-0.5" /> : <ChevronRight className="w-3 h-3 mt-0.5" /> : null}</span>
-        <span className="text-emerald-300 flex-shrink-0">{v.name}</span>
+        <span className="text-sky-300 flex-shrink-0">{v.name}</span>
         <span className="text-slate-500">=</span>
         {!open && <span className="text-slate-300 truncate">{v.text}</span>}
       </button>
@@ -89,7 +89,8 @@ export const ScriptPanel: React.FC<{
   scenario: Scenario;
   state: SimulationState | null;
   onEdit: (target: ScriptTarget) => void;
-}> = ({ scenario, state, onEdit }) => {
+  className?: string;
+}> = ({ scenario, state, onEdit, className }) => {
   const [filter, setFilter] = useState("");
   const [logScript, setLogScript] = useState("all");
   const vars = useMemo(() => (state ? inspectScriptVariables(state) : []), [state]);
@@ -110,46 +111,43 @@ export const ScriptPanel: React.FC<{
   const metrics = Object.entries(ss?.metrics ?? {});
 
   return (
-    <Panel
+    <ResultCard
       title="Scripts"
-      icon={<Code2 />}
-      description="Code that controls the simulation, on top of the flows. Variables and console update after each Step or Run."
+      className={className}
+      hint="Code that controls the simulation, on top of the flows. Variables and console update after each Step or Run."
+      meta={`${targets.filter((t) => getScript(scenario, t)?.source.trim()).length} of ${targets.length} written`}
     >
-      <div className="flex flex-wrap gap-1.5 mb-3">
+      <div className="mb-4 flex flex-wrap gap-1.5">
         {targets.map((t) => {
           const s = getScript(scenario, t);
           const has = !!s?.source.trim();
           return (
-            <button key={String(t)} className={buttonClass.neutral} onClick={() => onEdit(t)} title={has ? "Edit this script" : "Write a script"}>
-              <Pencil className="w-3 h-3" />
+            <KitButton key={String(t)} onClick={() => onEdit(t)} title={has ? "Edit this script" : "Write a script"}>
+              <Pencil />
               {scriptTargetLabel(t)}
-              <span className={`text-[10px] ${has ? (s?.enabled === false ? "text-slate-500" : "text-emerald-300") : "text-slate-500"}`}>
+              <span className={`text-[11px] tabular-nums ${has && s?.enabled !== false ? "text-sky-300" : "text-slate-500"}`}>
                 {has ? (s?.enabled === false ? "off" : `${s!.source.split("\n").length} lines`) : "none"}
               </span>
-            </button>
+            </KitButton>
           );
         })}
       </div>
 
       {!ss ? (
-        <p className="text-xs text-slate-500">
+        <p className="text-[12.5px] text-slate-500">
           No scripts in this scenario. Write one to break mutations at a stage, drive the step flow from code, keep variables, or coordinate the three plots.
         </p>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <div className="min-w-0">
-            <SectionLabel
-              actions={<input className={`${inputClass} w-36`} placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter variables" />}
-            >
-              Variables
-            </SectionLabel>
+            <SubHead actions={<KitInput className="h-7 w-36 text-[12px]" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter variables" />}>Variables</SubHead>
             {grouped.length === 0 ? (
               <p className="text-xs text-slate-500">{vars.length ? "Nothing matches." : "No top-level variables yet."}</p>
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto scrollbar-dark pr-1">
                 {grouped.map(([script, list]) => (
                   <div key={script}>
-                    <div className="text-[11px] text-slate-400 mb-0.5">{scriptLabel(script)}</div>
+                    <div className="mb-0.5 text-[11px] text-slate-500">{scriptLabel(script)}</div>
                     <ul className="space-y-0.5">
                       {list.map((v) => (
                         <VariableRow key={`${script}.${v.name}`} v={v} />
@@ -161,7 +159,7 @@ export const ScriptPanel: React.FC<{
             )}
             {metrics.length > 0 && (
               <>
-                <SectionLabel className="mt-3">Metrics</SectionLabel>
+                <SubHead className="mt-4">Metrics</SubHead>
                 <ul className="space-y-1">
                   {metrics.map(([name, m]) => (
                     <li key={name} className="flex items-center gap-2 text-xs">
@@ -169,7 +167,7 @@ export const ScriptPanel: React.FC<{
                         {name}
                       </span>
                       <Sparkline metric={m} />
-                      <span className="font-mono text-emerald-300 w-20 text-right">{Number.isInteger(m.value) ? m.value : m.value.toFixed(3)}</span>
+                      <span className="w-20 text-right font-mono tabular-nums text-slate-100">{Number.isInteger(m.value) ? m.value : m.value.toFixed(3)}</span>
                     </li>
                   ))}
                 </ul>
@@ -178,9 +176,14 @@ export const ScriptPanel: React.FC<{
           </div>
 
           <div className="min-w-0">
-            <SectionLabel
+            <SubHead
               actions={
-                <select className={inputClass} value={logScript} onChange={(e) => setLogScript(e.target.value)} aria-label="Console filter">
+                <select
+                  className="h-7 cursor-pointer rounded-lg border border-slate-700/60 bg-slate-950/50 px-2 text-[12px] text-slate-200 focus:border-emerald-500/60 focus:outline-none"
+                  value={logScript}
+                  onChange={(e) => setLogScript(e.target.value)}
+                  aria-label="Console filter"
+                >
                   <option value="all">All scripts</option>
                   <option value="global">Controller</option>
                   {scenario.plots.map((p) => (
@@ -192,7 +195,7 @@ export const ScriptPanel: React.FC<{
               }
             >
               Console
-            </SectionLabel>
+            </SubHead>
             {logs.length === 0 ? (
               <p className="text-xs text-slate-500">Nothing logged yet. Use log(...) and warn(...).</p>
             ) : (
@@ -212,6 +215,14 @@ export const ScriptPanel: React.FC<{
           </div>
         </div>
       )}
-    </Panel>
+    </ResultCard>
   );
 };
+
+/** A sub-heading inside the Scripts card (Variables, Metrics, Console). */
+const SubHead: React.FC<{ children: React.ReactNode; actions?: React.ReactNode; className?: string }> = ({ children, actions, className = "" }) => (
+  <div className={`mb-2 flex min-h-7 items-center justify-between gap-2 ${className}`}>
+    <h4 className="text-[12px] font-semibold text-slate-300">{children}</h4>
+    {actions}
+  </div>
+);

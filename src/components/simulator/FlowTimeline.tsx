@@ -1,7 +1,7 @@
 import React, { useCallback, useId, useMemo, useState } from "react";
-import { History, Pin, Search, X } from "lucide-react";
+import { Pin, Search, X } from "lucide-react";
 import type { FlowRunnerState, ScenarioPlot } from "../../simulator";
-import { Panel } from "../ui";
+import { ResultCard } from "./page/ResultCard";
 import { buttonClass, inputClass } from "./styles";
 import { entrySeconds, formatDays, formatShare, shareOfRun, timelineEntryAt, timelineGeometry, timelineStats, type StepStats } from "./timeline";
 
@@ -12,13 +12,13 @@ const BREAKDOWN_LIMIT = 6;
 type Inspection = { plotId: number; stepId: string; startCycle?: number; historyIndex?: number; atCycle?: number };
 
 /** `elapsedSeconds`: the run clock at `cycle`, for day counts and shares of the whole run. */
-type Props = { flows: FlowRunnerState[]; defs: ScenarioPlot[]; cycle: number; elapsedSeconds?: number };
+type Props = { flows: FlowRunnerState[]; defs: ScenarioPlot[]; cycle: number; elapsedSeconds?: number; className?: string };
 
 /** "3.2d · 42% of run" */
 const timeShare = (seconds: number, elapsedSeconds: number) => `${formatDays(seconds)} · ${formatShare(shareOfRun(seconds, elapsedSeconds))} of run`;
 
 /** Time-based hit testing keeps even sub-pixel visits inspectable without distorting the bars. */
-export const FlowTimeline: React.FC<Props> = ({ flows, defs, cycle, elapsedSeconds = 0 }) => {
+export const FlowTimeline: React.FC<Props> = ({ flows, defs, cycle, elapsedSeconds = 0, className }) => {
   const [hovered, setHovered] = useState<Inspection | null>(null);
   const [pinned, setPinned] = useState<Inspection | null>(null);
   const [pointerPlot, setPointerPlot] = useState<number | null>(null);
@@ -56,20 +56,29 @@ export const FlowTimeline: React.FC<Props> = ({ flows, defs, cycle, elapsedSecon
   const clear = () => { setPinned(null); setHovered(null); };
 
   return (
-    <Panel title="Step timeline" icon={<History />} description="Hover anywhere on a bar to inspect a visit. Click or tap to pin details; use arrow keys on a focused bar to browse visits.">
+    <ResultCard
+      title="Step timeline"
+      className={className}
+      meta={`Shared cycle clock · ${cycle.toLocaleString()} cycles · ${formatDays(elapsedSeconds)}`}
+      hint="Hover anywhere on a bar to inspect a visit. Click or tap to pin details; use arrow keys on a focused bar to browse visits."
+      actions={
+        <select
+          aria-label="Timeline cycle range"
+          className="h-7 cursor-pointer rounded-lg border border-slate-700/60 bg-slate-950/50 px-2 text-[12px] text-slate-200 transition-colors duration-150 focus:border-emerald-500/60 focus:outline-none"
+          value={windowSize}
+          onChange={(e) => {
+            setWindowSize(Number(e.target.value));
+            setHovered(null);
+          }}
+        >
+          <option value={0}>Entire run</option>
+          <option value={50}>Last 50 cycles</option>
+          <option value={200}>Last 200 cycles</option>
+          <option value={1000}>Last 1,000 cycles</option>
+        </select>
+      }
+    >
       <div className="space-y-3" onPointerLeave={() => setHovered(null)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setHovered(null); }} onKeyDown={(e) => { if (e.key === "Escape") clear(); }}>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-          <span>Shared cycle clock · {cycle.toLocaleString()} cycles · {formatDays(elapsedSeconds)}</span>
-          <label className="flex items-center gap-2">
-            View
-            <select aria-label="Timeline cycle range" className={inputClass} value={windowSize} onChange={(e) => { setWindowSize(Number(e.target.value)); setHovered(null); }}>
-              <option value={0}>Entire run</option>
-              <option value={50}>Last 50 cycles</option>
-              <option value={200}>Last 200 cycles</option>
-              <option value={1000}>Last 1,000 cycles</option>
-            </select>
-          </label>
-        </div>
         <div className="flex justify-between pl-14 text-[11px] text-slate-500 tabular-nums">
           <span>cycle {fromCycle.toLocaleString()}</span>
           <span>cycle {cycle.toLocaleString()}</span>
@@ -153,7 +162,7 @@ export const FlowTimeline: React.FC<Props> = ({ flows, defs, cycle, elapsedSecon
             </div>
           );
         })}
-        <div id={detailId} className="min-h-28 rounded-md border border-slate-600/40 bg-slate-900/40 p-3">
+        <div id={detailId} className="min-h-28 rounded-lg border border-slate-700/50 bg-slate-950/40 p-3">
           {selection ? (
             <TimelineDetails selection={selection} flows={flows} defs={defs} cycle={cycle} elapsedSeconds={elapsedSeconds} pinned={!!activePin} onPin={() => setPinned(selection)} onClear={clear} />
           ) : (
@@ -171,7 +180,7 @@ export const FlowTimeline: React.FC<Props> = ({ flows, defs, cycle, elapsedSecon
           ))}
         </div>
       </div>
-    </Panel>
+    </ResultCard>
   );
 };
 
@@ -298,7 +307,7 @@ const StepLegend = React.memo(function StepLegend({ def, runner, cycle, elapsedS
   const needle = query.trim().toLowerCase();
   const filtered = def.flow.steps.flatMap((step, index) => !needle || `${index + 1} ${step.id} ${step.label ?? ""}`.toLowerCase().includes(needle) ? [{ step, index }] : []);
   return (
-    <details className="rounded-md border border-slate-600/30 bg-slate-800/30" onToggle={(e) => { if (!e.currentTarget.open) onHover(null); }}>
+    <details className="rounded-lg border border-slate-700/50 bg-slate-950/30" onToggle={(e) => { if (!e.currentTarget.open) onHover(null); }}>
       <summary className="cursor-pointer px-3 py-2 text-xs text-slate-300 focus-visible:outline-emerald-400">Plot {def.id} steps <span className="text-slate-500">· {def.flow.steps.length} total · {Array.from(stats.values()).filter((s) => s.visits > 0).length} visited</span></summary>
       <div className="px-3 pb-3 space-y-2">
         <label className="flex items-center gap-2">

@@ -17,6 +17,7 @@ import { DEFAULT_BAZAAR_PRICING } from "../../simulator";
 import { defaultGameData } from "../../simulator/data/default";
 import { SubmitFlowPanel, type TestState } from "../simulator/SubmitFlowDialog";
 import { SettingsPanel } from "../simulator/ScenarioPanels";
+import { CommandBar } from "../simulator/page/CommandBar";
 import { FromNothingBanner } from "../simulator/FromNothingBanner";
 import { previewScenarioOf, withPreviewSeed } from "../simulator/fromNothingPreview";
 import { ToastProvider } from "../ui";
@@ -439,18 +440,43 @@ describe("submit dialog renders", () => {
 });
 
 describe("simulator settings: the leaderboard rules", () => {
-  it("one rules button for the site's board, Watch from nothing, and the notes for setupFromStock and leaderboardRules", () => {
+  it("the Rules chip names the board's state, and the Advanced tab holds the rule notes", () => {
     const base = scenario([flow([step("a", { code: LAYOUT_A_CODE }, [])])]);
     const ruled = { ...base, settings: { ...base.settings, config: { ...base.settings.config, freePlacedItems: ["dead_plant", "fermento"], setupFromStock: true, leaderboardRules: true } } };
-    const html = text(wrap(<SettingsPanel scenario={ruled} onChange={() => {}} />));
-    // One button for the board the site switch is on, and the from-nothing preview; no four-way select.
-    expect(html).toContain("Leaderboard rules · Ironman");
-    expect(html).toContain("Apply the Ironman rules");
-    expect(html).not.toMatch(/From nothing \(builder first\)|Strict \(no borrowing\)|Import the builder/);
-    const watch = text(wrap(<SettingsPanel scenario={ruled} onChange={() => {}} onWatchFromNothing={() => {}} />));
-    expect(watch).toContain("Watch from nothing");
-    // The Advanced tab holds the notes; render the panel there.
-    expect(html).toContain("Advanced (3)");
+    const bar = (sc: typeof base) =>
+      text(
+        wrap(
+          <CommandBar
+            scenario={sc}
+            onChange={() => {}}
+            view={{ status: "ready", snapshot: null, previousSummary: null, lastCycleEvents: [], log: [], progress: null, lastCall: null, error: null, issues: [], warnings: [], history: { canStepBack: false, lastAction: null }, rewound: null }}
+            profile="ironman"
+            onProfileChange={() => {}}
+            onRun={() => {}}
+            onStep={() => {}}
+            onStepBack={() => {}}
+            onUndo={() => {}}
+            onStop={() => {}}
+            onReset={() => {}}
+            seed={1}
+            onSeedChange={() => {}}
+            changedSettings={3}
+            onOpenSettings={() => {}}
+            problems={[]}
+            shareMenu={() => null}
+          />
+        )
+      );
+    // The chip shows whether the scenario matches the Ironman board's set-up; one chip, no four-way select.
+    expect(bar(base)).toContain("Leaderboard rules (Ironman board)");
+    expect(bar(base)).toMatch(/>off</);
+    expect(bar(base)).not.toMatch(/From nothing \(builder first\)|Strict \(no borrowing\)|Import the builder/);
+    expect(bar(ruled)).toContain("3 changed");
+    // The notes for setupFromStock / leaderboardRules / free supplies live in the Advanced tab.
+    const adv = text(wrap(<SettingsPanel bare tab="advanced" scenario={ruled} onChange={() => {}} />));
+    expect(adv).toContain('data-testid="setup-from-stock-note"');
+    expect(adv).toContain('data-testid="leaderboard-rules-note"');
+    expect(adv).toContain("Unlimited supplies");
   });
 });
 

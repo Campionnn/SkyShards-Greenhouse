@@ -1,16 +1,17 @@
 import React, { useMemo, useRef, useState } from "react";
-import { ChevronRight, Minus, Package, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronRight, Minus, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { COMPACTED_CROPS, defaultGameData, reservePlan, UNIQUE_CROP_CAP, type Scenario, type SimulationState } from "../../simulator";
 import type { BazaarPricesView } from "../../hooks/useBazaarPrices";
-import { InfoHint, Panel, SegmentedControl } from "../ui";
+import { InfoHint } from "../ui";
+import { IconButton, KitButton, Segmented } from "../ui/kit";
 import { CropImage } from "../shared";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { BazaarPriceControls, BazaarPriceDialog } from "./BazaarPanels";
 import { applyItemDelta, buildItemRows, priceRun, type ItemRow } from "./bazaarFormat";
 import { allItemIds, formatCoins, formatCount, formatRate, formatUnitPrice, nameOf, rarityOf, type ItemCategory } from "./format";
-import { Leader, NumberInput } from "./controls";
+import { NumberInput } from "./controls";
 import { ItemPicker } from "./ItemPicker";
-import { buttonClass, inputClass } from "./styles";
+import { ResultCard } from "./page/ResultCard";
 
 // The simulator's inventory panel, for both profiles (ironman and normal / Bazaar).
 
@@ -34,8 +35,8 @@ const COLLAPSED_BY_DEFAULT: Partial<Record<ItemCategory, boolean>> = { rareCrop:
 const sectionOf = (r: ItemRow): ItemCategory => (r.id === "dead_plant" ? "mutation" : r.category);
 
 /** Grid columns. Normal: item, held, made, used, bought, sold, price, reserve, worth, remove. Ironman: item, held, made, used, net, price, worth, remove. */
-const COLS_NORMAL = "grid-cols-[minmax(10rem,1.6fr)_repeat(5,minmax(4.25rem,auto))_minmax(7rem,auto)_minmax(4.75rem,auto)_minmax(5rem,auto)_1.25rem]";
-const COLS_IRONMAN = "grid-cols-[minmax(10rem,1.6fr)_repeat(4,minmax(4.5rem,auto))_minmax(5rem,auto)_minmax(5rem,auto)_1.25rem]";
+const COLS_NORMAL = "grid-cols-[minmax(10rem,1.6fr)_repeat(5,minmax(5rem,auto))_minmax(7.5rem,auto)_minmax(5.5rem,auto)_minmax(5.5rem,auto)_2rem]";
+const COLS_IRONMAN = "grid-cols-[minmax(10rem,1.6fr)_repeat(4,minmax(5.25rem,auto))_minmax(5.5rem,auto)_minmax(5.5rem,auto)_2rem]";
 /** Rows a section shows before it scrolls (problems first, then the most valuable). */
 const ROWS_SHOWN = 5;
 
@@ -154,51 +155,51 @@ export const InventoryTable: React.FC<{
   // Normal: the same valuation as the Money panel and the run bar, so the three always agree.
   const profit = bazaar ? priceRun(state.summary, quotes, bazaar.view.pricing)?.profit ?? 0 : 0;
 
-  type Card = { label: string; value: string; title: string; tone?: string };
-  const cards: Card[] = normal
+  type Total = { label: string; value: string; title: string; tone?: string };
+  const totalsLine: Total[] = normal
     ? [
         ...(perDay
           ? []
           : [
               {
-                label: "Holding",
+                label: "holding",
                 value: formatCoins(totals.held),
                 title: "What everything in the inventory now sells for. Lower than Made by what was sold and what was placed from stock; higher by your starting stock and purchases.",
               },
             ]),
-        { label: perDay ? "Made / day" : "Made", value: coins(totals.made), title: "Everything the run produced, at what it sells for (the Money panel's revenue).", tone: "text-emerald-300" },
-        { label: perDay ? "Sold / day" : "Sold", value: coins(totals.sold), title: "Mutation items sold above their reserve after each online session.", tone: "text-amber-200" },
-        { label: perDay ? "Bought / day" : "Bought", value: coins(totals.bought), title: "Items bought because a placement was short of stock.", tone: totals.bought > 0 ? "text-pink-300" : undefined },
+        { label: perDay ? "made / day" : "made", value: coins(totals.made), title: "Everything the run produced, at what it sells for (the Money panel's revenue)." },
+        { label: perDay ? "sold / day" : "sold", value: coins(totals.sold), title: "Mutation items sold above their reserve after each online session." },
+        { label: perDay ? "bought / day" : "bought", value: coins(totals.bought), title: "Items bought because a placement was short of stock." },
         {
-          label: perDay ? "Profit / day" : "Profit",
+          label: perDay ? "profit / day" : "profit",
           value: coins(profit),
           title: "The Money panel's profit: everything made, minus items placed from your own stock (at what they sell for), minus what was bought.",
-          tone: profit < 0 ? "text-red-300" : "text-emerald-300",
+          tone: profit < 0 ? "text-red-300" : "text-yellow-400",
         },
       ]
     : [
-        // Ironman has no "Holding" coin card: only mutations (no NPC price), fermento and dead plants are
+        // Ironman has no "Holding" coin figure: only mutations (no NPC price), fermento and dead plants are
         // ever placed, so the NPC value held is the NPC value made (plus starting stock). The mutation
         // stock is what an ironman actually holds.
         ...(perDay
           ? []
           : [
               {
-                label: "Mutations held",
+                label: "mutations held",
                 value: formatCount(mutationsHeld),
                 title: "Mutation items in stock now, ready to re-place. They have no NPC price, so no coin value.",
                 tone: mutationsHeld < 0 ? "text-red-300" : undefined,
               },
             ]),
-        { label: perDay ? "Made / day (NPC)" : "Made (NPC)", value: coins(totals.made), title: "NPC value of everything the run produced (the Money panel's revenue).", tone: "text-emerald-300" },
+        { label: perDay ? "made / day (NPC)" : "made (NPC)", value: coins(totals.made), title: "NPC value of everything the run produced (the Money panel's revenue)." },
         {
-          label: perDay ? "Mutations net / day" : "Mutations net",
+          label: perDay ? "mutations net / day" : "mutations net",
           value: `${mutationNet > 0 ? "+" : ""}${qty(mutationNet)}`,
           title: "Mutation items produced minus mutation items placed. Below 0 means the flow uses more than it grows.",
-          tone: mutationNet < 0 ? "text-red-300" : mutationNet > 0 ? "text-emerald-300" : undefined,
+          tone: mutationNet < 0 ? "text-red-300" : undefined,
         },
         {
-          label: "Shortfalls",
+          label: shortItems === 1 ? "shortfall" : "shortfalls",
           value: formatCount(shortItems),
           title: "Times a placement was short of an item (see Sustainability). Not scaled per day.",
           tone: shortItems > 0 ? "text-red-300" : undefined,
@@ -207,64 +208,68 @@ export const InventoryTable: React.FC<{
 
   const ready = !normal || !!quotes;
   const head = (text: string, title: string, perDaySuffix = true) => (
-    <span className="text-[10px] text-slate-500 text-right" title={title}>
+    <span className="px-3 py-1.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500" title={title}>
       {text}
       {perDay && perDaySuffix ? "/day" : ""}
     </span>
   );
 
   return (
-    <Panel
+    <ResultCard
       title={normal ? "Inventory & Bazaar" : "Inventory"}
-      icon={<Package />}
-      description={`Shared by all plots. Unique crops: ${state.uniqueCropsStanding ?? 0} standing + Flora ${state.scenario.settings.playerStats.floraShard ?? 0} = ${state.uniqueCropCount}/${UNIQUE_CROP_CAP}.${
-        normal ? " A placement short of stock is bought; after every online session, mutation items above their reserve are sold." : " Values are NPC prices; mutation items have none."
-      }${perDay ? ` Per simulated day (${days > 0 ? `${days.toFixed(1)} days so far` : "run it first"}).` : ""}`}
-      actions={
+      meta={`Shared by all plots · unique crops ${state.uniqueCropsStanding ?? 0} + Flora ${state.scenario.settings.playerStats.floraShard ?? 0} = ${state.uniqueCropCount}/${UNIQUE_CROP_CAP}`}
+      hintTitle="Reading the table"
+      hintWidth={340}
+      hint={
         <>
-          <InfoHint title="Reading the table" width={320}>
+          <p>{normal ? "A placement short of stock is bought; after every online session, mutation items above their reserve are sold." : "Values are NPC prices; mutation items have none."}</p>
+          <p>
             {normal ? (
               <>
-                Held: in the inventory now. Made: produced by the run. Used: placed, from stock or bought. Bought and Sold: Bazaar trades, with the coins
-                they cost or brought. Sell / buy: what one sells for and what one costs (npc = the NPC pays more than the Bazaar; click it to set your
-                own price). Reserve: how many of a mutation are kept for re-placing instead of sold (automatic: the most any step places, per plot, added
-                up; type a number to override, which restarts the run). Worth: what the items made sell for.
+                Held: in the inventory now. Made: produced by the run. Used: placed, from stock or bought. Bought and Sold: Bazaar trades, with the coins they cost or
+                brought. Sell / buy: what one sells for and what one costs (npc = the NPC pays more than the Bazaar; click it to set your own price). Reserve: how many of
+                a mutation are kept for re-placing instead of sold (automatic: the most any step places, per plot, added up; type a number to override, which restarts
+                the run). Worth: what the items made sell for.
               </>
             ) : (
               <>
-                Held: in the inventory now (what you started with, plus what the run made, minus what it placed, plus your changes). Made: produced by
-                the run (harvests, cleared Dead Plants). Used: placed (re-placing after decay, later steps). Net: made minus used, so a mutation going
-                negative means the flow uses more than it grows. NPC: what one sells for to an NPC. Worth: NPC value of what was made.
+                Held: in the inventory now (what you started with, plus what the run made, minus what it placed, plus your changes). Made: produced by the run (harvests,
+                cleared Dead Plants). Used: placed (re-placing after decay, later steps). Net: made minus used, so a mutation going negative means the flow uses more
+                than it grows. NPC: what one sells for to an NPC. Worth: NPC value of what was made.
               </>
             )}{" "}
             Per day divides every column by the simulated days.
-          </InfoHint>
-          <SegmentedControl
-            size="xs"
-            nowrap
+          </p>
+        </>
+      }
+      actions={
+        <>
+          <span className="flex flex-wrap items-center justify-end gap-x-1.5 text-[12px] text-slate-500" aria-label="Totals">
+            {totalsLine.map((x, i) => (
+              <span key={x.label} title={x.title} className="whitespace-nowrap">
+                {i > 0 && <span className="mr-1.5 text-slate-600">·</span>}
+                <b className={`font-semibold tabular-nums ${x.tone ?? "text-slate-200"}`}>{ready ? x.value : "..."}</b> {x.label}
+              </span>
+            ))}
+            {perDay && <span className="whitespace-nowrap text-slate-600">· {days > 0 ? `${days.toFixed(1)} days so far` : "run it first"}</span>}
+          </span>
+          <span className="mx-1 hidden h-5 w-px bg-slate-700/60 sm:block" aria-hidden />
+          <Segmented
+            label="Inventory figures"
             value={mode}
             onChange={setMode}
             options={[
               { value: "total", label: "Total" },
-              { value: "perDay", label: "Per day" },
+              { value: "perDay", label: "Per day", title: "Divide every column by the simulated days" },
             ]}
           />
         </>
       }
     >
-      {bazaar && <BazaarPriceControls bazaar={bazaar.view} now={bazaar.now} onEditPrices={() => setEditing(null)} />}
-
-      <div className={`grid grid-cols-2 gap-2 ${normal ? "mt-3" : ""} ${cards.length > 4 ? "sm:grid-cols-3 lg:grid-cols-5" : cards.length === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
-        {cards.map((s) => (
-          <div key={s.label} className="rounded-md bg-slate-900/40 border border-slate-700/40 px-3 py-2" title={s.title}>
-            <div className="text-[11px] text-slate-500">{s.label}</div>
-            <div className={`text-sm font-medium tabular-nums ${s.tone ?? "text-slate-100"}`}>{ready ? s.value : "..."}</div>
-          </div>
-        ))}
-      </div>
+      {bazaar && <BazaarPriceControls bazaar={bazaar.view} now={bazaar.now} onEditPrices={() => setEditing(null)} className="mb-3" />}
 
       {canChange && (
-        <div className="space-y-1 mt-3">
+        <div className="mb-3 space-y-1.5">
           <AddItemsRow onAdd={change} disabled={busy} held={held} />
           <p className="text-[11px] text-slate-500">
             {busy
@@ -278,9 +283,9 @@ export const InventoryTable: React.FC<{
         </div>
       )}
 
-      <div className="mt-3 overflow-x-auto scrollbar-dark">
-        <div className={`grid ${normal ? COLS_NORMAL : COLS_IRONMAN} gap-x-3 items-center text-xs ${normal ? "min-w-[58rem]" : "min-w-[44rem]"}`} data-testid="inventory-items">
-          <span className="text-[10px] text-slate-500 py-1">item</span>
+      <div className="overflow-x-auto scrollbar-dark">
+        <div className={`grid ${normal ? COLS_NORMAL : COLS_IRONMAN} items-center text-[12.5px] ${normal ? "min-w-[58rem]" : "min-w-[44rem]"}`} data-testid="inventory-items">
+          <span className="py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500">item</span>
           {head(perDay ? "" : "held", "In the inventory now", false)}
           {head("made", "Produced by the run")}
           {head("used", normal ? "Spent placing it (re-placing, later steps), from stock or bought" : "Spent placing it (re-placing after decay, later steps)")}
@@ -289,7 +294,7 @@ export const InventoryTable: React.FC<{
               {head("bought", "Bought on the Bazaar because a placement was short; below it, the coins it cost")}
               {head("sold", "Sold on the Bazaar above the reserve; below it, the coins it brought")}
               <span
-                className="text-[10px] text-slate-500 text-right"
+                className="px-3 py-1.5 text-right text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500"
                 title={`Sells for (${bazaar!.view.pricing.sell === "order" ? "sell order" : "instant sell"}, after tax) / costs to buy (${bazaar!.view.pricing.buy === "order" ? "buy order" : "instant buy"}). Click a price to set your own.`}
               >
                 sell / buy
@@ -313,18 +318,18 @@ export const InventoryTable: React.FC<{
             const sectionId = `inventory-section-${s.key}`;
             return (
               <React.Fragment key={s.key}>
-                <div className="col-span-full flex items-center gap-2 border-t border-slate-700/60 mt-1 pt-2 pb-1">
+                <div className="col-span-full flex items-center gap-2 pt-4 pb-1.5">
                   <button
                     type="button"
-                    className="flex items-center gap-1 -ml-1 px-1 rounded cursor-pointer text-slate-400 hover:text-slate-200 hover:bg-slate-700/40"
+                    className="-ml-1 flex cursor-pointer items-center gap-1 rounded px-1 text-slate-500 transition-colors duration-150 hover:text-slate-200"
                     onClick={() => toggleSection(s.key)}
                     aria-expanded={!isCollapsed}
                     aria-controls={sectionId}
                     title={isCollapsed ? `Show ${s.title.toLowerCase()}` : `Hide ${s.title.toLowerCase()}`}
                     data-section-toggle={s.key}
                   >
-                    <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`} />
-                    <span className="text-[11px] font-medium uppercase tracking-wide">{s.title}</span>
+                    <ChevronRight className={`h-3 w-3 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`} />
+                    <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em]">{s.title}</span>
                   </button>
                   <InfoHint title={s.title} width={260}>
                     {s.key === "mutation"
@@ -333,16 +338,16 @@ export const InventoryTable: React.FC<{
                         : `${s.hint} Mutation items are Bazaar-only, so they are worth 0 at NPC.`
                       : `${s.hint} ${normal ? "Valued at the better of NPC and Bazaar." : "Valued at NPC price."}`}
                   </InfoHint>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] tabular-nums text-slate-500">
                     {list.length}
                     {!isCollapsed && list.length > ROWS_SHOWN ? " · scroll for more" : ""}
                   </span>
-                  <span className="ml-auto text-[11px] text-slate-400 tabular-nums">
+                  <span className="ml-auto text-[12px] tabular-nums text-slate-500">
                     {s.key === "mutation" && !normal && worth === 0 ? (
                       "no NPC price"
                     ) : (
                       <>
-                        made worth <span className="text-amber-200">{ready ? coins(worth) : "..."}</span>
+                        made worth <span className="font-medium text-yellow-400">{ready ? coins(worth) : "..."}</span>
                         {perDay ? "/day" : ""}
                       </>
                     )}
@@ -350,7 +355,7 @@ export const InventoryTable: React.FC<{
                 </div>
                 {/* About 5 rows tall, the rest scrolls. A subgrid, so the columns line up with the header; every
                     section reserves the scrollbar's width (stable gutter), scrolling or not, so they all stay the
-                    same width. */}
+                    same width. Row lines are drawn by the first cell (clipped to the section's width). */}
                 {!isCollapsed && (
                   <div
                     id={sectionId}
@@ -384,11 +389,11 @@ export const InventoryTable: React.FC<{
             );
           })}
         </div>
-        {rows.length === 0 && <p className="text-xs text-slate-500 mt-2">{normal ? "Nothing held, made or traded yet." : "Nothing held or made yet."}</p>}
+        {rows.length === 0 && <p className="mt-2 text-[12.5px] text-slate-500">{normal ? "Nothing held, made or traded yet." : "Nothing held or made yet."}</p>}
       </div>
 
       {!atStart && (canEditStart || injected.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-700/60 mt-3 pt-2 text-[11px] text-slate-500">
+        <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-slate-700/50 pt-3 text-[12px] text-slate-500">
           <span className="min-w-0">
             Started with:{" "}
             {startingInventory && Object.keys(startingInventory).length
@@ -400,23 +405,22 @@ export const InventoryTable: React.FC<{
             {injected.length > 0 && <> Changed by you since: {injected.map(([id, n]) => `${n > 0 ? "+" : ""}${formatCount(n)} ${nameOf(id)}`).join(", ")}.</>}
           </span>
           {canEditStart && injected.length > 0 && (
-            <button
-              className={`${buttonClass.neutral} ml-auto`}
+            <KitButton
+              className="ml-auto"
               disabled={busy}
               onClick={() => onStartingInventoryChange!(applyItemDelta(startingInventory!, Object.fromEntries(injected)))}
               title="Add your changes to the starting inventory. This restarts the run from cycle 0."
             >
               Keep for next time (restarts)
-            </button>
+            </KitButton>
           )}
         </div>
       )}
 
       {bazaar && editing !== false && <BazaarPriceDialog bazaar={bazaar.view} focusItem={editing} itemIds={rows.map((r) => r.id)} onClose={() => setEditing(false)} />}
-    </Panel>
+    </ResultCard>
   );
 };
-
 const ItemLine: React.FC<{
   r: ItemRow;
   normal: boolean;
@@ -436,73 +440,66 @@ const ItemLine: React.FC<{
   // of the compacted item, which is exactly 25,600 crops' worth. Counts and coins elsewhere stay per crop.
   const compacted = normal ? COMPACTED_CROPS[r.id] : undefined;
   const unit = compacted?.per ?? 1;
-  // `lead` runs the dotted leader right up to the figure.
-  const num = (n: number, cls = "text-slate-300", lead = false) =>
-    lead ? (
-      <span className={`flex items-center gap-1.5 justify-end tabular-nums ${n ? cls : "text-slate-600"}`}>
-        <Leader />
-        {n ? qty(n) : "-"}
-      </span>
-    ) : (
-      <span className={`text-right tabular-nums ${n ? cls : "text-slate-600"}`}>{n ? qty(n) : "-"}</span>
-    );
-  const trade = (n: number, unit: number, cls: string) =>
+  const num = (n: number, cls = "text-slate-200") => <Cell className={n ? cls : "text-slate-600"}>{n ? qty(n) : "—"}</Cell>;
+  const trade = (n: number, unit: number) =>
     n ? (
-      <span className="text-right tabular-nums leading-tight">
-        <span className={cls}>{qty(n)}</span>
-        <span className="block text-[10px] text-slate-400">{p ? coins(n * unit) : "..."}</span>
-      </span>
+      <Cell className="leading-tight">
+        <span>
+          <span className="text-slate-200">{qty(n)}</span>
+          <span className="block text-[10.5px] text-slate-500">{p ? coins(n * unit) : "..."}</span>
+        </span>
+      </Cell>
     ) : (
-      <span className="text-right text-slate-600">-</span>
+      <Cell className="text-slate-600">—</Cell>
     );
   const net = r.made - r.used;
   return (
     <>
-      <span className="flex items-center gap-1.5 min-w-0 py-0.5">
-        <CropImage cropId={r.id} cropName={nameOf(r.id)} size="xs" showFallback />
-        <span className={`${isMut ? getRarityTextColor(rarityOf(r.id) ?? "common") : "text-slate-300"} break-words min-w-0`}>{nameOf(r.id)}</span>
-        <Leader className="-mr-3" />
-      </span>
-      {perDay ? (
-        // No held figure per day: the leader runs on across this empty column to the made figure.
-        <span className="flex items-center">
-          <Leader className="-mr-3" />
+      <Cell first>
+        <span className="flex min-w-0 items-center gap-2">
+          <CropImage cropId={r.id} cropName={nameOf(r.id)} size="custom" width={20} height={20} showFallback className="shrink-0" />
+          <span className={`${isMut ? getRarityTextColor(rarityOf(r.id) ?? "common") : "text-slate-300"} break-words min-w-0`}>{nameOf(r.id)}</span>
         </span>
+      </Cell>
+      {perDay ? (
+        // No held figure per day.
+        <Cell />
       ) : (
-        <span
-          className={`flex items-center gap-1.5 justify-end tabular-nums ${r.held < 0 ? "text-red-300" : r.held ? "text-slate-100" : "text-slate-600"}`}
+        <Cell
+          className={r.held < 0 ? "text-red-300" : r.held ? "text-slate-100" : "text-slate-600"}
           title={r.held < 0 ? "Below 0: placed on mutation debt (Advanced › Allow mutation debt); later harvests pay it back." : undefined}
         >
-          <Leader />
-          {r.held ? formatCount(r.held) : "-"}
-        </span>
+          {r.held ? formatCount(r.held) : "—"}
+        </Cell>
       )}
-      {num(r.made, "text-emerald-300", perDay)}
+      {num(r.made)}
       {num(r.used)}
       {normal ? (
         <>
-          {trade(r.bought, p?.buy ?? 0, "text-pink-300")}
-          {trade(r.sold, p?.sell ?? 0, "text-slate-200")}
-          <button
-            type="button"
-            onClick={onEditPrice}
-            className={`text-right tabular-nums rounded px-1 -mx-1 cursor-pointer hover:bg-slate-700/50 ${r.overridden ? "ring-1 ring-sky-400/50" : ""}`}
-            title={[
-              r.overridden ? "Your own price (click to change)." : p?.sellFrom === "npc" ? "The NPC pays more than the Bazaar (click to set your own Bazaar price)." : "Click to set your own price.",
-              compacted
-                ? `Crops are sold compacted: this is the price of one ${compacted.name} (${formatCount(compacted.per)} crops). One crop: ${p ? formatPerCrop(p.sell) : "..."} / ${p && p.buy !== null ? formatPerCrop(p.buy) : "-"}.`
-                : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <span className={r.overridden ? "text-sky-200" : "text-amber-200"}>{p ? (p.sellFrom === "none" ? "-" : formatCoins(p.sell * unit)) : "..."}</span>
-            {p?.sellFrom === "npc" && <span className="text-[10px] text-slate-500"> npc</span>}
-            <span className="text-slate-500"> / </span>
-            <span className={r.overridden ? "text-sky-200" : "text-slate-300"}>{p ? (p.buy === null ? "-" : formatCoins(p.buy * unit)) : "..."}</span>
-            {compacted && <span className="block text-[10px] leading-tight text-slate-500">per {compacted.name}</span>}
-          </button>
-          <span className="flex justify-end items-center gap-0.5">
+          {trade(r.bought, p?.buy ?? 0)}
+          {trade(r.sold, p?.sell ?? 0)}
+          <Cell>
+            <button
+              type="button"
+              onClick={onEditPrice}
+              className={`-mx-1.5 cursor-pointer rounded-md px-1.5 py-0.5 text-right tabular-nums transition-colors duration-150 hover:bg-slate-700/50 ${r.overridden ? "shadow-[inset_0_0_0_1px_rgba(56,189,248,0.45)]" : ""}`}
+              title={[
+                r.overridden ? "Your own price (click to change)." : p?.sellFrom === "npc" ? "The NPC pays more than the Bazaar (click to set your own Bazaar price)." : "Click to set your own price.",
+                compacted
+                  ? `Crops are sold compacted: this is the price of one ${compacted.name} (${formatCount(compacted.per)} crops). One crop: ${p ? formatPerCrop(p.sell) : "..."} / ${p && p.buy !== null ? formatPerCrop(p.buy) : "-"}.`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              <span className={r.overridden ? "text-sky-200" : "text-slate-200"}>{p ? (p.sellFrom === "none" ? "-" : formatCoins(p.sell * unit)) : "..."}</span>
+              {p?.sellFrom === "npc" && <span className="text-[10.5px] text-slate-500"> npc</span>}
+              <span className="text-slate-600"> / </span>
+              <span className={r.overridden ? "text-sky-200" : "text-slate-400"}>{p ? (p.buy === null ? "-" : formatCoins(p.buy * unit)) : "..."}</span>
+              {compacted && <span className="block text-[10.5px] leading-tight text-slate-500">per {compacted.name}</span>}
+            </button>
+          </Cell>
+          <Cell className="gap-0.5">
             {r.reserve === null ? (
               <span className="text-slate-600" title="Only mutation items are sold; this is kept">
                 kept
@@ -512,51 +509,59 @@ const ItemLine: React.FC<{
                 <NumberInput
                   integer
                   min={0}
-                  className={`${inputClass} w-14 text-right ${r.reserveSet ? "border-emerald-500/50" : ""}`}
+                  className={`h-[26px] w-14 rounded-md border bg-slate-950/50 px-2 text-right text-[12.5px] tabular-nums text-slate-100 transition-colors duration-150 focus:border-emerald-500/60 focus:outline-none ${
+                    r.reserveSet ? "border-emerald-500/50" : "border-slate-700/60"
+                  }`}
                   value={r.reserve}
                   onChange={(n) => onReserve(r.id, n)}
                   aria-label={`Reserve of ${nameOf(r.id)}`}
                   title={r.reserveSet ? `Your reserve (automatic: ${formatCount(autoReserve)})` : "Automatic reserve; type a number to override"}
                 />
                 {r.reserveSet && (
-                  <button className={buttonClass.icon} onClick={() => onReserve(r.id, null)} title="Back to the automatic reserve" aria-label={`Automatic reserve for ${nameOf(r.id)}`}>
-                    <RotateCcw className="w-3 h-3" />
-                  </button>
+                  <IconButton className="h-6 w-6" onClick={() => onReserve(r.id, null)} title="Back to the automatic reserve" aria-label={`Automatic reserve for ${nameOf(r.id)}`}>
+                    <RotateCcw />
+                  </IconButton>
                 )}
               </>
             )}
-          </span>
+          </Cell>
         </>
       ) : (
         <>
           {/* Nothing used: net just repeats made, so it stays quiet; it stands out once placements eat into it. */}
-          <span className={`text-right tabular-nums ${net < 0 ? "text-red-300" : !net ? "text-slate-600" : r.used ? "text-emerald-300" : "text-slate-500"}`}>
-            {net ? `${net > 0 ? "+" : "-"}${qty(Math.abs(net))}` : "-"}
-          </span>
-          <span className="text-right tabular-nums text-slate-300" title={p && p.sell > 0 ? `${formatUnitPrice(p.sell)} coins each` : "Not NPC-sellable"}>
-            {p && p.sell > 0 ? formatUnitPrice(p.sell) : "-"}
-          </span>
+          <Cell className={net < 0 ? "text-red-300" : !net ? "text-slate-600" : r.used ? "text-slate-200" : "text-slate-500"}>{net ? `${net > 0 ? "+" : "−"}${qty(Math.abs(net))}` : "—"}</Cell>
+          <Cell className={p && p.sell > 0 ? "text-slate-300" : "text-slate-600"} title={p && p.sell > 0 ? `${formatUnitPrice(p.sell)} coins each` : "Not NPC-sellable"}>
+            {p && p.sell > 0 ? formatUnitPrice(p.sell) : "—"}
+          </Cell>
         </>
       )}
-      <span className={`text-right tabular-nums ${r.made && p && p.sell > 0 ? "text-amber-200" : "text-slate-600"}`}>{r.made && p && p.sell > 0 ? coins(r.made * p.sell) : "-"}</span>
-      {onRemove ? (
-        <button
-          className="text-slate-500 hover:text-red-300 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-          disabled={busy}
-          onClick={onRemove}
-          title={`Remove all ${nameOf(r.id)} from the inventory`}
-          aria-label={`Remove all ${nameOf(r.id)}`}
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
-      ) : (
-        <span />
-      )}
+      <Cell className={r.made && p && p.sell > 0 ? "text-yellow-400" : "text-slate-600"}>{r.made && p && p.sell > 0 ? coins(r.made * p.sell) : "—"}</Cell>
+      <Cell last>
+        {onRemove && (
+          <button
+            className="cursor-pointer text-slate-500 transition-colors duration-150 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={busy}
+            onClick={onRemove}
+            title={`Remove all ${nameOf(r.id)} from the inventory`}
+            aria-label={`Remove all ${nameOf(r.id)}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </Cell>
     </>
   );
 };
 
-
+/** A table cell of the inventory grid: right-aligned figures, and the row's top line (a continuous rule, since the grid has no column gap). */
+const Cell: React.FC<{ children?: React.ReactNode; className?: string; title?: string; first?: boolean; last?: boolean }> = ({ children, className = "", title, first, last }) => (
+  <span
+    title={title}
+    className={`flex h-full min-w-0 items-center border-t border-slate-700/50 py-1 tabular-nums ${first ? "pr-3" : last ? "justify-center" : "justify-end px-3"} ${className}`}
+  >
+    {children}
+  </span>
+);
 /** Pick an item and a quantity; add it to (or take it from) the inventory. */
 const AddItemsRow: React.FC<{ onAdd: (items: Record<string, number>) => void; disabled: boolean; held?: Record<string, number> }> = ({ onAdd, disabled, held }) => {
   const ids = useMemo(() => allItemIds(), []);
@@ -583,7 +588,7 @@ const AddItemsRow: React.FC<{ onAdd: (items: Record<string, number>) => void; di
         <NumberInput
           integer
           min={1}
-          className={`${inputClass} w-20 text-right py-1.5`}
+          className="h-8 w-20 rounded-lg border border-slate-700/60 bg-slate-950/50 px-2.5 text-right text-[13px] font-medium tabular-nums text-slate-100 transition-colors duration-150 focus:border-emerald-500/60 focus:outline-none"
           value={qty}
           onChange={setQty}
           aria-label="Quantity"
@@ -592,12 +597,12 @@ const AddItemsRow: React.FC<{ onAdd: (items: Record<string, number>) => void; di
           }}
         />
       </span>
-      <button className={buttonClass.primary} disabled={disabled || n <= 0} onClick={() => onAdd({ [item]: n })} title="Add to the inventory">
-        <Plus className="w-3.5 h-3.5" /> Add
-      </button>
-      <button className={buttonClass.neutral} disabled={disabled || n <= 0} onClick={() => onAdd({ [item]: -n })} title="Remove from the inventory (never below 0)">
-        <Minus className="w-3.5 h-3.5" /> Remove
-      </button>
+      <KitButton size="md" disabled={disabled || n <= 0} onClick={() => onAdd({ [item]: n })} title="Add to the inventory">
+        <Plus /> Add
+      </KitButton>
+      <KitButton size="md" variant="ghost" disabled={disabled || n <= 0} onClick={() => onAdd({ [item]: -n })} title="Remove from the inventory (never below 0)">
+        <Minus /> Remove
+      </KitButton>
     </div>
   );
 };

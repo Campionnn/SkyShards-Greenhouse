@@ -29,8 +29,15 @@
 .kit-fade-in {
   animation: kit-fade-in 160ms ease both;
 }
+/* A side drawer slides in from the right. */
+@keyframes sim-drawer-in {
+  from { opacity: 0; transform: translateX(24px); }
+}
+.sim-drawer-in {
+  animation: sim-drawer-in 220ms var(--ease-snappy) both;
+}
 @media (prefers-reduced-motion: reduce) {
-  .kit-pop-in, .kit-rise-in { animation-name: kit-fade-in; }
+  .kit-pop-in, .kit-rise-in, .sim-drawer-in { animation-name: kit-fade-in; }
 }
 
 @font-face {
