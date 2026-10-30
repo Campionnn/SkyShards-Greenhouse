@@ -1,5 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
+/* Local-only dev pages (the /design gallery) are gitignored, which Tailwind skips by default. */
+@source "./dev-local";
 
 /* ---- Design tokens (see docs/simulator/UI-CONVENTIONS.md) ----------------------------------
    Motion: one strong ease-out for anything entering or responding, one ease-in-out for things

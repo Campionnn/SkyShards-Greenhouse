@@ -20,6 +20,12 @@ const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const WikiPage = lazy(() => import("./pages/WikiPage").then((module) => ({ default: module.WikiPage })));
 const ShortLinkRedirect = lazy(() => import("./pages/ShortLinkRedirect").then((module) => ({ default: module.ShortLinkRedirect })));
 
+// Local-only dev pages (e.g. the /design gallery): files in src/dev-local/ (not in git) that
+// export `path` and a default component. Dev builds only; production never bundles them.
+const devLocalRoutes = import.meta.env.DEV
+  ? Object.entries(import.meta.glob<{ path: string; default: React.ComponentType }>("./dev-local/*.tsx", { eager: true })).map(([, m]) => ({ path: m.path, element: <m.default /> }))
+  : [];
+
 // Redirects /?layout=X to /designer?layout=X; otherwise renders the calculator.
 const IndexRouteWithRedirect: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -170,6 +176,7 @@ const router = createBrowserRouter([
           </Suspense>
         ),
       },
+      ...devLocalRoutes,
       {
         // /gloomgourd -> /wiki/gloomgourd; any other unknown path -> /.
         path: "*",

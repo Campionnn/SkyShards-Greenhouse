@@ -1,15 +1,15 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
 
-// The small, shared building blocks of the redesigned simulator UI (flow editor first, the
-// simulator page later). Conventions: docs/simulator/UI-CONVENTIONS.md.
+// The design system's primitives (docs/design-system/: README, foundations, components). Every
+// page uses these instead of styling controls inline; add a missing primitive here (with a /design
+// gallery entry) rather than a one-off.
 //
-// - Surfaces: `surface.panel` (docked side panels), `surface.card` (a block inside a panel),
-//   `surface.well` (inputs, recessed areas), `surface.raised` (floating: menus, popovers, nodes).
+// - Surfaces come from `surface` (./surface.ts): panel, card, well, raised.
 // - Text: 13px body, 12px secondary (slate-400), 11px meta (slate-500), uppercase 10.5px labels.
-// - One accent (emerald) for "selected / primary / go"; amber for "on arrival" and coins,
-//   violet for "restart / loop back", sky for scripts, red only for problems.
-// - Press feedback: scale(0.97) on :active. Hover colour changes are 150ms `ease`.
-
+// - One accent (emerald) for primary / selected / go; yellow-400 coin totals, amber warnings,
+//   red problems only, sky scripts, violet restart (flow editor).
+// - Radii: 12px cards and floating surfaces, 8px controls.
+// - Press feedback: scale(0.97) on :active. Hover colour changes are 150ms.
 
 const press = "transition-[background-color,border-color,color,transform] duration-150 ease-snappy active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none cursor-pointer";
 

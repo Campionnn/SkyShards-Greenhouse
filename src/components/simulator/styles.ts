@@ -1,4 +1,5 @@
-// Class strings shared by the simulator panels, in the app's slate/emerald style.
+// @deprecated Legacy class strings. New and revamped UI uses `KitButton` / `IconButton` / `KitInput`
+// (components/ui/kit.tsx); see docs/design-system/migration.md. Kept until every page is migrated.
 
 export const inputClass =
   "bg-slate-900/60 border border-slate-600/40 rounded-md px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60 min-w-0";

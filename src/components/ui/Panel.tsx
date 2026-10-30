@@ -11,6 +11,9 @@ interface PanelProps {
 }
 
 /**
+ * @deprecated Legacy card. New and revamped UI uses `Card` (components/ui/Card.tsx); see
+ * docs/design-system/migration.md.
+ *
  * Card used by every Calculator and Designer side panel: translucent dark
  * surface, thin border, 16px padding, header with emerald icon, title and
  * optional actions, and an optional muted description.
@@ -39,7 +42,7 @@ export const Panel: React.FC<PanelProps> = ({
   </section>
 );
 
-/** Small uppercase label used above sub-sections inside a panel. */
+/** @deprecated Use `KitLabel` (components/ui/kit.tsx). Small uppercase label used above sub-sections inside a panel. */
 export const SectionLabel: React.FC<{ children: React.ReactNode; className?: string; actions?: React.ReactNode }> = ({
   children,
   className = "",
@@ -67,7 +70,7 @@ const TONE_ACTIVE: Record<SegmentTone, string> = {
   blue: "bg-blue-500/25 text-blue-300 border-blue-500/40",
 };
 
-/** Two-or-more-way toggle with one active segment (Inputs/Targets, Target/Maximize...). */
+/** @deprecated Use `Segmented` (2–3 options) or `Tabs` from components/ui/kit.tsx. Two-or-more-way toggle with one active segment. */
 export function SegmentedControl<T extends string>({
   value,
   onChange,
