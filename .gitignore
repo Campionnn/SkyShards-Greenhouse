@@ -33,3 +33,6 @@ dist-verify
 tmp/
 docs/
 reference/
+# Stray flow exports in the project root (keep them under research/, see LOCAL-REPO.md)
+/*.flows.json
+/greenhouse-flows*.json
