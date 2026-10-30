@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, MoreHorizontal, Pencil } from "lucide-react";
 import { IconButton, KitButton } from "../ui/kit";
 import { Popover } from "../ui/Popover";
+import { useContextMenu, type ContextMenuEntry } from "../ui/contextMenuContext";
 import type { PlotUptime } from "./page/plotUptime";
 import { useFitCellSize } from "../../hooks";
 import {
@@ -71,6 +72,8 @@ export interface PlotViewProps {
   onHoverMarkers?: (plotId: number, keys: string[]) => void;
   /** Items of the header's ⋯ menu (Replace layout, Duplicate, Remove); call `close` after choosing. No menu when omitted or it returns nothing. */
   menu?: (close: () => void) => React.ReactNode;
+  /** Right-click menu for the whole plot (header and grid); usually the ⋯ menu's actions. Needs a ContextMenuProvider above. */
+  contextMenu?: () => ContextMenuEntry[];
   /** Cap the cell size so the whole grid fits the viewport height under the sticky page header, with the results tabs peeking in. */
   fitHeight?: boolean;
   /** Uptime of this plot's checked targets so far (`plotUptime`); the footer shows it when given. */
@@ -101,9 +104,11 @@ export const PlotView: React.FC<PlotViewProps> = ({
   sanityState,
   onHoverMarkers,
   menu,
+  contextMenu,
   fitHeight,
   uptime,
 }) => {
+  const openContextMenu = useContextMenu();
   const fitRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   // The hovered cell, not the hovered thing: the card is re-derived from the current plot on every
@@ -274,7 +279,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
   }, [hoverKeys, plot.id, onHoverMarkers]);
 
   return (
-    <div className="@container min-w-0 flex flex-col">
+    <div className="@container min-w-0 flex flex-col" onContextMenu={contextMenu ? (e) => openContextMenu(e, contextMenu()) : undefined}>
       <div className="mb-2 flex h-[30px] min-w-0 items-center gap-2 text-[13px]">
         <h3 className="shrink-0 font-semibold text-slate-100">Plot {plot.id}</h3>
         {step && (

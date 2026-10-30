@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Copy, Download, FolderInput, Pencil, Trash2, Trophy, Upload } from "lucide-react";
+import { CodeXml, Copy, Download, FolderInput, Pencil, Trash2, Trophy, Upload } from "lucide-react";
 import { useToast } from "../components/ui";
+import { ContextMenuProvider } from "../components/ui/ContextMenu";
+import type { ContextMenuEntry } from "../components/ui/contextMenuContext";
 import { Tabs } from "../components/ui/kit";
 import { MenuItem, MenuSeparator } from "../components/ui/Popover";
 import { surface } from "../components/ui/surface";
@@ -373,6 +375,21 @@ export const SimulatorPage: React.FC = () => {
     </>
   );
 
+  /** The same actions as the ⋯ menu, for right-clicking a plot (grid, header, drawer row). */
+  const plotContextMenu = (plotId: number): ContextMenuEntry[] => {
+    const full = scenario.plots.length >= MAX_PLOTS;
+    const p = scenario.plots.find((x) => x.id === plotId);
+    return [
+      { heading: `Plot ${plotId}` },
+      { label: "Edit flow", icon: <Pencil />, onSelect: () => setEditingPlot(plotId) },
+      { label: p?.script?.source.trim() ? "Edit plot script" : "Write a plot script", icon: <CodeXml />, onSelect: () => setScripting(plotId) },
+      { label: "Replace with a layout…", icon: <FolderInput />, title: "Its flow becomes this one layout", onSelect: () => replaceLayout(plotId) },
+      { label: "Duplicate plot", icon: <Copy />, disabled: full, title: full ? "All three plots are in use" : undefined, onSelect: () => duplicate(plotId) },
+      { separator: true },
+      { label: "Remove plot", icon: <Trash2 />, tone: "danger", disabled: scenario.plots.length <= 1, onSelect: () => remove(plotId) },
+    ];
+  };
+
   const share = useShare(scenario, setScenario, (every) => void fromNothing.start(every));
 
   // ---- Problems: scenario errors/warnings and the sustainability verdict --------------------------
@@ -422,6 +439,7 @@ export const SimulatorPage: React.FC = () => {
   };
 
   return (
+    <ContextMenuProvider>
     <div className="w-full">
       {/* Sticky command bar + KPIs */}
       <header className="@container sticky top-0 z-30 rounded-b-xl border-b border-slate-700/50 bg-slate-950/85 backdrop-blur-xl backdrop-saturate-150" ref={barRef}>
@@ -486,6 +504,7 @@ export const SimulatorPage: React.FC = () => {
                 events={eventsFor(plot.id)}
                 onEditFlow={preview ? undefined : () => setEditingPlot(plot.id)}
                 menu={preview ? undefined : plotMenu(plot.id)}
+                contextMenu={preview ? undefined : () => plotContextMenu(plot.id)}
                 maxCell={52}
                 fitHeight
                 uptime={plotUptime(state, plot.id)}
@@ -573,6 +592,7 @@ export const SimulatorPage: React.FC = () => {
             onEditFlow={setEditingPlot}
             onDuplicate={duplicate}
             onRemove={remove}
+            plotMenu={plotContextMenu}
             onLoadLayout={() => setPicking(true)}
             issues={view.issues}
             warnings={view.warnings}
@@ -643,5 +663,6 @@ export const SimulatorPage: React.FC = () => {
           />
         ))}
     </div>
+    </ContextMenuProvider>
   );
 };

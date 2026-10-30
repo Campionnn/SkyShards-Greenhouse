@@ -3,7 +3,9 @@ import { ClipboardPaste, CodeXml, Copy, CopyPlus, Ellipsis, LayoutGrid, Pencil, 
 import { mergePolicies } from "../../../simulator";
 import { CropImage } from "../../shared";
 import { IconButton, KitButton, Pill, Switch, Tabs } from "../../ui/kit";
+import { useContextMenu } from "../../ui/contextMenuContext";
 import { ActionsTab } from "./ActionsTab";
+import { stepMenu } from "./CanvasMenus";
 import { useFlowEditor, type InspectorTab } from "./context";
 import { ExitsTab } from "./ExitsTab";
 import { overrideCount } from "./InspectorFields";
@@ -47,6 +49,7 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
   const scriptOn = !!plot.script?.source.trim() && plot.script.enabled !== false;
   const scriptLines = plot.script?.source.split("\n").length ?? 0;
   const bodyRef = useRef<HTMLDivElement>(null);
+  const openMenu = useContextMenu();
 
   // A new step or tab starts at the top.
   useLayoutEffect(() => {
@@ -72,7 +75,14 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
   return (
     <>
       <header className="shrink-0 px-4 pt-4">
-        <div className="flex items-start gap-3">
+        <div
+          className="flex items-start gap-3"
+          onContextMenu={(e) => {
+            // The name field keeps the browser menu while typing.
+            if ((e.target as HTMLElement).closest("input")) return;
+            openMenu(e, stepMenu(api, i));
+          }}
+        >
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-slate-800 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]">
             <CropImage cropId={facts.icon} cropName={stepLabel(step)} size="custom" width={28} height={28} showFallback={false} />
           </span>

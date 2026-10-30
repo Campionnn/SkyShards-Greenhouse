@@ -1,7 +1,8 @@
 import React, { useMemo } from "react";
-import { Eye } from "lucide-react";
+import { Crosshair, Eye, EyeOff } from "lucide-react";
 import type { FlowStep } from "../../../simulator";
 import { CropImage } from "../../shared";
+import { useContextMenu } from "../../ui/contextMenuContext";
 import { KitButton } from "../../ui/kit";
 import { nameOf } from "../format";
 import { layoutToPlacements, withWatch } from "../scenarioEdit";
@@ -15,6 +16,7 @@ const GAP = 3;
 
 /** Picks the step's checked target cells. Same props as the old editor's picker. */
 export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] | undefined) => void; cell?: number }> = ({ step, onChange, cell = 31 }) => {
+  const openMenu = useContextMenu();
   const placements = useMemo(() => {
     try {
       return layoutToPlacements(step.layout);
@@ -31,6 +33,19 @@ export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] 
   const toggle = (key: string) => {
     const next = all.filter((k) => (k === key ? !watched.has(k) : watched.has(k)));
     onChange(next.length === all.length ? undefined : next);
+  };
+  const targetMenu = (e: React.MouseEvent, t: (typeof targets)[number]) => {
+    const on = watched.has(t.key);
+    const same = targets.filter((x) => x.id === t.id).map((x) => x.key);
+    openMenu(e, [
+      { heading: `${nameOf(t.id)} · ${t.key}` },
+      { label: on ? "Don't check this cell" : "Check this cell", icon: on ? <EyeOff /> : <Eye />, onSelect: () => toggle(t.key) },
+      { label: "Check only this cell", icon: <Crosshair />, disabled: on && count === 1, onSelect: () => onChange(all.length === 1 ? undefined : [t.key]) },
+      ...(same.length > 1 ? [{ label: `Check only ${nameOf(t.id)} (${same.length})`, icon: <Crosshair />, onSelect: () => onChange(same.length === all.length ? undefined : same) }] : []),
+      { separator: true },
+      { label: "Check all", icon: <Eye />, disabled: step.watch === undefined, onSelect: () => onChange(undefined) },
+      { label: "Check none", icon: <EyeOff />, disabled: count === 0, onSelect: () => onChange([]) },
+    ]);
   };
   const span = (n: number) => n * cell + (n - 1) * GAP;
   const at = (n: number) => n * (cell + GAP);
@@ -79,6 +94,7 @@ export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] 
                 type="button"
                 aria-pressed={on}
                 onClick={() => toggle(t.key)}
+                onContextMenu={(e) => targetMenu(e, t)}
                 title={`${nameOf(t.id)} at (${t.key}) - ${on ? "checked" : "not checked"}`}
                 className={`absolute flex cursor-pointer items-center justify-center rounded-[4px] transition-[box-shadow,background-color,opacity] duration-150 active:scale-[0.96] ${
                   on

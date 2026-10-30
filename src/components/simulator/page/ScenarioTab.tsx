@@ -1,6 +1,7 @@
 import React from "react";
 import { Copy, Download, FolderInput, Pencil, Plus, Trash2, Trophy, Upload } from "lucide-react";
 import { MAX_PLOTS, type Scenario, type ScenarioIssue } from "../../../simulator";
+import { useContextMenu, type ContextMenuEntry } from "../../ui/contextMenuContext";
 import { IconButton, KitButton, KitLabel } from "../../ui/kit";
 import { surface } from "../../ui/surface";
 import { addPlot, layoutSummary } from "../scenarioEdit";
@@ -15,6 +16,8 @@ export const ScenarioTab: React.FC<{
   onEditFlow: (plotId: number) => void;
   onDuplicate: (plotId: number) => void;
   onRemove: (plotId: number) => void;
+  /** Right-click menu for a plot row (needs a ContextMenuProvider above). */
+  plotMenu?: (plotId: number) => ContextMenuEntry[];
   onLoadLayout: () => void;
   issues: ScenarioIssue[];
   warnings: ScenarioIssue[];
@@ -22,7 +25,8 @@ export const ScenarioTab: React.FC<{
   onExport: () => void;
   onImport: () => void;
   onSubmit: () => void;
-}> = ({ scenario, onChange, onEditFlow, onDuplicate, onRemove, onLoadLayout, issues, warnings, error, onExport, onImport, onSubmit }) => {
+}> = ({ scenario, onChange, onEditFlow, onDuplicate, onRemove, plotMenu, onLoadLayout, issues, warnings, error, onExport, onImport, onSubmit }) => {
+  const openMenu = useContextMenu();
   const errors = issues.filter((i) => i.level === "error");
   const full = scenario.plots.length >= MAX_PLOTS;
   return (
@@ -31,7 +35,7 @@ export const ScenarioTab: React.FC<{
         <KitLabel className="mb-2">Plots · {scenario.plots.length} of {MAX_PLOTS}</KitLabel>
         <ul className="space-y-1.5">
           {scenario.plots.map((p) => (
-            <li key={p.id} className={`flex items-center gap-2 px-3 py-2 ${surface.card}`}>
+            <li key={p.id} className={`flex items-center gap-2 px-3 py-2 ${surface.card}`} onContextMenu={plotMenu ? (e) => openMenu(e, plotMenu(p.id)) : undefined}>
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-medium text-slate-100">Plot {p.id}</div>
                 <div className="truncate text-[12px] text-slate-500">

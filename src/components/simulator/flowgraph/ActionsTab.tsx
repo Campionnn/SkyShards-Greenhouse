@@ -1,6 +1,7 @@
 import React from "react";
-import { ChevronDown, Pencil, RotateCcw, X } from "lucide-react";
+import { Check, ChevronDown, Pencil, RotateCcw, X } from "lucide-react";
 import type { Policies, PolicyOverrides } from "../../../simulator";
+import { useContextMenu } from "../../ui/contextMenuContext";
 import { ACTION_FIELDS, labelOf, type Field } from "./InspectorFields";
 import { IconButton, KitLabel } from "../../ui/kit";
 import { Dropdown, MenuItem, MenuLabel, MenuSeparator } from "./InspectorPopover";
@@ -90,8 +91,19 @@ const OverrideRow: React.FC<{ field: Field; value: string; inherited: string; in
   onChange,
 }) => {
   const rise = useRiseIn();
+  const openMenu = useContextMenu();
   return (
-    <div className={`flex items-center gap-1 rounded-xl border border-emerald-500/20 bg-slate-800/50 pr-1 ${rise}`}>
+    <div
+      className={`flex items-center gap-1 rounded-xl border border-emerald-500/20 bg-slate-800/50 pr-1 ${rise}`}
+      onContextMenu={(e) =>
+        openMenu(e, [
+          { heading: field.label },
+          ...field.options.map((o) => ({ label: o.label, icon: o.value === value ? <Check className="text-emerald-400" /> : undefined, disabled: o.value === value, onSelect: () => onChange(o.value) })),
+          { separator: true },
+          { label: `Reset to inherited (${labelOf(field, inherited)})`, icon: <RotateCcw />, title: `Inherit from ${inheritsFrom}`, onSelect: () => onChange(undefined) },
+        ])
+      }
+    >
       <Dropdown
         label={`${field.label}: ${labelOf(field, value)}. Change`}
         title={field.help ? `${field.help}\n\nClick to change.` : "Click to change"}
@@ -122,7 +134,17 @@ const OverrideRow: React.FC<{ field: Field; value: string; inherited: string; in
   );
 };
 
-const InheritedRow: React.FC<{ field: Field; value: string; onChange: (v: string) => void }> = ({ field, value, onChange }) => (
+const InheritedRow: React.FC<{ field: Field; value: string; onChange: (v: string) => void }> = ({ field, value, onChange }) => {
+  const openMenu = useContextMenu();
+  return (
+  <div
+    onContextMenu={(e) =>
+      openMenu(e, [
+        { heading: `Override ${field.label.toLowerCase()}` },
+        ...field.options.map((o) => ({ label: o.label, title: o.value === value ? "The inherited value: pins it here" : undefined, icon: o.value === value ? <Check className="text-slate-500" /> : undefined, onSelect: () => onChange(o.value) })),
+      ])
+    }
+  >
   <Dropdown
     label={`${field.label}: ${labelOf(field, value)} (inherited). Override`}
     title={field.help ? `${field.help}\n\nClick to override.` : "Click to override"}
@@ -148,7 +170,9 @@ const InheritedRow: React.FC<{ field: Field; value: string; onChange: (v: string
   >
     {(close) => <ValueMenu field={field} value={value} inherited={value} onPick={(c) => (c !== undefined && onChange(c), close())} overrideOnly />}
   </Dropdown>
-);
+  </div>
+  );
+};
 const ValueMenu: React.FC<{ field: Field; value: string; inherited: string; onPick: (v: string | undefined) => void; overrideOnly?: boolean }> = ({
   field,
   value,

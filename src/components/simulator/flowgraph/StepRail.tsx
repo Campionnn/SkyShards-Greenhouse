@@ -99,8 +99,32 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
         : []),
     ]);
 
+  /** Right-click on the rail's empty space (step rows and Plot settings open their own menus; the search box keeps the browser's). */
+  const railMenu = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("input")) return;
+    const screen = { x: e.clientX, y: e.clientY };
+    openMenu(e, [
+      { heading: `Plot ${api.plotId} · ${steps.length} step${steps.length === 1 ? "" : "s"}` },
+      { label: "Add step…", icon: <Plus />, onSelect: () => api.openAddMenu({ screen, after: api.selected ?? undefined }) },
+      {
+        label: "Paste step",
+        icon: <ClipboardPaste />,
+        shortcut: "Ctrl V",
+        disabled: !api.pasteStep,
+        title: api.pasteStep ? undefined : "Copy a step first (Ctrl C)",
+        onSelect: () => api.pasteStep?.(),
+      },
+      ...(query ? [{ label: "Clear search", icon: <X />, onSelect: () => setQuery("") }] : []),
+      { separator: true },
+      { label: "Plot settings", icon: <SlidersHorizontal />, onSelect: () => api.select(null) },
+      ...(api.openScript
+        ? [{ label: plot.script?.source.trim() ? "Edit plot script" : "Write a plot script", icon: <CodeXml />, onSelect: () => api.openScript!("plot") }]
+        : []),
+    ]);
+  };
+
   return (
-    <aside className={`flex min-h-0 flex-col border-r border-slate-700/60 bg-slate-900 ${className}`} aria-label="Steps">
+    <aside className={`flex min-h-0 flex-col border-r border-slate-700/60 bg-slate-900 ${className}`} aria-label="Steps" onContextMenu={railMenu}>
       <div className="flex flex-col gap-3 px-3 pt-3 pb-2">
         <label className="flex h-8 items-center gap-2 rounded-lg border border-slate-700/60 bg-slate-950/50 px-2.5 text-slate-500 transition-colors duration-150 focus-within:border-emerald-500/60">
           <Search className="h-3.5 w-3.5 shrink-0" />
