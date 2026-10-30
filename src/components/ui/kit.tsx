@@ -165,8 +165,24 @@ export interface TabItem<T extends string> {
   count?: number | null;
 }
 
-/** Underlined tabs; the ink bar slides to the selected tab. */
-export function Tabs<T extends string>({ value, onChange, items, className = "" }: { value: T; onChange: (v: T) => void; items: TabItem<T>[]; className?: string }) {
+/**
+ * Underlined tabs; the ink bar slides to the selected tab. `scroll`: the row scrolls sideways
+ * when it doesn't fit (no scrollbar); the ink then sits inside the bar, since anything hanging
+ * below it would make the bar scroll vertically too.
+ */
+export function Tabs<T extends string>({
+  value,
+  onChange,
+  items,
+  className = "",
+  scroll = false,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  items: TabItem<T>[];
+  className?: string;
+  scroll?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [ink, setInk] = useState<{ x: number; w: number } | null>(null);
   useLayoutEffect(() => {
@@ -174,7 +190,7 @@ export function Tabs<T extends string>({ value, onChange, items, className = "" 
     if (el) setInk({ x: el.offsetLeft + 8, w: el.offsetWidth - 16 });
   }, [value, items]);
   return (
-    <div ref={ref} role="tablist" className={`relative flex gap-0.5 border-b border-slate-700/60 ${className}`}>
+    <div ref={ref} role="tablist" className={`relative flex gap-0.5 border-b border-slate-700/60 ${scroll ? "overflow-x-auto overflow-y-hidden scrollbar-none" : ""} ${className}`}>
       {items.map((t) => (
         <button
           key={t.value}
@@ -182,13 +198,13 @@ export function Tabs<T extends string>({ value, onChange, items, className = "" 
           role="tab"
           aria-selected={t.value === value}
           onClick={() => onChange(t.value)}
-          className={`flex cursor-pointer items-center gap-1.5 px-2.5 pt-2 pb-2.5 text-[12.5px] font-medium transition-colors duration-150 ${t.value === value ? "text-slate-100" : "text-slate-500 hover:text-slate-300"}`}
+          className={`flex cursor-pointer items-center gap-1.5 ${scroll ? "shrink-0 whitespace-nowrap" : ""} px-2.5 pt-2 pb-2.5 text-[12.5px] font-medium transition-colors duration-150 ${t.value === value ? "text-slate-100" : "text-slate-500 hover:text-slate-300"}`}
         >
           {t.label}
           {t.count ? <span className="rounded bg-slate-400/10 px-1.5 text-[10.5px] tabular-nums text-slate-400">{t.count}</span> : null}
         </button>
       ))}
-      {ink && <span aria-hidden className="absolute -bottom-px left-0 h-0.5 rounded-full bg-emerald-400 transition-[transform,width] duration-200 ease-snappy" style={{ width: ink.w, transform: `translateX(${ink.x}px)` }} />}
+      {ink && <span aria-hidden className={`absolute ${scroll ? "bottom-0" : "-bottom-px"} left-0 h-0.5 rounded-full bg-emerald-400 transition-[transform,width] duration-200 ease-snappy`} style={{ width: ink.w, transform: `translateX(${ink.x}px)` }} />}
     </div>
   );
 }

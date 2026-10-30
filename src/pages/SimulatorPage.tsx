@@ -532,7 +532,7 @@ export const SimulatorPage: React.FC = () => {
 
         {/* Results */}
         <div ref={tabsRef} className="sticky z-20 border-b border-slate-700/50 bg-slate-950/90 px-1 backdrop-blur-xl" style={{ top: barHeight }}>
-          <Tabs<ResultTab> value={tab} onChange={(t) => setTab(t)} items={resultTabs} className="!border-b-0 overflow-x-auto scrollbar-none" />
+          <Tabs<ResultTab> value={tab} onChange={(t) => setTab(t)} items={resultTabs} scroll className="!border-b-0" />
         </div>
         <div className="pb-[calc(6rem+var(--ad-bottom,0px))] pt-2 md:pb-10">
           {snapshot && state && tab === "overview" && (

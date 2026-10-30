@@ -171,6 +171,16 @@ input[type="number"] {
   background: #64748b;
 }
 
+/* Scrolls without showing a scrollbar (tab bars, chip rows). A plain rule, not an @utility: the
+   unlayered `*` scrollbar rule above would beat anything in Tailwind's utilities layer. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* Dark scrollbar for scrollable containers */
 .scrollbar-dark {
   scrollbar-width: thin;
