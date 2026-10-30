@@ -42,6 +42,10 @@
   --color-script: var(--color-sky-300);
   --color-restart: var(--color-violet-300);
   --color-focus: var(--color-emerald-400);
+  /* Selection / "you are here": the selected tab, item, step or plot, the checked menu row. A
+     palette may give it its own hue (secondary colour) so "selected" never reads as "go". */
+  --color-select: var(--color-emerald-500);
+  --color-select-fg: var(--color-emerald-300);
 
   /* Type roles (size / line height / weight / tracking). Nothing else inside a page. */
   --text-label: 11px;

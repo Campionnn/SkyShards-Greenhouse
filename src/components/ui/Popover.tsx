@@ -258,7 +258,7 @@ export const MenuItem: React.FC<{
       <span className="block truncate">{children}</span>
       {hint && <span className="block text-meta text-fg-meta">{hint}</span>}
     </span>
-    {checked && <Check className="h-3.5 w-3.5 shrink-0 text-go-fg" />}
+    {checked && <Check className="h-3.5 w-3.5 shrink-0 text-select-fg" />}
   </button>
 );
 

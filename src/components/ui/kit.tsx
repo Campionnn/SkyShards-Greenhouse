@@ -456,7 +456,7 @@ export function Tabs<T extends string>({
         <span
           ref={bar}
           aria-hidden
-          className={cn("absolute left-0 h-0.5 rounded-full bg-go forced-colors:bg-[Highlight]", scroll ? "bottom-0" : "-bottom-px")}
+          className={cn("absolute left-0 h-0.5 rounded-full bg-select forced-colors:bg-[Highlight]", scroll ? "bottom-0" : "-bottom-px")}
           style={style}
         />
       )}

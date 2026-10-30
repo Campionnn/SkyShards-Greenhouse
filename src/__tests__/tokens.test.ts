@@ -195,12 +195,15 @@ export function checkPalette(theme: Vars): Pair[] {
   };
 
   for (const fg of ["fg", "fg-body", "fg-muted", "fg-meta"]) for (const [n, b] of Object.entries(backdrops)) add(fg, n, b, 4.5);
-  for (const role of ["go-fg", "coin", "warn", "problem", "script", "restart"]) {
+  for (const role of ["go-fg", "select-fg", "coin", "warn", "problem", "script", "restart"]) {
     add(role, "surface-card (over page)", card, 4.5);
     add(role, "surface-page", page, 4.5);
   }
   add("on-go", "go", over(tok("go"), page), 4.5);
-  for (const n of ["surface-page", "surface-card (over page)", "surface-raised (over page)"]) add("focus", n, backdrops[n], 3);
+  for (const n of ["surface-page", "surface-card (over page)", "surface-raised (over page)"]) {
+    add("focus", n, backdrops[n], 3);
+    add("select", n, backdrops[n], 3); // tab ink, selected outlines (WCAG 1.4.11)
+  }
   // WCAG 1.4.11: an input's boundary must stand out from what is around it.
   add("line-control", "surface-card (over page)", card, 3);
   add("line-control", "surface-page", page, 3);
