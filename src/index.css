@@ -1,6 +1,38 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
+/* ---- Design tokens (see docs/simulator/UI-CONVENTIONS.md) ----------------------------------
+   Motion: one strong ease-out for anything entering or responding, one ease-in-out for things
+   moving on screen. Tailwind turns these into `ease-snappy` / `ease-glide` utilities. */
+@theme {
+  --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-glide: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* Popovers, menus and new canvas nodes: scale in from 0.96 (never from 0), origin-aware. */
+@keyframes kit-pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+}
+.kit-pop-in {
+  animation: kit-pop-in 160ms var(--ease-snappy) both;
+}
+/* Something new appears in a list (an exit, a condition). */
+@keyframes kit-rise-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+.kit-rise-in {
+  animation: kit-rise-in 180ms var(--ease-snappy) both;
+}
+@keyframes kit-fade-in {
+  from { opacity: 0; }
+}
+.kit-fade-in {
+  animation: kit-fade-in 160ms ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kit-pop-in, .kit-rise-in { animation-name: kit-fade-in; }
+}
+
 @font-face {
   font-family: 'Minecraft';
   src: url('/fonts/unifont-17.0.03.otf') format('opentype');

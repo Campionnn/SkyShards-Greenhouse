@@ -34,7 +34,7 @@ import { STAT_FIELDS, type NumericStatKey } from "../playerStats/statFields";
 import { CheckboxField, IdSelect, NumberField, NumberInput, SelectField } from "./controls";
 import { CropFortuneSummary } from "./CropFortuneEditor";
 import { formatDuration, nameOf } from "./format";
-import { PolicyDefaultsEditor } from "./FlowEditor";
+import { PolicyDefaultsEditor } from "./policyFields";
 import { FlowExportDialog } from "./FlowExportDialog";
 // Lazy: the dialog brings react-markdown, which the simulator doesn't need until it opens.
 const SubmitFlowDialog = React.lazy(() => import("./SubmitFlowDialog").then((m) => ({ default: m.SubmitFlowDialog })));

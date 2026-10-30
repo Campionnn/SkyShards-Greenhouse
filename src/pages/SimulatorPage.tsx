@@ -10,7 +10,8 @@ import { FrequencyPanel } from "../components/simulator/frequency/FrequencyPanel
 import { EventLog, RunControls, FlowTimeline } from "../components/simulator/RunPanels";
 import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
 import { buttonClass } from "../components/simulator/styles";
-import { FlowEditor } from "../components/simulator/FlowEditor";
+import { FlowGraphEditor } from "../components/simulator/flowgraph/FlowGraphEditor";
+import { engineKey, withoutEditorUi } from "../components/simulator/flowgraph/model";
 import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
 import { FromNothingBanner, FromNothingPreparing } from "../components/simulator/FromNothingBanner";
 import { previewScenarioOf, useFromNothingPreview, withPreviewSeed } from "../components/simulator/fromNothingPreview";
@@ -120,7 +121,15 @@ export const SimulatorPage: React.FC = () => {
   const bazaar = useBazaarPrices(profile === "normal");
   /** Re-renders the price age once a minute. */
   const now = useNow(profile === "normal" ? 60_000 : null);
-  const settled = useDebounced(scenario, 300);
+  const debounced = useDebounced(scenario, 300);
+  // What the engine runs: editor-only data (flow editor positions, notes, frames) stripped, and
+  // the same object while nothing the engine reads changed, so moving a node never restarts a run.
+  const engineCache = useRef<{ key: string; scenario: Scenario } | null>(null);
+  const settled = useMemo(() => {
+    const key = engineKey(debounced);
+    if (engineCache.current?.key !== key) engineCache.current = { key, scenario: withoutEditorUi(debounced) };
+    return engineCache.current.scenario;
+  }, [debounced]);
   // "Watch from nothing": runs the builder / the flow from its starting items instead of the user's
   // scenario, which stays as it is (and saved) underneath.
   const fromNothing = useFromNothingPreview(scenario);
@@ -136,9 +145,10 @@ export const SimulatorPage: React.FC = () => {
     [profile, quotes, bazaar.pricing]
   );
 
+  // Saved with the editor data (node positions, notes, frames).
   useEffect(() => {
-    LocalStorageManager.saveSimulatorScenario(settled);
-  }, [settled]);
+    LocalStorageManager.saveSimulatorScenario(debounced);
+  }, [debounced]);
 
   /** The router state already loaded, so a re-run effect (StrictMode) doesn't load it twice. */
   const handledState = useRef<unknown>(null);
@@ -476,20 +486,15 @@ export const SimulatorPage: React.FC = () => {
       </div>
 
       {editingPlot !== null && scenario.plots.some((p) => p.id === editingPlot) && (
-        <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true">
-          <div className="w-full max-w-screen-2xl mx-auto px-2 sm:px-4 py-6">
-            <div className="bg-slate-900 rounded-lg shadow-2xl">
-              <FlowEditor
-                key={`${editing!.plotId}-${editing!.step}`}
-                scenario={scenario}
-                plotId={editingPlot}
-                initialStep={editing!.step}
-                onChange={setScenario}
-                onClose={() => setEditingPlot(null)}
-              />
-            </div>
-          </div>
-        </div>
+        <FlowGraphEditor
+          key={`${editing!.plotId}-${editing!.step}`}
+          scenario={scenario}
+          plotId={editingPlot}
+          initialStep={editing!.step}
+          onChange={setScenario}
+          onSwitchPlot={(plotId) => setEditing({ plotId, step: 0 })}
+          onClose={() => setEditingPlot(null)}
+        />
       )}
 
       {scripting !== null && (scripting === "controller" || scenario.plots.some((p) => p.id === scripting)) && (

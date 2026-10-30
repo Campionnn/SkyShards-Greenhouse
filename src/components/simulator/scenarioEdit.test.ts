@@ -23,6 +23,20 @@ import {
 const blank = (): Scenario => addPlot({ plots: [], startingInventory: {}, settings: defaultSettings() });
 const withPlots = (...codes: string[]): Scenario => codes.reduce((sc, code) => addPlot(sc, { code }), { plots: [], startingInventory: {}, settings: defaultSettings() } as Scenario);
 
+describe("flow editor data (node positions, notes, frames)", () => {
+  it("travels through export and import, and junk in it is dropped", () => {
+    const sc = withPlots(LAYOUT_A_CODE);
+    sc.plots[0].flow.steps[0] = { ...sc.plots[0].flow.steps[0], ui: { x: 120, y: -40, note: "Why: chorus", frame: "Main", frameColor: "violet" } };
+    const back = importFlows(withPlots(LAYOUT_B_CODE), JSON.stringify(exportFlows(sc)));
+    expect(back.plots[0].flow.steps[0].ui).toEqual({ x: 120, y: -40, note: "Why: chorus", frame: "Main", frameColor: "violet" });
+    const file = exportFlows(sc) as unknown as { plots: { flow: { steps: Record<string, unknown>[] } }[] };
+    file.plots[0].flow.steps[0].ui = { x: "1", y: 2, script: "evil" };
+    expect("ui" in importFlows(sc, JSON.stringify(file)).plots[0].flow.steps[0]).toBe(false);
+    file.plots[0].flow.steps[0].ui = { x: 1, y: 2, onClick: "x", frameColor: "neon" };
+    expect(importFlows(sc, JSON.stringify(file)).plots[0].flow.steps[0].ui).toEqual({ x: 1, y: 2 });
+  });
+});
+
 describe("placing a layout from the Calculator / Designer / saved layouts", () => {
   it("replaces the blank starter scenario whatever the destination", () => {
     const sc = blank();

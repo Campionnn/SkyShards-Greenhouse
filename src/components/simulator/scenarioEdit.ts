@@ -30,6 +30,7 @@ import {
 } from "../../simulator";
 import { decodeDesign, encodeDesign, generatePlacementId, transformAnchor, type LayoutTransform } from "../../utilities";
 import { GROUND_TYPES, type GroundTile, type GroundType } from "../../utilities/designEncoding";
+import { cleanStepUi } from "./flowgraph/model";
 
 // Immutable scenario edits, all user-initiated; the simulator never changes a scenario itself.
 
@@ -404,7 +405,7 @@ export function importFlows(sc: Scenario, text: string): Scenario {
   const clean = (plots as ScenarioPlot[]).map(({ script: rawScript, ...p }) => ({
     ...p,
     ...withScript(readScript(rawScript, `Plot ${p.id} script`)),
-    flow: { steps: p.flow.steps, loop: !!p.flow.loop, startIndex: Math.min(Math.max(0, Math.floor(Number(p.flow.startIndex) || 0)), p.flow.steps.length - 1) },
+    flow: { steps: p.flow.steps.map(cleanEditorUi), loop: !!p.flow.loop, startIndex: Math.min(Math.max(0, Math.floor(Number(p.flow.startIndex) || 0)), p.flow.steps.length - 1) },
   }));
   const next = isRecord(file) && file.kind === FLOWS_FILE_KIND && file.version === 2 ? importOptionalSections(sc, file) : sc;
   const out: Scenario = { ...next, plots: structuredClone(clean).sort((a, b) => a.id - b.id) };
@@ -415,6 +416,14 @@ export function importFlows(sc: Scenario, text: string): Scenario {
     else delete out.script;
   }
   return out;
+}
+
+/** A step's flow editor data from a file: only known, well-typed fields are kept (none = dropped). */
+function cleanEditorUi(s: FlowStep): FlowStep {
+  if (!("ui" in s)) return s;
+  const { ui, ...rest } = s;
+  const kept = cleanStepUi(ui);
+  return kept ? { ...rest, ui: kept } : rest;
 }
 
 /** A script from an imported file, checked for shape (its code is checked when the scenario runs). */

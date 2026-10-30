@@ -169,6 +169,16 @@ describe("rules: parse and normalise a submission", () => {
     expect(b.policies).toBeUndefined();
   });
 
+  it("flow editor data (step.ui) travels with a submission and never changes a run", () => {
+    const sc = twoStep();
+    const plain = parseSubmission(submissionFile(submissionFromScenario(sc))).submission!;
+    sc.plots[0].flow.steps[0].ui = { x: 10, y: 20, note: "a note", frame: "Main" };
+    const parsed = parseSubmission(submissionFile(submissionFromScenario(sc))).submission!;
+    expect(parsed.plots[0].flow.steps[0].ui).toEqual({ x: 10, y: 20, note: "a note", frame: "Main" });
+    const run = (s: typeof plain) => JSON.stringify(engine.run(engine.initState(ruleScenario(s, { rules: "borrow", every: 1, seed: 7, tier: "max" })).state, 30).state.summary);
+    expect(run(parsed)).toBe(run(plain));
+  });
+
   it("checkSubmission passes a valid flow and reports validation errors", () => {
     const ok = checkSubmission(submissionFromScenario(twoStep()), engine.data);
     expect(ok.ok).toBe(true);

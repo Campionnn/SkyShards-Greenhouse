@@ -9,3 +9,4 @@ export { Panel, SectionLabel, SegmentedControl } from "./Panel";
 export { BodyPortal, Portal, PortalHost } from "./Portal";
 export { InfoHint } from "./InfoHint";
 export { DialogFrame, ModalDialog } from "./ModalDialog";
+export * as kit from "./kit";

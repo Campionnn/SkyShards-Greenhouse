@@ -12,7 +12,11 @@ import { PlotMarkLegend, PlotView } from "./PlotView";
 import { LayoutPickerPanel } from "./LayoutPicker";
 import { MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
 import { InventoryTable } from "./InventoryTable";
-import { FlowEditor, WatchPicker } from "./FlowEditor";
+import { WatchPicker } from "./flowgraph/TargetsTab";
+import { FlowEditorContext, type FlowEditorApi, type InspectorTab } from "./flowgraph/context";
+import { Inspector } from "./flowgraph/Inspector";
+import { StepList } from "./flowgraph/StepList";
+import { explicitExits } from "./flowgraph/model";
 import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
 import { AloeHarvestPreview, ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
 import { SimTooltip } from "./SimTooltip";
@@ -618,49 +622,127 @@ describe("simulator panels render", () => {
     expect(html.replace(/<!-- -->/g, "")).toContain("Undid a run of 40 cycles");
   });
 
-  it("scenario, settings and the flow editor (embedded designer)", () => {
+  it("scenario and settings panels", () => {
     const html = wrap(
       <>
         <ScenarioPanel scenario={sc} onChange={() => {}} onEditFlow={() => {}} issues={[]} warnings={[]} error={null} />
         <SettingsPanel scenario={sc} onChange={() => {}} />
-        <FlowEditor scenario={sc} plotId={1} onChange={() => {}} onClose={() => {}} />
       </>
     );
-    expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1 flow");
-    expect(html).toContain("Leave this step");
-    expect(html).not.toContain("then go to");
-    expect(html).toContain("checked targets");
-    // The Designer's crop summary sits under the embedded grid.
-    expect(html).toContain("Total Cells Used:");
+    expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1");
   });
 
-  it("the flow editor with several exits to chosen steps and AND/OR groups", () => {
+  describe("the flow editor", () => {
     const routed = scenario([
       flow(
         [
           step("s1", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 2 }]),
-          step("s2", { code: LAYOUT_B_CODE }, [], {
+          step("s2", { code: LAYOUT_A_CODE }, [], {
             exits: [
               { to: "s3", when: [{ kind: "stepVisits", count: 3, sinceStep: "s3" }] },
               {
                 to: "s1",
                 when: [{ kind: "group", match: "any", of: [{ kind: "cycles", n: 3 }, { kind: "inventoryBelow", item: "chloronite", qty: 4 }] }, { kind: "cycles", n: 1 }],
               },
+              { to: "s2", checkOnEntry: true, when: [{ kind: "layoutShort" }] },
             ],
+            policies: { replaceDecayed: false, gateInteractions: { clearRoots: false } },
           }),
-          step("s3", { code: LAYOUT_B_CODE }, [], { exits: [{ to: "s1", when: [{ kind: "cycles", n: 5 }] }] }),
+          step("s3", { code: LAYOUT_B_CODE }, [], { exits: [{ when: [{ kind: "cycles", n: 5 }] }] }),
         ],
         false
       ),
     ]);
-    const html = wrap(<FlowEditor scenario={routed} plotId={1} initialStep={1} onChange={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");
-    expect(html).toContain("Leave this step");
-    expect(html).toContain("otherwise");
-    expect(html).toContain("Another exit");
-    expect(html).toContain("ANY (OR)");
-    expect(html).toContain("→ 3. s3 when entered this step 3+ times since 3. s3");
-  });
+    // As the shell shows it: explicit targets everywhere except the finish exit on the last step.
+    const plot = explicitExits(routed.plots[0]);
+    const noop = () => {};
+    const editor = (over: Partial<FlowEditorApi>, node: React.ReactNode) => {
+      const api: FlowEditorApi = {
+        scenario: { ...routed, plots: [plot] },
+        plot,
+        plotId: 1,
+        selected: 1,
+        select: noop,
+        tab: "exits",
+        setTab: noop,
+        openExit: 1,
+        setOpenExit: noop,
+        hotExit: null,
+        setHotExit: noop,
+        edit: noop,
+        editStep: noop,
+        addStep: () => 0,
+        deleteStep: noop,
+        duplicateStep: noop,
+        openAddMenu: noop,
+        openLayout: noop,
+        focusStep: noop,
+        registerCanvas: noop,
+        scripted: false,
+        showAllWires: true,
+        setShowAllWires: noop,
+        ...over,
+      };
+      return wrap(<FlowEditorContext.Provider value={api}>{node}</FlowEditorContext.Provider>).replace(/<!-- -->/g, "");
+    };
+    const inspector = (tab: InspectorTab, over: Partial<FlowEditorApi> = {}) => editor({ tab, ...over }, <Inspector />);
 
+    it("the exits tab: ordered exits with explicit targets, conditions as sentences", () => {
+      const html = inspector("exits");
+      expect(html).toContain("Step 2 of 3");
+      expect(html).toContain("3. s3"); // exit 1 goes to step 3 (explicit target)
+      expect(html).toContain("1. s1");
+      expect(html).toContain("This step again (restart)");
+      expect(html).toContain("OTHERWISE");
+      expect(html).toContain("when entered 3+ times since 3. s3"); // collapsed exit 1
+      // Exit 2 is open: ALL / ANY, the nested group and its sentences.
+      expect(html).toContain("Take this exit when");
+      expect(html).toContain(">ALL<");
+      expect(html).toContain(">ANY<");
+      expect(html).toContain("of this group");
+      expect(html).toContain("cycles spent in this step");
+      expect(html).toContain("in stock is below");
+      expect(html).toContain("Also check on arrival");
+      expect(html).toContain("also on arrival"); // exit 3, collapsed
+    });
+
+    it("a step-visits sentence names its step", () => {
+      const html = inspector("exits", { openExit: 0 });
+      expect(html).toContain("This step was entered");
+      expect(html).toContain("entering 3. s3");
+    });
+
+    it("a finish exit on the last step of a non-looping flow", () => {
+      const html = inspector("exits", { selected: 2, openExit: 0 });
+      expect(html).toContain("Finish (hold this step)");
+    });
+
+    it("the checked targets and actions tabs", () => {
+      expect(inspector("targets")).toContain("18 of 18 checked");
+      const actions = inspector("actions");
+      expect(actions).toContain("Overridden here");
+      expect(actions).toContain("Re-place missing plants");
+      expect(actions).toContain("Break Devourer roots");
+      expect(actions).toContain("Inherited");
+      expect(actions).toContain("harvest when fully grown"); // effective inherited value
+    });
+
+    it("the plot settings with no step selected", () => {
+      const html = inspector("exits", { selected: null });
+      expect(html).toContain("Plot 1 flow");
+      expect(html).toContain("Start step");
+      expect(html).toContain("Plot actions");
+    });
+
+    it("the phone step list shows every step with its exits", () => {
+      const html = editor({}, <StepList onOpen={noop} onOpenPlot={noop} />);
+      expect(html).toContain("Plot settings");
+      expect(html).toContain("Steps · 3");
+      expect(html).toContain("START");
+      expect(html).toContain("3. s3</span><span class=\"text-slate-500\"> when </span>");
+      expect(html).toContain("Finish (hold this step)");
+    });
+  });
   it("the layout picker: an incoming layout asks where it goes", () => {
     const incoming = { code: LAYOUT_A_CODE, name: "Chloronite x4", from: "calculator" as const };
     const html = wrap(<LayoutPickerPanel title="t" incoming={incoming} scenario={sc} onPlace={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");

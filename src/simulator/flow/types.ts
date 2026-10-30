@@ -171,9 +171,34 @@ export type PolicyOverrides = Partial<Omit<Policies, "gateInteractions">> & {
   gateInteractions?: Partial<Policies["gateInteractions"]>;
 };
 
+// ---- Flow editor canvas data ------------------------------------------------------------------
+// Where the flow editor draws things, plus the user's notes and frames. The engine never reads
+// these: the page strips them before a scenario runs (`withoutEditorUi`), so moving a node never
+// restarts a run. They travel with exported flows and leaderboard payloads. Type-only on purpose:
+// this file is not part of the leaderboard verify bundle, so these never change ENGINE_VERSION.
+
+// Everything lives on the step (not the flow) because the leaderboard keeps a step's fields as
+// they are but rebuilds the flow object, and changing that would change ENGINE_VERSION.
+
+export type FlowUiColor = "slate" | "emerald" | "sky" | "violet" | "amber" | "rose";
+
+/** A step node's place on the flow editor canvas, its note and the frame it sits in. */
+export interface StepUi {
+  x: number;
+  y: number;
+  /** Free text shown on the node and in the inspector ("why this step exists"). */
+  note?: string;
+  /** Frame (group) name. Steps with the same name share one labelled box drawn around them. */
+  frame?: string;
+  /** Frame colour; the first member's colour wins. */
+  frameColor?: FlowUiColor;
+}
+
 export interface FlowStep {
   id: string;
   label?: string;
+  /** Flow editor only (position, note); never read by the engine. */
+  ui?: StepUi;
   layout: StepLayout;
   /** Ways out of this step, checked in order; the first that holds wins. Empty = the plot stays. */
   exits: StepExit[];
