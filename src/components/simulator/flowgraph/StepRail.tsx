@@ -207,7 +207,7 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
                 } ${drag?.from === i ? "opacity-40" : ""}`}
               >
                 <span className={`w-5 shrink-0 text-right text-[11px] tabular-nums ${sel ? "text-emerald-300" : "text-slate-500"}`}>{i + 1}</span>
-                <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-slate-800 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.1)]">
+                <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-slate-800 shadow-[inset_0_0_0_1px_var(--color-line)]">
                   <CropImage cropId={f.icon} cropName={nameOf(f.icon)} size="custom" width={16} height={16} showFallback={false} />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -261,5 +261,5 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
 };
 
 const DropLine: React.FC<{ className: string }> = ({ className }) => (
-  <span aria-hidden className={`pointer-events-none absolute right-2 left-2 z-10 h-0.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] ${className}`} />
+  <span aria-hidden className={`pointer-events-none absolute right-2 left-2 z-10 h-0.5 rounded-full bg-emerald-400 ${className}`} />
 );

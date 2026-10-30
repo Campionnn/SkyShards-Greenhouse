@@ -83,7 +83,7 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
             openMenu(e, stepMenu(api, i));
           }}
         >
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-slate-800 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-slate-800 shadow-[inset_0_0_0_1px_var(--color-line)]">
             <CropImage cropId={facts.icon} cropName={stepLabel(step)} size="custom" width={28} height={28} showFallback={false} />
           </span>
           <div className="min-w-0 flex-1">

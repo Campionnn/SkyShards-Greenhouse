@@ -421,7 +421,7 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
       {/* Stops above the bottom ad (`--ad-bottom`) so the steps list, minimap and zoom aren't under it. */}
       <div className="fixed inset-0 z-40 flex flex-col bg-slate-950 text-slate-200 kit-fade-in" style={{ bottom: "var(--ad-bottom, 0px)" }} role="dialog" aria-modal="true" aria-label={`Plot ${plotId} flow editor`}>
         {/* Top bar */}
-        <header className="relative z-20 flex h-[52px] shrink-0 items-center gap-1.5 border-b border-slate-700/60 bg-gradient-to-b from-slate-900 to-[#0d1526] px-2 sm:gap-2.5 sm:px-3">
+        <header className="relative z-20 flex h-[52px] shrink-0 items-center gap-1.5 border-b border-slate-700/60 bg-surface-panel px-2 sm:gap-2.5 sm:px-3">
           <KitButton variant="ghost" onClick={onClose} aria-label="Back to the simulator" className="px-2 sm:px-2.5">
             <ArrowLeft /> <span className="hidden sm:inline">Simulator</span>
           </KitButton>
@@ -438,7 +438,7 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
                 onClick={() => p.id !== plotId && switchPlot(p.id)}
                 onContextMenu={(e) => plotMenu(e, p.id)}
                 className={`flex cursor-pointer items-center gap-1.5 rounded-[7px] px-2 py-1 text-[12.5px] font-medium transition-colors duration-150 sm:px-2.5 ${
-                  p.id === plotId ? "bg-slate-800 text-slate-100 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.15),0_1px_2px_rgba(0,0,0,0.4)]" : "text-slate-500 hover:text-slate-300"
+                  p.id === plotId ? "bg-slate-800 text-slate-100 shadow-[inset_0_0_0_1px_var(--color-line),0_1px_2px_rgba(0,0,0,0.4)]" : "text-slate-500 hover:text-slate-300"
                 }`}
               >
                 <span className="sm:hidden">P{p.id}</span>

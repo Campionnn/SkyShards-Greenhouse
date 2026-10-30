@@ -1,18 +1,19 @@
-/* Flow editor canvas (React Flow, themed from base.css). Conventions: docs/simulator/UI-CONVENTIONS.md.
+/* Flow editor canvas (React Flow, themed from base.css). Colours come from the design tokens in
+   index.css (docs/design-system/foundations.md): selection = select (aqua), start / go = go (emerald).
    Motion: hover colour/opacity 150ms; selection, dragging and connecting are instant. */
 
 .fg-canvas {
-  --fg-line: rgba(148, 163, 184, 0.12);
-  --fg-dim: #64748b;
+  --fg-line: var(--color-line);
+  --fg-dim: var(--color-fg-meta);
   position: relative;
-  background: #0b1222;
-  color: #e2e8f0;
+  background: var(--color-surface-page);
+  color: var(--color-fg-body);
   font-size: 13px;
 }
 .fg-canvas .react-flow {
-  --xy-background-color: #0b1222;
-  --xy-selection-background-color: rgba(52, 211, 153, 0.06);
-  --xy-selection-border: 1px dashed rgba(52, 211, 153, 0.55);
+  --xy-background-color: var(--color-surface-page);
+  --xy-selection-background-color: color-mix(in oklab, var(--color-select) 6%, transparent);
+  --xy-selection-border: 1px dashed color-mix(in oklab, var(--color-select) 55%, transparent);
 }
 .fg-canvas .react-flow__pane.draggable { cursor: grab; }
 .fg-canvas .react-flow__pane.dragging { cursor: grabbing; }
@@ -23,9 +24,9 @@
 .fg-node {
   position: relative;
   border-radius: 12px;
-  background: linear-gradient(180deg, #172036 0%, #121a2c 100%);
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 30px -12px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.35);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.7), 0 2px 6px rgb(0 0 0 / 0.35);
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 /* A step added while the editor is open pops in (kit-pop-in); existing steps never animate. */
@@ -34,13 +35,13 @@
   .react-flow__node.fg-pop .fg-node { animation-name: kit-fade-in; }
 }
 @media (hover: hover) {
-  .fg-node:hover { border-color: rgba(148, 163, 184, 0.3); }
+  .fg-node:hover { border-color: var(--color-line-control); }
 }
 .fg-node.is-sel {
-  border-color: rgba(52, 211, 153, 0.7);
-  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.14), 0 14px 40px -12px rgba(0, 0, 0, 0.8);
+  border-color: var(--color-select);
+  box-shadow: 0 14px 40px -12px rgb(0 0 0 / 0.8);
 }
-.react-flow__node.dragging .fg-node { box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.12), 0 24px 50px -10px rgba(0, 0, 0, 0.9); }
+.react-flow__node.dragging .fg-node { box-shadow: 0 24px 50px -10px rgb(0 0 0 / 0.9); }
 
 .fg-nh {
   position: relative;
@@ -51,7 +52,7 @@
   padding: 9px 12px 9px 14px;
   border-bottom: 1px solid var(--fg-line);
   border-radius: 12px 12px 0 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent);
+
   cursor: grab;
 }
 .react-flow__node.dragging .fg-nh { cursor: grabbing; }
@@ -62,13 +63,13 @@
   width: 20px;
   height: 20px;
   border-radius: 6px;
-  background: rgba(148, 163, 184, 0.12);
-  color: #cbd5e1;
+  background: var(--color-surface-hover);
+  color: var(--color-fg-body);
   font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.fg-node.is-sel .fg-num { background: rgba(52, 211, 153, 0.18); color: #6ee7b7; }
+.fg-node.is-sel .fg-num { background: color-mix(in oklab, var(--color-select) 18%, transparent); color: var(--color-select-fg); }
 .fg-name {
   flex: 1;
   min-width: 0;
@@ -93,8 +94,8 @@
   letter-spacing: 0.05em;
 }
 .fg-pill svg { width: 11px; height: 11px; }
-.fg-pill-start { color: #6ee7b7; background: rgba(16, 185, 129, 0.14); }
-.fg-pill-script { color: #7dd3fc; background: rgba(56, 189, 248, 0.12); }
+.fg-pill-start { color: var(--color-go-fg); background: color-mix(in oklab, var(--color-go) 14%, transparent); }
+.fg-pill-script { color: var(--color-script); background: color-mix(in oklab, var(--color-script) 12%, transparent); }
 
 .fg-nb { display: flex; gap: 12px; padding: 12px 12px 10px 14px; }
 .fg-thumb { flex: none; }
@@ -107,9 +108,9 @@
   align-items: center;
   padding: 0 6px;
   border-radius: 6px;
-  border: 1px solid rgba(100, 116, 139, 0.4);
+  border: 1px solid var(--color-line-strong);
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--color-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 .fg-sub { font-size: 11.5px; line-height: 1.35; color: var(--fg-dim); }
@@ -120,13 +121,13 @@
   gap: 4px;
   padding: 1px 6px;
   border-radius: 5px;
-  background: rgba(148, 163, 184, 0.08);
-  color: #94a3b8;
+  background: color-mix(in oklab, var(--color-fg-muted) 8%, transparent);
+  color: var(--color-fg-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 .fg-badge svg { width: 12px; height: 12px; }
-.fg-badge-warn { color: #fcd34d; background: rgba(251, 191, 36, 0.1); }
+.fg-badge-warn { color: var(--color-warn); background: color-mix(in oklab, var(--color-warn) 10%, transparent); }
 
 /* ---- Exit rows and sockets ---------------------------------------------------------------- */
 
@@ -143,11 +144,11 @@
   transition: background-color 150ms ease;
 }
 @media (hover: hover) {
-  .fg-xrow:hover { background: rgba(148, 163, 184, 0.06); }
+  .fg-xrow:hover { background: color-mix(in oklab, var(--color-fg-muted) 6%, transparent); }
 }
-.fg-xrow.is-hot { background: rgba(16, 185, 129, 0.07); }
-.fg-xrow[data-kind="arrive"].is-hot { background: rgba(251, 191, 36, 0.06); }
-.fg-xrow[data-kind="restart"].is-hot { background: rgba(167, 139, 250, 0.07); }
+.fg-xrow.is-hot { background: color-mix(in oklab, var(--color-go) 7%, transparent); }
+.fg-xrow[data-kind="arrive"].is-hot { background: color-mix(in oklab, var(--color-warn) 6%, transparent); }
+.fg-xrow[data-kind="restart"].is-hot { background: color-mix(in oklab, var(--color-restart) 7%, transparent); }
 .fg-xn {
   display: grid;
   place-items: center;
@@ -155,14 +156,14 @@
   width: 16px;
   height: 16px;
   border-radius: 5px;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.22);
+  box-shadow: inset 0 0 0 1px var(--color-line-strong);
   color: var(--fg-dim);
   font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .fg-xicon { flex: none; width: 12px; height: 12px; }
-.fg-xt { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #cbd5e1; }
+.fg-xt { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-fg-body); }
 .fg-to {
   display: flex;
   flex: none;
@@ -180,20 +181,20 @@
   min-width: 0;
   min-height: 0;
   border-radius: 50%;
-  background: #0b1222;
-  border: 2.5px solid var(--sock, #64748b);
+  background: var(--color-surface-page);
+  border: 2.5px solid var(--sock, var(--color-fg-meta));
   cursor: crosshair;
   transition: border-color 150ms ease, background-color 150ms ease, scale 150ms var(--ease-snappy);
 }
 @media (hover: hover) {
   .fg-canvas .fg-sock:hover { scale: 1.3; }
 }
-.fg-xrow.is-hot .fg-sock { border-color: var(--sock-hot); background: color-mix(in srgb, var(--sock-hot) 28%, #0b1222); }
+.fg-xrow.is-hot .fg-sock { border-color: var(--sock-hot); background: color-mix(in srgb, var(--sock-hot) 28%, var(--color-surface-page)); }
 .fg-canvas .fg-sock-in { left: -1px; }
-.fg-canvas .fg-sock-in.is-hot { border-color: #34d399; background: #064e3b; }
+.fg-canvas .fg-sock-in.is-hot { border-color: var(--color-go); background: color-mix(in oklab, var(--color-go) 30%, var(--color-surface-page)); }
 .fg-canvas .react-flow__handle.connectingto,
-.fg-canvas .react-flow__handle.valid { border-color: #34d399; background: #064e3b; scale: 1.35; }
-.fg-canvas .fg-sock-start { border-color: #34d399; background: #064e3b; }
+.fg-canvas .react-flow__handle.valid { border-color: var(--color-go); background: color-mix(in oklab, var(--color-go) 30%, var(--color-surface-page)); scale: 1.35; }
+.fg-canvas .fg-sock-start { border-color: var(--color-go); background: color-mix(in oklab, var(--color-go) 30%, var(--color-surface-page)); }
 
 .fg-addx {
   position: relative;
@@ -211,12 +212,12 @@
 .fg-addx svg { width: 12px; height: 12px; }
 .fg-node:hover .fg-addx,
 .fg-node.is-sel .fg-addx { opacity: 1; }
-.fg-addx:hover { color: #6ee7b7; }
+.fg-addx:hover { color: var(--color-go-fg); }
 .fg-canvas .fg-sock-add {
-  border: 1.5px dashed rgba(148, 163, 184, 0.55);
+  border: 1.5px dashed var(--color-line-control);
   background: transparent;
 }
-.fg-addx:hover .fg-sock-add { border-color: #34d399; }
+.fg-addx:hover .fg-sock-add { border-color: var(--color-go); }
 .fg-stays {
   position: relative;
   display: flex;
@@ -229,7 +230,7 @@
 }
 .fg-stays > span:first-child { flex: 1; }
 .fg-addx-inline { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; cursor: pointer; transition: color 150ms ease, background-color 150ms ease; }
-.fg-addx-inline:hover { color: #6ee7b7; background: rgba(52, 211, 153, 0.1); }
+.fg-addx-inline:hover { color: var(--color-go-fg); background: color-mix(in oklab, var(--color-go) 10%, transparent); }
 .fg-addx-inline svg { width: 13px; height: 13px; }
 
 .fg-inbadge {
@@ -239,9 +240,9 @@
   transform: translate(-100%, -50%);
   padding: 1px 7px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: #1e293b;
-  color: #94a3b8;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-surface-raised);
+  color: var(--color-fg-muted);
   font-size: 10.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -259,11 +260,11 @@
   height: 34px;
   padding: 0 22px 0 13px;
   border-radius: 999px;
-  border: 1px solid rgba(52, 211, 153, 0.4);
-  background: #0f2a22;
-  color: #6ee7b7;
+  border: 1px solid color-mix(in oklab, var(--color-go) 40%, transparent);
+  background: color-mix(in oklab, var(--color-go) 14%, var(--color-surface-page));
+  color: var(--color-go-fg);
   font-weight: 600;
-  box-shadow: 0 8px 20px -10px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 8px 20px -10px rgb(0 0 0 / 0.8);
 }
 .fg-start svg { width: 13px; height: 13px; }
 .fg-canvas .react-flow__node-start { cursor: default; }
@@ -290,7 +291,7 @@
   cursor: grab;
   transition: background-color 150ms ease;
 }
-.fg-frame-label:hover { background: rgba(148, 163, 184, 0.08); }
+.fg-frame-label:hover { background: color-mix(in oklab, var(--color-fg-muted) 8%, transparent); }
 .react-flow__node.dragging .fg-frame-label { cursor: grabbing; }
 .fg-frame-label svg { width: 14px; height: 14px; flex: none; }
 .fg-frame-name { overflow: hidden; text-overflow: ellipsis; }
@@ -301,11 +302,9 @@
 .fg-wire { transition: opacity 150ms ease; }
 .fg-wire.is-dim { opacity: 0.25; }
 .fg-wire-path { fill: none; transition: stroke 150ms ease; }
-.fg-wire-glow { fill: none; stroke-width: 9; opacity: 0; filter: blur(4px); transition: opacity 150ms ease; }
-.fg-wire-glow.is-on { opacity: 0.28; }
 .fg-wire-arrow { transition: fill 150ms ease; }
 .fg-canvas .react-flow__edge { cursor: pointer; }
-.fg-canvas .react-flow__connection-path { stroke: #34d399; stroke-width: 2.5; stroke-dasharray: 6 5; }
+.fg-canvas .react-flow__connection-path { stroke: var(--color-go); stroke-width: 2.5; stroke-dasharray: 6 5; }
 
 /* ---- Level of detail: zoomed far out, keep numbers, sockets and a bigger label ------------ */
 
@@ -331,9 +330,8 @@
 .fg-hud {
   display: flex;
   align-items: center;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(15, 23, 42, 0.92);
-  backdrop-filter: blur(8px);
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-surface-raised);
   border-radius: 10px;
 }
 .fg-zoom { flex-direction: column; padding: 2px; }
@@ -343,20 +341,20 @@
   width: 30px;
   height: 28px;
   border-radius: 8px;
-  color: #94a3b8;
+  color: var(--color-fg-muted);
   cursor: pointer;
   transition: color 150ms ease, background-color 150ms ease, transform 150ms var(--ease-snappy);
 }
-.fg-zoom button:hover { color: #f1f5f9; background: rgba(148, 163, 184, 0.1); }
+.fg-zoom button:hover { color: var(--color-fg); background: var(--color-surface-hover); }
 .fg-zoom button:active { transform: scale(0.97); }
 .fg-zoom button svg { width: 14px; height: 14px; }
-.fg-zoom-pct { padding: 2px 0; font-size: 11.5px; color: #cbd5e1; font-variant-numeric: tabular-nums; text-align: center; }
+.fg-zoom-pct { padding: 2px 0; font-size: 11.5px; color: var(--color-fg-body); font-variant-numeric: tabular-nums; text-align: center; }
 .fg-canvas .react-flow__minimap {
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-line-strong);
   border-radius: 10px;
   overflow: hidden;
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--color-surface-raised);
 }
 .fg-hints { display: flex; gap: 14px; color: var(--fg-dim); font-size: 11.5px; pointer-events: none; }
 .fg-hints > span { display: flex; align-items: center; gap: 6px; }
-.fg-busy { gap: 10px; padding: 6px 6px 6px 12px; font-size: 12.5px; color: #94a3b8; }
+.fg-busy { gap: 10px; padding: 6px 6px 6px 12px; font-size: 12.5px; color: var(--color-fg-muted); }

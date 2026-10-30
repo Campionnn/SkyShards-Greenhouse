@@ -494,7 +494,7 @@ export const SimulatorPage: React.FC = () => {
         <KpiStrip view={view} plotCount={plotCount} priceSummary={priceSummary} />
         {view.status === "running" && view.progress && (
           <div className="absolute inset-x-0 -bottom-px h-0.5 overflow-hidden" aria-hidden>
-            <div className="h-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" style={{ width: `${(view.progress.done / Math.max(1, view.progress.total)) * 100}%` }} />
+            <div className="h-full bg-go" style={{ width: `${(view.progress.done / Math.max(1, view.progress.total)) * 100}%` }} />
           </div>
         )}
       </header>

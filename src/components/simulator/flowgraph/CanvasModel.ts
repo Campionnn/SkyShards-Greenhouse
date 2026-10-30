@@ -291,13 +291,13 @@ export function wirePath(route: Route, sx: number, sy: number, tx: number, ty: n
 export type FrameTone = FlowUiColor | "script";
 
 export const FRAME_TONE: Record<FrameTone, { border: string; fill: string; text: string }> = {
-  slate: { border: "rgba(148,163,184,0.32)", fill: "rgba(148,163,184,0.035)", text: "#cbd5e1" },
-  emerald: { border: "rgba(52,211,153,0.32)", fill: "rgba(52,211,153,0.035)", text: "#6ee7b7" },
-  sky: { border: "rgba(56,189,248,0.3)", fill: "rgba(56,189,248,0.035)", text: "#7dd3fc" },
-  violet: { border: "rgba(167,139,250,0.32)", fill: "rgba(167,139,250,0.04)", text: "#c4b5fd" },
-  amber: { border: "rgba(251,191,36,0.3)", fill: "rgba(251,191,36,0.03)", text: "#fcd34d" },
-  rose: { border: "rgba(251,113,133,0.3)", fill: "rgba(251,113,133,0.035)", text: "#fda4af" },
-  script: { border: "rgba(56,189,248,0.28)", fill: "rgba(56,189,248,0.03)", text: "#7dd3fc" },
+  slate: { border: "color-mix(in oklab, var(--color-fg-body) 32%, transparent)", fill: "color-mix(in oklab, var(--color-fg-body) 3.5%, transparent)", text: "var(--color-fg-body)" },
+  emerald: { border: "color-mix(in oklab, var(--color-go-fg) 32%, transparent)", fill: "color-mix(in oklab, var(--color-go-fg) 3.5%, transparent)", text: "var(--color-go-fg)" },
+  sky: { border: "color-mix(in oklab, var(--color-select-fg) 32%, transparent)", fill: "color-mix(in oklab, var(--color-select-fg) 3.5%, transparent)", text: "var(--color-select-fg)" },
+  violet: { border: "color-mix(in oklab, var(--color-restart) 32%, transparent)", fill: "color-mix(in oklab, var(--color-restart) 3.5%, transparent)", text: "var(--color-restart)" },
+  amber: { border: "color-mix(in oklab, var(--color-warn) 32%, transparent)", fill: "color-mix(in oklab, var(--color-warn) 3.5%, transparent)", text: "var(--color-warn)" },
+  rose: { border: "color-mix(in oklab, var(--color-problem) 32%, transparent)", fill: "color-mix(in oklab, var(--color-problem) 3.5%, transparent)", text: "var(--color-problem)" },
+  script: { border: "color-mix(in oklab, var(--color-script) 32%, transparent)", fill: "color-mix(in oklab, var(--color-script) 3.5%, transparent)", text: "var(--color-script)" },
 };
 
 export type FrameBox = {

@@ -58,7 +58,7 @@ export const LayoutWorkspace: React.FC<{
       role="region"
       aria-label={`Layout of step ${index + 1}`}
     >
-      <div className="flex h-[52px] shrink-0 items-center gap-1.5 border-b border-slate-700/60 bg-gradient-to-b from-slate-900 to-[#0d1526] px-2 sm:gap-2 sm:px-3">
+      <div className="flex h-[52px] shrink-0 items-center gap-1.5 border-b border-slate-700/60 bg-surface-panel px-2 sm:gap-2 sm:px-3">
         <KitButton variant="ghost" onClick={close} aria-label="Back to the flow" className="px-2 sm:px-2.5">
           <ArrowLeft /> <span className="hidden sm:inline">Back to flow</span>
         </KitButton>

@@ -58,7 +58,7 @@ export const MobileRunBar: React.FC<{
     // Docks on top of Mediavine's adhesion ad (`--ad-bottom`, useBottomAdInset) instead of under
     // it; the ad already covers the home-indicator area, so the safe-area padding shrinks by it.
     <div
-      className="fixed inset-x-0 z-40 flex gap-2 border-t border-slate-700/50 bg-[#0b1120]/95 px-3 pt-2.5 backdrop-blur-xl md:hidden"
+      className="fixed inset-x-0 z-40 flex gap-2 border-t border-slate-700/50 bg-surface-page/95 px-3 pt-2.5 backdrop-blur-xl md:hidden"
       style={{ bottom: "var(--ad-bottom, 0px)", paddingBottom: "max(10px, calc(10px + env(safe-area-inset-bottom, 0px) - var(--ad-bottom, 0px)))" }}
     >
       <button type="button" aria-label="Reset to cycle 0" onClick={onReset} disabled={running} className={`${btn} w-11 rounded-xl border border-slate-600/40 bg-slate-800/60 text-slate-300`}>

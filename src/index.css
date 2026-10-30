@@ -4,48 +4,84 @@
 @source "./dev-local";
 
 /* ---- Design tokens (docs/design-system/foundations.md) -------------------------------------
-   The semantic layer every component should use. Values are defined in terms of today's palette
-   (Tailwind slate + emerald), so a palette change is one block of values here (or a
-   [data-palette] override), not 2,000 class edits. Tailwind turns each into utilities:
+   The semantic layer every component should use. Tailwind turns each into utilities:
    --color-surface-card → bg-surface-card, --color-fg-meta → text-fg-meta, --color-line → border-line,
-   --text-body → text-body (size + line height + weight + tracking), --radius-control → rounded-control. */
+   --text-body → text-body (size + line height + weight + tracking), --radius-control → rounded-control.
+
+   Palette: "Hypixel emerald" (chosen 2026-10-30; research/design-audit-v2/palettes-v2/). True grey
+   neutrals (no blue tint), emerald go, Hypixel §b aqua for selection and focus, §6 gold coins, §e
+   yellow warnings, §9 periwinkle scripts, §d rose restart. Every pair is contrast-tested
+   (src/__tests__/tokens.test.ts). The legacy Tailwind ramps pages still use (slate, yellow, amber,
+   sky, violet, red-300) are re-pointed below so un-migrated pages follow the palette too. */
 @theme {
-  /* Surfaces: page < well < panel/card < raised < hover. */
-  --color-surface-page: var(--color-slate-950);
-  --color-surface-panel: var(--color-slate-900);
-  --color-surface-card: color-mix(in oklab, var(--color-slate-800) 40%, transparent);
-  --color-surface-well: color-mix(in oklab, var(--color-slate-950) 50%, transparent);
-  --color-surface-raised: color-mix(in oklab, var(--color-slate-900) 95%, transparent);
-  --color-surface-hover: color-mix(in oklab, var(--color-slate-700) 50%, transparent);
-  --color-surface-control: color-mix(in oklab, var(--color-slate-800) 60%, transparent);
+  /* Surfaces: well < page < panel < card < raised < control < hover. */
+  --color-surface-page: oklch(14.5% 0 0);
+  --color-surface-panel: oklch(18.5% 0 0);
+  --color-surface-card: oklch(21% 0 0);
+  --color-surface-well: oklch(12% 0 0);
+  --color-surface-raised: oklch(23% 0 0);
+  --color-surface-hover: oklch(26.5% 0 0);
+  --color-surface-control: oklch(23.5% 0 0);
 
   /* Lines: hairline between areas, strong for floating edges, control for input boundaries (≥3:1). */
-  --color-line: color-mix(in oklab, var(--color-slate-700) 50%, transparent);
-  --color-line-strong: color-mix(in oklab, var(--color-slate-600) 40%, transparent);
-  --color-line-control: var(--color-slate-500);
+  --color-line: oklch(30% 0 0);
+  --color-line-strong: oklch(36% 0 0);
+  --color-line-control: oklch(54% 0 0);
 
-  /* Text. fg-meta is ≥4.5:1 on every surface (slate-500 was 3.1–4.2:1 and is retired for text). */
-  --color-fg: var(--color-slate-100);
-  --color-fg-body: var(--color-slate-200);
-  --color-fg-muted: var(--color-slate-400);
-  --color-fg-meta: oklch(68% 0.042 257);
-  --color-fg-disabled: var(--color-slate-600);
+  /* Text. Every one ≥4.5:1 on every surface. */
+  --color-fg: oklch(96% 0 0);
+  --color-fg-body: oklch(89% 0 0);
+  --color-fg-muted: oklch(77% 0 0);
+  --color-fg-meta: oklch(68.5% 0 0);
+  --color-fg-disabled: oklch(50% 0 0);
 
   /* Roles: each colour has exactly one meaning. */
   --color-go: var(--color-emerald-500);
   --color-go-hover: var(--color-emerald-400);
   --color-go-fg: var(--color-emerald-300);
   --color-on-go: var(--color-emerald-950);
-  --color-coin: var(--color-yellow-400);
-  --color-warn: var(--color-amber-300);
-  --color-problem: var(--color-red-300);
-  --color-script: var(--color-sky-300);
-  --color-restart: var(--color-violet-300);
-  --color-focus: var(--color-emerald-400);
-  /* Selection / "you are here": the selected tab, item, step or plot, the checked menu row. A
-     palette may give it its own hue (secondary colour) so "selected" never reads as "go". */
-  --color-select: var(--color-emerald-500);
-  --color-select-fg: var(--color-emerald-300);
+  --color-coin: oklch(71% 0.149 75);
+  --color-warn: oklch(94% 0.13 105);
+  --color-problem: oklch(67% 0.17 28);
+  --color-script: oklch(78% 0.1 285);
+  --color-restart: oklch(74% 0.14 355);
+  --color-focus: oklch(85% 0.13 205);
+  /* Selection / "you are here" (secondary colour, Hypixel aqua): the selected tab, item, step or
+     plot, the checked menu row. Its own hue so "selected" never reads as "go". */
+  --color-select: oklch(85% 0.13 205);
+  --color-select-fg: oklch(89% 0.111 205);
+
+  /* ---- Legacy ramps, re-pointed (pages that still use raw classes follow the palette) ---- */
+  /* slate → true grey. slate-500 is the passing meta grey, so legacy text-slate-500 becomes readable. */
+  --color-slate-50: oklch(98.5% 0 0);
+  --color-slate-100: oklch(96% 0 0);
+  --color-slate-200: oklch(89% 0 0);
+  --color-slate-300: oklch(84% 0 0);
+  --color-slate-400: oklch(77% 0 0);
+  --color-slate-500: oklch(68.5% 0 0);
+  --color-slate-600: oklch(50% 0 0);
+  --color-slate-700: oklch(37% 0 0);
+  --color-slate-800: oklch(28% 0 0);
+  --color-slate-900: oklch(18.5% 0 0);
+  --color-slate-950: oklch(14.5% 0 0);
+  /* yellow → §6 gold (coin = yellow-400), amber → §e yellow (warn = amber-300): told apart by lightness. */
+  --color-yellow-300: oklch(83% 0.127 75);
+  --color-yellow-400: oklch(71% 0.149 75);
+  --color-yellow-500: oklch(66% 0.15 72);
+  --color-amber-200: oklch(95% 0.09 105);
+  --color-amber-300: oklch(94% 0.13 105);
+  --color-amber-400: oklch(88% 0.15 100);
+  --color-amber-500: oklch(80% 0.15 95);
+  /* sky → §9 periwinkle (scripts), so it is never confused with aqua selection. */
+  --color-sky-300: oklch(78% 0.1 285);
+  --color-sky-400: oklch(72% 0.12 285);
+  --color-sky-500: oklch(64% 0.14 285);
+  /* violet → §d rose (restart). */
+  --color-violet-300: oklch(74% 0.14 355);
+  --color-violet-400: oklch(70% 0.16 355);
+  --color-violet-500: oklch(63% 0.18 355);
+  /* red-300 = the problem colour (the legacy problem text). */
+  --color-red-300: oklch(67% 0.17 28);
 
   /* Type roles (size / line height / weight / tracking). Nothing else inside a page. */
   --text-label: 11px;

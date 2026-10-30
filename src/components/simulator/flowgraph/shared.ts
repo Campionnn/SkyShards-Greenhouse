@@ -19,15 +19,15 @@ export function exitKind(plot: ScenarioPlot, stepIndex: number, exit: StepExit):
 }
 
 /**
- * The colour language of exits. `stroke` is the wire / socket colour (hex, for SVG), `text` and
- * `ring` are Tailwind classes. Normal = slate at rest, emerald when highlighted.
+ * The colour language of exits. `stroke` / `hot` are CSS colours for SVG (design tokens, so they follow
+ * the palette); `text` is a Tailwind class. Normal = grey at rest, go when highlighted.
  */
 export const EXIT_STYLE: Record<ExitKind, { stroke: string; hot: string; text: string; label: string; help: string }> = {
-  normal: { stroke: "#475569", hot: "#34d399", text: "text-emerald-300", label: "Exit", help: "Checked while the player is online; the first exit that holds is taken." },
-  arrive: { stroke: "#b45309", hot: "#fbbf24", text: "text-amber-300", label: "Also on arrival", help: "Also checked when the plot arrives: if it already holds, this step is skipped." },
-  restart: { stroke: "#7c3aed", hot: "#a78bfa", text: "text-violet-300", label: "Restart", help: "Goes back into this same step: the layout is re-applied and its counters restart." },
-  finish: { stroke: "#64748b", hot: "#e2e8f0", text: "text-slate-300", label: "Finish", help: "Holds this final step: the flow is finished and the plot stays here." },
-  missing: { stroke: "#ef4444", hot: "#f87171", text: "text-red-300", label: "Missing step", help: "Goes to a step that no longer exists. Pick another step." },
+  normal: { stroke: "var(--color-line-control)", hot: "var(--color-go)", text: "text-go-fg", label: "Exit", help: "Checked while the player is online; the first exit that holds is taken." },
+  arrive: { stroke: "color-mix(in oklab, var(--color-warn) 55%, var(--color-surface-page))", hot: "var(--color-warn)", text: "text-warn", label: "Also on arrival", help: "Also checked when the plot arrives: if it already holds, this step is skipped." },
+  restart: { stroke: "color-mix(in oklab, var(--color-restart) 55%, var(--color-surface-page))", hot: "var(--color-restart)", text: "text-restart", label: "Restart", help: "Goes back into this same step: the layout is re-applied and its counters restart." },
+  finish: { stroke: "var(--color-fg-meta)", hot: "var(--color-fg-body)", text: "text-fg-body", label: "Finish", help: "Holds this final step: the flow is finished and the plot stays here." },
+  missing: { stroke: "color-mix(in oklab, var(--color-problem) 75%, var(--color-surface-page))", hot: "var(--color-problem)", text: "text-problem", label: "Missing step", help: "Goes to a step that no longer exists. Pick another step." },
 };
 
 /** "3. Chorus Fruit" style name of a step. */

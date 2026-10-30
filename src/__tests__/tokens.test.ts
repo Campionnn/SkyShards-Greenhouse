@@ -245,14 +245,15 @@ describe("token contrast maths", () => {
   });
 
   it("would have caught the old line-control (slate-600 at 60%, measured 1.6:1 against the card)", () => {
-    const old = themeFrom(indexCss, new Map([["--color-line-control", "color-mix(in oklab, var(--color-slate-600) 60%, transparent)"]]));
+    const old = themeFrom(indexCss, new Map([["--color-line-control", `color-mix(in oklab, ${tailwindVars.get("--color-slate-600")} 60%, transparent)`]]));
     const bad = failures(checkPalette(old)).filter((p) => p.fg === "line-control");
     expect(bad.map((p) => p.bg)).toEqual(["surface-card (over page)", "surface-page"]);
     expect(bad[0].ratio).toBeLessThan(2);
   });
 
-  it("would catch slate-500 as meta text", () => {
-    const old = themeFrom(indexCss, new Map([["--color-fg-meta", "var(--color-slate-500)"]]));
+  it("would catch Tailwind's original slate-500 as meta text (3.1–4.2:1)", () => {
+    // index.css re-points --color-slate-500 to a passing grey, so use Tailwind's own value.
+    const old = themeFrom(indexCss, new Map([["--color-fg-meta", tailwindVars.get("--color-slate-500")!]]));
     expect(failures(checkPalette(old)).some((p) => p.fg === "fg-meta")).toBe(true);
   });
 

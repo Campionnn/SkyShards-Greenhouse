@@ -134,7 +134,7 @@ function convertTrigger(prev: Trigger, kind: TriggerKind): Trigger {
 // ---- Tokens -------------------------------------------------------------------------------------
 
 const tokenBase =
-  "inline-flex h-[22px] max-w-full items-center gap-1 rounded-[5px] bg-slate-700/60 px-1.5 align-middle font-medium text-slate-100 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)] transition-colors duration-150 hover:bg-slate-600/70";
+  "inline-flex h-[22px] max-w-full items-center gap-1 rounded-[5px] bg-slate-700/60 px-1.5 align-middle font-medium text-slate-100 shadow-[inset_0_0_0_1px_var(--color-line)] transition-colors duration-150 hover:bg-slate-600/70";
 
 /** An item / mutation / plant token: opens the searchable item picker. */
 const IdToken: React.FC<{ value: string; ids: readonly string[]; onChange: (id: string) => void; label: string }> = ({ value, ids, onChange, label }) => {

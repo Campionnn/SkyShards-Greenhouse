@@ -222,7 +222,7 @@ const ExitCard: React.FC<{
         >
           <GripVertical className="h-3.5 w-3.5" />
         </span>
-        <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-[5px] px-1 text-[10.5px] font-semibold tabular-nums text-slate-400 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.25)]">{j + 1}</span>
+        <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-[5px] px-1 text-[10.5px] font-semibold tabular-nums text-slate-400 shadow-[inset_0_0_0_1px_var(--color-line-strong)]">{j + 1}</span>
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] text-slate-400">
           <span className="hidden shrink-0 @[22rem]:inline">Go to</span>
           <TargetPicker stepIndex={stepIndex} exit={exit} onChange={onChange} />
@@ -295,7 +295,7 @@ const ExitCard: React.FC<{
 };
 
 const DropLine: React.FC<{ className: string }> = ({ className }) => (
-  <span aria-hidden className={`pointer-events-none absolute right-2 left-2 z-10 h-0.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] ${className}`} />
+  <span aria-hidden className={`pointer-events-none absolute right-2 left-2 z-10 h-0.5 rounded-full bg-emerald-400 ${className}`} />
 );
 
 const ArrivalToggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (

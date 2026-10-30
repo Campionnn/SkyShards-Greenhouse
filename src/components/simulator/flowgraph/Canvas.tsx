@@ -615,7 +615,7 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
     };
   }, [rf, frameAll]);
 
-  const minimapColor = useCallback((n: Node) => (n.type === "frame" || n.type === "start" ? "transparent" : n.selected ? "#34d399" : "#334155"), []);
+  const minimapColor = useCallback((n: Node) => (n.type === "frame" || n.type === "start" ? "transparent" : n.selected ? "var(--color-select)" : "var(--color-line-strong)"), []);
 
   const hiddenWires = derived.wires.length;
 
@@ -671,7 +671,7 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
           colorMode="dark"
           aria-label="Flow steps"
         >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="rgba(148,163,184,0.16)" />
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1.4} color="var(--color-line)" />
           {busy && (
             <Panel position="top-left">
               <div className="fg-hud fg-busy">
@@ -711,8 +711,8 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
               nodeColor={minimapColor}
               nodeStrokeWidth={0}
               nodeBorderRadius={4}
-              maskColor="rgba(2,6,23,0.55)"
-              maskStrokeColor="rgba(226,232,240,0.45)"
+              maskColor="color-mix(in oklab, var(--color-surface-page) 55%, transparent)"
+              maskStrokeColor="color-mix(in oklab, var(--color-fg-body) 45%, transparent)"
               maskStrokeWidth={1.5}
               bgColor="transparent"
               style={{ width: 184, height: 116, margin: 0, position: "static" }}

@@ -178,7 +178,7 @@ export const AddStepMenu: React.FC<{
                 onClick={it.run}
                 className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 ${i === current ? "bg-slate-400/10" : ""}`}
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[7px] bg-slate-800 text-slate-400 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)] [&>svg]:h-4 [&>svg]:w-4">{it.icon}</span>
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[7px] bg-slate-800 text-slate-400 shadow-[inset_0_0_0_1px_var(--color-line)] [&>svg]:h-4 [&>svg]:w-4">{it.icon}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-medium text-slate-100" title={it.title}>
                     {it.title}

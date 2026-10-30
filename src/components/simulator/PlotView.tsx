@@ -331,7 +331,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
       <div ref={fitRef} className="w-full">
         <div
           ref={gridRef}
-          className="relative mx-auto select-none rounded-xl bg-slate-950/60 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]"
+          className="relative mx-auto select-none rounded-xl bg-slate-950/60 shadow-[inset_0_0_0_1px_var(--color-line)]"
           style={{ width, height }}
           onPointerMove={trackHover}
           onPointerDown={onTap}

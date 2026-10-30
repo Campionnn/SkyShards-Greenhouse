@@ -5,7 +5,7 @@ import { EXIT_STYLE, type ExitKind } from "./shared";
 
 // One wire per exit. Forward wires are beziers; back wires and wires that would cross nodes run
 // orthogonally along a lane (see routeWires); self loops arc over their node. A chevron in the
-// middle shows the direction. Colour transitions are 150ms (hover glow); nothing else animates.
+// middle shows the direction. Highlighted wires are brighter and thicker (no glow); colour changes are 150ms.
 
 export type ExitEdgeData = {
   kind: ExitKind;
@@ -26,7 +26,6 @@ const ExitEdgeView: React.FC<EdgeProps<ExitEdgeType>> = ({ sourceX, sourceY, tar
   const { d, mid, angle } = wirePath(data.route, sourceX - 6, sourceY, targetX + 6, targetY);
   return (
     <g className={`fg-wire ${data.dim ? "is-dim" : ""}`}>
-      <path d={d} className={`fg-wire-glow ${data.hot ? "is-on" : ""}`} style={{ stroke: st.hot }} />
       <path d={d} className="fg-wire-path" style={{ stroke: color, strokeWidth: data.hot ? 2.75 : 2.25 }} />
       {/* Wide invisible stroke so the wire is easy to hover. */}
       <path d={d} className="react-flow__edge-interaction" fill="none" strokeOpacity={0} strokeWidth={14} />
@@ -40,7 +39,7 @@ export const ExitEdge = memo(ExitEdgeView);
 /** The wire from the Start pill to the start step. */
 const StartEdgeView: React.FC<EdgeProps> = ({ sourceX, sourceY, targetX, targetY }) => {
   const { d } = wirePath({ type: "bezier" }, sourceX - 6, sourceY, targetX + 6, targetY);
-  return <path d={d} className="fg-wire-path" style={{ stroke: "#34d399", strokeWidth: 2.25, opacity: 0.85 }} />;
+  return <path d={d} className="fg-wire-path" style={{ stroke: "var(--color-go)", strokeWidth: 2.25, opacity: 0.85 }} />;
 };
 
 export const StartEdge = memo(StartEdgeView);

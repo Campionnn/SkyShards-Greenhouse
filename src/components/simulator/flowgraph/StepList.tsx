@@ -34,7 +34,7 @@ export const StepList: React.FC<{ onOpen: (i: number) => void; onOpenPlot?: () =
           onClick={onOpenPlot}
           className="mb-4 flex w-full cursor-pointer items-center gap-3 rounded-xl border border-slate-700/50 bg-slate-800/40 px-3 py-2.5 text-left transition-[background-color,transform] duration-150 ease-snappy active:scale-[0.99] active:bg-slate-800/70"
         >
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-800 text-slate-400 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-800 text-slate-400 shadow-[inset_0_0_0_1px_var(--color-line)]">
             <SlidersHorizontal className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
@@ -60,7 +60,7 @@ export const StepList: React.FC<{ onOpen: (i: number) => void; onOpenPlot?: () =
                 className="w-full cursor-pointer rounded-xl border border-slate-700/50 bg-slate-800/40 p-3 text-left transition-[background-color,transform] duration-150 ease-snappy active:scale-[0.99] active:bg-slate-800/70"
               >
                 <div className="flex items-start gap-2.5">
-                  <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-[9px] bg-slate-800 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]">
+                  <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-[9px] bg-slate-800 shadow-[inset_0_0_0_1px_var(--color-line)]">
                     <CropImage cropId={f.icon} cropName={nameOf(f.icon)} size="custom" width={26} height={26} showFallback={false} />
                     <span className="absolute -top-1.5 -left-1.5 grid h-[18px] min-w-[18px] place-items-center rounded-[5px] bg-slate-700 px-1 text-[10.5px] font-semibold tabular-nums text-slate-200 shadow">
                       {i + 1}
@@ -89,7 +89,7 @@ export const StepList: React.FC<{ onOpen: (i: number) => void; onOpenPlot?: () =
                 {f.targets.length > 0 && (
                   <span className="mt-2.5 flex flex-wrap gap-1">
                     {f.targets.slice(0, 4).map(([id, n]) => (
-                      <span key={id} className="inline-flex items-center gap-1 rounded-md bg-slate-900/70 py-0.5 pr-1.5 pl-1 text-[11.5px] font-medium text-slate-300 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]">
+                      <span key={id} className="inline-flex items-center gap-1 rounded-md bg-slate-900/70 py-0.5 pr-1.5 pl-1 text-[11.5px] font-medium text-slate-300 shadow-[inset_0_0_0_1px_var(--color-line)]">
                         <CropImage cropId={id} cropName={nameOf(id)} size="custom" width={14} height={14} showFallback={false} />
                         {nameOf(id)}
                         {n > 1 && <span className="tabular-nums text-slate-500">×{n}</span>}
