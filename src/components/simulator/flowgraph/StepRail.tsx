@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { ChevronRight, CodeXml, GripVertical, Plus, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, ClipboardPaste, CodeXml, Copy, CopyPlus, GripVertical, LayoutGrid, MousePointer2, Play, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { useContextMenu } from "../../ui/contextMenuContext";
 import { CropImage } from "../../shared";
 import { IconButton, Kbd, KitLabel } from "../../ui/kit";
 import { nameOf } from "../format";
@@ -31,6 +32,7 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
   const shown = steps.map((_, i) => i).filter(matches);
   const overrides = overrideCount(plot.policies);
   const scriptOn = !!plot.script?.source.trim() && plot.script.enabled !== false;
+  const openMenu = useContextMenu();
 
   const open = (i: number) => {
     api.select(i);
@@ -46,16 +48,56 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
     }
   };
 
+  /** Moves a step in flow order and keeps the same step selected. */
+  const move = (from: number, to: number) => {
+    if (from === to) return;
+    api.edit((p) => moveStep(p, from, to));
+    if (api.selected === from) api.select(to);
+    else if (api.selected !== null && from < api.selected && to >= api.selected) api.select(api.selected - 1);
+    else if (api.selected !== null && from > api.selected && to <= api.selected) api.select(api.selected + 1);
+  };
   const drop = () => {
-    if (drag && drag.from !== drag.to) {
-      const { from, to } = drag;
-      api.edit((p) => moveStep(p, from, to));
-      if (api.selected === from) api.select(to);
-      else if (api.selected !== null && from < api.selected && to >= api.selected) api.select(api.selected - 1);
-      else if (api.selected !== null && from > api.selected && to <= api.selected) api.select(api.selected + 1);
-    }
+    if (drag) move(drag.from, drag.to);
     setDrag(null);
   };
+  const canMove = (from: number, to: number) => to >= 0 && to < steps.length && from !== pinned && to !== pinned;
+
+  const stepMenu = (e: React.MouseEvent, i: number) =>
+    openMenu(e, [
+      { heading: `${i + 1}. ${stepLabel(steps[i])}` },
+      { label: "Select", icon: <MousePointer2 />, onSelect: () => open(i) },
+      { label: "Edit layout", icon: <LayoutGrid />, onSelect: () => api.openLayout(i) },
+      { label: "Set as start", icon: <Play />, disabled: i === plot.flow.startIndex, onSelect: () => api.setStart(i) },
+      { separator: true },
+      { label: "Copy", icon: <Copy />, shortcut: "Ctrl C", onSelect: () => api.copyStep(i) },
+      ...(api.pasteStep ? [{ label: "Paste after", icon: <ClipboardPaste />, shortcut: "Ctrl V", onSelect: () => api.pasteStep?.() }] : []),
+      { label: "Duplicate", icon: <CopyPlus />, shortcut: "Ctrl D", onSelect: () => api.duplicateStep(i) },
+      { separator: true },
+      { label: "Move up", icon: <ArrowUp />, disabled: !canMove(i, i - 1), onSelect: () => move(i, i - 1) },
+      { label: "Move down", icon: <ArrowDown />, disabled: !canMove(i, i + 1), onSelect: () => move(i, i + 1) },
+      { separator: true },
+      {
+        label: "Delete",
+        icon: <Trash2 />,
+        tone: "danger",
+        shortcut: "Del",
+        disabled: steps.length <= 1,
+        title: steps.length <= 1 ? "A flow needs at least one step" : undefined,
+        onSelect: () => api.deleteStep(i),
+      },
+    ]);
+
+  const plotMenu = (e: React.MouseEvent) =>
+    openMenu(e, [
+      { heading: `Plot ${api.plotId}` },
+      { label: "Plot settings", icon: <SlidersHorizontal />, onSelect: () => api.select(null) },
+      ...(api.openScript
+        ? [
+            { label: plot.script?.source.trim() ? "Edit plot script" : "Write a plot script", icon: <CodeXml />, onSelect: () => api.openScript!("plot") },
+            { label: "Controller script", icon: <CodeXml />, onSelect: () => api.openScript!("controller") },
+          ]
+        : []),
+    ]);
 
   return (
     <aside className={`flex min-h-0 flex-col border-r border-slate-700/60 bg-slate-900 ${className}`} aria-label="Steps">
@@ -134,6 +176,7 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
               <button
                 type="button"
                 onClick={() => open(i)}
+                onContextMenu={(e) => stepMenu(e, i)}
                 aria-current={sel ? "true" : undefined}
                 className={`group flex w-full cursor-pointer items-center gap-2 rounded-lg py-1.5 pr-1.5 pl-1 text-left transition-[background-color,opacity] duration-150 ${
                   sel ? "bg-emerald-500/10 shadow-[inset_0_0_0_1px_rgba(52,211,153,0.25)]" : "hover:bg-slate-400/[0.06]"
@@ -172,6 +215,7 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
         <button
           type="button"
           onClick={() => api.select(null)}
+          onContextMenu={plotMenu}
           aria-current={api.selected === null ? "true" : undefined}
           className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors duration-150 active:scale-[0.99] ${
             api.selected === null ? "border-emerald-500/30 bg-emerald-500/10" : "border-slate-700/50 bg-slate-800/40 hover:bg-slate-700/40"

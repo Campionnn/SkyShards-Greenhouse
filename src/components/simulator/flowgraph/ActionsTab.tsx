@@ -1,5 +1,5 @@
 import React from "react";
-import { RotateCcw, X } from "lucide-react";
+import { ChevronDown, Pencil, RotateCcw, X } from "lucide-react";
 import type { Policies, PolicyOverrides } from "../../../simulator";
 import { ACTION_FIELDS, labelOf, type Field } from "./InspectorFields";
 import { IconButton, KitLabel } from "../../ui/kit";
@@ -48,12 +48,12 @@ export const ActionsTab: React.FC<{
           ))}
         </div>
       ) : (
-        <p className="rounded-xl border border-dashed border-slate-700/70 px-3 py-3 text-center text-[12px] text-slate-500">Nothing overridden: everything below is inherited from {inheritsFrom}.</p>
+        <p className="rounded-xl border border-dashed border-slate-700/70 px-3 py-3 text-center text-[12px] text-slate-500">Nothing overridden: everything below is inherited from {inheritsFrom}. Click a value to override it.</p>
       )}
       <KitLabel className="mt-5 mb-2">Inherited</KitLabel>
       <div className="flex flex-col gap-3">
         {sections.map((s) => (
-          <div key={s} className="rounded-xl border border-slate-700/50 bg-slate-800/30 px-1 py-1">
+          <div key={s} className="@container rounded-xl border border-slate-700/50 bg-slate-800/30 px-1 py-1">
             <div className="px-2.5 pt-1.5 pb-1 text-[11px] font-medium text-slate-500">{s}</div>
             {rest
               .filter((f) => f.section === s)
@@ -68,6 +68,20 @@ export const ActionsTab: React.FC<{
   );
 };
 
+/** The value as a select-like field: bordered pill with a chevron (the same look as the Go-to dropdown). */
+const ValuePill: React.FC<{ text: string; tone: "override" | "inherited" }> = ({ text, tone }) => (
+  <span
+    className={`inline-flex h-[26px] max-w-full min-w-0 items-center gap-1.5 rounded-[7px] border pr-1.5 pl-2 text-[12.5px] font-medium transition-colors duration-150 ${
+      tone === "override"
+        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200 group-hover/row:border-emerald-400/60"
+        : "border-slate-600/40 bg-slate-950/50 text-slate-300 group-hover/row:border-slate-500/70 group-hover/row:text-slate-100"
+    }`}
+  >
+    <span className="truncate">{text}</span>
+    <ChevronDown className={`h-3 w-3 shrink-0 ${tone === "override" ? "text-emerald-400/80" : "text-slate-500 group-hover/row:text-slate-300"}`} />
+  </span>
+);
+
 const OverrideRow: React.FC<{ field: Field; value: string; inherited: string; inheritsFrom: string; onChange: (v: string | undefined) => void }> = ({
   field,
   value,
@@ -77,23 +91,31 @@ const OverrideRow: React.FC<{ field: Field; value: string; inherited: string; in
 }) => {
   const rise = useRiseIn();
   return (
-    <div className={`flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-slate-800/50 py-2 pr-1.5 pl-3 ${rise}`}>
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
-      <span className="min-w-0 flex-1 text-[12.5px] text-slate-200" title={field.help}>
-        {field.label}
-        {inherited !== value && <span className="block text-[11px] text-slate-500">otherwise {labelOf(field, inherited)}</span>}
-      </span>
+    <div className={`flex items-center gap-1 rounded-xl border border-emerald-500/20 bg-slate-800/50 pr-1 ${rise}`}>
       <Dropdown
-        label={`${field.label}: ${labelOf(field, value)}`}
+        label={`${field.label}: ${labelOf(field, value)}. Change`}
+        title={field.help ? `${field.help}\n\nClick to change.` : "Click to change"}
         look="plain"
+        chevron={false}
         align="end"
-        width={250}
-        className="flex h-7 max-w-[60%] items-center gap-1 rounded-lg px-2 text-[12.5px] font-medium text-emerald-300 transition-colors duration-150 hover:bg-emerald-500/10"
-        button={<span className="truncate">{labelOf(field, value)}</span>}
+        width={260}
+        className="group/row flex min-w-0 flex-1 items-center gap-2.5 rounded-l-xl py-2 pr-1 pl-3 text-left transition-colors duration-150 hover:bg-slate-700/30"
+        button={
+          <>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
+            <span className="min-w-0 flex-1 text-[12.5px] leading-snug text-slate-100">
+              {field.label}
+              {inherited !== value && <span className="block text-[11px] text-slate-500">otherwise {labelOf(field, inherited)}</span>}
+            </span>
+            <span className="flex min-w-0 max-w-[50%] shrink justify-end" title={labelOf(field, value)}>
+              <ValuePill text={labelOf(field, value)} tone="override" />
+            </span>
+          </>
+        }
       >
         {(close) => <ValueMenu field={field} value={value} inherited={inherited} onPick={(c) => (onChange(c), close())} />}
       </Dropdown>
-      <IconButton aria-label={`Reset to inherited (${labelOf(field, inherited)} from ${inheritsFrom})`} onClick={() => onChange(undefined)} className="text-slate-500">
+      <IconButton aria-label={`Reset to inherited (${labelOf(field, inherited)} from ${inheritsFrom})`} onClick={() => onChange(undefined)} className="text-slate-500 hover:text-slate-200">
         <X />
       </IconButton>
     </div>
@@ -107,19 +129,26 @@ const InheritedRow: React.FC<{ field: Field; value: string; onChange: (v: string
     look="plain"
     chevron={false}
     align="end"
-    width={250}
-    className="group/inh flex w-full items-center gap-3 rounded-lg px-2.5 py-[7px] text-left text-[12.5px] transition-colors duration-150 hover:bg-slate-700/40"
+    width={260}
+    className="group/row flex w-full items-center gap-2 rounded-lg py-1.5 pr-1.5 pl-2.5 text-left transition-colors duration-150 hover:bg-slate-700/40 aria-expanded:bg-slate-700/40"
     button={
       <>
-        <span className="min-w-0 flex-1 text-slate-400 group-hover/inh:text-slate-200">{field.label}</span>
-        <span className="max-w-[55%] text-right text-slate-500">{labelOf(field, value)}</span>
+        <span className="min-w-0 flex-1 text-[12.5px] leading-snug text-slate-400 transition-colors duration-150 group-hover/row:text-slate-100">{field.label}</span>
+        <span
+          className="hidden shrink-0 items-center gap-1 text-[11px] font-medium text-slate-400 opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 group-focus-visible/row:opacity-100 @[21rem]:flex [@media(hover:none)]:hidden"
+          aria-hidden
+        >
+          <Pencil className="h-3 w-3" /> Override
+        </span>
+        <span className="flex min-w-0 max-w-[50%] shrink justify-end" title={labelOf(field, value)}>
+          <ValuePill text={labelOf(field, value)} tone="inherited" />
+        </span>
       </>
     }
   >
     {(close) => <ValueMenu field={field} value={value} inherited={value} onPick={(c) => (c !== undefined && onChange(c), close())} overrideOnly />}
   </Dropdown>
 );
-
 const ValueMenu: React.FC<{ field: Field; value: string; inherited: string; onPick: (v: string | undefined) => void; overrideOnly?: boolean }> = ({
   field,
   value,

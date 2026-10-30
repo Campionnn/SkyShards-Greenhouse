@@ -676,6 +676,11 @@ describe("simulator panels render", () => {
         scripted: false,
         showAllWires: true,
         setShowAllWires: noop,
+        dismissOverlays: noop,
+        setStart: noop,
+        copyStep: noop,
+        pasteStep: null,
+        switchPlot: noop,
         ...over,
       };
       return wrap(<FlowEditorContext.Provider value={api}>{node}</FlowEditorContext.Provider>).replace(/<!-- -->/g, "");

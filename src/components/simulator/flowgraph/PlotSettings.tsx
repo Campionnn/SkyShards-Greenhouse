@@ -1,7 +1,7 @@
 import React from "react";
-import { CodeXml, Play, Repeat } from "lucide-react";
+import { CodeXml, Pencil, Play, Repeat } from "lucide-react";
 import { CropImage } from "../../shared";
-import { KitLabel, Pill, Switch } from "../../ui/kit";
+import { KitButton, KitLabel, Pill, Switch } from "../../ui/kit";
 import { ActionsTab } from "./ActionsTab";
 import { useFlowEditor } from "./context";
 import { Dropdown, MenuItem } from "./InspectorPopover";
@@ -16,8 +16,6 @@ export const PlotSettings: React.FC = () => {
   const { plot, scenario } = api;
   const { steps, loop, startIndex } = plot.flow;
   const start = steps[startIndex];
-  const script = plot.script;
-  const scriptOn = !!script?.source.trim() && script.enabled !== false;
 
   return (
     <div className="flex flex-col">
@@ -85,17 +83,7 @@ export const PlotSettings: React.FC = () => {
             }
           </Dropdown>
         </section>
-        <section className="flex items-center gap-3 rounded-xl border border-slate-700/50 bg-slate-800/40 p-3">
-          <CodeXml className="h-3.5 w-3.5 shrink-0 text-sky-300" />
-          <span className="flex-1 text-[13px] font-medium text-slate-100">Plot script</span>
-          {scriptOn ? (
-            <Pill tone="sky">attached{api.scripted ? " · may jump between steps" : ""}</Pill>
-          ) : script?.source.trim() ? (
-            <Pill>disabled</Pill>
-          ) : (
-            <span className="text-[12px] text-slate-500">none</span>
-          )}
-        </section>
+        <PlotScriptCard />
       </div>
       <div className="px-4 pt-6 pb-6">
         <KitLabel className="mb-1">Plot actions</KitLabel>
@@ -115,5 +103,70 @@ export const PlotSettings: React.FC = () => {
         />
       </div>
     </div>
+  );
+};
+
+/** Lines of the script that carry code (not blank, not only a comment), for the preview. */
+function previewLines(source: string, n: number): string[] {
+  const lines = source.split("\n").map((l) => l.replace(/\s+$/, ""));
+  const code = lines.filter((l) => l.trim() && !/^\s*(\/\/|#)/.test(l));
+  return (code.length ? code : lines.filter((l) => l.trim())).slice(0, n);
+}
+
+/** The plot's script: status, a short preview and the buttons that open the script editor. */
+const PlotScriptCard: React.FC = () => {
+  const api = useFlowEditor();
+  const script = api.plot.script;
+  const source = script?.source ?? "";
+  const has = !!source.trim();
+  const on = has && script?.enabled !== false;
+  const lines = has ? source.split("\n").length : 0;
+  const controller = api.scenario.script;
+  const controllerHas = !!controller?.source.trim();
+  const preview = has ? previewLines(source, 3) : [];
+  return (
+    <section className="flex flex-col gap-2.5 rounded-xl border border-slate-700/50 bg-slate-800/40 p-3" aria-label="Plot script">
+      <div className="flex items-center gap-2">
+        <CodeXml className="h-3.5 w-3.5 shrink-0 text-sky-300" />
+        <span className="flex-1 text-[13px] font-medium text-slate-100">Plot script</span>
+        {on ? (
+          <Pill tone="sky" title={api.scripted ? "It can move this plot between steps (plot.goto)" : undefined}>
+            enabled · {lines} line{lines === 1 ? "" : "s"}
+          </Pill>
+        ) : has ? (
+          <Pill title="Kept, but it never runs">disabled · {lines} line{lines === 1 ? "" : "s"}</Pill>
+        ) : (
+          <span className="text-[12px] text-slate-500">none</span>
+        )}
+      </div>
+      {has ? (
+        <pre
+          className={`overflow-hidden rounded-lg border border-slate-700/50 bg-slate-950/60 px-2.5 py-2 font-mono text-[11px] leading-[1.55] ${on ? "text-slate-300" : "text-slate-500"}`}
+          title={source.length > 400 ? `${source.slice(0, 400)}…` : source}
+        >
+          {preview.map((l, i) => (
+            <span key={i} className="block truncate">
+              {l}
+            </span>
+          ))}
+          {lines > preview.length && <span className="block text-slate-600">…</span>}
+        </pre>
+      ) : (
+        <p className="text-[12px] leading-snug text-slate-500">
+          Code that runs alongside this flow: break a mutation at a stage, move the plot between steps from code, keep variables.
+        </p>
+      )}
+      {api.openScript && (
+        <div className="flex flex-wrap gap-1.5">
+          <KitButton variant={has ? "neutral" : "accent"} onClick={() => api.openScript!("plot")}>
+            <Pencil /> {has ? "Edit script" : "Write a script"}
+          </KitButton>
+          <KitButton variant="ghost" onClick={() => api.openScript!("controller")} title="The scenario's controller script: it sees and acts on every plot">
+            <CodeXml /> Controller script
+            <span className={`text-[11px] ${controllerHas ? "text-sky-300" : "text-slate-500"}`}>{controllerHas ? (controller?.enabled === false ? "off" : "on") : "none"}</span>
+          </KitButton>
+        </div>
+      )}
+    </section>
   );
 };

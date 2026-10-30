@@ -303,6 +303,8 @@ export const SimulatorPage: React.FC = () => {
       action: { label: "Undo", onClick: () => setScenario(before) },
     });
     if (dest.kind === "appendStep" && !isBlankScenario(before)) setEditing({ plotId: r.plotId, step: r.stepIndex });
+    // Picked from inside the flow editor: it stays open on the plot that got the layout.
+    else if (editing) setEditing({ plotId: r.plotId, step: 0 });
   };
 
   const loadMany = (codes: string[]) => {
@@ -585,18 +587,19 @@ export const SimulatorPage: React.FC = () => {
 
       {editingPlot !== null && scenario.plots.some((p) => p.id === editingPlot) && (
         <FlowGraphEditor
-          key={`${editing!.plotId}-${editing!.step}`}
           scenario={scenario}
           plotId={editingPlot}
           initialStep={editing!.step}
           onChange={setScenario}
           onSwitchPlot={(plotId) => setEditing({ plotId, step: 0 })}
           onClose={() => setEditingPlot(null)}
+          onEditScript={(target) => setScripting(target)}
+          onLoadLayout={() => setPicking(true)}
         />
       )}
 
       {scripting !== null && (scripting === "controller" || scenario.plots.some((p) => p.id === scripting)) && (
-        <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true" aria-label="Script editor">
+        <div className="fixed inset-0 z-[45] bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true" aria-label="Script editor">
           <div className="w-full max-w-screen-2xl mx-auto px-2 sm:px-4 py-6">
             <div className="bg-slate-900 rounded-lg shadow-2xl">
               <ScriptEditor

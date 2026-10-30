@@ -22,7 +22,9 @@ import "./canvas.css";
 import { Minus, Plus, Scan } from "lucide-react";
 import { Kbd, KitButton } from "../../ui/kit";
 import { BUSY_WIRES, useFlowEditor, type FlowEditorApi } from "./context";
+import { useContextMenu } from "../../ui/contextMenuContext";
 import { CanvasActionsContext, type CanvasActions } from "./CanvasContext";
+import { exitMenu, frameMenu, paneMenu, stepMenu } from "./CanvasMenus";
 import { frameBoxes, rectOf, routeWires, snap8, stepNodeBase, type Rect, type StepNodeData, type WireRef } from "./CanvasModel";
 import { ExitEdge, StartEdge, type ExitEdgeType } from "./ExitEdge";
 import { exitTarget, withStepUi } from "./model";
@@ -64,6 +66,27 @@ const sameData = (a: StepNodeData, b: StepNodeData) => {
 
 type XY = { x: number; y: number };
 
+const START_GAP = 56;
+/**
+ * Where the Start pill goes: left of the start step's header, clear of every other step (it
+ * moves further left past anything in the way), or above the header when the left side stays
+ * blocked.
+ */
+function startPlacement(start: number, rects: Rect[], size: { width: number; height: number } | undefined): XY {
+  const s = rects[start];
+  if (!s) return { x: 0, y: 0 };
+  const w = size?.width ?? 96;
+  const h = size?.height ?? 34;
+  const clear = (x: number, y: number) =>
+    rects.every((r, k) => k === start || x + w + 16 <= r.x || x - 16 >= r.x + r.w || y + h + 16 <= r.y || y - 16 >= r.y + r.h);
+  const y = s.y + 4;
+  for (let k = 0; k < 4; k++) {
+    const x = s.x - START_GAP - w - k * 140;
+    if (clear(x, y)) return { x, y };
+  }
+  return { x: s.x, y: s.y - h - 28 };
+}
+
 /** Wire id "<stepId>:<exit>" -> [stepIndex, exitIndex]. */
 function edgeExit(api: FlowEditorApi, id: string): [number, number] | null {
   if (id === START_ID) return null;
@@ -96,6 +119,8 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
   // Extra selected steps (shift-click / box select), valid while `for` is the editor selection.
   const [multi, setMulti] = useState<{ for: number | null; ids: Set<string> }>({ for: null, ids: new Set() });
   const frameDrag = useRef<{ key: string; from: XY; members: Record<string, XY> } | null>(null);
+  /** A multi-select gesture is under way: Shift / Ctrl / Cmd held at the last press, or a box selection. */
+  const multiGesture = useRef(false);
 
   const far = useStore((s) => s.transform[2] < FAR_ZOOM);
 
@@ -119,6 +144,8 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
 
   // ---- Wires ---------------------------------------------------------------------------------
   const busy = derived.total >= BUSY_WIRES;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   const drawn = useMemo(
     () =>
       derived.wires.filter(
@@ -167,6 +194,7 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
   const seen = useRef<Set<string> | null>(null);
   if (seen.current === null) seen.current = new Set(steps.map((s) => s.id));
   const nodeCache = useRef(new Map<string, StepNodeType>());
+  const otherCache = useRef(new Map<string, AppNode>());
 
   const nodes = useMemo(() => {
     const drawnIn = steps.map(() => 0);
@@ -175,30 +203,63 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
       if (w.s !== w.t) drawnIn[w.t]++;
       if (w.s === selected || (hotExit && hotExit[0] === w.s && hotExit[1] === w.j)) hotIn.add(w.t);
     }
-    const effective = multi.for === selected ? multi.ids : new Set<string>();
+    const effective = selected !== null && multi.for === selected ? multi.ids : new Set<string>();
     const out: AppNode[] = [];
 
+    // Frames and the Start pill keep their node object (and always carry `measured`) unless what
+    // they show changes: a node React Flow sees as new and unmeasured is hidden for a frame, which
+    // read as the frame flashing while a step inside it was dragged.
+    const nextFrames = new Map<string, AppNode>();
     for (const f of frameBoxes(steps, rects, scripted ? derived.unreached : null)) {
-      out.push({
-        id: `frame:${f.key}`,
-        type: "frame",
-        position: { x: f.x, y: f.y },
-        data: { label: f.label, sub: f.sub, tone: f.tone, members: f.members, w: f.w, h: f.h },
-        draggable: true,
-        dragHandle: ".fg-frame-label",
-        selectable: false,
-        deletable: false,
-        connectable: false,
-        focusable: false,
-        zIndex: -1,
-      });
+      const id = `frame:${f.key}`;
+      const prev = otherCache.current.get(id) as FrameNodeType | undefined;
+      const d = prev?.data;
+      const same =
+        prev && d && prev.position.x === f.x && prev.position.y === f.y && d.w === f.w && d.h === f.h && d.label === f.label && d.sub === f.sub && d.tone === f.tone && d.members.join() === f.members.join();
+      const node: FrameNodeType = same
+        ? prev
+        : {
+            id,
+            type: "frame",
+            position: { x: f.x, y: f.y },
+            data: { label: f.label, sub: f.sub, tone: f.tone, members: f.members, w: f.w, h: f.h },
+            measured: { width: f.w, height: f.h },
+            draggable: true,
+            dragHandle: ".fg-frame-label",
+            selectable: false,
+            deletable: false,
+            connectable: false,
+            focusable: false,
+            zIndex: -1,
+          };
+      nextFrames.set(id, node);
+      out.push(node);
     }
 
     const startStep = steps[plot.flow.startIndex];
     if (startStep) {
-      const p = pos(plot.flow.startIndex);
-      out.push({ id: START_ID, type: "start", position: { x: p.x - 150, y: p.y + 4 }, data: {}, draggable: false, selectable: false, deletable: false, focusable: false });
+      const at = startPlacement(plot.flow.startIndex, rects, sizes[START_ID]);
+      const prev = otherCache.current.get(START_ID);
+      const node: AppNode =
+        prev && prev.position.x === at.x && prev.position.y === at.y && prev.measured === sizes[START_ID]
+          ? prev
+          : {
+              id: START_ID,
+              type: "start",
+              position: at,
+              data: {},
+              measured: sizes[START_ID],
+              draggable: false,
+              selectable: false,
+              deletable: false,
+              focusable: false,
+              // Above every step, so it can never hide behind one.
+              zIndex: 1000,
+            };
+      nextFrames.set(START_ID, node);
+      out.push(node);
     }
+    otherCache.current = nextFrames;
 
     const next = new Map<string, StepNodeType>();
     steps.forEach((s, i) => {
@@ -246,7 +307,7 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
       let selChanged = false;
       const selNext = new Set(multi.for === a.selected ? multi.ids : []);
       for (const c of changes) {
-        if (c.type === "dimensions" && c.dimensions && ids.includes(c.id)) {
+        if (c.type === "dimensions" && c.dimensions && (ids.includes(c.id) || c.id === START_ID)) {
           measured ??= {};
           measured[c.id] = c.dimensions;
         } else if (c.type === "position" && c.position) {
@@ -262,7 +323,9 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
             moved ??= {};
             moved[c.id] = c.position;
           }
-        } else if (c.type === "select" && ids.includes(c.id)) {
+        } else if (c.type === "select" && ids.includes(c.id) && (multiGesture.current || !c.selected)) {
+          // Selection is the editor's: React Flow's own changes count only for an explicit
+          // multi-select (Shift / Ctrl click, box select), never for a plain click or a drag.
           selChanged = true;
           if (c.selected) selNext.add(c.id);
           else selNext.delete(c.id);
@@ -369,7 +432,46 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
     if (node.type === "step") apiRef.current.openLayout(indexOf(node.id));
   }, []);
 
-  const onPaneClick = useCallback(() => apiRef.current.select(null), []);
+  const onPaneClick = useCallback(() => {
+    apiRef.current.dismissOverlays();
+    apiRef.current.select(null);
+  }, []);
+
+  // ---- Context menus -------------------------------------------------------------------------
+  const openMenu = useContextMenu();
+  const onPaneContextMenu = useCallback(
+    (e: MouseEvent | React.MouseEvent) => {
+      const screen = { x: e.clientX, y: e.clientY };
+      apiRef.current.dismissOverlays();
+      openMenu(e, paneMenu(apiRef.current, { screen, flow: rf.screenToFlowPosition(screen) }, { frameAll: () => void rf.fitView({ ...FIT, duration: camera() }), busy: busyRef.current }));
+    },
+    [openMenu, rf]
+  );
+  const onNodeContextMenu = useCallback(
+    (e: React.MouseEvent, node: AppNode) => {
+      const a = apiRef.current;
+      a.dismissOverlays();
+      if (node.type === "step") {
+        const i = indexOf(node.id);
+        // An exit row: that exit's menu; anywhere else on the node: the step's.
+        const row = (e.target as HTMLElement).closest<HTMLElement>("[data-exit]");
+        if (a.selected !== i) a.select(i);
+        openMenu(e, row ? exitMenu(a, i, Number(row.dataset.exit)) : stepMenu(a, i));
+      } else if (node.type === "frame") {
+        const d = (node as FrameNodeType).data;
+        openMenu(e, frameMenu(a, { label: d.label, script: d.tone === "script", members: d.members }));
+      } else e.preventDefault();
+    },
+    [openMenu]
+  );
+  const onEdgeContextMenu = useCallback(
+    (e: React.MouseEvent, edge: Edge) => {
+      const x = edgeExit(apiRef.current, edge.id);
+      if (!x) return e.preventDefault();
+      openMenu(e, exitMenu(apiRef.current, x[0], x[1]));
+    },
+    [openMenu]
+  );
 
   const onEdgeMouseEnter = useCallback((_: React.MouseEvent, e: Edge) => {
     const x = edgeExit(apiRef.current, e.id);
@@ -522,6 +624,14 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
       <div
         ref={wrapRef}
         className={`fg-canvas ${far ? "fg-far" : ""} ${className}`}
+        // Fallback: nothing on the canvas shows the browser's menu (ours open from the RF handlers).
+        onContextMenu={(e) => e.preventDefault()}
+        // A press on the empty canvas closes the shell's popovers too (React Flow may swallow the
+        // document mousedown they listen for).
+        onPointerDownCapture={(e) => {
+          multiGesture.current = e.shiftKey || e.ctrlKey || e.metaKey;
+          if ((e.target as HTMLElement).classList?.contains("react-flow__pane")) apiRef.current.dismissOverlays();
+        }}
       >
         <ReactFlow<AppNode, Edge>
           nodes={nodes}
@@ -534,6 +644,9 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
           onNodeClick={onNodeClick}
           onNodeDoubleClick={onNodeDoubleClick}
           onPaneClick={onPaneClick}
+          onPaneContextMenu={onPaneContextMenu}
+          onNodeContextMenu={onNodeContextMenu}
+          onEdgeContextMenu={onEdgeContextMenu}
           onEdgeMouseEnter={onEdgeMouseEnter}
           onEdgeMouseLeave={onEdgeMouseLeave}
           onEdgeClick={onEdgeClick}
@@ -548,6 +661,8 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
           zoomOnDoubleClick={false}
           multiSelectionKeyCode={["Shift", "Meta", "Control"]}
           selectionKeyCode="Shift"
+          selectNodesOnDrag={false}
+          onSelectionStart={() => (multiGesture.current = true)}
           elevateNodesOnSelect={false}
           elevateEdgesOnSelect={false}
           nodeDragThreshold={2}

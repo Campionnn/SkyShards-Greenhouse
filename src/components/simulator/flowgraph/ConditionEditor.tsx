@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Brackets,
   ChevronDown,
   Clock,
+  Copy,
   CodeXml,
   Hourglass,
   Package,
@@ -17,6 +19,7 @@ import {
   Target,
   TrendingDown,
   TrendingUp,
+  Ungroup,
   Wheat,
   X,
   type LucideIcon,
@@ -24,6 +27,7 @@ import {
 import type { Condition, ConditionGroup, ConditionMatch, FlowStep, Trigger, TriggerKind } from "../../../simulator";
 import { checkScriptExpression } from "../../../simulator";
 import { CropImage } from "../../shared";
+import { useContextMenu } from "../../ui/contextMenuContext";
 import { IconButton, KitButton, KitInput, Segmented } from "../../ui/kit";
 import { getRarityTextColor } from "../../../utilities/rarity";
 import { NumberInput } from "../controls";
@@ -450,16 +454,17 @@ const KindButton: React.FC<{ t: Trigger; onPick: (k: TriggerKind) => void }> = (
   );
 };
 
-const ConditionRow: React.FC<{ t: Trigger; steps: FlowStep[]; keyBase: string; onChange: (t: Trigger, mergeKey?: string) => void; onRemove: () => void }> = ({
-  t,
-  steps,
-  keyBase,
-  onChange,
-  onRemove,
-}) => {
+const ConditionRow: React.FC<{
+  t: Trigger;
+  steps: FlowStep[];
+  keyBase: string;
+  onChange: (t: Trigger, mergeKey?: string) => void;
+  onRemove: () => void;
+  onMenu: (e: React.MouseEvent) => void;
+}> = ({ t, steps, keyBase, onChange, onRemove, onMenu }) => {
   const rise = useRiseIn();
   return (
-    <div className={`group/cond flex items-start gap-2 rounded-lg border border-slate-700/50 bg-slate-950/35 py-1.5 pr-1 pl-1.5 ${rise}`}>
+    <div className={`group/cond flex items-start gap-2 rounded-lg border border-slate-700/50 bg-slate-950/35 py-1.5 pr-1 pl-1.5 ${rise}`} onContextMenu={onMenu}>
       <KindButton t={t} onPick={(k) => onChange(convertTrigger(t, k))} />
       <div className="min-w-0 flex-1 py-px text-[12.5px] leading-[24px] text-slate-300">
         <Sentence t={t} edit={onChange} steps={steps} keyBase={keyBase} />
@@ -484,17 +489,18 @@ const MATCH_OPTIONS = [
   { value: "any" as const, label: "ANY", title: "At least one condition must hold (OR)" },
 ];
 
-const GroupBox: React.FC<{ group: ConditionGroup; steps: FlowStep[]; depth: number; keyBase: string; onChange: (g: ConditionGroup, mergeKey?: string) => void; onRemove: () => void }> = ({
-  group,
-  steps,
-  depth,
-  keyBase,
-  onChange,
-  onRemove,
-}) => {
+const GroupBox: React.FC<{
+  group: ConditionGroup;
+  steps: FlowStep[];
+  depth: number;
+  keyBase: string;
+  onChange: (g: ConditionGroup, mergeKey?: string) => void;
+  onRemove: () => void;
+  onMenu: (e: React.MouseEvent) => void;
+}> = ({ group, steps, depth, keyBase, onChange, onRemove, onMenu }) => {
   const rise = useRiseIn();
   return (
-    <div className={`flex flex-col gap-1.5 rounded-[10px] border border-violet-400/25 bg-violet-500/[0.05] p-2 ${rise}`}>
+    <div className={`flex flex-col gap-1.5 rounded-[10px] border border-violet-400/25 bg-violet-500/[0.05] p-2 ${rise}`} onContextMenu={onMenu}>
       <div className="flex items-center gap-2 text-[12px] text-slate-400">
         <Segmented label="Combine this group with" value={group.match} options={MATCH_OPTIONS} onChange={(m) => onChange({ ...group, match: m })} />
         <span>of this group</span>
@@ -528,11 +534,44 @@ const ConditionList: React.FC<{
 }> = ({ list, match, steps, depth, keyBase, empty, lead, onChange }) => {
   const set = (i: number, c: Condition, mergeKey?: string) => onChange(list.map((x, j) => (j === i ? c : x)), match, mergeKey ? { mergeKey } : undefined);
   const remove = (i: number) => onChange(list.filter((_, j) => j !== i), match);
+  const openMenu = useContextMenu();
+  const canGroup = depth < MAX_GROUP_DEPTH;
+  /** Right-click on an entry: the innermost entry handles it, the exit card and outer groups don't. */
+  const menu = (e: React.MouseEvent, i: number) => {
+    e.stopPropagation();
+    const c = list[i];
+    const isGroup = c.kind === "group";
+    const other: ConditionMatch = match === "any" ? "all" : "any";
+    openMenu(e, [
+      { heading: isGroup ? "AND / OR group" : (KIND_INFO[(c as Trigger).kind]?.label ?? "Condition") },
+      { label: "Duplicate", icon: <Copy />, onSelect: () => onChange([...list.slice(0, i + 1), structuredClone(c), ...list.slice(i + 1)], match) },
+      {
+        label: `Wrap in ${other === "any" ? "an OR" : "an AND"} group`,
+        icon: <Brackets />,
+        disabled: !canGroup,
+        title: canGroup ? "Put it in a nested group with its own AND / OR" : `Groups nest up to ${MAX_GROUP_DEPTH} deep`,
+        onSelect: () => onChange(list.map((x, j) => (j === i ? { kind: "group", match: other, of: [x] } : x)), match),
+      },
+      ...(isGroup
+        ? [
+            {
+              label: "Ungroup",
+              icon: <Ungroup />,
+              title: "Replace the group by its conditions",
+              onSelect: () => onChange([...list.slice(0, i), ...(c as ConditionGroup).of, ...list.slice(i + 1)], match),
+            },
+          ]
+        : []),
+      { separator: true },
+      { label: isGroup ? "Remove group" : "Remove condition", icon: <X />, tone: "danger", onSelect: () => remove(i) },
+    ]);
+  };
   return (
     <div className="flex flex-col gap-1.5">
       {lead !== undefined && list.length > 1 && (
         <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-400">
-          {lead} <Segmented label="Combine conditions with" value={match} options={MATCH_OPTIONS} onChange={(m) => onChange(list, m)} /> of these hold
+          <span className="whitespace-nowrap">{lead}</span> <Segmented label="Combine conditions with" value={match} options={MATCH_OPTIONS} onChange={(m) => onChange(list, m)} />{" "}
+          <span className="whitespace-nowrap">of these hold</span>
         </div>
       )}
       {list.length === 0 && empty && <p className="px-0.5 text-[12px] text-slate-500">{empty}</p>}
@@ -540,9 +579,9 @@ const ConditionList: React.FC<{
         <React.Fragment key={i}>
           {i > 0 && <Joiner match={match} />}
           {c.kind === "group" ? (
-            <GroupBox group={c} steps={steps} depth={depth} keyBase={`${keyBase}.${i}`} onChange={(g, mk) => set(i, g, mk)} onRemove={() => remove(i)} />
+            <GroupBox group={c} steps={steps} depth={depth} keyBase={`${keyBase}.${i}`} onChange={(g, mk) => set(i, g, mk)} onRemove={() => remove(i)} onMenu={(e) => menu(e, i)} />
           ) : (
-            <ConditionRow t={c} steps={steps} keyBase={`${keyBase}.${i}`} onChange={(t, mk) => set(i, t, mk)} onRemove={() => remove(i)} />
+            <ConditionRow t={c} steps={steps} keyBase={`${keyBase}.${i}`} onChange={(t, mk) => set(i, t, mk)} onRemove={() => remove(i)} onMenu={(e) => menu(e, i)} />
           )}
         </React.Fragment>
       ))}

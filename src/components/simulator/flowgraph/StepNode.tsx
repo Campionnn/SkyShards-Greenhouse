@@ -23,6 +23,7 @@ const ExitRow: React.FC<{ step: number; j: number; row: ExitRowData; hot: boolea
     <div
       className={`fg-xrow nodrag ${hot ? "is-hot" : ""}`}
       data-kind={row.kind}
+      data-exit={j}
       style={{ "--sock": st.stroke, "--sock-hot": st.hot } as React.CSSProperties}
       onClick={(e) => {
         e.stopPropagation();

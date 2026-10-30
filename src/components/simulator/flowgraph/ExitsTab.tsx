@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, Copy, Ellipsis, Flag, GripVertical, Plus, Repeat, Trash2, TriangleAlert, Zap } from "lucide-react";
 import type { FlowStep, StepExit } from "../../../simulator";
 import { CropImage } from "../../shared";
+import { useContextMenu } from "../../ui/contextMenuContext";
 import { Divider, IconButton, KitButton, Switch } from "../../ui/kit";
 import { defaultTrigger } from "../scenarioEdit";
 import { ConditionEditor } from "./ConditionEditor";
@@ -78,6 +79,7 @@ export const ExitsTab: React.FC = () => {
 
   return (
     <RiseScope>
+      <div className="@container">
       <p className="mb-3 text-[12px] leading-relaxed text-slate-500">
         Checked top to bottom whenever the player is online. The first exit whose conditions hold is taken.{exits.length > 1 ? " Drag to change the order." : ""}
       </p>
@@ -122,6 +124,7 @@ export const ExitsTab: React.FC = () => {
       <KitButton variant="dashed" className="mt-3" onClick={add} title={exits.length ? "Another way out, e.g. to a different step under other conditions" : undefined}>
         <Plus /> Add exit
       </KitButton>
+      </div>
     </RiseScope>
   );
 };
@@ -154,6 +157,7 @@ const ExitCard: React.FC<{
   const hot = api.hotExit?.[0] === stepIndex && api.hotExit[1] === j;
   const summary = `when ${conditionSummary(exit.when, exit.match, steps)}${exit.checkOnEntry ? " · also on arrival" : ""}`;
   const toggle = () => api.setOpenExit(open ? -1 : j);
+  const openMenu = useContextMenu();
 
   return (
     <div
@@ -175,6 +179,29 @@ const ExitCard: React.FC<{
         onDragOverCard(e.clientY > r.top + r.height / 2);
       }}
       onMouseEnter={() => api.setHotExit([stepIndex, j])}
+      onContextMenu={(e) => {
+        // A condition row opens its own menu; this one is for the card.
+        if (e.defaultPrevented) return;
+        openMenu(e, [
+          { heading: `Exit ${j + 1}` },
+          { label: open ? "Collapse" : "Edit", icon: <ChevronDown />, onSelect: toggle },
+          { label: "Move earlier", icon: <ArrowUp />, disabled: j === 0, onSelect: () => onMove(j - 1) },
+          { label: "Move later", icon: <ArrowDown />, disabled: j === count - 1, onSelect: () => onMove(j + 1) },
+          { label: "Duplicate", icon: <Copy />, onSelect: onDuplicate },
+          {
+            label: exit.checkOnEntry ? "Stop checking on arrival" : "Also check on arrival",
+            icon: <Zap />,
+            onSelect: () => {
+              const next: StepExit = { ...exit };
+              if (exit.checkOnEntry) delete next.checkOnEntry;
+              else next.checkOnEntry = true;
+              onChange(next);
+            },
+          },
+          { separator: true },
+          { label: "Delete exit", icon: <Trash2 />, tone: "danger", onSelect: onRemove },
+        ]);
+      }}
       onMouseLeave={() => api.setHotExit(null)}
     >
       {dropBefore && <DropLine className="-top-[9px]" />}
@@ -197,10 +224,10 @@ const ExitCard: React.FC<{
         </span>
         <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-[5px] px-1 text-[10.5px] font-semibold tabular-nums text-slate-400 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.25)]">{j + 1}</span>
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] text-slate-400">
-          <span className="shrink-0">Go to</span>
+          <span className="hidden shrink-0 @[22rem]:inline">Go to</span>
           <TargetPicker stepIndex={stepIndex} exit={exit} onChange={onChange} />
         </span>
-        <Dropdown label={`Exit ${j + 1} actions`} look="plain" chevron={false} align="end" width={200} className="grid h-7 w-6 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors duration-150 hover:bg-slate-700/50 hover:text-slate-200" button={<Ellipsis className="h-3.5 w-3.5" />}>
+        <Dropdown label={`Exit ${j + 1} actions`} look="plain" chevron={false} align="end" width={200} className="hidden h-7 w-6 shrink-0 @[22rem]:grid place-items-center rounded-lg text-slate-500 transition-colors duration-150 hover:bg-slate-700/50 hover:text-slate-200" button={<Ellipsis className="h-3.5 w-3.5" />}>
           {(close) => (
             <>
               <MenuItem icon={<ArrowUp />} disabled={j === 0} onSelect={() => (onMove(j - 1), close())}>
@@ -220,7 +247,7 @@ const ExitCard: React.FC<{
           )}
         </Dropdown>
         {open && (
-          <IconButton aria-label="Delete exit" onClick={onRemove} className="w-6 text-slate-500 hover:text-red-300">
+          <IconButton aria-label="Delete exit" onClick={onRemove} className="hidden w-6 text-slate-500 hover:text-red-300 @[22rem]:inline-flex">
             <Trash2 />
           </IconButton>
         )}

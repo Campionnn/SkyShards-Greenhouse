@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
-import { Copy, LayoutGrid, Pencil, Play, Trash2 } from "lucide-react";
+import { ClipboardPaste, CodeXml, Copy, CopyPlus, Ellipsis, LayoutGrid, Pencil, Play, Trash2 } from "lucide-react";
 import { mergePolicies } from "../../../simulator";
 import { CropImage } from "../../shared";
 import { IconButton, KitButton, Pill, Switch, Tabs } from "../../ui/kit";
@@ -7,6 +7,7 @@ import { ActionsTab } from "./ActionsTab";
 import { useFlowEditor, type InspectorTab } from "./context";
 import { ExitsTab } from "./ExitsTab";
 import { overrideCount } from "./InspectorFields";
+import { Dropdown, MenuItem, MenuSeparator } from "./InspectorPopover";
 import { NotesTab } from "./NotesTab";
 import { PlotSettings } from "./PlotSettings";
 import { layoutFacts, stepLabel } from "./shared";
@@ -21,7 +22,7 @@ export const Inspector: React.FC<{ className?: string }> = ({ className = "" }) 
   const i = api.selected;
   const step = i === null ? undefined : api.plot.flow.steps[i];
   return (
-    <aside aria-label={step ? "Step inspector" : "Plot settings"} className={`flex min-h-0 flex-col border-l border-slate-700/60 bg-slate-900 ${className}`}>
+    <aside aria-label={step ? "Step inspector" : "Plot settings"} className={`@container flex min-h-0 flex-col border-l border-slate-700/60 bg-slate-900 ${className}`}>
       {i === null || !step ? (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-dark">
           <PlotSettings />
@@ -43,6 +44,8 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
   const targets = facts.targets.reduce((n, [, c]) => n + c, 0);
   const checked = step.watch === undefined ? targets : step.watch.length;
   const overrides = overrideCount(step.policies);
+  const scriptOn = !!plot.script?.source.trim() && plot.script.enabled !== false;
+  const scriptLines = plot.script?.source.split("\n").length ?? 0;
   const bodyRef = useRef<HTMLDivElement>(null);
 
   // A new step or tab starts at the top.
@@ -56,8 +59,8 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
       value: "targets",
       label: (
         <span className="whitespace-nowrap">
-          <span className="hidden min-[400px]:inline">Checked t</span>
-          <span className="min-[400px]:hidden">T</span>argets
+          <span className="hidden @[24rem]:inline">Checked t</span>
+          <span className="@[24rem]:hidden">T</span>argets
         </span>
       ),
       count: targets ? checked : null,
@@ -81,6 +84,16 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
               {targets === 1 ? "target" : "targets"}
               {!facts.ok && <span className="text-red-300"> · layout unreadable</span>}
             </p>
+            {scriptOn && api.openScript && (
+              <button
+                type="button"
+                onClick={() => api.openScript!("plot")}
+                title={`This plot has a script (${scriptLines} line${scriptLines === 1 ? "" : "s"}): it can move the plot between steps. Click to edit it.`}
+                className="mt-1.5 inline-flex cursor-pointer items-center gap-1 rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[11px] font-medium text-sky-300 transition-colors duration-150 hover:bg-sky-400/20 active:scale-[0.97]"
+              >
+                <CodeXml className="h-3 w-3" /> Plot script
+              </button>
+            )}
           </div>
         </div>
         <div className="mt-3 flex items-center gap-1">
@@ -92,14 +105,15 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
               <Play className="fill-current" /> START
             </Pill>
           ) : (
-            <KitButton onClick={() => api.edit((p) => ({ ...p, flow: { ...p.flow, startIndex: i } }))} title="Begin the run on this step">
-              <Play /> Set as start
+            <KitButton onClick={() => api.setStart(i)} title="Begin the run on this step" aria-label="Set as start">
+              <Play /> <span className="hidden @[21rem]:inline">Set as start</span>
             </KitButton>
           )}
           <span className="flex-1" />
           <IconButton aria-label="Duplicate step" variant="neutral" onClick={() => api.duplicateStep(i)}>
             <Copy />
           </IconButton>
+          <StepMenu index={i} />
           <IconButton
             aria-label="Delete step"
             title={steps.length <= 1 ? "A flow needs at least one step" : "Delete step"}
@@ -115,10 +129,10 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
           <Switch checked={!!step.fullClear} onChange={(v) => api.editStep(i, (s) => fullClear(s, v))} label="Full clear on entry" />
           <span className="min-w-0 flex-1 text-[12.5px] text-slate-200">
             Full clear on entry
-            <span className="block text-[11.5px] text-slate-500 min-[400px]:ml-1.5 min-[400px]:inline">{step.fullClear ? "every plant is broken first" : "otherwise identical plants are kept"}</span>
+            <span className="block text-[11.5px] text-slate-500 @[25rem]:ml-1.5 @[25rem]:inline">{step.fullClear ? "every plant is broken first" : "otherwise identical plants are kept"}</span>
           </span>
         </label>
-        <Tabs className="mt-3" value={api.tab} onChange={api.setTab} items={tabs} />
+        <Tabs className="mt-3 @max-[23rem]:[&>button]:px-1.5" value={api.tab} onChange={api.setTab} items={tabs} />
       </header>
       <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3.5 pb-6 scrollbar-dark" role="tabpanel">
         {api.tab === "exits" && <ExitsTab />}
@@ -210,5 +224,48 @@ const StepName: React.FC<{ index: number }> = ({ index: i }) => {
       <span className={`min-w-0 flex-1 text-[15px] font-semibold leading-[1.3] ${step.label?.trim() ? "text-slate-100" : "text-slate-500"}`}>{stepLabel(step)}</span>
       <Pencil className="mt-1 h-3 w-3 shrink-0 text-slate-500 opacity-0 transition-opacity duration-150 group-hover/name:opacity-100" />
     </button>
+  );
+};
+
+/** The step's ··· menu: copy / paste, the plot's scripts. */
+const StepMenu: React.FC<{ index: number }> = ({ index: i }) => {
+  const api = useFlowEditor();
+  const hasScript = !!api.plot.script?.source.trim();
+  return (
+    <Dropdown
+      label="More step actions"
+      title="More"
+      look="plain"
+      chevron={false}
+      align="end"
+      width={230}
+      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-slate-600/40 bg-slate-800/60 text-slate-200 transition-[background-color,transform] duration-150 ease-snappy hover:bg-slate-700/70 active:scale-[0.97]"
+      button={<Ellipsis className="h-3.5 w-3.5" />}
+    >
+      {(close) => (
+        <>
+          <MenuItem icon={<Copy />} onSelect={() => (api.copyStep(i), close())} hint="Ctrl C · paste into any plot">
+            Copy step
+          </MenuItem>
+          <MenuItem icon={<ClipboardPaste />} disabled={!api.pasteStep} onSelect={() => (api.pasteStep?.(), close())} hint={api.pasteStep ? "Ctrl V" : "Nothing copied yet"}>
+            Paste step
+          </MenuItem>
+          <MenuItem icon={<CopyPlus />} onSelect={() => (api.duplicateStep(i), close())} hint="Ctrl D">
+            Duplicate
+          </MenuItem>
+          {api.openScript && (
+            <>
+              <MenuSeparator />
+              <MenuItem icon={<CodeXml />} onSelect={() => (api.openScript!("plot"), close())}>
+                {hasScript ? "Edit plot script" : "Write a plot script"}
+              </MenuItem>
+              <MenuItem icon={<CodeXml />} onSelect={() => (api.openScript!("controller"), close())}>
+                Controller script
+              </MenuItem>
+            </>
+          )}
+        </>
+      )}
+    </Dropdown>
   );
 };

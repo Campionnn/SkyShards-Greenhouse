@@ -69,6 +69,18 @@ export interface FlowEditorApi {
   /** Draw every wire in a busy flow, not just the selected step's. */
   showAllWires: boolean;
   setShowAllWires: (v: boolean) => void;
+  /** Open the script editor for this plot, or the controller script. Missing when the page doesn't offer it. */
+  openScript?: (target: "plot" | "controller") => void;
+  /** Close the floating popovers the shell owns (problems list, add menu). The canvas calls it on a pane click. */
+  dismissOverlays: () => void;
+  /** Make a step the start step. */
+  setStart: (index: number) => void;
+  /** Copy a step (Ctrl C / context menu) to paste it into this or another plot. */
+  copyStep: (index: number) => void;
+  /** Paste the copied step (Ctrl V / context menu), at a canvas position; null when nothing was copied. */
+  pasteStep: ((at?: { x: number; y: number }) => void) | null;
+  /** Switch plots without leaving (context menus, rail). */
+  switchPlot: (plotId: number) => void;
 }
 
 export interface CanvasHandle {
