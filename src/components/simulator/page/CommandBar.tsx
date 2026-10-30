@@ -61,8 +61,8 @@ export interface CommandBarProps {
 }
 
 /** A borderless "label value" chip that opens a popover. */
-const PropChip = React.forwardRef<HTMLButtonElement, { icon: React.ReactNode; label: string; keepLabel?: boolean; open: boolean; onClick: () => void; title?: string; children: React.ReactNode; disabled?: boolean }>(
-  ({ icon, label, keepLabel, open, onClick, title, children, disabled }, ref) => (
+const PropChip = React.forwardRef<HTMLButtonElement, { icon: React.ReactNode; label: string; keepLabel?: boolean; open: boolean; onClick: () => void; title?: string; children: React.ReactNode; disabled?: boolean; shrinks?: boolean }>(
+  ({ icon, label, keepLabel, open, onClick, title, children, disabled, shrinks }, ref) => (
     <button
       ref={ref}
       type="button"
@@ -71,13 +71,13 @@ const PropChip = React.forwardRef<HTMLButtonElement, { icon: React.ReactNode; la
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-[12.5px] transition-colors duration-150 disabled:cursor-default disabled:opacity-50 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:text-slate-500 ${
+      className={`inline-flex h-[30px] cursor-pointer items-center ${shrinks ? "min-w-[64px] shrink" : "shrink-0"} gap-1.5 whitespace-nowrap rounded-lg px-2 text-[12.5px] transition-colors duration-150 disabled:cursor-default disabled:opacity-50 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0 [&>svg]:text-slate-500 ${
         open ? "bg-slate-400/10" : "hover:bg-slate-400/10"
       }`}
     >
       {icon}
-      <span className={`text-[12px] text-slate-500 ${keepLabel ? "@max-[1100px]:hidden" : "@max-[1330px]:hidden"}`}>{label}</span>
-      <span className="font-semibold text-slate-100">{children}</span>
+      <span className={`shrink-0 text-[12px] text-slate-500 ${keepLabel ? "@max-[1100px]:hidden" : "@max-[1330px]:hidden"}`}>{label}</span>
+      <span className={`font-semibold text-slate-100 ${shrinks ? "min-w-0 truncate" : ""}`}>{children}</span>
     </button>
   )
 );
@@ -168,7 +168,9 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
 
   return (
     <div className="flex h-[52px] items-center gap-1 px-1 sm:px-2 max-md:hidden">
-      <span className="mr-2 text-[13px] font-semibold text-slate-100 @max-[1100px]:hidden">Simulator</span>
+      {/* Left: shrinks (chip values truncate) so the right-hand cluster can never be pushed past the edge. */}
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+      <span className="mr-2 shrink-0 text-[13px] font-semibold text-slate-100 @max-[1100px]:hidden">Simulator</span>
       <Segmented<ProfileMode>
         label="Profile"
         value={profile}
@@ -181,8 +183,8 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
       <Sep />
 
       {/* Frequent settings */}
-      <div className="flex items-center gap-0.5 max-md:hidden">
-        <PropChip ref={reg("online")} icon={<Clock />} label="Online" open={pop === "online"} onClick={() => toggle("online")} disabled={preview} title="When the player is online">
+      <div className="flex min-w-0 shrink items-center gap-0.5 max-md:hidden">
+        <PropChip ref={reg("online")} icon={<Clock />} label="Online" shrinks open={pop === "online"} onClick={() => toggle("online")} disabled={preview} title={`When the player is online: ${everyLabel(scenario)}`}>
           {everyLabel(scenario)}
         </PropChip>
         <PropChip ref={reg("player")} icon={<UserRound />} label="Player" keepLabel open={pop === "player"} onClick={() => toggle("player")} disabled={preview} title="Player stats: cycle length and fortune">
@@ -197,14 +199,17 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
       <button
         type="button"
         onClick={() => onOpenSettings()}
+        title="All settings"
         className="inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-[12.5px] font-medium text-slate-200 transition-colors duration-150 hover:bg-slate-400/10 max-md:hidden"
       >
-        <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" /> Settings
+        <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" /> <span className="@max-[900px]:hidden">Settings</span>
         {changedSettings > 0 && <span className="text-[12px] font-normal text-slate-500 @max-[1330px]:hidden">· {changedSettings} changed</span>}
       </button>
 
-      <span className="flex-1" />
+      </div>
 
+      {/* Right: fixed width, never shrinks. */}
+      <div className="flex shrink-0 items-center gap-1">
       {problems.length > 0 && (
         <button
           ref={reg("problems")}
@@ -217,7 +222,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         >
           <AlertTriangle className="h-3.5 w-3.5" />
           {problems.length}
-          <span className="@max-[1330px]:hidden">{problems.length === 1 ? "problem" : "problems"}</span>
+          <span className="@max-[1440px]:hidden">{problems.length === 1 ? "problem" : "problems"}</span>
         </button>
       )}
       <Sep />
@@ -251,26 +256,16 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
       <KitButton variant="ghost" className="w-[30px] !px-0" onClick={onUndo} disabled={!ready || !view.history.lastAction} aria-label="Undo" title={undoTitle(view.history.lastAction)}>
         <Undo2 />
       </KitButton>
-      <KitButton variant="ghost" onClick={onReset} disabled={running || view.status === "loading"} title="Reset to cycle 0 (keeps your scenario)">
+      <KitButton variant="ghost" onClick={onReset} disabled={running || view.status === "loading"} aria-label="Reset" title="Reset to cycle 0 (keeps your scenario)">
         <RotateCcw />
-        <span className="@max-[1100px]:hidden">Reset</span>
+        <span className="@max-[1280px]:hidden">Reset</span>
       </KitButton>
       <Sep />
-      {props.onOpenLeaderboard && !preview && (
-        <button
-          type="button"
-          onClick={props.onOpenLeaderboard}
-          title="Test and submit this flow to the public leaderboard"
-          className="inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-yellow-400/35 bg-yellow-400/[0.08] px-2.5 text-[12.5px] font-semibold text-yellow-200 transition-[background-color,border-color,transform] duration-150 ease-snappy hover:border-yellow-400/55 hover:bg-yellow-400/[0.14] active:scale-[0.97] max-md:hidden [&>svg]:h-3.5 [&>svg]:w-3.5"
-        >
-          <Trophy />
-          <span>Submit</span>
-        </button>
-      )}
       <KitButton ref={reg("share")} variant="ghost" onClick={() => toggle("share")} aria-expanded={pop === "share"} title="Export or import flows, or submit to the leaderboard" className="max-md:hidden">
         <Share2 />
-        <span className="@max-[1100px]:hidden">Share</span>
+        <span className="@max-[1280px]:hidden">Share</span>
       </KitButton>
+      </div>
 
       {/* Popovers */}
       <Popover anchor={anchors.current.online ?? null} open={pop === "online"} onClose={close} label="When you're online" width={360}>

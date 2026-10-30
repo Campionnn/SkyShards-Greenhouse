@@ -574,6 +574,11 @@ describe("simulator panels render", () => {
     expect(text).toContain(`aria-label="Cycles to run"`);
     expect(text).toContain("Back");
     expect(text).toContain("Undo the step from cycle 40");
+    // The bar can't overflow: a shrinking, clipped left group (settings) and a fixed right group
+    // (run cluster). Submitting lives in the Leaderboard tab and the Share menu, not a bar button.
+    expect(text).toContain("flex min-w-0 flex-1 items-center gap-1 overflow-hidden");
+    expect(text).toContain("flex shrink-0 items-center gap-1");
+    expect(text).not.toContain("Test and submit this flow");
   });
 
   it("timeline uses accessible inspection tracks and bounded searchable plot legends", () => {

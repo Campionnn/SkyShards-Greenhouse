@@ -59,7 +59,7 @@ export const Navigation: React.FC = () => {
             </div>
           </Link>
 
-          <div className="hidden md:flex items-center space-x-2">
+          <div className="hidden lg:flex items-center space-x-2">
             {navItems.map(({ path, label, icon: Icon }) => {
               const isActive = isActivePath(path);
               const colorClasses = colorClassesFor(path, isActive);
@@ -87,7 +87,7 @@ export const Navigation: React.FC = () => {
             </a>
           </div>
 
-          <div className="md:hidden">
+          <div className="lg:hidden">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="p-2 rounded-md text-slate-300 cursor-pointer hover:text-white hover:bg-slate-700 transition-colors duration-200"
@@ -99,7 +99,7 @@ export const Navigation: React.FC = () => {
         </div>
 
         {isMobileMenuOpen && (
-          <div className="md:hidden border-t border-slate-700 pt-3 py-2">
+          <div className="lg:hidden border-t border-slate-700 pt-3 py-2">
             <div className="flex flex-col space-y-1 gap-1">
               {navItems.map(({ path, label, icon: Icon }) => {
                 const isActive = isActivePath(path);
