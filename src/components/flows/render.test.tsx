@@ -129,7 +129,8 @@ describe("leaderboard pages render", () => {
     expect(r.ranks).toContain('data-testid="row-upkeep"');
     expect(r.ranks).toContain("0.04 Cindershade /day");
     expect(r.ranks).toContain(">Stall<");
-    expect(r.ranks).toContain("Plot 3, step-1: 5.6 Magic Jellybean cells empty on average.");
+    expect(r.ranks).toContain("Plot 3, step-1: 5.6 Magic Jellybean cells empty on average: the stock ran out.");
+    expect(r.ranks).toContain("Needs daily");
     expect(r.html).not.toMatch(/Kit \+|Kit needed|Infinity|NaN/);
     // The set-apart section: its count, the explanation, the kit and the number with the starting items.
     expect(r.section).toContain('data-testid="cant-make-section"');
@@ -420,6 +421,8 @@ describe("submit dialog renders", () => {
       "281 items: 165 Zombud, 116 Puffercloud",
       "93 Zombud + 91 Puffercloud /day",
       "Used up once: 98 Zombud, 11 Puffercloud",
+      'data-testid="test-upkeep-note"',
+      "Nothing supplies these during a run, so from nothing your flow stalls once its starting items are used up.",
     ]) {
       expect(html).toContain(s);
     }

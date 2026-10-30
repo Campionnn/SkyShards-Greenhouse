@@ -216,7 +216,7 @@ export const FlowRowItem: React.FC<{ row: FlowRow; top: number; every: number; b
         <div className="space-y-0.5 text-[11px] tabular-nums text-slate-400 sm:mt-1.5">
           {ironman && entry.cell && (
             <div data-testid="row-upkeep" className="sm:flex sm:justify-end" title={kitSummaryText(entry.cell)}>
-              <span className="text-slate-500">Upkeep </span>
+              <span className="text-slate-500">Needs daily </span>
               <UpkeepValue upkeep={entry.cell.upkeep} className="ml-1" />
             </div>
           )}

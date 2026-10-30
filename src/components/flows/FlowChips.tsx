@@ -22,9 +22,16 @@ export const StartingItemsLine: React.FC<{ prep: PrepInfo; className?: string; t
   );
 };
 
-/** Amber "Stall": a plot averages ≥ 5 layout cells empty for lack of stock. */
+/**
+ * Amber "Stall": a plot averages ≥ 5 layout cells empty because the stock ran out. Nobody tops the
+ * stock up in a run, so a flow that uses items it never grows stalls unless its own steps make them.
+ */
 export const StallChip: React.FC<{ stall: StallInfo; stepName?: StepNamer }> = ({ stall, stepName = stepIdName }) => (
-  <Badge tone="estimated" title={`${starvedText(stall.top, stepName)}.`} icon={<PauseCircle />}>
+  <Badge
+    tone="estimated"
+    title={`${starvedText(stall.top, stepName)}: the stock ran out. Nobody tops it up during a run, so a flow that uses items it doesn't grow stalls unless its own steps make them again.`}
+    icon={<PauseCircle />}
+  >
     Stall
   </Badge>
 );
@@ -42,7 +49,11 @@ export const UpkeepValue: React.FC<{ upkeep: unknown; className?: string; noneTe
   return (
     <span
       className={`${none ? "text-emerald-300" : "text-amber-300"} ${className}`}
-      title={none ? "Gives back everything it borrows: nothing to supply after the start" : "It uses these up faster than it grows them: you supply them every day, on top of the starting items"}
+      title={
+        none
+          ? "Grows back everything it uses: nothing to supply after the starting items"
+          : "It uses these up faster than it grows them. Nothing supplies them during a run: you'd have to, every day, on top of the starting items, or the flow's own steps must make them"
+      }
     >
       {none ? noneText : text}
     </span>

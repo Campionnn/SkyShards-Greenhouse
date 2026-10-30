@@ -213,6 +213,12 @@ export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: L
           <p>
             Then per day: <span className={upkeepText(cell.upkeep) === "None" ? "text-emerald-300" : "text-amber-300"}>{upkeepText(cell.upkeep) === "None" ? "nothing" : upkeepText(cell.upkeep)}</span>
           </p>
+          {upkeepText(cell.upkeep) !== "None" && (
+            <p className="text-amber-200/90" data-testid="test-upkeep-note">
+              Nothing supplies these during a run, so from nothing your flow stalls once its starting items are used up. Add steps that make them again (go
+              back to a "make" step when the stock runs low), and it keeps running.
+            </p>
+          )}
           {used.length > 0 && <p>Used up once: {used.map((u) => `${u.units.toLocaleString("en-US")} ${nameOf(u.item)}`).join(", ")}</p>}
         </div>
       )}
