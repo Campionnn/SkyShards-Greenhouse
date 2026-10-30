@@ -135,7 +135,7 @@ describe("runIronman: from nothing and with the starting items", () => {
     for (let t = C; t <= total; t += CUT_STEP) {
       f = engine.run(f, t - T - f.cycle).state;
       const own = f.ledger.potato?.produced ?? 0;
-      timeline.push((b.ledger.potato?.produced ?? 0 + own) / ((b.elapsedSeconds + f.elapsedSeconds) / 86400));
+      timeline.push(((b.ledger.potato?.produced ?? 0) + own) / ((b.elapsedSeconds + f.elapsedSeconds) / 86400));
       alone.push(own / (f.elapsedSeconds / 86400));
     }
     const mean = (xs: number[]) => xs.reduce((a, x) => a + x, 0) / xs.length;
