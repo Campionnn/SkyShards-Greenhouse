@@ -54,6 +54,8 @@ export interface CommandBarProps {
   shareMenu: (close: () => void) => React.ReactNode;
   onWatchFromNothing?: (every: number) => void;
   watching?: boolean;
+  /** Open the Leaderboard tab (rules, local test, submit). */
+  onOpenLeaderboard?: () => void;
   /** A from-nothing preview: settings chips are read-only (the preview has its own scenario). */
   preview?: boolean;
 }
@@ -254,7 +256,18 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         <span className="@max-[1100px]:hidden">Reset</span>
       </KitButton>
       <Sep />
-      <KitButton ref={reg("share")} variant="ghost" onClick={() => toggle("share")} aria-expanded={pop === "share"} title="Export, import or submit to the leaderboard" className="max-md:hidden">
+      {props.onOpenLeaderboard && !preview && (
+        <button
+          type="button"
+          onClick={props.onOpenLeaderboard}
+          title="Test and submit this flow to the public leaderboard"
+          className="inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-yellow-400/35 bg-yellow-400/[0.08] px-2.5 text-[12.5px] font-semibold text-yellow-200 transition-[background-color,border-color,transform] duration-150 ease-snappy hover:border-yellow-400/55 hover:bg-yellow-400/[0.14] active:scale-[0.97] max-md:hidden [&>svg]:h-3.5 [&>svg]:w-3.5"
+        >
+          <Trophy />
+          <span>Submit</span>
+        </button>
+      )}
+      <KitButton ref={reg("share")} variant="ghost" onClick={() => toggle("share")} aria-expanded={pop === "share"} title="Export or import flows, or submit to the leaderboard" className="max-md:hidden">
         <Share2 />
         <span className="@max-[1100px]:hidden">Share</span>
       </KitButton>
@@ -366,6 +379,18 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
           <div className={`mt-3 border-t border-slate-700/60 pt-2.5 text-[12px] ${rulesOn ? "text-emerald-300/90" : "text-slate-400"}`}>
             {rulesOn ? `Your settings match the ${board} rules.` : `Not under the ${board} rules yet: ${differences.join("; ")}.`}
           </div>
+          {props.onOpenLeaderboard && (
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                props.onOpenLeaderboard!();
+              }}
+              className="mt-2 cursor-pointer text-[12px] font-medium text-slate-300 underline decoration-slate-500/50 underline-offset-[3px] hover:decoration-slate-300"
+            >
+              Test and submit in the Leaderboard tab →
+            </button>
+          )}
         </div>
       </Popover>
 

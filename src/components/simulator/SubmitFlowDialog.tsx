@@ -4,7 +4,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useBazaarPrices } from "../../hooks/useBazaarPrices";
 import { useProfileMode } from "../../hooks/useProfileMode";
 import { applyRules, checkSubmission, clampCycles, DEFAULT_CYCLES, MAX_CYCLES, MIN_CYCLES, ruleDifferences, submissionFile, submissionFromScenario, type CellKind, type RunKind } from "../../leaderboard/rules";
-import { nearestEvery } from "../../leaderboard/tiers";
+import { nearestEvery, type TierId } from "../../leaderboard/tiers";
 import { WALL_MS_BACKSTOP } from "../../leaderboard/verify";
 import {
   builderText,
@@ -123,6 +123,8 @@ export interface TestState {
   running: boolean;
   every: number;
   cycles: number;
+  /** Stat tier the test ran at (max when missing, like the server's main cell). */
+  tier?: TierId;
   kinds: KindTest[];
   error: string | null;
 }

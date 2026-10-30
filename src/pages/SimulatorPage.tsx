@@ -29,6 +29,8 @@ import { plotUptime } from "../components/simulator/page/plotUptime";
 import { ScenarioTab } from "../components/simulator/page/ScenarioTab";
 import { SettingsDrawer, type DrawerTab } from "../components/simulator/page/SettingsDrawer";
 import { useShare } from "../components/simulator/page/useShare";
+import { consumeSubmitReopen } from "../components/simulator/submitDraft";
+import { LeaderboardTab } from "../components/simulator/page/LeaderboardTab";
 import { applyRules, boardFrom, type Board, type RuleKind } from "../leaderboard/rules";
 import { getFlow } from "../services/flowsService";
 import { ScriptEditor } from "../components/simulator/script/ScriptEditor";
@@ -43,9 +45,9 @@ import { useProfileMode } from "../hooks/useProfileMode";
 import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, MAX_PLOTS, migrateScenario, scenarioFromShareCodes, type ProfileMode, type RunSummary, type Scenario } from "../simulator";
 import { extractLayoutCode, LocalStorageManager, readIncomingLayout, readIncomingScenario, SOURCE_LABEL, type IncomingLayout } from "../utilities";
 
-type ResultTab = "overview" | "inventory" | "sustain" | "timeline" | "events" | "scripts";
+type ResultTab = "overview" | "inventory" | "sustain" | "timeline" | "events" | "scripts" | "leaderboard";
 const TAB_KEY = "skyshards-simulator-tab";
-const RESULT_TABS: readonly ResultTab[] = ["overview", "inventory", "sustain", "timeline", "events", "scripts"];
+const RESULT_TABS: readonly ResultTab[] = ["overview", "inventory", "sustain", "timeline", "events", "scripts", "leaderboard"];
 /** Migrates a saved scenario and fills missing settings from the defaults. */
 function withDefaults(saved: Scenario): Scenario {
   const sc = migrateScenario(saved);
@@ -390,13 +392,32 @@ export const SimulatorPage: React.FC = () => {
     ];
   };
 
-  const share = useShare(scenario, setScenario, (every) => void fromNothing.start(every));
+  const share = useShare(scenario, setScenario);
 
   // ---- Problems: scenario errors/warnings and the sustainability verdict --------------------------
+  /** Open a results tab and scroll so its bar sits right under the sticky header. */
   const goTab = (t: ResultTab) => {
     setTab(t);
-    tabsRef.current?.scrollIntoView({ block: "start", behavior: "instant" as ScrollBehavior });
+    requestAnimationFrame(() => {
+      const el = tabsRef.current;
+      if (!el) return;
+      const y = el.getBoundingClientRect().top + window.scrollY - barHeight;
+      window.scrollTo({ top: Math.max(0, y), behavior: "instant" as ScrollBehavior });
+    });
   };
+  /** Submitting lives in the Leaderboard tab (the Share menu, the bar's Submit button and the drawer lead there). */
+  const openSubmit = () => {
+    setDrawerOpen(false);
+    goTab("leaderboard");
+  };
+  // Back from the Discord login the submit form started: show the Leaderboard tab again.
+  const reopened = useRef(false);
+  useEffect(() => {
+    if (reopened.current) return;
+    reopened.current = true;
+    if (consumeSubmitReopen()) goTab("leaderboard");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const problems: PageProblem[] = [];
   const firstFailure = snapshot?.report.firstFailure;
   if (view.status === "error" && view.error && !view.issues.length) problems.push({ level: "error", where: "Scenario", message: view.error });
@@ -426,7 +447,7 @@ export const SimulatorPage: React.FC = () => {
     { value: "sustain", label: "Sustainability", count: state?.summary.uptime && state.summary.uptime.requirements > 0 ? 1 : null },
     { value: "timeline", label: "Timeline" },
     { value: "events", label: "Events" },
-    ...(!preview ? [{ value: "scripts" as const, label: "Scripts" }] : []),
+    ...(!preview ? [{ value: "scripts" as const, label: "Scripts" }, { value: "leaderboard" as const, label: "Leaderboard" }] : []),
   ];
 
   const runProps = {
@@ -440,7 +461,7 @@ export const SimulatorPage: React.FC = () => {
 
   return (
     <ContextMenuProvider>
-    <div className="w-full">
+    <div className="w-full" style={{ ["--sim-sticky" as string]: `${barHeight + 46}px` }}>
       {/* Sticky command bar + KPIs */}
       <header className="@container sticky top-0 z-30 rounded-b-xl border-b border-slate-700/50 bg-slate-950/85 backdrop-blur-xl backdrop-saturate-150" ref={barRef}>
         <CommandBar
@@ -459,11 +480,12 @@ export const SimulatorPage: React.FC = () => {
           }}
           problems={problems}
           shareMenu={(close) => (
-            <ShareMenuItems close={close} onExport={share.openExport} onImport={share.openImport} onSubmit={share.openSubmit} icons={{ dl: <Download />, ul: <Upload />, trophy: <Trophy /> }} />
+            <ShareMenuItems close={close} onExport={share.openExport} onImport={share.openImport} onSubmit={openSubmit} icons={{ dl: <Download />, ul: <Upload />, trophy: <Trophy /> }} />
           )}
           onWatchFromNothing={(every) => void fromNothing.start(every)}
           watching={fromNothing.preparing !== null || !!preview}
           preview={!!preview}
+          onOpenLeaderboard={openSubmit}
         />
         <div className="flex h-12 items-center gap-3 px-3 md:hidden">
           <span className="text-[13px] font-semibold text-slate-100">Simulator</span>
@@ -479,7 +501,7 @@ export const SimulatorPage: React.FC = () => {
 
       <div className="space-y-3 pt-4">
         {/* Phone: the frequent settings as a scroller */}
-        <MobileChips scenario={scenario} onOpenSettings={(t) => (setDrawerTab(t), setDrawerOpen(true))} />
+        <MobileChips scenario={scenario} onOpenSettings={(t) => (setDrawerTab(t), setDrawerOpen(true))} onOpenLeaderboard={preview ? undefined : openSubmit} />
 
         {fromNothing.preparing !== null && <FromNothingPreparing progress={fromNothing.preparing} onCancel={fromNothing.exit} />}
         {preview && <FromNothingBanner preview={preview} inventory={state?.inventory ?? null} onPart={(part) => fromNothing.setPreview({ ...preview, part })} onExit={fromNothing.exit} />}
@@ -571,6 +593,9 @@ export const SimulatorPage: React.FC = () => {
           )}
           {state && tab === "events" && <EventLog log={view.log} plotIds={plotIds} />}
           {!preview && tab === "scripts" && <ScriptPanel scenario={scenario} state={state ?? null} onEdit={setScripting} />}
+          {!preview && tab === "leaderboard" && (
+            <LeaderboardTab scenario={scenario} onChange={setScenario} profile={profile} onWatchFromNothing={(every) => void fromNothing.start(every)} watching={fromNothing.preparing !== null || !!preview} />
+          )}
         </div>
       </div>
 
@@ -599,7 +624,7 @@ export const SimulatorPage: React.FC = () => {
             error={view.status === "error" ? view.error : null}
             onExport={share.openExport}
             onImport={share.openImport}
-            onSubmit={share.openSubmit}
+            onSubmit={openSubmit}
           />
         }
       />

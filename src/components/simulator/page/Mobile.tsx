@@ -19,7 +19,7 @@ const Chip: React.FC<{ icon: React.ReactNode; onClick: () => void; children: Rea
   </button>
 );
 
-export const MobileChips: React.FC<{ scenario: Scenario; onOpenSettings: (tab: DrawerTab) => void }> = ({ scenario, onOpenSettings }) => {
+export const MobileChips: React.FC<{ scenario: Scenario; onOpenSettings: (tab: DrawerTab) => void; onOpenLeaderboard?: () => void }> = ({ scenario, onOpenSettings, onOpenLeaderboard }) => {
   const s = scenario.settings;
   const a = s.activity;
   const online = s.playerActions === false ? "actions off" : a.kind === "everyN" ? (a.n === 1 ? "every cycle" : `every ${a.n} cycles`) : "times of day";
@@ -32,8 +32,8 @@ export const MobileChips: React.FC<{ scenario: Scenario; onOpenSettings: (tab: D
       <Chip icon={<UserRound />} onClick={() => onOpenSettings("player")}>
         {formatDuration(cycle)}
       </Chip>
-      <Chip icon={<Trophy />} onClick={() => onOpenSettings("advanced")}>
-        Rules
+      <Chip icon={<Trophy />} onClick={() => (onOpenLeaderboard ? onOpenLeaderboard() : onOpenSettings("advanced"))}>
+        Leaderboard
       </Chip>
       <Chip icon={<SlidersHorizontal />} onClick={() => onOpenSettings("player")}>
         Settings

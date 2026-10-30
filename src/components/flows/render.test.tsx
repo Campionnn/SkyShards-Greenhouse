@@ -18,6 +18,7 @@ import { defaultGameData } from "../../simulator/data/default";
 import { SubmitFlowPanel, type TestState } from "../simulator/SubmitFlowDialog";
 import { SettingsPanel } from "../simulator/ScenarioPanels";
 import { CommandBar } from "../simulator/page/CommandBar";
+import { LeaderboardTab } from "../simulator/page/LeaderboardTab";
 import { FromNothingBanner } from "../simulator/FromNothingBanner";
 import { previewScenarioOf, withPreviewSeed } from "../simulator/fromNothingPreview";
 import { ToastProvider } from "../ui";
@@ -436,6 +437,38 @@ describe("submit dialog renders", () => {
     const c = text(wrap(<SubmitFlowPanel scenario={sc} onChange={() => {}} onClose={() => {}} initialTest={cant} />));
     expect(c).toContain('data-testid="test-cant-make"');
     expect(c).toContain("The builder can't make the starting items (1 Godseed) within the run");
+  });
+});
+
+describe("the simulator's Leaderboard tab", () => {
+  it("rules with Apply and Watch from nothing, test options, the submit form and its readiness", () => {
+    const sc = scenario([flow([step("a", { code: LAYOUT_A_CODE }, [])])], { inventory: { chloronite: 3 } });
+    const html = text(wrap(<LeaderboardTab scenario={sc} onChange={() => {}} profile="ironman" onWatchFromNothing={() => {}} />));
+    for (const s of [
+      'data-testid="leaderboard-tab"',
+      'data-testid="leaderboard-rules"',
+      'data-testid="rules-diff"',
+      "starting inventory is not empty",
+      "Apply Ironman rules",
+      "Watch from nothing",
+      "Test like the server",
+      'data-testid="test-options"',
+      "Seeds",
+      "Stats",
+      "Online every",
+      "Boards",
+      "Run test",
+      "Submit to the leaderboard",
+      "goes on every board",
+      "The flow is valid",
+      "Not under the Ironman rules",
+      "Needs a title",
+    ])
+      expect(html).toContain(s);
+    // Normal board: no from-nothing preview.
+    const normal = text(wrap(<LeaderboardTab scenario={sc} onChange={() => {}} profile="normal" onWatchFromNothing={() => {}} />));
+    expect(normal).toContain("Apply Normal rules");
+    expect(normal).not.toContain("Watch from nothing");
   });
 });
 

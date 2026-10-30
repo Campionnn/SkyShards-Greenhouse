@@ -1,25 +1,18 @@
-import React, { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Scenario } from "../../../simulator";
 import { useToast } from "../../ui";
 import { FlowExportDialog } from "../FlowExportDialog";
 import { exportFlows, type FlowExportOptions } from "../scenarioEdit";
 import { ImportDialog } from "./ImportDialog";
-import { consumeSubmitReopen } from "../submitDraft";
-// Lazy: the dialog brings react-markdown, which the simulator doesn't need until it opens.
-const SubmitFlowDialog = React.lazy(() => import("../SubmitFlowDialog").then((m) => ({ default: m.SubmitFlowDialog })));
 
-// Export / Import / Submit, reachable from the command bar's Share menu. One hook owns the
-// dialogs; the page renders `dialogs` once.
+// Export / Import, reachable from the command bar's Share menu and the drawer's Scenario tab. One
+// hook owns the dialogs; the page renders `dialogs` once. Submitting to the leaderboard is the
+// page's Leaderboard tab (LeaderboardTab.tsx), not a dialog.
 
-export function useShare(scenario: Scenario, onChange: (sc: Scenario) => void, onWatchFromNothing?: (every: number) => void) {
+export function useShare(scenario: Scenario, onChange: (sc: Scenario) => void) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  // Back from the Discord login the submit dialog started: open it again (its fields come from the draft).
-  useEffect(() => {
-    if (consumeSubmitReopen()) setSubmitting(true);
-  }, []);
 
   const exportJson = async (options: FlowExportOptions) => {
     const text = JSON.stringify(exportFlows(scenario, options), null, 2);
@@ -48,13 +41,7 @@ export function useShare(scenario: Scenario, onChange: (sc: Scenario) => void, o
     <>
       {exporting && <FlowExportDialog onClose={() => setExporting(false)} onExport={exportJson} />}
       {importing && <ImportDialog scenario={scenario} onChange={onChange} onClose={() => setImporting(false)} />}
-      {submitting && (
-        <React.Suspense fallback={null}>
-          <SubmitFlowDialog scenario={scenario} onChange={onChange} onClose={() => setSubmitting(false)} onWatchFromNothing={onWatchFromNothing} />
-        </React.Suspense>
-      )}
     </>
   );
-  return { openExport: () => setExporting(true), openImport: () => setImporting(true), openSubmit: () => setSubmitting(true), dialogs };
+  return { openExport: () => setExporting(true), openImport: () => setImporting(true), dialogs };
 }
-
