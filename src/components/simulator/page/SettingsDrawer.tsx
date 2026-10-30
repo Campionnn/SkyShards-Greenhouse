@@ -61,6 +61,7 @@ export const SettingsDrawer: React.FC<{
   return (
     <aside
       aria-label="Settings"
+      style={{ bottom: "var(--ad-bottom, 0px)" }}
       className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[440px] flex-col border-l border-slate-600/40 bg-slate-900 shadow-[-30px_0_60px_-24px_rgba(0,0,0,0.9)] ${
         closing ? "translate-x-6 opacity-0 transition-[transform,opacity] duration-150 ease-snappy" : "sim-drawer-in"
       }`}

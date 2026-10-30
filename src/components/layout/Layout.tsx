@@ -2,9 +2,12 @@ import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Navigation } from "./Navigation";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { useBottomAdInset } from "../../hooks/useBottomAdInset";
 
 export const Layout: React.FC = () => {
   const location = useLocation();
+  // `--ad-bottom`: fixed bottom UI docks above Mediavine's adhesion ad instead of under it.
+  useBottomAdInset();
   // Remount per top-level section, not per path, so moving between wiki
   // entries keeps the wiki sidebar (search text, scroll) mounted.
   const sectionKey = location.pathname.split("/")[1] ?? "";

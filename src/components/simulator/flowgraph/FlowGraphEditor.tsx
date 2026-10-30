@@ -418,7 +418,8 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
 
   return (
     <FlowEditorContext.Provider value={api}>
-      <div className="fixed inset-0 z-40 flex flex-col bg-slate-950 text-slate-200 kit-fade-in" role="dialog" aria-modal="true" aria-label={`Plot ${plotId} flow editor`}>
+      {/* Stops above the bottom ad (`--ad-bottom`) so the steps list, minimap and zoom aren't under it. */}
+      <div className="fixed inset-0 z-40 flex flex-col bg-slate-950 text-slate-200 kit-fade-in" style={{ bottom: "var(--ad-bottom, 0px)" }} role="dialog" aria-modal="true" aria-label={`Plot ${plotId} flow editor`}>
         {/* Top bar */}
         <header className="relative z-20 flex h-[52px] shrink-0 items-center gap-1.5 border-b border-slate-700/60 bg-gradient-to-b from-slate-900 to-[#0d1526] px-2 sm:gap-2.5 sm:px-3">
           <KitButton variant="ghost" onClick={onClose} aria-label="Back to the simulator" className="px-2 sm:px-2.5">

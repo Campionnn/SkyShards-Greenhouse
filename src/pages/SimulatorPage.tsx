@@ -515,7 +515,7 @@ export const SimulatorPage: React.FC = () => {
         <div ref={tabsRef} className="sticky z-20 border-b border-slate-700/50 bg-slate-950/90 px-1 backdrop-blur-xl" style={{ top: barHeight }}>
           <Tabs<ResultTab> value={tab} onChange={(t) => setTab(t)} items={resultTabs} className="!border-b-0 overflow-x-auto scrollbar-none" />
         </div>
-        <div className="pb-24 pt-2 md:pb-10">
+        <div className="pb-[calc(6rem+var(--ad-bottom,0px))] pt-2 md:pb-10">
           {snapshot && state && tab === "overview" && (
             <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
               <div className="min-w-0 space-y-5">
@@ -599,7 +599,7 @@ export const SimulatorPage: React.FC = () => {
       )}
 
       {scripting !== null && (scripting === "controller" || scenario.plots.some((p) => p.id === scripting)) && (
-        <div className="fixed inset-0 z-[45] bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true" aria-label="Script editor">
+        <div className="fixed inset-0 z-[45] bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" style={{ bottom: "var(--ad-bottom, 0px)" }} role="dialog" aria-modal="true" aria-label="Script editor">
           <div className="w-full max-w-screen-2xl mx-auto px-2 sm:px-4 py-6">
             <div className="bg-slate-900 rounded-lg shadow-2xl">
               <ScriptEditor
