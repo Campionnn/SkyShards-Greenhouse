@@ -137,8 +137,8 @@ function orderCandidates(list: Candidate[], order: MutationCreditOrder, ctx: Cyc
 }
 
 /**
- * Credit the neighbours a new spawn used. Called after the spawn is inserted and `occ` updated, so
- * earlier spawns this tick count as neighbours.
+ * Credit the neighbours a new spawn used. `phaseSpawn` passes the occupancy as the tick found it:
+ * all cells roll at once, so another spawn of the same tick is never a neighbour.
  * Per requirement {crop, count}: credit plants of that kind in the 8-way ring until `count` ring
  * cells are covered; a multi-cell neighbour covers all its ring cells and is credited once. Each
  * plant at most once per spawn; dry plants are skipped. No requirements (Godseed, Lonelily): no credit.

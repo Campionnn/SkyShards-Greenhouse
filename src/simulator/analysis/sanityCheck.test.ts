@@ -330,9 +330,9 @@ describe("sanityCheck is read-only", () => {
 });
 
 /**
- * The check agrees with the spawn roll. In every case the checked cell is the only one
- * (or, for the 3x3, the first in row-major order) that can spawn anything, so nothing
- * else changes its ring before it rolls. The pool floor is the default 100.
+ * The check agrees with the spawn roll. All cells roll at once against the plot as the tick
+ * found it, so other spawns that tick never change the checked cell's ring (only a 3x3
+ * footprint can be taken by an earlier cell). The pool floor is the default 100.
  */
 describe("sanityCheck agrees with phaseSpawn", () => {
   const cases: { name: string; spec: LayoutSpec; row: number; col: number; extra?: (s: SimulationState) => void }[] = [

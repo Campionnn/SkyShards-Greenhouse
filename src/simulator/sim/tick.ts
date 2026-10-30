@@ -349,7 +349,9 @@ function recordWatchIn(byStep: Record<string, SpotUptime>, plot: PlotState, ctx:
 /**
  * Each empty cell, row-major, draws one weighted roll over every
  * mutation eligible there; any candidate can win. Multi-cell candidates need their whole footprint
- * (top-left anchored) empty, and a spawn blocks later cells this tick. A slot always considers its
+ * (top-left anchored) empty. All cells roll at once: requirements and Lonelily's empty ring read
+ * the plot as the tick found it, never another spawn of this tick; a spawn only takes its own
+ * footprint, so no later footprint may overlap it. A slot always considers its
  * target, still gated by ground and ring requirements. Bioanalysis scales all weights uniformly.
  * Spawn priority (config.ts SPAWN_PRIORITY): an eligible Godseed rolls on its own first and the
  * rest roll only if it misses; an eligible Zombud shuts every other mutation out of the cell.
@@ -381,14 +383,18 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
   const table = spawnTable(data);
   const effects = scratch.effects ?? recomputeEffects(plot, scratch.forcedEffects);
   const occ = buildOccupancy(plot);
+  // Every cell rolls at the same moment: rings and credit read the plot as the tick found it
+  // (`before`), so a spawn this tick is never another cell's neighbour (two Lonelilies can spawn
+  // side by side). `occ` takes the new spawns only so two footprints can't overlap.
+  const before = occ.slice();
   const nk = table.kinds;
   if (kindPresent.length < nk) kindPresent = new Uint8Array(nk);
   kindPresent.fill(0);
   for (const p of plot.plants) kindPresent[table.kindIndex.get(p.kindId) ?? table.other] = 1;
   const candidates = candidatesFor(table, data, kindPresent, plantKinds(plot));
 
-  // What stands where, and the ground under every cell: fixed for this phase except for the
-  // spawns it makes (written into `occ` and `cellKind` as they happen). Spawning never changes ground.
+  // What stands where (`cellKind`, for the rings) and the ground under every cell: fixed for the
+  // whole phase. Spawns this tick go into `occ` only. Spawning never changes ground.
   for (let i = 0; i < TOTAL_CELLS; i++) {
     const q = occ[i];
     cellKind[i] = !q ? EMPTY_KIND : isDry(q) ? DRY_KIND : (table.kindIndex.get(q.kindId) ?? table.other);
@@ -520,13 +526,10 @@ function phaseSpawn(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
     const plant = newPlant(ctx.state, data, config, winner, row, col, "spawned", ctx.cycle);
     plant.isRival = !!slot && winner !== slot.mutationId;
     insertPlant(plot, plant);
-    const kind = isDry(plant) ? DRY_KIND : (table.kindIndex.get(plant.kindId) ?? table.other);
-    for (const c of footprint(row, col, plant.size)) {
-      occ[c] = plant;
-      cellKind[c] = kind;
-    }
-    // Credit the requirement neighbours toward their minimum mutations (sim/decay.ts).
-    creditInputs(plot, occ, plant, data.mutations[winner], ctx, true);
+    for (const c of footprint(row, col, plant.size)) occ[c] = plant;
+    // Credit the requirement neighbours it used toward their minimum mutations (sim/decay.ts):
+    // the ring as the tick found it, so another spawn this tick is never credited.
+    creditInputs(plot, before, plant, data.mutations[winner], ctx, true);
 
     bump(ctx.state.summary.spawned, winner);
     perPlot(ctx.state.summary, plot.id).spawned += 1;

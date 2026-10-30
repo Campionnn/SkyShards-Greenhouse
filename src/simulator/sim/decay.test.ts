@@ -186,23 +186,37 @@ describe("credit at spawn", () => {
     expect(counters(r.state, 4, 4).timesMutated).toBe(0);
   });
 
-  it("an earlier same-tick spawn that IS a requirement counts as a neighbour and is credited by the later one", () => {
-    // Choconut (2 cocoa) at (4,5) spawns first (row-major) inside the ring of Chocoberry at (4,6),
-    // which needs 6 Choconut + 2 Gloomgourd; the ring already holds 5 placed Choconut + 2 Gloomgourd.
+  it("spawns of one tick happen at once: a same-tick spawn is not a neighbour until the next tick", () => {
+    // Choconut (2 cocoa) at (4,5) is inside the ring of Chocoberry at (4,6), which needs
+    // 6 Choconut + 2 Gloomgourd; the ring holds 5 placed Choconut + 2 Gloomgourd.
     const s = blank({ slots: [["choconut", 4, 5], ["chocoberry", 4, 6]] });
     inject(s, 1, "cocoa_beans", 3, 4, "planted", grownCrop(6));
     inject(s, 1, "cocoa_beans", 5, 4, "planted", grownCrop(6));
     for (const [r, c] of [[3, 5], [3, 6], [3, 7], [4, 7], [5, 5]]) inject(s, 1, "choconut", r, c, "placed");
     inject(s, 1, "gloomgourd", 5, 6, "placed");
     inject(s, 1, "gloomgourd", 5, 7, "placed");
-    const r = engine.run(s, 1);
-    expect(ofKind(r.events, "spawned").map((e) => e.mutationId)).toEqual(["choconut", "chocoberry"]);
-    // The fresh Choconut (4,5) was one of the Chocoberry's 6: credited, but still a 0-stage spawn fully grown.
+    const first = engine.run(s, 1);
+    // The Choconut spawning this tick doesn't count for the Chocoberry rolling in the same tick.
+    expect(ofKind(first.events, "spawned").map((e) => e.mutationId)).toEqual(["choconut"]);
+    expect(first.state.plots[0].watchStatus["4,6"]).toBe("requirements");
+    // The cocoa beans that made the Choconut were credited by it.
+    expect(counters(first.state, 3, 4).timesMutated).toBe(1);
+    expect(counters(first.state, 5, 4).timesMutated).toBe(1);
+    // Next tick it stands there: the Chocoberry spawns and credits it.
+    const r = engine.run(first.state, 1);
+    expect(ofKind(r.events, "spawned").map((e) => e.mutationId)).toEqual(["chocoberry"]);
     expect(counters(r.state, 4, 5)).toEqual({ timesMutated: 1, mutatesRemaining: 9 });
     for (const [rr, c] of [[3, 5], [3, 6], [3, 7], [4, 7], [5, 5], [5, 6], [5, 7]]) expect(counters(r.state, rr, c).timesMutated).toBe(1);
-    // And the cocoa beans that made the Choconut were credited by it.
-    expect(counters(r.state, 3, 4).timesMutated).toBe(1);
-    expect(counters(r.state, 5, 4).timesMutated).toBe(1);
+  });
+
+  it("Lonelilies of one tick spawn side by side: a same-tick spawn doesn't fill another cell's ring", () => {
+    const cluster: [string, number, number][] = [];
+    for (let r = 3; r <= 5; r++) for (let c = 3; c <= 5; c++) cluster.push(["lonelily", r, c]);
+    const r = engine.run(blank({ slots: cluster }), 1);
+    expect(ofKind(r.events, "spawned").map((e) => e.mutationId)).toEqual(Array(9).fill("lonelily"));
+    // Every checked cell could spawn its target at the roll, not just the top-left one.
+    for (const [, row, col] of cluster) expect(r.state.plots[0].watchStatus[`${row},${col}`]).toBe("ready");
+    expect(r.state.summary.uptime).toMatchObject({ watched: 9, ready: 9, requirements: 0 });
   });
 
   it("a Witherbloom spawn credits its 4 dead plants", () => {
