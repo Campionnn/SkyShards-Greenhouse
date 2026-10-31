@@ -239,16 +239,16 @@ export const LeaderboardTab: React.FC<{
         >
           <div data-testid="leaderboard-rules">
             {rules.on ? (
-              <p className="mb-3 text-[12px] text-slate-400">Your simulator runs under the server&apos;s set-up, so the numbers at the top are comparable to the {rules.board} board.</p>
+              <p className="mb-3 text-secondary text-fg-muted">Your simulator runs under the server&apos;s set-up, so the numbers at the top are comparable to the {rules.board} board.</p>
             ) : (
-              <ul className="mb-3 list-disc space-y-0.5 pl-5 text-[12.5px] text-amber-200/90" data-testid="rules-diff">
+              <ul className="mb-3 list-disc space-y-0.5 pl-5 text-body text-warn" data-testid="rules-diff">
                 {rules.differences.map((d) => (
                   <li key={d}>{d}</li>
                 ))}
               </ul>
             )}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[12.5px] text-slate-400">Online every</span>
+              <span className="text-body text-fg-muted">Online every</span>
               <Dropdown label="Online every" button={<span className="tabular-nums">{`${rules.every} cycle${rules.every === 1 ? "" : "s"}`}</span>} width={160}>
                 {(close) =>
                   EVERY.map((n) => (
@@ -345,7 +345,7 @@ export const LeaderboardTab: React.FC<{
                 ))
               }
             </Option>
-            <span className="text-[12px] tabular-nums text-slate-500">{clampCycles(cycles).toLocaleString("en-US")} cycles (from Submit)</span>
+            <span className="text-secondary tabular-nums text-fg-meta">{clampCycles(cycles).toLocaleString("en-US")} cycles (from Submit)</span>
             {!serverLike && (
               <LinkButton onClick={() => (setOpts(DEFAULT_TEST), localStorage.removeItem(TEST_OPTIONS_KEY))} className="ml-auto">
                 Reset to server set-up
@@ -355,7 +355,7 @@ export const LeaderboardTab: React.FC<{
           {test ? (
             <div className="space-y-2" data-testid="seed-test">
               {(test.tier ?? "max") !== "max" || test.every !== rules.every ? (
-                <p className="text-[12px] text-slate-500">
+                <p className="text-secondary text-fg-meta">
                   Tested at {TIER_LABEL[test.tier ?? "max"]} stats, online every {test.every} cycle{test.every === 1 ? "" : "s"}.
                 </p>
               ) : null}
@@ -372,14 +372,14 @@ export const LeaderboardTab: React.FC<{
                   />
                 ))}
               </div>
-              {testFailed && <p className="text-[12px] text-red-300">A failed seed makes the server reject the submission.</p>}
-              {test.error && <p className="text-[12px] text-red-300">{test.error}</p>}
-              {stale && <p className="text-[12px] text-amber-200/90">The flow changed since this test. Test again for current numbers.</p>}
+              {testFailed && <p className="text-secondary text-problem">A failed seed makes the server reject the submission.</p>}
+              {test.error && <p className="text-secondary text-problem">{test.error}</p>}
+              {stale && <p className="text-secondary text-warn">The flow changed since this test. Test again for current numbers.</p>}
             </div>
           ) : (
-            <div className="grid place-items-center rounded-lg border border-dashed border-slate-700/60 px-6 py-6 text-center">
-              <div className="text-[13px] text-slate-300">Not tested yet</div>
-              <p className="mt-1 max-w-sm text-[12px] text-slate-500">Run the test to see what each board will measure: from nothing, with the starting items, and Normal.</p>
+            <div className="grid place-items-center rounded-control border border-dashed border-line-strong px-6 py-6 text-center">
+              <div className="text-body text-fg-body">Not tested yet</div>
+              <p className="mt-1 max-w-sm text-secondary text-fg-meta">Run the test to see what each board will measure: from nothing, with the starting items, and Normal.</p>
             </div>
           )}
         </Card>
@@ -389,11 +389,11 @@ export const LeaderboardTab: React.FC<{
       <Card title="Submit to the leaderboard" label="Submit to the leaderboard" hint="Your plots with every step, layout, exit, policy override and script. The server sets everything else (empty starting inventory, default advanced settings, its own stat tiers and secret seeds) at every online frequency. Your flow goes on every board: Ironman from nothing, Ironman with the starting items, and Normal." hintWidth={340} className="xl:sticky xl:top-[calc(var(--sim-sticky,150px)+12px)]">
         {submitted ? (
           <div className="space-y-3">
-            <p className="flex items-start gap-2 text-[13px] text-emerald-200">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> &quot;{title.trim()}&quot; is in the queue for every board. It goes live when the server has simulated it.
+            <p className="flex items-start gap-2 text-body text-go-fg">
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> &quot;{title.trim()}&quot; is in the queue for every board. It goes live when the server has simulated it.
             </p>
-            <div className="flex flex-wrap items-center gap-2 text-[12px]">
-              <a href={`/flows/${submitted.id}`} className="break-all text-slate-200 underline decoration-slate-600 underline-offset-[3px] hover:decoration-slate-300">
+            <div className="flex flex-wrap items-center gap-2 text-secondary">
+              <a href={`/flows/${submitted.id}`} className="focus-ring break-all rounded-inner text-fg-body underline decoration-fg-meta underline-offset-[3px] hover:decoration-fg-muted">
                 {flowLink(submitted.id)}
               </a>
               <KitButton onClick={() => void copy(flowShareLink(submitted.id))}>
@@ -401,7 +401,7 @@ export const LeaderboardTab: React.FC<{
               </KitButton>
             </div>
             <StatusBox id={submitted.id} initial={submitted.status} />
-            <p className="text-[12px] text-slate-500">You can leave this page: the server finishes the verification on its own.</p>
+            <p className="text-secondary text-fg-meta">You can leave this page: the server finishes the verification on its own.</p>
             <LinkButton
               onClick={() => {
                 setSubmitted(null);
@@ -414,18 +414,18 @@ export const LeaderboardTab: React.FC<{
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-[12px] text-slate-400">
+            <p className="text-secondary text-fg-muted">
               {plots} plot{plots === 1 ? "" : "s"} · {Math.ceil(check.bytes / 1024)} KB · goes on every board
             </p>
 
             {/* Account */}
             {authLoading ? (
-              <p className="text-[12px] text-slate-500">Checking your login…</p>
+              <p className="text-secondary text-fg-meta">Checking your login…</p>
             ) : user ? (
-              <div className={`flex items-center gap-2 px-3 py-2 text-[12.5px] ${surface.well}`}>
+              <div className={`flex items-center gap-2 px-3 py-2 text-body ${surface.well}`}>
                 <Avatar id={user.id} avatar={user.avatar} size={22} />
-                <span className="min-w-0 truncate text-slate-400">
-                  Logged in as <b className="font-semibold text-slate-100">{userName(user)}</b>
+                <span className="min-w-0 truncate text-fg-muted">
+                  Logged in as <b className="font-semibold text-fg">{userName(user)}</b>
                 </span>
                 <KitButton variant="ghost" className="ml-auto" onClick={logout}>
                   <LogOut /> Log out
@@ -433,15 +433,15 @@ export const LeaderboardTab: React.FC<{
               </div>
             ) : (
               <div className={`space-y-2 px-3 py-2.5 ${surface.well}`} data-testid="login-required">
-                <p className="text-[12.5px] text-slate-200">Log in with Discord to submit. Your entry is kept while you log in.</p>
-                {banned && <p className="text-[12px] text-red-300">This account is banned from the leaderboard.</p>}
+                <p className="text-body text-fg-body">Log in with Discord to submit. Your entry is kept while you log in.</p>
+                {banned && <p className="text-secondary text-problem">This account is banned from the leaderboard.</p>}
               </div>
             )}
 
             <label className="block space-y-1">
-              <span className="flex justify-between text-[12px] text-slate-400">
+              <span className="flex justify-between text-secondary text-fg-muted">
                 Title
-                <span className={`tabular-nums ${title.length > TITLE_MAX ? "text-red-300" : "text-slate-600"}`}>
+                <span className={`tabular-nums ${title.length > TITLE_MAX ? "text-problem" : "text-fg-meta"}`}>
                   {title.length} / {TITLE_MAX}
                 </span>
               </span>
@@ -449,20 +449,20 @@ export const LeaderboardTab: React.FC<{
             </label>
 
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-[12px] text-slate-400">
+              <div className="flex items-center justify-between text-secondary text-fg-muted">
                 <span>
-                  Description <span className="text-slate-600">optional · Markdown</span>
+                  Description <span className="text-fg-meta">optional · Markdown</span>
                 </span>
                 <LinkButton onClick={() => setPreview((p) => !p)} aria-pressed={preview} className="inline-flex items-center gap-1">
-                  {preview ? <Pencil className="h-3 w-3" /> : <Eye className="h-3 w-3" />} {preview ? "Edit" : "Preview"}
+                  {preview ? <Pencil className="size-3" /> : <Eye className="size-3" />} {preview ? "Edit" : "Preview"}
                 </LinkButton>
               </div>
               {preview ? (
-                <div className={`min-h-[7rem] p-3 ${surface.well}`}>{description.trim() ? <FlowMarkdown text={description} /> : <span className="text-[12px] text-slate-500">Nothing to preview.</span>}</div>
+                <div className={`min-h-[7rem] p-3 ${surface.well}`}>{description.trim() ? <FlowMarkdown text={description} /> : <span className="text-secondary text-fg-meta">Nothing to preview.</span>}</div>
               ) : (
                 <KitTextarea className="h-28 w-full" maxLength={DESCRIPTION_MAX} value={description} onChange={(e) => setDescription(e.target.value)} aria-label="Description" placeholder="How it works, when to log in, what to watch out for…" />
               )}
-              <div className="flex justify-between gap-3 text-[11px] text-slate-600">
+              <div className="flex justify-between gap-3 text-meta text-fg-meta">
                 <span data-testid="newline-hint">Leave an empty line for a new paragraph; end a line with \ to break it.</span>
                 <span className="shrink-0 tabular-nums">
                   {description.length} / {DESCRIPTION_MAX}
@@ -470,7 +470,7 @@ export const LeaderboardTab: React.FC<{
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-[12px] text-slate-400" title="The score averages a secret window just after this length.">
+            <label className="flex items-center gap-2 text-secondary text-fg-muted" title="The score averages a secret window just after this length.">
               Cycles
               <NumberInput
                 integer
@@ -480,9 +480,9 @@ export const LeaderboardTab: React.FC<{
                 value={cycles}
                 onChange={setCycles}
                 aria-label="Cycles"
-                className="h-8 w-24 rounded-lg border border-slate-700/60 bg-slate-950/50 px-2.5 text-right text-[13px] tabular-nums text-slate-100 focus:border-emerald-500/60 focus:outline-none"
+                className="focus-ring h-8 w-24 rounded-control border border-line-control bg-surface-well px-2.5 text-right text-body tabular-nums text-fg hover:border-fg-meta"
               />
-              <span className="text-slate-600 tabular-nums">
+              <span className="text-fg-meta tabular-nums">
                 {MIN_CYCLES.toLocaleString("en-US")}–{MAX_CYCLES.toLocaleString("en-US")}
               </span>
             </label>
@@ -492,7 +492,7 @@ export const LeaderboardTab: React.FC<{
               <KitLabel>Ready?</KitLabel>
               <Ready ok={check.ok} label={check.ok ? "The flow is valid" : "The flow has errors"} />
               {check.errors.length > 0 && (
-                <ul className="space-y-0.5 pl-6 text-[12px] text-red-300" data-testid="submit-errors">
+                <ul className="space-y-0.5 pl-6 text-secondary text-problem" data-testid="submit-errors">
                   {check.errors.map((e, i) => (
                     <li key={i} className="break-words">
                       {e}
@@ -501,9 +501,9 @@ export const LeaderboardTab: React.FC<{
                 </ul>
               )}
               {check.warnings.length > 0 && (
-                <details className="group pl-6 text-[12px] text-amber-200/90">
-                  <summary className="cursor-pointer list-none text-amber-200 hover:text-amber-100 [&::-webkit-details-marker]:hidden">
-                    {check.warnings.length} warning{check.warnings.length === 1 ? "" : "s"} (won&apos;t block submitting) <span className="text-slate-500 group-open:hidden">· show</span>
+                <details className="group pl-6 text-secondary text-warn">
+                  <summary className="focus-ring cursor-pointer list-none rounded-inner text-warn hover:text-fg [&::-webkit-details-marker]:hidden">
+                    {check.warnings.length} warning{check.warnings.length === 1 ? "" : "s"} (won&apos;t block submitting) <span className="text-fg-meta group-open:hidden">· show</span>
                   </summary>
                   <ul className="mt-1 space-y-1">
                     {check.warnings.map((e, i) => (
@@ -520,7 +520,7 @@ export const LeaderboardTab: React.FC<{
             </div>
 
             {submitError && (
-              <div className="space-y-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-200" role="alert">
+              <div className="space-y-1 rounded-control border border-problem/30 bg-problem/10 px-3 py-2 text-secondary text-problem" role="alert">
                 <div className="break-words font-medium">{submitError.message}</div>
                 {submitError.errors.length > 1 && (
                   <ul className="list-disc pl-5">
@@ -538,12 +538,13 @@ export const LeaderboardTab: React.FC<{
               <button
                 type="button"
                 onClick={startLogin}
-                className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#5865F2] text-[13.5px] font-semibold text-white transition-[background-color,transform] duration-150 ease-snappy hover:bg-[#4752c4] active:scale-[0.98]"
+                // design-guard-ignore: Discord's brand button (blurple + white) is the one sanctioned brand colour on the site
+                className="focus-ring flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-control bg-[#5865F2] text-body font-semibold text-white transition-[background-color,scale] duration-(--duration-hover) ease-snappy hover:bg-[#4752c4] active:scale-98"
               >
-                <DiscordIcon className="h-4 w-4" /> Log in with Discord to submit
+                <DiscordIcon className="size-4" /> Log in with Discord to submit
               </button>
             ) : (
-              <KitButton variant="primary" size="md" className="h-10 w-full text-[13.5px]" onClick={() => void submit()} disabled={!canSubmit} title={!check.ok ? "Fix the errors above first" : !titleOk ? "Give it a title" : undefined}>
+              <KitButton variant="primary" size="md" className="h-10 w-full" onClick={() => void submit()} disabled={!canSubmit} title={!check.ok ? "Fix the errors above first" : !titleOk ? "Give it a title" : undefined}>
                 <Trophy /> {submitting ? "Submitting…" : "Submit to leaderboard"}
               </KitButton>
             )}
@@ -556,7 +557,7 @@ export const LeaderboardTab: React.FC<{
 
 /** A labelled option that opens a menu ("Seeds [3 ▾]"). */
 const Option: React.FC<{ label: string; value: string; title?: string; children: (close: () => void) => React.ReactNode }> = ({ label, value, title, children }) => (
-  <span className="inline-flex items-center gap-1.5 text-[12px] text-slate-500" title={title}>
+  <span className="inline-flex items-center gap-1.5 text-secondary text-fg-meta" title={title}>
     {label}
     <Dropdown label={label} button={<span className="tabular-nums">{value}</span>} width={200}>
       {children}
@@ -566,8 +567,8 @@ const Option: React.FC<{ label: string; value: string; title?: string; children:
 
 /** One readiness line: a tick, a warning or a cross. */
 const Ready: React.FC<{ ok: boolean; warn?: boolean; muted?: boolean; label: string }> = ({ ok, warn, muted, label }) => (
-  <div className={`flex items-start gap-2 text-[12.5px] ${ok ? "text-emerald-300" : muted ? "text-slate-500" : warn ? "text-amber-200" : "text-red-300"}`}>
-    {ok ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : warn || muted ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" /> : <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+  <div className={`flex items-start gap-2 text-body ${ok ? "text-go-fg" : muted ? "text-fg-meta" : warn ? "text-warn" : "text-problem"}`}>
+    {ok ? <Check className="mt-0.5 size-3.5 shrink-0" /> : warn || muted ? <AlertTriangle className="mt-0.5 size-3.5 shrink-0 opacity-80" /> : <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />}
     <span>{label}</span>
   </div>
 );

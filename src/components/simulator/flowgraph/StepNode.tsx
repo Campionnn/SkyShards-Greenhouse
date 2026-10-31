@@ -37,7 +37,7 @@ const ExitRow: React.FC<{ step: number; j: number; row: ExitRowData; hot: boolea
       <span className="fg-xt" title={row.text}>
         {row.text}
       </span>
-      <span className={`fg-to ${row.kind === "missing" ? "text-red-300" : ""}`} title={row.toTitle}>
+      <span className={`fg-to ${row.kind === "missing" ? "text-problem" : ""}`} title={row.toTitle}>
         {row.to === "Finish" || row.to === "Missing" ? (
           row.to
         ) : (
@@ -99,7 +99,7 @@ const StepNodeView: React.FC<NodeProps<StepNodeType>> = ({ data: d, selected }) 
               </span>
             )}
             {d.fullClear && (
-              <span className="fg-badge" title="Breaks every plant on entry (full clear)">
+              <span className="fg-badge" title="Breaks everything when this step starts">
                 <Eraser aria-hidden />
                 Clear
               </span>
@@ -181,8 +181,8 @@ export type FrameNodeType = Node<FrameNodeData, "frame">;
 const FrameNodeView: React.FC<NodeProps<FrameNodeType>> = ({ data }) => {
   const t = FRAME_TONE[data.tone];
   return (
-    <div className="fg-frame" style={{ width: data.w, height: data.h, borderColor: t.border, background: t.fill }}>
-      <div className="fg-frame-label" style={{ color: t.text }} title="Drag to move every step in this frame">
+    <div className="fg-frame" style={{ width: data.w, height: data.h, ["--fg-tone" as string]: t.text }}>
+      <div className="fg-frame-label" style={{ color: t.text }} title="Drag to move every step in this group">
         {data.tone === "script" && <Code aria-hidden />}
         <span className="fg-frame-name">{data.label}</span>
         {data.sub && <span className="fg-frame-sub">· {data.sub}</span>}

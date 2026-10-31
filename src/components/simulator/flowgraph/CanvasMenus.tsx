@@ -45,7 +45,7 @@ export function paneMenu(api: FlowEditorApi, at: { screen: XY; flow: XY }, view:
       onSelect: () => api.pasteStep?.(at.flow),
     },
     { separator: true },
-    { label: "Frame all", icon: <Scan />, shortcut: "F", onSelect: view.frameAll },
+    { label: "Fit all", icon: <Scan />, shortcut: "F", onSelect: view.frameAll },
     { label: "Tidy up", icon: <Wand2 />, title: "Arrange every step automatically (undo puts them back)", onSelect: () => api.edit((p) => withLayout(p, { all: true }), { uiOnly: true }) },
   ];
   if (view.busy) out.push({ label: api.showAllWires ? "Show the selected step's wires only" : "Show all wires", icon: <Spline />, onSelect: () => api.setShowAllWires(!api.showAllWires) });
@@ -87,7 +87,7 @@ export function stepMenu(api: FlowEditorApi, i: number): ContextMenuEntry[] {
     { separator: true },
     { label: "Copy", icon: <Copy />, shortcut: "Ctrl C", onSelect: () => api.copyStep(i) },
     { label: "Duplicate", icon: <CopyPlus />, shortcut: "Ctrl D", onSelect: () => api.duplicateStep(i) },
-    { label: s.ui?.frame ? "Change frame…" : "Add to frame…", icon: <Frame />, onSelect: () => inspect("notes") },
+    { label: s.ui?.frame ? "Change group…" : "Add to group…", icon: <Frame />, onSelect: () => inspect("notes") },
     { separator: true },
     { label: "Delete step", icon: <Trash2 />, shortcut: "Del", tone: "danger", disabled: steps.length <= 1, onSelect: () => api.deleteStep(i) },
   ];
@@ -133,7 +133,7 @@ export function exitMenu(api: FlowEditorApi, i: number, j: number): ContextMenuE
       },
     },
     {
-      label: exit.checkOnEntry ? "Stop checking on arrival" : "Also check on arrival",
+      label: exit.checkOnEntry ? "Don't skip this step if it's already true" : "Skip this step if it's already true",
       icon: <Zap />,
       title: "If it already holds when the plot arrives, the step is skipped",
       disabled: t.kind === "finish",
@@ -171,9 +171,9 @@ export function frameMenu(api: FlowEditorApi, frame: { label: string; script: bo
       { heading: frame.label },
       ...(api.openScript ? [{ label: "Edit plot script", icon: <Code />, onSelect: () => api.openScript?.("plot") }] : []),
       {
-        label: "Put these steps in a frame…",
+        label: "Put these steps in a group…",
         icon: <Frame />,
-        title: "Name a frame for the first step in the Notes tab, then give the others the same name",
+        title: "Name a group for the first step in the Notes tab, then give the others the same name",
         onSelect: () => {
           api.select(frame.members[0]);
           api.setTab("notes");
@@ -201,14 +201,14 @@ export function frameMenu(api: FlowEditorApi, frame: { label: string; script: bo
   return [
     { heading: frame.label },
     {
-      label: "Rename frame…",
+      label: "Rename group…",
       icon: <Pencil />,
       onSelect: () => {
         api.select(frame.members[0]);
         api.setTab("notes");
       },
     },
-    { label: "Ungroup", icon: <Ungroup />, title: "Remove the frame; the steps stay where they are", onSelect: () => setOnMembers({ frame: undefined }) },
+    { label: "Ungroup", icon: <Ungroup />, title: "Remove the group; the steps stay where they are", onSelect: () => setOnMembers({ frame: undefined }) },
     { separator: true },
     ...FRAME_COLORS.map((c) => ({
       label: `${c[0].toUpperCase()}${c.slice(1)}`,

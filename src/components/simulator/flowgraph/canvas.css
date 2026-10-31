@@ -2,6 +2,17 @@
    index.css (docs/design-system/foundations.md): selection = select (aqua), start / go = go (emerald).
    Motion: hover colour/opacity 150ms; selection, dragging and connecting are instant. */
 
+/* Mixed colours the flow editor's TS reads by name (EXIT_STYLE in shared.ts, the minimap mask):
+   components hold no literal colours (design guard). On :root because the phone list and SVG wires
+   use them outside .fg-canvas. */
+:root {
+  --fg-wire-arrive: color-mix(in oklab, var(--color-warn) 55%, var(--color-surface-page));
+  --fg-wire-restart: color-mix(in oklab, var(--color-restart) 55%, var(--color-surface-page));
+  --fg-wire-missing: color-mix(in oklab, var(--color-problem) 75%, var(--color-surface-page));
+  --fg-minimap-mask: color-mix(in oklab, var(--color-surface-page) 55%, transparent);
+  --fg-minimap-mask-stroke: color-mix(in oklab, var(--color-fg-body) 45%, transparent);
+}
+
 .fg-canvas {
   --fg-line: var(--color-line);
   --fg-dim: var(--color-fg-meta);
@@ -272,7 +283,13 @@
 /* ---- Frames ------------------------------------------------------------------------------- */
 
 .fg-canvas .react-flow__node-frame { pointer-events: none; cursor: default; }
-.fg-frame { position: relative; border-radius: 16px; border: 1px dashed; }
+/* A group's box in its colour (--fg-tone, set per group from FRAME_TONE): dashed border at 32%, fill at 3.5%. */
+.fg-frame {
+  position: relative;
+  border-radius: 16px;
+  border: 1px dashed color-mix(in oklab, var(--fg-tone) 32%, transparent);
+  background: color-mix(in oklab, var(--fg-tone) 3.5%, transparent);
+}
 .fg-frame-label {
   position: absolute;
   bottom: calc(100% + 8px);

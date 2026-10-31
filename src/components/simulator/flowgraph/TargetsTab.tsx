@@ -3,6 +3,7 @@ import { Crosshair, Eye, EyeOff } from "lucide-react";
 import type { FlowStep } from "../../../simulator";
 import { CropImage } from "../../shared";
 import { useContextMenu } from "../../ui/contextMenuContext";
+import { InfoHint } from "../../ui/InfoHint";
 import { KitButton } from "../../ui/kit";
 import { nameOf } from "../format";
 import { layoutToPlacements, withWatch } from "../scenarioEdit";
@@ -24,7 +25,7 @@ export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] 
       return null;
     }
   }, [step.layout]);
-  if (!placements) return <p className="text-[12px] text-red-300">This step's layout could not be read.</p>;
+  if (!placements) return <p className="text-secondary text-problem">This step's layout could not be read.</p>;
 
   const targets = placements.targets.map((t) => ({ key: `${t.position[0]},${t.position[1]}`, id: t.cropId, row: t.position[0], col: t.position[1], size: t.size }));
   const all = targets.map((t) => t.key);
@@ -53,16 +54,18 @@ export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] 
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[12px] leading-relaxed text-slate-500">
-        Click a target to include or exclude it from the uptime check. A checked cell loses uptime whenever it sits empty without the requirements for its mutation, is
-        blocked by something else, or its mutation stands there dried out.
-      </p>
+      <div className="flex items-center gap-1.5 text-secondary text-fg-meta">
+        <span>Click a target to include or exclude it from the uptime check.</span>
+        <InfoHint title="Checked targets">
+          A checked cell loses uptime whenever it sits empty without the requirements for its mutation, is blocked by something else, or its mutation stands there dried out.
+        </InfoHint>
+      </div>
       <div className="flex items-center gap-2">
         {empty ? (
-          <span className="flex-1 text-[12px] text-slate-500">This step has no target cells. Add targets in its layout to check their uptime.</span>
+          <span className="flex-1 text-secondary text-fg-meta">This step has no target cells. Add targets in its layout to check their uptime.</span>
         ) : (
-          <span className="flex-1 text-[12.5px] tabular-nums text-slate-300">
-            {count} of {targets.length} checked{step.watch === undefined && <span className="text-slate-500"> (all, the default)</span>}
+          <span className="flex-1 text-body tabular-nums text-fg-body">
+            {count} of {targets.length} checked{step.watch === undefined && <span className="text-fg-meta"> (all, the default)</span>}
           </span>
         )}
         <KitButton disabled={empty || step.watch === undefined} onClick={() => onChange(undefined)}>
@@ -72,15 +75,15 @@ export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] 
           None
         </KitButton>
       </div>
-      <div className="self-start rounded-xl border border-slate-700/60 bg-slate-950/50 p-1.5">
+      <div className="self-start rounded-container border border-line bg-surface-well p-1.5">
         <div className="relative" style={{ width: span(GRID), height: span(GRID) }}>
           {Array.from({ length: GRID * GRID }, (_, k) => (
-            <div key={k} className="absolute rounded-[3px] bg-slate-800/50" style={{ top: at(Math.floor(k / GRID)), left: at(k % GRID), width: cell, height: cell }} />
+            <div key={k} className="absolute rounded-inner bg-surface-control" style={{ top: at(Math.floor(k / GRID)), left: at(k % GRID), width: cell, height: cell }} />
           ))}
           {placements.inputs.map((p) => (
             <div
               key={p.id}
-              className="pointer-events-none absolute flex items-center justify-center rounded-[3px] opacity-35 grayscale-[35%]"
+              className="pointer-events-none absolute flex items-center justify-center rounded-inner opacity-35 grayscale-[35%]"
               style={{ top: at(p.position[0]), left: at(p.position[1]), width: span(p.size), height: span(p.size) }}
             >
               <CropImage cropId={p.cropId} cropName={nameOf(p.cropId)} width={span(p.size) * 0.78} height={span(p.size) * 0.78} showFallback={false} />
@@ -96,16 +99,16 @@ export const WatchPicker: React.FC<{ step: FlowStep; onChange: (watch: string[] 
                 onClick={() => toggle(t.key)}
                 onContextMenu={(e) => targetMenu(e, t)}
                 title={`${nameOf(t.id)} at (${t.key}) - ${on ? "checked" : "not checked"}`}
-                className={`absolute flex cursor-pointer items-center justify-center rounded-[4px] transition-[box-shadow,background-color,opacity] duration-150 active:scale-[0.96] ${
+                className={`absolute flex cursor-pointer items-center justify-center rounded-inner transition-[box-shadow,background-color,opacity] duration-150 active:scale-[0.96] ${
                   on
-                    ? "bg-emerald-500/15 shadow-[inset_0_0_0_2px_rgba(52,211,153,0.9)] hover:bg-emerald-500/25"
-                    : "bg-slate-900/50 opacity-55 outline-[1.5px] outline-offset-[-1.5px] outline-dashed outline-slate-500/70 hover:opacity-90"
+                    ? "bg-select/15 ring-2 ring-inset ring-select/90 hover:bg-select/25"
+                    : "bg-surface-well opacity-55 outline-[1.5px] outline-offset-[-1.5px] outline-dashed outline-line-control hover:opacity-90"
                 }`}
                 style={{ top: at(t.row), left: at(t.col), width: span(t.size), height: span(t.size) }}
               >
                 <CropImage cropId={t.id} cropName={nameOf(t.id)} width={span(t.size) * 0.68} height={span(t.size) * 0.68} showFallback={false} />
                 {on && (
-                  <span className="absolute -top-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-emerald-400 text-emerald-950 shadow">
+                  <span className="absolute -top-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-select text-surface-page">
                     <Eye className="h-2.5 w-2.5" strokeWidth={2.5} />
                   </span>
                 )}

@@ -37,6 +37,8 @@
 
   /* Roles: each colour has exactly one meaning. */
   --color-go: var(--color-emerald-500);
+  /* The darker segment of a split go button (Run's cycle field and menu). */
+  --color-go-strong: oklch(63% 0.15 163); /* on-go text 4.72:1 (emerald-600 was 4.13) */
   --color-go-hover: var(--color-emerald-400);
   --color-go-fg: var(--color-emerald-300);
   --color-on-go: var(--color-emerald-950);

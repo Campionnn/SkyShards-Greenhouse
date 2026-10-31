@@ -4,7 +4,7 @@ import { uptimeRatio, type RunSummary, type SpotReport, type SustainabilityRepor
 import { InfoHint } from "../ui";
 import { Segmented } from "../ui/kit";
 import { CropImage } from "../shared";
-import { debtText, spotFailureText, formatCoins, formatCount, formatDuration, nameOf } from "./format";
+import { debtText, spotFailureText, formatCoins, formatCount, formatDuration, formatPercent, nameOf } from "./format";
 import { DisclosureCard, Fact, LinkButton, ResultCard } from "./page/ResultCard";
 
 // ---- Money ----------------------------------------------------------------
@@ -159,7 +159,7 @@ export const MoneyPanel: React.FC<{
 
 // ---- Sustainability -------------------------------------------------------
 
-const pct = (x: number) => `${(x * 100).toFixed(x >= 0.999 || x === 0 ? 0 : 1)}%`;
+const pct = formatPercent; // the one uptime formatter (floors: never better than the run was)
 
 /** Uptime figures: red once requirements were missing, amber for other downtime, plain when fully up. */
 const uptimeTone = (u: UptimeCounts) => (u.requirements > 0 ? "text-red-300" : uptimeRatio(u) < 0.999 ? "text-amber-200" : "text-slate-100");

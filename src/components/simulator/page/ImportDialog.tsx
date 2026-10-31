@@ -1,22 +1,19 @@
-import React, { useEffect, useRef, useState } from "react";
-import { FileJson, X } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { FileJson } from "lucide-react";
 import type { Scenario } from "../../../simulator";
 import { useToast } from "../../ui";
 import { KitButton, KitTextarea } from "../../ui/kit";
+import { DialogFrame, ModalDialog } from "../../ui/ModalDialog";
 import { importFlows } from "../scenarioEdit";
-/** Pick a flows JSON file or paste it, then replace the plots (with Undo). */
+
+/** Pick a flows JSON file or paste it, then replace the plots (with Undo). A kit ModalDialog: Escape,
+ *  backdrop click and the close button dismiss it, and focus returns to the trigger. */
 export const ImportDialog: React.FC<{ scenario: Scenario; onChange: (sc: Scenario) => void; onClose: () => void }> = ({ scenario, onChange, onClose }) => {
   const { toast } = useToast();
   const [json, setJson] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const readId = useRef(0);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const pickFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
@@ -59,16 +56,24 @@ export const ImportDialog: React.FC<{ scenario: Scenario; onChange: (sc: Scenari
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm kit-fade-in" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label="Import flows" className="w-full max-w-lg rounded-xl border border-slate-600/40 bg-slate-900 shadow-2xl kit-pop-in">
-        <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3">
-          <h2 className="text-[14px] font-semibold text-slate-100">Import flows</h2>
-          <button type="button" className="cursor-pointer rounded-lg p-1 text-slate-400 hover:bg-slate-700/50 hover:text-slate-100" onClick={onClose} aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="space-y-3 p-4">
-          <p className="text-[12px] text-slate-400">
+    <ModalDialog labelledBy="import-flows-title" onClose={onClose}>
+      <DialogFrame
+        id="import-flows-title"
+        title="Import flows"
+        onClose={onClose}
+        footer={
+          <>
+            <KitButton variant="ghost" onClick={onClose}>
+              Cancel
+            </KitButton>
+            <KitButton variant="primary" onClick={load} disabled={reading || !json.trim()}>
+              <FileJson /> Import
+            </KitButton>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-secondary text-fg-muted">
             Replaces your plots and any setup sections included in the file. Settings and starting inventory left out of the file stay as they are.
           </p>
           <input
@@ -76,13 +81,13 @@ export const ImportDialog: React.FC<{ scenario: Scenario; onChange: (sc: Scenari
             accept=".json,application/json"
             onChange={pickFile}
             disabled={reading}
-            className="w-full text-[12.5px] text-slate-300 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-slate-700 file:px-3 file:py-1.5 file:text-[12px] file:text-slate-100"
+            className="focus-ring w-full rounded-control text-body text-fg-body file:mr-3 file:cursor-pointer file:rounded-control file:border-0 file:bg-surface-hover file:px-3 file:py-1.5 file:text-secondary file:text-fg"
           />
-          <p className="text-[11.5px] text-slate-500" role="status">
+          <p className="text-secondary text-fg-meta" role="status">
             {reading ? "Reading file…" : fileName ? `Loaded ${fileName}.` : "Or paste exported flows JSON:"}
           </p>
           <KitTextarea
-            className="h-32 w-full font-mono text-[12px]"
+            className="h-32 w-full font-mono text-secondary"
             aria-label="Flows JSON"
             placeholder="Paste exported flows JSON"
             value={json}
@@ -93,15 +98,7 @@ export const ImportDialog: React.FC<{ scenario: Scenario; onChange: (sc: Scenari
             }}
           />
         </div>
-        <div className="flex justify-end gap-2 border-t border-slate-700/60 px-4 py-3">
-          <KitButton variant="ghost" onClick={onClose}>
-            Cancel
-          </KitButton>
-          <KitButton variant="primary" onClick={load} disabled={reading || !json.trim()}>
-            <FileJson /> Import
-          </KitButton>
-        </div>
-      </div>
-    </div>
+      </DialogFrame>
+    </ModalDialog>
   );
 };

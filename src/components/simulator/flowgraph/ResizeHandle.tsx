@@ -58,7 +58,7 @@ export const ResizeHandle: React.FC<{
     >
       {/* Wide invisible hit area; a 2px line that lights up on hover / drag / focus. */}
       <span className="absolute inset-y-0 -left-[5px] w-[10px]" />
-      <span className="pointer-events-none absolute inset-y-0 -left-px w-[2px] bg-transparent transition-colors duration-150 group-hover:bg-emerald-400/60 group-focus-visible:bg-emerald-400/80 group-active:bg-emerald-400" />
+      <span className="pointer-events-none absolute inset-y-0 -left-px w-[2px] bg-transparent transition-colors duration-150 group-hover:bg-select/60 group-focus-visible:bg-focus group-active:bg-select" />
     </div>
   );
 };

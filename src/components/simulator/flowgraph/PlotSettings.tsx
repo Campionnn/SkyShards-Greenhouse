@@ -1,6 +1,7 @@
 import React from "react";
 import { CodeXml, Pencil, Play, Repeat } from "lucide-react";
 import { CropImage } from "../../shared";
+import { InfoHint } from "../../ui/InfoHint";
 import { KitButton, KitLabel, Pill, Switch } from "../../ui/kit";
 import { ActionsTab } from "./ActionsTab";
 import { useFlowEditor } from "./context";
@@ -20,35 +21,32 @@ export const PlotSettings: React.FC = () => {
   return (
     <div className="flex flex-col">
       <div className="flex flex-col gap-1 px-4 pt-4">
-        <h2 className="text-[15px] font-semibold leading-snug text-slate-100">Plot {api.plotId} flow</h2>
-        <p className="text-[12px] text-slate-500">
+        <h2 className="text-title font-semibold leading-snug text-fg">Plot {api.plotId} flow</h2>
+        <p className="text-secondary text-fg-meta">
           {steps.length} {steps.length === 1 ? "step" : "steps"} · {loop ? "loops" : "stops at the end"} · shared clock &amp; inventory. Select a step to edit it.
         </p>
       </div>
       <div className="flex flex-col gap-3 px-4 pt-4">
-        <section className="flex items-start gap-3 rounded-xl border border-slate-700/50 bg-slate-800/40 p-3">
+        <section className="flex items-start gap-3 rounded-container border border-line bg-surface-card p-3">
           <span className="pt-px">
             <Switch checked={loop} onChange={(v) => api.edit((p) => setLoop(p, v))} label="Loop" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 text-[13px] font-medium text-slate-100">
-              <Repeat className="h-3.5 w-3.5 text-violet-300" /> Loop
+            <div className="flex items-center gap-1.5 text-body font-medium text-fg">
+              <Repeat className="h-3.5 w-3.5 text-restart" /> Loop
+              <InfoHint title="Loop">
+                On: after the last step, an exit that names no step goes back to step 1, and the flow never finishes. Off: the last step may finish the flow and hold its layout.
+              </InfoHint>
             </div>
-            <p className="mt-0.5 text-[12px] leading-snug text-slate-500">
-              {loop ? (
-                <>Loop: after the last step, an exit that names no step goes back to step 1, and the flow never finishes.</>
-              ) : (
-<>Loop: after the last step, go back to step 1. Off: the last step may finish the flow and hold its layout.</>
-              )}
-            </p>
+            <p className="mt-0.5 text-secondary leading-snug text-fg-meta">{loop ? "Back to step 1 after the last step" : "Stops at the end"}</p>
           </div>
         </section>
-        <section className="flex flex-col gap-2.5 rounded-xl border border-slate-700/50 bg-slate-800/40 p-3">
+        <section className="flex flex-col gap-2.5 rounded-container border border-line bg-surface-card p-3">
           <div>
-            <div className="flex items-center gap-1.5 text-[13px] font-medium text-slate-100">
-              <Play className="h-3.5 w-3.5 text-emerald-400" /> Start step
+            <div className="flex items-center gap-1.5 text-body font-medium text-fg">
+              <Play className="h-3.5 w-3.5 text-go-fg" /> Start step
             </div>
-            <p className="mt-0.5 text-[12px] text-slate-500">Where the plot begins the run.</p>
+            <p className="mt-0.5 text-secondary text-fg-meta">Where the plot begins the run.</p>
           </div>
           <Dropdown
             label="Start step"
@@ -99,7 +97,7 @@ export const PlotSettings: React.FC = () => {
           }
           inherited={scenario.settings.policies}
           inheritsFrom="the scenario defaults"
-          hint="What the player does on this plot while online. Steps can override these again; everything not overridden follows the scenario defaults."
+          hint="What the player does on this plot while online. Steps can override these again (While on this step); everything not overridden follows the scenario defaults."
         />
       </div>
     </div>
@@ -125,10 +123,10 @@ const PlotScriptCard: React.FC = () => {
   const controllerHas = !!controller?.source.trim();
   const preview = has ? previewLines(source, 3) : [];
   return (
-    <section className="flex flex-col gap-2.5 rounded-xl border border-slate-700/50 bg-slate-800/40 p-3" aria-label="Plot script">
+    <section className="flex flex-col gap-2.5 rounded-container border border-line bg-surface-card p-3" aria-label="Plot script">
       <div className="flex items-center gap-2">
-        <CodeXml className="h-3.5 w-3.5 shrink-0 text-sky-300" />
-        <span className="flex-1 text-[13px] font-medium text-slate-100">Plot script</span>
+        <CodeXml className="h-3.5 w-3.5 shrink-0 text-script" />
+        <span className="flex-1 text-body font-medium text-fg">Plot script</span>
         {on ? (
           <Pill tone="sky" title={api.scripted ? "It can move this plot between steps (plot.goto)" : undefined}>
             enabled · {lines} line{lines === 1 ? "" : "s"}
@@ -136,12 +134,12 @@ const PlotScriptCard: React.FC = () => {
         ) : has ? (
           <Pill title="Kept, but it never runs">disabled · {lines} line{lines === 1 ? "" : "s"}</Pill>
         ) : (
-          <span className="text-[12px] text-slate-500">none</span>
+          <span className="text-secondary text-fg-meta">none</span>
         )}
       </div>
       {has ? (
         <pre
-          className={`overflow-hidden rounded-lg border border-slate-700/50 bg-slate-950/60 px-2.5 py-2 font-mono text-[11px] leading-[1.55] ${on ? "text-slate-300" : "text-slate-500"}`}
+          className={`overflow-hidden rounded-control border border-line bg-surface-well px-2.5 py-2 font-mono text-meta leading-[1.55] ${on ? "text-fg-body" : "text-fg-meta"}`}
           title={source.length > 400 ? `${source.slice(0, 400)}…` : source}
         >
           {preview.map((l, i) => (
@@ -149,21 +147,22 @@ const PlotScriptCard: React.FC = () => {
               {l}
             </span>
           ))}
-          {lines > preview.length && <span className="block text-slate-600">…</span>}
+          {lines > preview.length && <span className="block text-fg-meta">…</span>}
         </pre>
       ) : (
-        <p className="text-[12px] leading-snug text-slate-500">
-          Code that runs alongside this flow: break a mutation at a stage, move the plot between steps from code, keep variables.
+        <p className="flex items-center gap-1.5 text-secondary text-fg-meta">
+          No script on this plot.
+          <InfoHint title="Plot script">Code that runs alongside this flow: break a mutation at a stage, move the plot between steps from code, keep variables.</InfoHint>
         </p>
       )}
       {api.openScript && (
         <div className="flex flex-wrap gap-1.5">
-          <KitButton variant={has ? "neutral" : "accent"} onClick={() => api.openScript!("plot")}>
+          <KitButton onClick={() => api.openScript!("plot")}>
             <Pencil /> {has ? "Edit script" : "Write a script"}
           </KitButton>
           <KitButton variant="ghost" onClick={() => api.openScript!("controller")} title="The scenario's controller script: it sees and acts on every plot">
             <CodeXml /> Controller script
-            <span className={`text-[11px] ${controllerHas ? "text-sky-300" : "text-slate-500"}`}>{controllerHas ? (controller?.enabled === false ? "off" : "on") : "none"}</span>
+            <span className={`text-meta ${controllerHas ? "text-script" : "text-fg-meta"}`}>{controllerHas ? (controller?.enabled === false ? "off" : "on") : "none"}</span>
           </KitButton>
         </div>
       )}

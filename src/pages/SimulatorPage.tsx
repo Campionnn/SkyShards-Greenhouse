@@ -461,9 +461,10 @@ export const SimulatorPage: React.FC = () => {
 
   return (
     <ContextMenuProvider>
-    <div className="w-full" style={{ ["--sim-sticky" as string]: `${barHeight + 46}px` }}>
+    {/* overflow-x: clip (not hidden): keeps the touch hit areas of edge buttons from widening the page, without making a scroll container that would break the sticky bars. */}
+    <div className="w-full overflow-x-clip" style={{ ["--sim-sticky" as string]: `${barHeight + 46}px` }}>
       {/* Sticky command bar + KPIs */}
-      <header className="@container sticky top-0 z-30 rounded-b-xl border-b border-slate-700/50 bg-slate-950/85 backdrop-blur-xl backdrop-saturate-150" ref={barRef}>
+      <header className="@container sticky top-0 z-(--z-bar) rounded-b-container border-b border-line bg-surface-page/85 backdrop-blur-xl backdrop-saturate-150" ref={barRef}>
         <CommandBar
           scenario={scenario}
           onChange={setScenario}
@@ -488,7 +489,7 @@ export const SimulatorPage: React.FC = () => {
           onOpenLeaderboard={openSubmit}
         />
         <div className="flex h-12 items-center gap-3 px-3 md:hidden">
-          <span className="text-[13px] font-semibold text-slate-100">Simulator</span>
+          <span className="text-body font-semibold text-fg">Simulator</span>
           <KpiCompact view={view} plotCount={plotCount} priceSummary={priceSummary} />
         </div>
         <KpiStrip view={view} plotCount={plotCount} priceSummary={priceSummary} />
@@ -547,13 +548,13 @@ export const SimulatorPage: React.FC = () => {
             onSanityToggle={() => setSanityCheckOn((on) => !on)}
           />
         ) : (
-          <div className={`p-6 text-[12.5px] text-slate-400 ${surface.card}`}>
+          <div className={`p-6 text-body text-fg-muted ${surface.card}`}>
             {view.status === "error" ? "The scenario has errors: open Problems at the top." : "Setting up…"}
           </div>
         )}
 
         {/* Results */}
-        <div ref={tabsRef} className="sticky z-20 border-b border-slate-700/50 bg-slate-950/90 px-1 backdrop-blur-xl" style={{ top: barHeight }}>
+        <div ref={tabsRef} className="sticky z-(--z-sticky) border-b border-line bg-surface-page/90 px-1 backdrop-blur-xl" style={{ top: barHeight }}>
           <Tabs<ResultTab> value={tab} onChange={(t) => setTab(t)} items={resultTabs} scroll className="!border-b-0" />
         </div>
         <div className="pb-[calc(6rem+var(--ad-bottom,0px))] pt-2 md:pb-10">
@@ -644,9 +645,15 @@ export const SimulatorPage: React.FC = () => {
       )}
 
       {scripting !== null && (scripting === "controller" || scenario.plots.some((p) => p.id === scripting)) && (
-        <div className="fixed inset-0 z-[45] bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" style={{ bottom: "var(--ad-bottom, 0px)" }} role="dialog" aria-modal="true" aria-label="Script editor">
+        <div
+          className="fixed inset-0 z-[45] bg-surface-page/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" // design-guard-ignore: the script editor opens over the flow editor (z-40) and under its pickers; the z ladder has no step there yet
+          style={{ bottom: "var(--ad-bottom, 0px)" }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Script editor"
+        >
           <div className="w-full max-w-screen-2xl mx-auto px-2 sm:px-4 py-6">
-            <div className="bg-slate-900 rounded-lg shadow-2xl">
+            <div className="rounded-container border border-line-strong bg-surface-panel shadow-raised">
               <ScriptEditor
                 scenario={scenario}
                 target={scripting}

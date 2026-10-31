@@ -1,6 +1,7 @@
 import React, { useId } from "react";
 import { Check } from "lucide-react";
 import type { FlowUiColor } from "../../../simulator";
+import { InfoHint } from "../../ui/InfoHint";
 import { KitInput, KitLabel, KitTextarea } from "../../ui/kit";
 import { useFlowEditor } from "./context";
 import { FRAME_COLORS, withStepUi } from "./model";
@@ -9,12 +10,12 @@ import { FRAME_COLORS, withStepUi } from "./model";
 // in FlowStep.ui, so editing them never restarts the run.
 
 const FRAME_SWATCH: Record<FlowUiColor, string> = {
-  slate: "bg-slate-400",
-  emerald: "bg-emerald-400",
-  sky: "bg-sky-400",
-  violet: "bg-violet-400",
-  amber: "bg-amber-400",
-  rose: "bg-rose-400",
+  slate: "bg-fg-body",
+  emerald: "bg-go-fg",
+  sky: "bg-select-fg",
+  violet: "bg-restart",
+  amber: "bg-warn",
+  rose: "bg-problem",
 };
 
 export const NotesTab: React.FC = () => {
@@ -38,7 +39,7 @@ export const NotesTab: React.FC = () => {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <KitLabel>Note</KitLabel>
+        <KitLabel actions={<InfoHint title="Notes and groups">Shown on the step's node. Notes and groups are only for you: they never change the simulation.</InfoHint>}>Note</KitLabel>
         <KitTextarea
           rows={5}
           value={ui?.note ?? ""}
@@ -47,15 +48,15 @@ export const NotesTab: React.FC = () => {
           onChange={(e) => patch({ note: e.target.value }, `note:${step.id}`)}
           className="w-full resize-y"
         />
-        <p className="text-[11px] text-slate-500">Shown on the step's node. Notes and frames are only for you: they never change the simulation.</p>
+
       </div>
       <div className="flex flex-col gap-2">
-        <KitLabel>Frame</KitLabel>
+        <KitLabel actions={<InfoHint title="Groups">Steps with the same group name are drawn inside one labelled box on the canvas.</InfoHint>}>Group</KitLabel>
         <KitInput
           value={ui?.frame ?? ""}
           list={listId}
-          placeholder="No frame"
-          aria-label="Frame name"
+          placeholder="No group"
+          aria-label="Group name"
           onChange={(e) => patch({ frame: e.target.value }, `frame:${step.id}`)}
           className="w-full"
         />
@@ -64,7 +65,7 @@ export const NotesTab: React.FC = () => {
             <option key={f} value={f} />
           ))}
         </datalist>
-        <p className="text-[11px] text-slate-500">Steps with the same frame name are drawn inside one labelled box.</p>
+
         {frames.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {frames.map((f) => (
@@ -73,8 +74,8 @@ export const NotesTab: React.FC = () => {
                 type="button"
                 onClick={() => patch({ frame: f === ui?.frame ? undefined : f })}
                 aria-pressed={f === ui?.frame}
-                className={`cursor-pointer rounded-md px-2 py-0.5 text-[11.5px] transition-colors duration-150 active:scale-[0.97] ${
-                  f === ui?.frame ? "bg-emerald-500/15 text-emerald-300" : "bg-slate-400/10 text-slate-400 hover:text-slate-200"
+                className={`cursor-pointer rounded-inner px-2 py-0.5 text-secondary transition-colors duration-150 active:scale-[0.97] ${
+                  f === ui?.frame ? "bg-select/15 text-select-fg" : "bg-fg-muted/10 text-fg-muted hover:text-fg-body"
                 }`}
               >
                 {f}
@@ -83,8 +84,8 @@ export const NotesTab: React.FC = () => {
           </div>
         )}
         <div className="mt-1 flex items-center gap-3">
-          <span className="text-[12px] text-slate-400">Colour</span>
-          <div className="flex gap-1.5" role="radiogroup" aria-label="Frame colour">
+          <span className="text-secondary text-fg-muted">Colour</span>
+          <div className="flex gap-1.5" role="radiogroup" aria-label="Group colour">
             {FRAME_COLORS.map((c) => (
               <button
                 key={c}
@@ -92,14 +93,14 @@ export const NotesTab: React.FC = () => {
                 role="radio"
                 aria-checked={frameColor === c}
                 aria-label={c}
-                title={ui?.frame ? c : "Give the step a frame first"}
+                title={ui?.frame ? c : "Give the step a group first"}
                 disabled={!ui?.frame}
                 onClick={() => setFrameColor(c)}
                 className={`grid h-6 w-6 cursor-pointer place-items-center rounded-full transition-transform duration-150 ease-snappy active:scale-[0.92] disabled:cursor-default disabled:opacity-30 ${FRAME_SWATCH[c]} ${
-                  frameColor === c && ui?.frame ? "ring-2 ring-slate-100/80 ring-offset-2 ring-offset-slate-900" : ""
+                  frameColor === c && ui?.frame ? "ring-2 ring-fg/80 ring-offset-2 ring-offset-surface-panel" : ""
                 }`}
               >
-                {frameColor === c && ui?.frame && <Check className="h-3 w-3 text-slate-950" strokeWidth={3} />}
+                {frameColor === c && ui?.frame && <Check className="h-3 w-3 text-surface-page" strokeWidth={3} />}
               </button>
             ))}
           </div>

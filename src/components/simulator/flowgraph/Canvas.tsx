@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// design-guard-ignore: React Flow's overlay Panel, not the legacy ui/Panel
 import {
   Background,
   BackgroundVariant,
@@ -6,6 +7,7 @@ import {
   Panel,
   ReactFlow,
   ReactFlowProvider,
+  useNodesInitialized,
   useReactFlow,
   useStore,
   type Connection,
@@ -41,6 +43,8 @@ const START_ID = "__start";
 const nodeTypes: NodeTypes = { step: StepNode, start: StartNode, frame: FrameNode };
 const edgeTypes: EdgeTypes = { exit: ExitEdge, start: StartEdge };
 const FIT = { padding: 0.12, maxZoom: 1 } as const;
+/** The editor never opens below this zoom (it centres the selected or start step instead of fitting all). */
+const OPEN_ZOOM = 0.6;
 /** Below this zoom nodes drop their body detail and exit text (numbers, sockets and a bigger label stay). */
 const FAR_ZOOM = 0.45;
 
@@ -108,7 +112,7 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   const pointer = useRef<XY | null>(null);
 
-  const { plot, selected, hotExit, scripted, showAllWires } = api;
+  const { plot, selected, hotExit, scripted, showAllWires, secondsPerCycle = 0 } = api;
   const steps = plot.flow.steps;
 
   // Live positions while dragging, and React Flow's measured sizes, keyed by step id.
@@ -127,7 +131,7 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
   // ---- Plot-derived data (recomputed only when the plot changes) ----------------------------
   const derived = useMemo(() => {
     const unreached = scripted ? unreachedSteps(plot) : new Set<number>();
-    const bases = steps.map((_, i) => stepNodeBase(plot, i, unreached.has(i)));
+    const bases = steps.map((_, i) => stepNodeBase(plot, i, unreached.has(i), secondsPerCycle));
     const wires: (WireRef & { kind: ReturnType<typeof exitKind> })[] = [];
     steps.forEach((s, i) =>
       s.exits.forEach((e, j) => {
@@ -136,7 +140,7 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
       })
     );
     return { unreached, bases, wires, incoming: incomingCounts(plot), total: steps.reduce((n, s) => n + s.exits.length, 0) };
-  }, [plot, steps, scripted]);
+  }, [plot, steps, scripted, secondsPerCycle]);
 
   const pos = useCallback((i: number): XY => dragPos[steps[i].id] ?? { x: steps[i].ui?.x ?? 0, y: steps[i].ui?.y ?? 0 }, [dragPos, steps]);
 
@@ -575,6 +579,26 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
   const zoomIn = useCallback(() => void rf.zoomIn({ duration: reducedMotion() ? 0 : 150 }), [rf]);
   const zoomOut = useCallback(() => void rf.zoomOut({ duration: reducedMotion() ? 0 : 150 }), [rf]);
 
+  // Opening view: the whole flow when it fits at a readable zoom; otherwise the selected (or start)
+  // step at OPEN_ZOOM, so a big flow doesn't open as unreadable specks (Rose Dragon fit at 28%).
+  const initialized = useNodesInitialized();
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!initialized || opened.current) return;
+    opened.current = true;
+    void (async () => {
+      await rf.fitView({ ...FIT, duration: 0 });
+      if (rf.getZoom() >= OPEN_ZOOM) return;
+      const a = apiRef.current;
+      const s = a.plot.flow.steps[a.selected ?? a.plot.flow.startIndex] ?? a.plot.flow.steps[0];
+      const n = s && rf.getInternalNode(s.id);
+      if (!n) return;
+      const w = n.measured.width ?? 280;
+      const h = n.measured.height ?? 260;
+      void rf.setCenter(n.internals.positionAbsolute.x + w / 2, n.internals.positionAbsolute.y + h / 2, { zoom: OPEN_ZOOM, duration: 0 });
+    })();
+  }, [initialized, rf]);
+
   useEffect(() => {
     api.registerCanvas({ focusStep, frameAll, zoomIn, zoomOut });
     return () => api.registerCanvas(null);
@@ -653,8 +677,6 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
           onConnect={onConnect}
           onConnectEnd={onConnectEnd}
           isValidConnection={isValidConnection}
-          fitView
-          fitViewOptions={FIT}
           minZoom={0.2}
           maxZoom={1.6}
           deleteKeyCode={null}
@@ -701,7 +723,7 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
               <Kbd>Shift A</Kbd> add step
             </span>
             <span>
-              <Kbd>F</Kbd> frame all
+              <Kbd>F</Kbd> fit all
             </span>
           </Panel>
           <Panel position="bottom-right" className="flex items-end gap-1.5" style={{ display: "flex" }}>
@@ -711,8 +733,8 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
               nodeColor={minimapColor}
               nodeStrokeWidth={0}
               nodeBorderRadius={4}
-              maskColor="color-mix(in oklab, var(--color-surface-page) 55%, transparent)"
-              maskStrokeColor="color-mix(in oklab, var(--color-fg-body) 45%, transparent)"
+              maskColor="var(--fg-minimap-mask)"
+              maskStrokeColor="var(--fg-minimap-mask-stroke)"
               maskStrokeWidth={1.5}
               bgColor="transparent"
               style={{ width: 184, height: 116, margin: 0, position: "static" }}
@@ -726,7 +748,7 @@ const Canvas: React.FC<{ className?: string }> = ({ className = "" }) => {
               <button type="button" aria-label="Zoom out" title="Zoom out" onClick={zoomOut}>
                 <Minus />
               </button>
-              <button type="button" aria-label="Frame all (F)" title="Frame all (F)" onClick={frameAll}>
+              <button type="button" aria-label="Fit all (F)" title="Fit all (F)" onClick={frameAll}>
                 <Scan />
               </button>
             </div>

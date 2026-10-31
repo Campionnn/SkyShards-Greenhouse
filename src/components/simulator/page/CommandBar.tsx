@@ -8,8 +8,9 @@ import { CONFIG_META, cycleSeconds, effectiveUniqueCrops, type ProfileMode, type
 import { PlayerImportBox } from "../../playerImport/PlayerImportBox";
 import { StatInput } from "../../playerStats/StatInput";
 import { STAT_FIELDS } from "../../playerStats/statFields";
+import { cn } from "../../ui/cn";
 import { Kbd, KitButton, KitLabel, Segmented, Switch } from "../../ui/kit";
-import { MenuItem, MenuLabel, MenuSeparator, Popover } from "../../ui/Popover";
+import { Dropdown, MenuItem, MenuLabel, MenuSeparator, Popover } from "../../ui/Popover";
 import { NumberInput } from "../controls";
 import { formatDuration } from "../format";
 import { modalOpen, ownsKeys, RUN_SHORTCUTS, runShortcutFor } from "../runShortcuts";
@@ -18,9 +19,12 @@ import { RUN_PRESETS, undoTitle } from "./pageHelpers";
 
 // The simulator's sticky command bar: the profile switch, the settings people change all the time
 // (as property chips with popovers), the problems pill, and the run cluster. The rest of the
-// settings live in the drawer. Conventions: docs/simulator/UI-CONVENTIONS.md.
+// settings live in the drawer. Conventions: docs/design-system/ (patterns.md "Tool page").
 
 const MAX_CYCLES = 100000;
+
+/** A quiet underlined text action inside popovers ("All player stats →"). */
+const LINK = "focus-ring cursor-pointer rounded-inner text-secondary font-medium text-fg-body underline decoration-fg-meta underline-offset-[3px] hover:text-fg hover:decoration-fg-muted";
 
 export interface PageProblem {
   level: "error" | "warning" | "unsustainable";
@@ -71,19 +75,25 @@ const PropChip = React.forwardRef<HTMLButtonElement, { icon: React.ReactNode; la
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex h-[30px] cursor-pointer items-center ${shrinks ? "min-w-[64px] shrink" : "shrink-0"} gap-1.5 whitespace-nowrap rounded-lg px-2 text-[12.5px] transition-colors duration-150 disabled:cursor-default disabled:opacity-50 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0 [&>svg]:text-slate-500 ${
-        open ? "bg-slate-400/10" : "hover:bg-slate-400/10"
-      }`}
+      className={cn(
+        "focus-ring inline-flex h-[30px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control px-2 text-body transition-colors duration-(--duration-hover) disabled:cursor-default disabled:opacity-50 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-fg-meta",
+        // 860–1100px bar (1366 with the ad rails): the word label says what the icon says, so the icon goes and the label stays.
+        "@min-[860px]:@max-[1100px]:[&>svg]:hidden",
+        shrinks ? "min-w-[64px] shrink" : "shrink-0",
+        // Open: the selection colour (this chip's popover is the thing you are in).
+        open ? "bg-select/10 [&>svg]:text-select-fg" : "hover:bg-surface-hover",
+      )}
     >
       {icon}
-      <span className={`shrink-0 text-[12px] text-slate-500 ${keepLabel ? "@max-[1100px]:hidden" : "@max-[1330px]:hidden"}`}>{label}</span>
-      <span className={`font-semibold text-slate-100 ${shrinks ? "min-w-0 truncate" : ""}`}>{children}</span>
+      {/* The label stays down to an ~860px bar (1366 with the ad rails); below that the icon and value carry it. */}
+      <span className={cn("shrink-0 text-secondary text-fg-meta", keepLabel ? "@max-[860px]:hidden" : "@max-[860px]:hidden @min-[1100px]:@max-[1330px]:hidden")}>{label}</span>
+      <span className={cn("font-semibold text-fg", shrinks && "min-w-0 truncate")}>{children}</span>
     </button>
   )
 );
 PropChip.displayName = "PropChip";
 
-const Sep: React.FC<{ className?: string }> = ({ className = "" }) => <span aria-hidden className={`mx-1 h-[22px] w-px shrink-0 bg-slate-700/70 @max-[1100px]:hidden ${className}`} />;
+const Sep: React.FC<{ className?: string }> = ({ className }) => <span aria-hidden className={cn("mx-1 h-[22px] w-px shrink-0 bg-line-strong @max-[1100px]:hidden", className)} />;
 
 function everyLabel(sc: Scenario): string {
   if (sc.settings.playerActions === false) return "never (actions off)";
@@ -170,7 +180,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
     <div className="flex h-[52px] items-center gap-1 px-1 sm:px-2 max-md:hidden">
       {/* Left: shrinks (chip values truncate) so the right-hand cluster can never be pushed past the edge. */}
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-      <span className="mr-2 shrink-0 text-[13px] font-semibold text-slate-100 @max-[1100px]:hidden">Simulator</span>
+      <span className="mr-2 shrink-0 text-body font-semibold text-fg @max-[1100px]:hidden">Simulator</span>
       <Segmented<ProfileMode>
         label="Profile"
         value={profile}
@@ -189,10 +199,10 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         </PropChip>
         <PropChip ref={reg("player")} icon={<UserRound />} label="Player" keepLabel open={pop === "player"} onClick={() => toggle("player")} disabled={preview} title="Player stats: cycle length and fortune">
           {formatDuration(cycle)}
-          <span className="font-medium text-slate-400 @max-[1500px]:hidden"> · {ff.toLocaleString("en-US")} FF</span>
+          <span className="font-medium text-fg-muted @max-[1500px]:hidden"> · {ff.toLocaleString("en-US")} FF</span>
         </PropChip>
         <PropChip ref={reg("rules")} icon={<Trophy />} label="Rules" open={pop === "rules"} onClick={() => toggle("rules")} disabled={preview} title={`Leaderboard rules (${board} board)`}>
-          <span className={rulesOn ? "text-emerald-300" : "text-slate-400"}>{rulesOn ? "rules on ✓" : "off"}</span>
+          <span className={rulesOn ? "text-go-fg" : "text-fg-muted"}>{rulesOn ? "rules on ✓" : "off"}</span>
         </PropChip>
       </div>
       <Sep className="max-md:hidden" />
@@ -200,10 +210,12 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         type="button"
         onClick={() => onOpenSettings()}
         title="All settings"
-        className="inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-2 text-[12.5px] font-medium text-slate-200 transition-colors duration-150 hover:bg-slate-400/10 max-md:hidden"
+        aria-label={changedSettings > 0 ? `Settings, ${changedSettings} changed` : "Settings"}
+        className="focus-ring inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control px-2 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover max-md:hidden"
       >
-        <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" /> <span className="@max-[900px]:hidden">Settings</span>
-        {changedSettings > 0 && <span className="text-[12px] font-normal text-slate-500 @max-[1330px]:hidden">· {changedSettings} changed</span>}
+        {/* Narrow bars: icon only, so the property chips keep their labels. */}
+        <SlidersHorizontal className="size-3.5 text-fg-meta" /> <span className="@max-[1100px]:hidden">Settings</span>
+        {changedSettings > 0 && <span className="text-secondary font-normal text-fg-meta @max-[1330px]:hidden">· {changedSettings} changed</span>}
       </button>
 
       </div>
@@ -216,11 +228,12 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
           type="button"
           onClick={() => toggle("problems")}
           aria-expanded={pop === "problems"}
-          className={`mr-1 inline-flex h-[26px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] font-semibold ring-1 ring-inset transition-colors duration-150 ${
-            errors ? "bg-red-500/10 text-red-300 ring-red-500/30 hover:bg-red-500/15" : "bg-amber-400/10 text-amber-200 ring-amber-400/25 hover:bg-amber-400/15"
-          }`}
+          className={cn(
+            "focus-ring mr-1 inline-flex h-[26px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-secondary font-semibold ring-1 ring-inset transition-colors duration-(--duration-hover)",
+            errors ? "bg-problem/10 text-problem ring-problem/30 hover:bg-problem/15" : "bg-warn/10 text-warn ring-warn/25 hover:bg-warn/15",
+          )}
         >
-          <AlertTriangle className="h-3.5 w-3.5" />
+          <AlertTriangle className="size-3.5" />
           {problems.length}
           <span className="@max-[1440px]:hidden">{problems.length === 1 ? "problem" : "problems"}</span>
         </button>
@@ -229,15 +242,15 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
 
       {/* Run cluster */}
       {!running && (
-        <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-slate-600/40 bg-slate-800/60 max-md:hidden" role="group" aria-label="Step">
+        <div className="inline-flex shrink-0 overflow-hidden rounded-control border border-line-strong bg-surface-control max-md:hidden" role="group" aria-label="Step">
           <button
             type="button"
             onClick={onStepBack}
             disabled={!ready || !view.history.canStepBack}
             title="Back one cycle (← or ,)"
-            className="inline-flex h-7 cursor-pointer items-center gap-1 px-2.5 text-[12.5px] font-medium text-slate-200 transition-colors duration-150 hover:bg-slate-700/70 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+            className="focus-ring-inset inline-flex h-7 cursor-pointer items-center gap-1 px-2.5 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
           >
-            <ChevronLeft className="h-3.5 w-3.5" />
+            <ChevronLeft className="size-3.5" />
             <span className="@max-[1100px]:hidden">Back</span>
           </button>
           <button
@@ -245,10 +258,10 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
             onClick={onStep}
             disabled={!ready}
             title="Step one cycle (→ or .)"
-            className="inline-flex h-7 cursor-pointer items-center gap-1 border-l border-slate-600/40 px-2.5 text-[12.5px] font-medium text-slate-200 transition-colors duration-150 hover:bg-slate-700/70 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+            className="focus-ring-inset inline-flex h-7 cursor-pointer items-center gap-1 border-l border-line-strong px-2.5 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
           >
             <span className="@max-[1100px]:hidden">Step</span>
-            <ChevronRight className="h-3.5 w-3.5" />
+            <ChevronRight className="size-3.5" />
           </button>
         </div>
       )}
@@ -272,8 +285,8 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         <div className="p-3">
           <div className="mb-3 flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold text-slate-100">Act while online</div>
-              <div className="text-[12px] text-slate-500">Harvest, water, re-place, fix ground and change steps</div>
+              <div className="text-body font-semibold text-fg">Act while online</div>
+              <div className="text-secondary text-fg-meta">Harvest, water, re-place, fix ground and change steps</div>
             </div>
             <Switch checked={settings.playerActions !== false} onChange={(playerActions) => setSettings({ playerActions })} label="Player actions" />
           </div>
@@ -287,12 +300,14 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
                     key={k}
                     type="button"
                     onClick={() => setSettings({ activity: { kind: "everyN", n: k, offset: 0 } })}
-                    className={`flex h-11 cursor-pointer flex-col items-center justify-center rounded-lg border leading-tight transition-colors duration-150 ${
-                      on ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200" : "border-slate-600/40 bg-slate-950/50 text-slate-200 hover:border-slate-500/60"
-                    }`}
+                    aria-pressed={on}
+                    className={cn(
+                      "focus-ring flex h-11 cursor-pointer flex-col items-center justify-center rounded-control border leading-tight transition-colors duration-(--duration-hover)",
+                      on ? "border-select/60 bg-select/10 text-select-fg" : "border-line-strong bg-surface-well text-fg-body hover:border-line-control",
+                    )}
                   >
-                    <span className="text-[13px] font-semibold tabular-nums">{k}</span>
-                    <span className="text-[10.5px] text-slate-500">{k === 1 ? "cycle" : `~${hours < 10 ? hours.toFixed(1) : Math.round(hours)}h`}</span>
+                    <span className="text-body font-semibold tabular-nums">{k}</span>
+                    <span className="text-meta text-fg-meta">{k === 1 ? "cycle" : `~${hours < 10 ? hours.toFixed(1) : Math.round(hours)}h`}</span>
                   </button>
                 );
               })}
@@ -303,8 +318,8 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
             startTime={settings.playerStats.startTimeOfDay}
             onChange={(activity, startTimeOfDay) => setSettings({ activity, playerStats: { ...settings.playerStats, startTimeOfDay } })}
           />
-          <div className="mt-3 flex items-center gap-2 border-t border-slate-700/60 pt-2.5 text-[12px] text-slate-500">
-            Compare every frequency under <span className="text-slate-300">Overview › Profit by online frequency</span>.
+          <div className="mt-3 flex items-center gap-2 border-t border-line pt-2.5 text-secondary text-fg-meta">
+            Compare every frequency under <span className="text-fg-body">Overview › Profit by online frequency</span>.
           </div>
         </div>
       </Popover>
@@ -318,10 +333,10 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
           ))}
           <KitLabel className="pt-2">Yield</KitLabel>
           <StatInput def={STAT_FIELDS.farmingFortune} value={settings.playerStats.farmingFortune} onChange={(v) => setStats({ farmingFortune: v })} />
-          <div className="mt-2 border-t border-slate-700/60 pt-2.5">
+          <div className="mt-2 border-t border-line pt-2.5">
             <button
               type="button"
-              className="cursor-pointer text-[12px] font-medium text-slate-300 underline decoration-slate-500/50 underline-offset-[3px] hover:decoration-slate-300"
+              className={LINK}
               onClick={() => {
                 close();
                 onOpenSettings("player");
@@ -335,24 +350,29 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
 
       <Popover anchor={anchors.current.rules ?? null} open={pop === "rules"} onClose={close} label="Leaderboard rules" width={360}>
         <div className="p-3" data-testid="leaderboard-rules">
-          <div className="text-[13px] font-semibold text-slate-100">Leaderboard rules · {board}</div>
-          <p className="mb-3 mt-0.5 text-[12px] text-slate-500">
+          <div className="text-body font-semibold text-fg">Leaderboard rules · {board}</div>
+          <p className="mb-3 mt-0.5 text-secondary text-fg-meta">
             Run under the leaderboard&apos;s own set-up (max stats, default settings, empty start) so your numbers match the {board} board.
           </p>
-          <label className="mb-2 flex items-center justify-between gap-2 text-[12.5px] text-slate-400">
+          <div className="mb-2 flex items-center justify-between gap-2 text-body text-fg-muted">
             Online every
-            <select
-              className="h-7 rounded-lg border border-slate-600/40 bg-slate-950/50 px-2 text-[12.5px] text-slate-100"
-              value={rulesEvery}
-              onChange={(e) => setRulesEvery(Number(e.target.value))}
-            >
-              {EVERY.map((k) => (
-                <option key={k} value={k}>
-                  {k} cycle{k === 1 ? "" : "s"}
-                </option>
-              ))}
-            </select>
-          </label>
+            <Dropdown label="Online every" button={<span className="tabular-nums">{`${rulesEvery} cycle${rulesEvery === 1 ? "" : "s"}`}</span>} width={160} align="end">
+              {(closeMenu) =>
+                EVERY.map((k) => (
+                  <MenuItem
+                    key={k}
+                    checked={k === rulesEvery}
+                    onSelect={() => {
+                      setRulesEvery(k);
+                      closeMenu();
+                    }}
+                  >
+                    {k} cycle{k === 1 ? "" : "s"}
+                  </MenuItem>
+                ))
+              }
+            </Dropdown>
+          </div>
           <div className="flex gap-1.5">
             <KitButton className="flex-1" onClick={applyBoardRules} title={differences.length ? `Changes: ${differences.join("; ")}` : "Already under the rules; re-rolls the seed"}>
               <Trophy /> Apply {board} rules
@@ -371,7 +391,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
               </KitButton>
             )}
           </div>
-          <div className={`mt-3 border-t border-slate-700/60 pt-2.5 text-[12px] ${rulesOn ? "text-emerald-300/90" : "text-slate-400"}`}>
+          <div className={cn("mt-3 border-t border-line pt-2.5 text-secondary", rulesOn ? "text-go-fg" : "text-fg-muted")}>
             {rulesOn ? `Your settings match the ${board} rules.` : `Not under the ${board} rules yet: ${differences.join("; ")}.`}
           </div>
           {props.onOpenLeaderboard && (
@@ -381,7 +401,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
                 close();
                 props.onOpenLeaderboard!();
               }}
-              className="mt-2 cursor-pointer text-[12px] font-medium text-slate-300 underline decoration-slate-500/50 underline-offset-[3px] hover:decoration-slate-300"
+              className={cn("mt-2", LINK)}
             >
               Test and submit in the Leaderboard tab →
             </button>
@@ -392,11 +412,11 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
       <Popover anchor={anchors.current.problems ?? null} open={pop === "problems"} onClose={close} label="Problems" width={420} align="end">
         <ul className="max-h-[420px] space-y-0.5 overflow-y-auto scrollbar-dark">
           {problems.map((p, i) => (
-            <li key={i} className="flex gap-2.5 rounded-lg px-2.5 py-2">
-              <AlertTriangle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${p.level === "warning" ? "text-amber-300" : "text-red-400"}`} />
+            <li key={i} className="flex gap-2.5 rounded-control px-2.5 py-2">
+              <AlertTriangle className={cn("mt-0.5 size-3.5 shrink-0", p.level === "warning" ? "text-warn" : "text-problem")} />
               <div className="min-w-0 flex-1">
-                <div className="text-[11.5px] text-slate-500">{p.where}</div>
-                <div className="text-[12.5px] text-slate-200">{p.message}</div>
+                <div className="text-secondary text-fg-meta">{p.where}</div>
+                <div className="text-body text-fg-body">{p.message}</div>
               </div>
               {p.action && (
                 <button
@@ -405,7 +425,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
                     close();
                     p.action!.run();
                   }}
-                  className="shrink-0 cursor-pointer self-center whitespace-nowrap text-[12px] font-medium text-slate-300 underline decoration-slate-500/50 underline-offset-[3px] hover:decoration-slate-300"
+                  className={cn("shrink-0 self-center whitespace-nowrap", LINK)}
                 >
                   {p.action.label} →
                 </button>
@@ -426,32 +446,34 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
                 setN(k);
                 close();
               }}
-              className={`h-7 flex-1 cursor-pointer rounded-md border text-[12px] tabular-nums transition-colors duration-150 ${
-                n === k ? "border-emerald-500/60 text-emerald-200" : "border-slate-600/40 bg-slate-950/50 text-slate-300 hover:border-slate-500/60"
-              }`}
+              aria-pressed={n === k}
+              className={cn(
+                "focus-ring h-7 flex-1 cursor-pointer rounded-inner border text-secondary tabular-nums transition-colors duration-(--duration-hover)",
+                n === k ? "border-select/60 bg-select/10 text-select-fg" : "border-line-strong bg-surface-well text-fg-body hover:border-line-control",
+              )}
             >
               {k}
             </button>
           ))}
         </div>
         <MenuSeparator />
-        <label className="flex items-center justify-between gap-2 px-2 py-1.5 text-[12.5px] text-slate-300" title="Changing the seed restarts the simulation">
+        <label className="flex items-center justify-between gap-2 px-2 py-1.5 text-body text-fg-body" title="Changing the seed restarts the simulation">
           <span className="flex items-center gap-2">
-            <Dices className="h-3.5 w-3.5 text-slate-400" /> Seed
+            <Dices className="size-3.5 text-fg-muted" /> Seed
           </span>
           <NumberInput
             integer
             value={seed}
             onChange={onSeedChange}
             disabled={running}
-            className="h-7 w-28 rounded-lg border border-slate-600/40 bg-slate-950/50 px-2 text-right text-[12.5px] tabular-nums text-slate-100 focus:border-emerald-500/60 focus:outline-none"
+            className="focus-ring h-7 w-28 rounded-control border border-line-control bg-surface-well px-2 text-right text-body tabular-nums text-fg hover:border-fg-meta"
           />
         </label>
         <MenuSeparator />
         <MenuLabel>Keyboard</MenuLabel>
         <ul className="space-y-1 px-2 pb-1.5">
           {RUN_SHORTCUTS.map((s) => (
-            <li key={s.keys} className="flex items-center gap-2 text-[11.5px] text-slate-400">
+            <li key={s.keys} className="flex items-center gap-2 text-secondary text-fg-muted">
               <Kbd className="min-w-[4.5rem] justify-center">{s.keys}</Kbd>
               {s.action}
             </li>
@@ -477,24 +499,25 @@ const RunButton = React.forwardRef<
         type="button"
         onClick={onStop}
         title="Stop (Space or Esc)"
-        className="inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-red-500/15 px-3 text-[12.5px] font-semibold text-red-300 ring-1 ring-inset ring-red-500/35 transition-colors duration-150 hover:bg-red-500/20 max-md:hidden"
+        className="focus-ring inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-control bg-problem/15 px-3 text-body font-semibold text-problem ring-1 ring-inset ring-problem/35 transition-colors duration-(--duration-hover) hover:bg-problem/20 max-md:hidden"
       >
-        <Square className="h-3 w-3" /> Stop
+        <Square className="size-3" /> Stop
       </button>
     );
   }
   return (
-    <div className="inline-flex h-[30px] shrink-0 overflow-hidden rounded-lg shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] max-md:hidden">
+    // No overflow-hidden: each segment rounds its own outer corners so their focus rings are not clipped.
+    <div className="inline-flex h-[30px] shrink-0 max-md:hidden">
       <button
         type="button"
         onClick={() => onRun(n)}
         disabled={!ready}
         title="Run (Space)"
-        className="inline-flex cursor-pointer items-center gap-1.5 bg-emerald-500 pl-3 pr-2 text-[12.5px] font-semibold text-emerald-950 transition-[background-color,transform] duration-150 ease-snappy hover:bg-emerald-400 active:scale-[0.97] disabled:cursor-default disabled:opacity-60"
+        className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-l-control bg-go pl-3 pr-2 text-body font-semibold text-on-go transition-[background-color,scale] duration-(--duration-hover) ease-snappy hover:bg-go-hover active:scale-97 disabled:cursor-default disabled:opacity-60"
       >
-        <Play className="h-3 w-3 fill-current" /> Run
+        <Play className="size-3 fill-current" /> Run
       </button>
-      <label className="flex items-center border-l border-emerald-950/25 bg-emerald-600 px-1" title="Cycles to run. Type a number and press Enter to run it.">
+      <label className="flex items-center border-l border-on-go/25 bg-go-strong px-1" title="Cycles to run. Type a number and press Enter to run it.">
         <NumberInput
           integer
           min={1}
@@ -508,7 +531,7 @@ const RunButton = React.forwardRef<
               onRun((e.currentTarget as HTMLInputElement).valueAsNumber || Number((e.currentTarget as HTMLInputElement).value) || n);
             }
           }}
-          className="h-6 w-[60px] rounded-md border-0 bg-emerald-950/35 px-1.5 text-right text-[12.5px] font-semibold tabular-nums text-emerald-50 outline-none focus:bg-emerald-950/60 focus:ring-[1.5px] focus:ring-emerald-200"
+          className="focus-ring h-6 w-[60px] rounded-inner border-0 bg-on-go/35 px-1.5 text-right text-body font-semibold tabular-nums text-fg focus:bg-on-go/60"
         />
       </label>
       <button
@@ -517,9 +540,9 @@ const RunButton = React.forwardRef<
         onClick={onMenu}
         aria-expanded={menuOpen}
         aria-label="Run options: length presets, seed, shortcuts"
-        className="grid w-6 cursor-pointer place-items-center border-l border-emerald-950/25 bg-emerald-600 text-emerald-950 transition-colors duration-150 hover:bg-emerald-500"
+        className="focus-ring grid w-6 cursor-pointer place-items-center rounded-r-control border-l border-on-go/25 bg-go-strong text-on-go transition-colors duration-(--duration-hover) hover:bg-go"
       >
-        <ChevronDown className="h-3.5 w-3.5" />
+        <ChevronDown className="size-3.5" />
       </button>
     </div>
   );

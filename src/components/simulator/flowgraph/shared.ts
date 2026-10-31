@@ -1,7 +1,7 @@
-import type { Condition, ConditionMatch, FlowStep, ScenarioPlot, StepExit } from "../../../simulator";
-import { describeCondition } from "../../../simulator";
+import type { Condition, ConditionMatch, FlowStep, Scenario, ScenarioPlot, StepExit } from "../../../simulator";
+import { cycleSeconds, describeCondition, effectiveUniqueCrops } from "../../../simulator";
 import { layoutToPlacements } from "../scenarioEdit";
-import { nameOf } from "../format";
+import { formatDuration, nameOf } from "../format";
 import { exitTarget, type ExitTarget } from "./model";
 
 // Shared, React-free helpers for every flow editor part (canvas, inspector, list view).
@@ -24,11 +24,35 @@ export function exitKind(plot: ScenarioPlot, stepIndex: number, exit: StepExit):
  */
 export const EXIT_STYLE: Record<ExitKind, { stroke: string; hot: string; text: string; label: string; help: string }> = {
   normal: { stroke: "var(--color-line-control)", hot: "var(--color-go)", text: "text-go-fg", label: "Exit", help: "Checked while the player is online; the first exit that holds is taken." },
-  arrive: { stroke: "color-mix(in oklab, var(--color-warn) 55%, var(--color-surface-page))", hot: "var(--color-warn)", text: "text-warn", label: "Also on arrival", help: "Also checked when the plot arrives: if it already holds, this step is skipped." },
-  restart: { stroke: "color-mix(in oklab, var(--color-restart) 55%, var(--color-surface-page))", hot: "var(--color-restart)", text: "text-restart", label: "Restart", help: "Goes back into this same step: the layout is re-applied and its counters restart." },
+  arrive: { stroke: "var(--fg-wire-arrive)", hot: "var(--color-warn)", text: "text-warn", label: "Skips this step if already true", help: "Also checked when the plot arrives: if it's already true, this step is skipped." },
+  restart: { stroke: "var(--fg-wire-restart)", hot: "var(--color-restart)", text: "text-restart", label: "Restart", help: "Goes back into this same step: the layout is re-applied and its counters restart." },
   finish: { stroke: "var(--color-fg-meta)", hot: "var(--color-fg-body)", text: "text-fg-body", label: "Finish", help: "Holds this final step: the flow is finished and the plot stays here." },
-  missing: { stroke: "color-mix(in oklab, var(--color-problem) 75%, var(--color-surface-page))", hot: "var(--color-problem)", text: "text-problem", label: "Missing step", help: "Goes to a step that no longer exists. Pick another step." },
+  missing: { stroke: "var(--fg-wire-missing)", hot: "var(--color-problem)", text: "text-problem", label: "Missing step", help: "Goes to a step that no longer exists. Pick another step." },
 };
+
+/**
+ * Seconds per growth cycle for the scenario's player stats (Crop Growth, Speed, growth upgrade, Flora
+ * shard), counting no standing unique crops: the editor plans, it doesn't run. The same estimate the
+ * simulator page's command bar shows.
+ */
+export function plannedCycleSeconds(scenario: Scenario): number {
+  const s = scenario.settings.playerStats;
+  return cycleSeconds(s, effectiveUniqueCrops(0, s.floraShard ?? 0));
+}
+
+/** A cycle count as time, for hints: "≈ 35 min", "≈ 2h 20m", "≈ 1d 4h". Empty when it can't be told. */
+export function cycleTime(n: number, secondsPerCycle: number): string {
+  if (!(n > 0) || !(secondsPerCycle > 0)) return "";
+  const s = n * secondsPerCycle;
+  if (s < 3600) return `≈ ${Math.max(1, Math.round(s / 60))} min`;
+  return `≈ ${formatDuration(s)}`;
+}
+
+/** "20 cycles ≈ 35 min" (or just "20 cycles" when the time can't be told). */
+export function cyclesWithTime(n: number, secondsPerCycle: number): string {
+  const t = cycleTime(n, secondsPerCycle);
+  return `${n.toLocaleString("en-US")} cycle${n === 1 ? "" : "s"}${t ? ` ${t}` : ""}`;
+}
 
 /** "3. Chorus Fruit" style name of a step. */
 export const stepTitle = (s: FlowStep, i: number) => `${i + 1}. ${s.label?.trim() || s.id}`;
@@ -50,7 +74,7 @@ export function targetName(plot: ScenarioPlot, stepIndex: number, t: ExitTarget)
 }
 
 /** One short line for an exit's conditions, for node rows and collapsed cards. */
-export function conditionSummary(list: readonly Condition[], match: ConditionMatch | undefined, steps: FlowStep[]): string {
+export function conditionSummary(list: readonly Condition[], match: ConditionMatch | undefined, steps: FlowStep[], secondsPerCycle = 0): string {
   if (list.length === 0) return "never (no conditions)";
   // Long uniform lists (the Rose Dragon "every stock target met") read better as a count.
   if (list.length > 3 && list.every((c) => c.kind === list[0].kind) && list[0].kind !== "group") {
@@ -66,18 +90,19 @@ export function conditionSummary(list: readonly Condition[], match: ConditionMat
     return phrase[list[0].kind] ?? `${all ? "all" : "any"} of ${n} conditions`;
   }
   const name = stepNamer(steps);
-  return list.map((c) => shortCondition(c, name)).join(match === "any" ? " or " : " and ");
+  return list.map((c) => shortCondition(c, name, secondsPerCycle)).join(match === "any" ? " or " : " and ");
 }
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 
 /** A compact, human phrase for one condition (node rows, collapsed cards, the phone list). */
-export function shortCondition(c: Condition, stepName: (id: string) => string = (id) => id): string {
+export function shortCondition(c: Condition, stepName: (id: string) => string = (id) => id, secondsPerCycle = 0): string {
+  const time = (n: number) => (cycleTime(n, secondsPerCycle) ? ` ${cycleTime(n, secondsPerCycle)}` : "");
   switch (c.kind) {
     case "group":
-      return c.of.length === 0 ? "(empty group)" : `(${c.of.map((x) => shortCondition(x, stepName)).join(c.match === "any" ? " or " : " and ")})`;
+      return c.of.length === 0 ? "(empty group)" : `(${c.of.map((x) => shortCondition(x, stepName, secondsPerCycle)).join(c.match === "any" ? " or " : " and ")})`;
     case "cycles":
-      return `${fmt(c.n)} cycle${c.n === 1 ? "" : "s"} here`;
+      return `${fmt(c.n)} cycle${c.n === 1 ? "" : "s"} here${time(c.n)}`;
     case "inventoryAtLeast":
       return `${fmt(c.qty)}+ ${nameOf(c.item)} in stock`;
     case "inventoryBelow":
@@ -97,7 +122,7 @@ export function shortCondition(c: Condition, stepName: (id: string) => string = 
     case "plantDecayed":
       return `a ${nameOf(c.kindId)} decayed`;
     case "decayImminent":
-      return `decay within ${c.withinCycles} cycle${c.withinCycles === 1 ? "" : "s"}`;
+      return `decay within ${c.withinCycles} cycle${c.withinCycles === 1 ? "" : "s"}${time(c.withinCycles)}`;
     case "highestStageBelow":
       return c.stage <= 0 ? `no ${nameOf(c.mutationId)} growing` : `every ${nameOf(c.mutationId)} below stage ${c.stage}`;
     case "lowestStageBelow":

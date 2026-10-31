@@ -12,10 +12,11 @@ import { FlowCanvas } from "./Canvas";
 import { BUSY_WIRES, FlowEditorContext, type AddMenuRequest, type AddStepRequest, type CanvasHandle, type FlowEditorApi, type InspectorTab } from "./context";
 import { useHistory } from "./history";
 import { Inspector } from "./Inspector";
-import { IssuesButton } from "./InspectorIssues";
+import { IssuesButton, type PlotIssue } from "./InspectorIssues";
+import { focusablesIn } from "../../ui/contextMenuContext";
 import { LayoutWorkspace } from "./LayoutWorkspace";
 import { exitTarget, explicitExits, hasPositions, insertStep, setLoop, snap, withStepUi } from "./model";
-import { stepLabel, stepTitle } from "./shared";
+import { plannedCycleSeconds, stepLabel, stepTitle } from "./shared";
 import { StepList } from "./StepList";
 import { StepRail } from "./StepRail";
 import { ResizeHandle } from "./ResizeHandle";
@@ -324,6 +325,7 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
   }, [history, write]);
 
   const totalExits = plot?.flow.steps.reduce((n, s) => n + s.exits.length, 0) ?? 0;
+  const secondsPerCycle = useMemo(() => plannedCycleSeconds(scenario), [scenario]);
 
   const api = useMemo<FlowEditorApi | null>(
     () =>
@@ -360,22 +362,71 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
         copyStep,
         pasteStep: clipboard ? pasteStep : null,
         switchPlot,
+        secondsPerCycle,
       },
-    [scenario, plot, plotId, selected, select, tab, openExit, hotExit, edit, editStep, addStep, deleteStep, duplicateStep, raw, showAllWires, totalExits, onEditScript, setStart, copyStep, pasteStep, switchPlot]
+    [scenario, plot, plotId, selected, select, tab, openExit, hotExit, edit, editStep, addStep, deleteStep, duplicateStep, raw, showAllWires, totalExits, onEditScript, setStart, copyStep, pasteStep, switchPlot, secondsPerCycle]
   );
 
-  // Problems the simulator reports for this plot, clickable to their step.
-  const issues = useMemo(() => {
+  // Problems the simulator reports for this plot, clickable to their step (and exit, or tab).
+  const issues = useMemo<PlotIssue[]>(() => {
     if (!plot) return [];
     try {
       return validateScenario({ ...scenario, plots: [plot], settings: { ...scenario.settings, config: { ...scenario.settings.config, plotOrder: [plot.id] } } }, DATA).map((i) => {
         const m = /Step (\d+)/.exec(i.path);
-        return { ...i, step: m ? Number(m[1]) - 1 : null };
+        // "… › Exit 2 (to …)" names the exit; a step with one exit says "… › Leave when".
+        const x = /›\s*(?:Exit (\d+)|Leave when)/.exec(i.path);
+        const exit = x ? (x[1] ? Number(x[1]) - 1 : 0) : null;
+        const tab: InspectorTab = /›\s*Checked targets/.test(i.path) ? "targets" : "exits";
+        return { ...i, step: m ? Number(m[1]) - 1 : null, exit, tab };
       });
     } catch {
       return [];
     }
   }, [scenario, plot]);
+
+  // A modal workspace: focus moves in when it opens, Tab stays inside, the page behind it is inert,
+  // and focus goes back to whatever opened it (the plot's "Edit flow" button) when it closes.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const mounted = !!plot;
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    if (!root.contains(document.activeElement)) root.focus({ preventScroll: true });
+    // Inert every branch of the app beside the editor's own (not the toasts: their Undo must stay
+    // reachable). Overlays opened later (script editor, pickers) are new nodes, so they stay live.
+    const app = document.getElementById("root");
+    const inerted: HTMLElement[] = [];
+    for (let n: HTMLElement = root; app && n.parentElement && n !== app; n = n.parentElement) {
+      for (const sib of Array.from(n.parentElement.children)) {
+        if (sib === n || !(sib instanceof HTMLElement) || sib.inert || /^(SCRIPT|STYLE|LINK)$/.test(sib.tagName)) continue;
+        if (sib.matches('[aria-label="Notifications"]') || sib.querySelector('[aria-label="Notifications"]')) continue;
+        sib.inert = true;
+        inerted.push(sib);
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || e.defaultPrevented) return;
+      const list = focusablesIn(root);
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      const at = document.activeElement;
+      if (e.shiftKey && (at === first || at === root)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && at === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    root.addEventListener("keydown", onKey);
+    return () => {
+      root.removeEventListener("keydown", onKey);
+      for (const el of inerted) el.inert = false;
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [mounted]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -419,15 +470,23 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
   return (
     <FlowEditorContext.Provider value={api}>
       {/* Stops above the bottom ad (`--ad-bottom`) so the steps list, minimap and zoom aren't under it. */}
-      <div className="fixed inset-0 z-40 flex flex-col bg-slate-950 text-slate-200 kit-fade-in" style={{ bottom: "var(--ad-bottom, 0px)" }} role="dialog" aria-modal="true" aria-label={`Plot ${plotId} flow editor`}>
+      <div
+        ref={rootRef}
+        tabIndex={-1}
+        className="fixed inset-0 z-40 flex flex-col bg-surface-page text-fg-body outline-none kit-fade-in"
+        style={{ bottom: "var(--ad-bottom, 0px)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Plot ${plotId} flow editor`}
+      >
         {/* Top bar */}
-        <header className="relative z-20 flex h-[52px] shrink-0 items-center gap-1.5 border-b border-slate-700/60 bg-surface-panel px-2 sm:gap-2.5 sm:px-3">
+        <header className="relative z-20 flex h-[52px] shrink-0 items-center gap-1.5 border-b border-line bg-surface-panel px-2 sm:gap-2.5 sm:px-3">
           <KitButton variant="ghost" onClick={onClose} aria-label="Back to the simulator" className="px-2 sm:px-2.5">
             <ArrowLeft /> <span className="hidden sm:inline">Simulator</span>
           </KitButton>
-          <span className="hidden h-6 w-px bg-slate-700/70 sm:block" aria-hidden />
+          <span className="hidden h-6 w-px bg-line-strong sm:block" aria-hidden />
           {/* Plot tabs: switch without leaving (no remount, no flash), right-click for plot actions, + to add one. */}
-          <div className="flex shrink-0 items-center gap-1 rounded-[10px] border border-slate-700/60 bg-slate-950/70 p-[3px]" role="tablist" aria-label="Plots">
+          <div className="flex shrink-0 items-center gap-1 rounded-control border border-line bg-surface-well p-[3px]" role="tablist" aria-label="Plots">
             {scenario.plots.map((p) => (
               <button
                 key={p.id}
@@ -437,14 +496,14 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
                 title={`Plot ${p.id}: ${p.flow.steps.length} step${p.flow.steps.length === 1 ? "" : "s"}${p.script?.source.trim() ? ", scripted" : ""} · right-click for more`}
                 onClick={() => p.id !== plotId && switchPlot(p.id)}
                 onContextMenu={(e) => plotMenu(e, p.id)}
-                className={`flex cursor-pointer items-center gap-1.5 rounded-[7px] px-2 py-1 text-[12.5px] font-medium transition-colors duration-150 sm:px-2.5 ${
-                  p.id === plotId ? "bg-slate-800 text-slate-100 shadow-[inset_0_0_0_1px_var(--color-line),0_1px_2px_rgba(0,0,0,0.4)]" : "text-slate-500 hover:text-slate-300"
+                className={`flex cursor-pointer items-center gap-1.5 rounded-inner px-2 py-1 text-body font-medium transition-colors duration-150 sm:px-2.5 ${
+                  p.id === plotId ? "bg-surface-hover text-fg ring-1 ring-inset ring-line" : "text-fg-meta hover:text-fg-body"
                 }`}
               >
                 <span className="sm:hidden">P{p.id}</span>
                 <span className="hidden sm:inline">Plot {p.id}</span>
-                <span className="hidden text-[11px] tabular-nums text-slate-500 sm:inline">{p.flow.steps.length}</span>
-                {p.script?.source.trim() && <Code2 className="hidden h-3 w-3 text-sky-400/80 sm:block" aria-label="scripted" />}
+                <span className="hidden text-meta tabular-nums text-fg-meta sm:inline">{p.flow.steps.length}</span>
+                {p.script?.source.trim() && <Code2 className="hidden h-3 w-3 text-script/80 sm:block" aria-label="scripted" />}
               </button>
             ))}
             {scenario.plots.length < MAX_PLOTS && (
@@ -460,15 +519,15 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
                     ...(onLoadLayout ? [{ label: "From a layout…", icon: <FolderInput />, onSelect: onLoadLayout }] : []),
                   ])
                 }
-                className="grid h-[26px] w-[26px] cursor-pointer place-items-center rounded-[7px] text-slate-500 transition-colors duration-150 hover:bg-slate-800 hover:text-slate-200"
+                className="grid h-[26px] w-[26px] cursor-pointer place-items-center rounded-inner text-fg-meta transition-colors duration-150 hover:bg-surface-hover hover:text-fg-body"
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
           <div className="ml-1 hidden min-w-0 flex-col leading-tight md:flex">
-            <span className="truncate text-[13.5px] font-semibold text-slate-100">Plot {plotId} flow</span>
-            <span className="truncate text-[11.5px] text-slate-500">
+            <span className="truncate text-body font-semibold text-fg">Plot {plotId} flow</span>
+            <span className="truncate text-secondary text-fg-meta">
               {steps.length} step{steps.length === 1 ? "" : "s"} · {plot.flow.loop ? "loops back to step 1" : "stops at the end"} · shared clock &amp; inventory
             </span>
           </div>
@@ -481,15 +540,26 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
             onPick={(i) => {
               if (i.step !== null && i.step < steps.length) {
                 select(i.step);
-                setTab("exits");
+                setTab(i.tab);
+                if (i.exit !== null) setOpenExit(i.exit);
                 if (phone) setSheet(true);
                 else canvasRef.current?.focusStep(i.step);
+                // Once the inspector shows it: bring the broken exit into view and put focus on it.
+                if (i.exit !== null) {
+                  const j = i.exit;
+                  requestAnimationFrame(() =>
+                    requestAnimationFrame(() => {
+                      const card = rootRef.current?.querySelector<HTMLElement>(`[data-exit-card="${j}"]`);
+                      card?.scrollIntoView({ block: "nearest" });
+                      card?.querySelector<HTMLElement>("[aria-expanded]")?.focus({ preventScroll: true });
+                    })
+                  );
+                }
               }
               setIssuesOpen(false);
             }}
           />
           <KitButton
-            variant={plot.flow.loop ? "accent" : "neutral"}
             aria-pressed={plot.flow.loop}
             onClick={() => edit((p) => setLoop(p, !p.flow.loop))}
             title={plot.flow.loop ? "After the last step the plot goes back to step 1. Click to stop at the end instead." : "The flow stops at the end. Click to loop back to step 1."}
@@ -500,11 +570,11 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
           <KitButton onClick={() => edit((p) => withLayout(p, { all: true }), { uiOnly: true })} title="Arrange every step automatically (undo puts them back)" className="max-lg:hidden">
             <Wand2 /> Tidy up
           </KitButton>
-          <div className="flex items-center rounded-lg border border-slate-700/50 bg-slate-800/30">
+          <div className="flex items-center rounded-control border border-line bg-surface-card">
             <IconButton aria-label="Undo (Ctrl Z)" disabled={!history.canUndo} onClick={undo} className="rounded-r-none">
               <Undo2 />
             </IconButton>
-            <span className="h-4 w-px bg-slate-700/60" aria-hidden />
+            <span className="h-4 w-px bg-line-strong" aria-hidden />
             <IconButton aria-label="Redo (Ctrl Shift Z)" disabled={!history.canRedo} onClick={redo} className="rounded-l-none">
               <Redo2 />
             </IconButton>
@@ -527,12 +597,12 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
               }}
             />
             {sheet && (
-              <div className="absolute inset-0 z-20 flex flex-col bg-slate-900 kit-rise-in" role="dialog" aria-modal="true" aria-label={api.selected !== null ? `Step ${api.selected + 1}` : "Plot settings"}>
-                <div className="flex h-12 shrink-0 items-center gap-1 border-b border-slate-700/60 bg-slate-900/95 pr-2 pl-1">
+              <div className="absolute inset-0 z-20 flex flex-col bg-surface-panel kit-rise-in" role="dialog" aria-modal="true" aria-label={api.selected !== null ? `Step ${api.selected + 1}` : "Plot settings"}>
+                <div className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-surface-panel/95 pr-2 pl-1">
                   <KitButton variant="ghost" size="md" onClick={() => setSheet(false)} className="px-2">
                     <ArrowLeft /> Steps
                   </KitButton>
-                  <span className="min-w-0 flex-1 truncate text-center text-[13px] font-medium text-slate-400">
+                  <span className="min-w-0 flex-1 truncate text-center text-body font-medium text-fg-muted">
                     {api.selected !== null ? `Step ${api.selected + 1} of ${steps.length}` : `Plot ${plotId} settings`}
                   </span>
                   <span className={`flex items-center ${api.selected === null ? "invisible" : ""}`}>
@@ -560,7 +630,7 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
             </div>
             <ResizeHandle side="right" label="Inspector width" width={panels.insp} min={INSP.min} max={INSP.max} onResize={(insp) => setPanels((p) => ({ ...p, insp }))} onReset={() => setPanels((p) => ({ ...p, insp: INSP.def }))} />
             <div className="flex min-h-0 shrink-0" style={{ width: panels.insp }}>
-              <Inspector className="min-h-0 w-full border-l border-slate-700/60" />
+              <Inspector className="min-h-0 w-full border-l border-line" />
             </div>
             {layoutStep && layoutOf !== null && (
               <LayoutWorkspace

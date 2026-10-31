@@ -81,6 +81,8 @@ export interface FlowEditorApi {
   pasteStep: ((at?: { x: number; y: number }) => void) | null;
   /** Switch plots without leaving (context menus, rail). */
   switchPlot: (plotId: number) => void;
+  /** Seconds per growth cycle for the scenario's player stats (cycle counts get a time hint). 0 = unknown. */
+  secondsPerCycle?: number;
 }
 
 export interface CanvasHandle {

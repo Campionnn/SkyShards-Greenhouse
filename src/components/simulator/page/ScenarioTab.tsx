@@ -37,8 +37,8 @@ export const ScenarioTab: React.FC<{
           {scenario.plots.map((p) => (
             <li key={p.id} className={`flex items-center gap-2 px-3 py-2 ${surface.card}`} onContextMenu={plotMenu ? (e) => openMenu(e, plotMenu(p.id)) : undefined}>
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium text-slate-100">Plot {p.id}</div>
-                <div className="truncate text-[12px] text-slate-500">
+                <div className="text-body font-medium text-fg">Plot {p.id}</div>
+                <div className="truncate text-secondary text-fg-meta">
                   {p.flow.steps.length} step{p.flow.steps.length > 1 ? "s" : ""}
                   {p.flow.loop ? ", looping" : ""}
                   {p.script?.source.trim() ? (p.script.enabled === false ? ", script off" : ", scripted") : ""} ·{" "}
@@ -72,15 +72,15 @@ export const ScenarioTab: React.FC<{
           <KitLabel className="mb-2">Problems</KitLabel>
           <ul className="space-y-1.5">
             {(errors.length ? errors : error ? [{ level: "error" as const, path: "Scenario", message: error }] : []).map((i, k) => (
-              <li key={`e${k}`} className="rounded-lg border border-red-500/25 bg-red-500/5 px-3 py-2 text-[12px]">
-                <div className="text-slate-400">{i.path}</div>
-                <div className="text-red-200">{i.message}</div>
+              <li key={`e${k}`} className="rounded-control border border-problem/25 bg-problem/5 px-3 py-2 text-secondary">
+                <div className="text-fg-muted">{i.path}</div>
+                <div className="text-problem">{i.message}</div>
               </li>
             ))}
             {warnings.map((i, k) => (
-              <li key={`w${k}`} className="rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[12px]">
-                <div className="text-slate-400">{i.path}</div>
-                <div className="text-amber-100/90">{i.message}</div>
+              <li key={`w${k}`} className="rounded-control border border-warn/20 bg-warn/5 px-3 py-2 text-secondary">
+                <div className="text-fg-muted">{i.path}</div>
+                <div className="text-warn">{i.message}</div>
               </li>
             ))}
           </ul>
@@ -97,7 +97,7 @@ export const ScenarioTab: React.FC<{
             <Upload /> Import flows
           </KitButton>
           <KitButton onClick={onSubmit} title="Put these flows on the public leaderboard (log in with Discord)">
-            <Trophy className="text-amber-300" /> Submit to leaderboard
+            <Trophy className="text-coin" /> Submit to leaderboard
           </KitButton>
         </div>
       </section>

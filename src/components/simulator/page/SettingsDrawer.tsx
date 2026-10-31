@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import type { Scenario } from "../../../simulator";
+import { cn } from "../../ui/cn";
 import { IconButton, Tabs } from "../../ui/kit";
 import { SettingsPanel, type SettingsTab } from "../ScenarioPanels";
 import { changedAdvancedSettings } from "./pageHelpers";
 
 // Every setting, in a right-side drawer. No scrim: changing settings is a side task, and the user
-// should see the numbers react while it's open. 220ms in, 150ms out (UI-CONVENTIONS.md).
+// should see the numbers react while it's open. 220ms in, 150ms out (foundations.md "Motion").
 
 export type DrawerTab = SettingsTab | "scenario";
 
@@ -62,13 +63,14 @@ export const SettingsDrawer: React.FC<{
     <aside
       aria-label="Settings"
       style={{ bottom: "var(--ad-bottom, 0px)" }}
-      className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[440px] flex-col border-l border-slate-600/40 bg-slate-900 shadow-[-30px_0_60px_-24px_rgba(0,0,0,0.9)] ${
-        closing ? "translate-x-6 opacity-0 transition-[transform,opacity] duration-150 ease-snappy" : "sim-drawer-in"
-      }`}
+      className={cn(
+        "fixed inset-y-0 right-0 z-(--z-drawer) flex w-full max-w-[440px] flex-col border-l border-line-strong bg-surface-panel shadow-raised",
+        closing ? "translate-x-6 opacity-0 transition-[transform,opacity] duration-(--duration-hover) ease-snappy" : "sim-drawer-in",
+      )}
     >
       <div className="flex items-center gap-2.5 px-4 pt-3.5">
-        <h2 className="text-[14px] font-semibold text-slate-100">Settings</h2>
-        <span className="text-[12px] text-slate-500">Changes restart the run</span>
+        <h2 className="text-title text-fg">Settings</h2>
+        <span className="text-secondary text-fg-meta">Changes restart the run</span>
         <span className="flex-1" />
         <IconButton aria-label="Close settings (Esc)" onClick={onClose}>
           <X />

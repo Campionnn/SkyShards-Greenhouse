@@ -124,9 +124,9 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
   };
 
   return (
-    <aside className={`flex min-h-0 flex-col border-r border-slate-700/60 bg-slate-900 ${className}`} aria-label="Steps" onContextMenu={railMenu}>
+    <aside className={`flex min-h-0 flex-col border-r border-line bg-surface-panel ${className}`} aria-label="Steps" onContextMenu={railMenu}>
       <div className="flex flex-col gap-3 px-3 pt-3 pb-2">
-        <label className="flex h-8 items-center gap-2 rounded-lg border border-slate-700/60 bg-slate-950/50 px-2.5 text-slate-500 transition-colors duration-150 focus-within:border-emerald-500/60">
+        <label className="flex h-8 items-center gap-2 rounded-control border border-line bg-surface-well px-2.5 text-fg-meta transition-colors duration-150 focus-within:border-focus">
           <Search className="h-3.5 w-3.5 shrink-0" />
           <input
             ref={searchRef}
@@ -135,10 +135,10 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
             onKeyDown={onKeyDownSearch}
             placeholder="Find a step…"
             aria-label="Find a step"
-            className="w-full min-w-0 bg-transparent text-[13px] text-slate-100 outline-none placeholder:text-slate-500"
+            className="w-full min-w-0 bg-transparent text-body text-fg outline-none placeholder:text-fg-meta"
           />
           {query ? (
-            <button type="button" aria-label="Clear search" onClick={() => setQuery("")} className="cursor-pointer text-slate-500 hover:text-slate-200">
+            <button type="button" aria-label="Clear search" onClick={() => setQuery("")} className="cursor-pointer text-fg-meta hover:text-fg-body">
               <X className="h-3.5 w-3.5" />
             </button>
           ) : (
@@ -171,7 +171,7 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
           drop();
         }}
       >
-        {shown.length === 0 && <li className="px-3 py-6 text-center text-[12px] text-slate-500">No step matches "{query}".</li>}
+        {shown.length === 0 && <li className="px-3 py-6 text-center text-secondary text-fg-meta">No step matches "{query}".</li>}
         {shown.map((i) => {
           const s = steps[i];
           const f = layoutFacts(s);
@@ -202,22 +202,22 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
                 onClick={() => open(i)}
                 onContextMenu={(e) => stepMenu(e, i)}
                 aria-current={sel ? "true" : undefined}
-                className={`group flex w-full cursor-pointer items-center gap-2 rounded-lg py-1.5 pr-1.5 pl-1 text-left transition-[background-color,opacity] duration-150 ${
-                  sel ? "bg-emerald-500/10 shadow-[inset_0_0_0_1px_rgba(52,211,153,0.25)]" : "hover:bg-slate-400/[0.06]"
+                className={`group flex w-full cursor-pointer items-center gap-2 rounded-control py-1.5 pr-1.5 pl-1 text-left transition-[background-color,opacity] duration-150 ${
+                  sel ? "bg-select/10 ring-1 ring-inset ring-select/30" : "hover:bg-fg-muted/[0.06]"
                 } ${drag?.from === i ? "opacity-40" : ""}`}
               >
-                <span className={`w-5 shrink-0 text-right text-[11px] tabular-nums ${sel ? "text-emerald-300" : "text-slate-500"}`}>{i + 1}</span>
-                <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-slate-800 shadow-[inset_0_0_0_1px_var(--color-line)]">
+                <span className={`w-5 shrink-0 text-right text-meta tabular-nums ${sel ? "text-select-fg" : "text-fg-meta"}`}>{i + 1}</span>
+                <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-inner bg-surface-hover ring-1 ring-inset ring-line">
                   <CropImage cropId={f.icon} cropName={nameOf(f.icon)} size="custom" width={16} height={16} showFallback={false} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={`block truncate text-[12.5px] font-medium ${sel ? "text-slate-50" : "text-slate-200"}`} title={stepLabel(s)}>
+                  <span className={`block truncate text-body font-medium ${sel ? "text-fg" : "text-fg-body"}`} title={stepLabel(s)}>
                     {stepLabel(s)}
                   </span>
-                  <span className="flex items-center gap-1 truncate text-[11px] tabular-nums text-slate-500">
-                    {i === plot.flow.startIndex && <span className="font-semibold tracking-[0.04em] text-emerald-400">START ·</span>}
+                  <span className="flex items-center gap-1 truncate text-meta tabular-nums text-fg-meta">
+                    {i === plot.flow.startIndex && <span className="font-semibold tracking-[0.04em] text-go-fg">START ·</span>}
                     {scriptOnly.has(i) && (
-                      <span className="text-sky-300" title="No exit leads here: the plot script enters it with plot.goto()">
+                      <span className="text-script" title="No exit leads here: the plot script enters it with plot.goto()">
                         <CodeXml className="h-3 w-3" aria-label="Entered by the script" />
                       </span>
                     )}
@@ -228,32 +228,32 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
                   </span>
                 </span>
                 {canDrag && (
-                  <GripVertical className="-mr-0.5 h-3.5 w-3.5 shrink-0 cursor-grab text-slate-600 opacity-0 transition-opacity duration-150 group-hover:opacity-100" aria-hidden />
+                  <GripVertical className="-mr-0.5 h-3.5 w-3.5 shrink-0 cursor-grab text-fg-meta opacity-0 transition-opacity duration-150 group-hover:opacity-100" aria-hidden />
                 )}
               </button>
             </li>
           );
         })}
       </ol>
-      <div className="border-t border-slate-700/60 p-2.5">
+      <div className="border-t border-line p-2.5">
         <button
           type="button"
           onClick={() => api.select(null)}
           onContextMenu={plotMenu}
           aria-current={api.selected === null ? "true" : undefined}
-          className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors duration-150 active:scale-[0.99] ${
-            api.selected === null ? "border-emerald-500/30 bg-emerald-500/10" : "border-slate-700/50 bg-slate-800/40 hover:bg-slate-700/40"
+          className={`flex w-full cursor-pointer items-center gap-2.5 rounded-control border px-2.5 py-2 text-left transition-colors duration-150 active:scale-[0.99] ${
+            api.selected === null ? "border-select/30 bg-select/10" : "border-line bg-surface-card hover:bg-surface-hover"
           }`}
         >
-          <SlidersHorizontal className={`h-3.5 w-3.5 shrink-0 ${api.selected === null ? "text-emerald-300" : "text-slate-400"}`} />
+          <SlidersHorizontal className={`h-3.5 w-3.5 shrink-0 ${api.selected === null ? "text-select-fg" : "text-fg-muted"}`} />
           <span className="min-w-0 flex-1">
-            <span className="block text-[12.5px] font-medium text-slate-100">Plot settings</span>
-            <span className="block truncate text-[11px] text-slate-500">
+            <span className="block text-body font-medium text-fg">Plot settings</span>
+            <span className="block truncate text-meta text-fg-meta">
               {plot.flow.loop ? "Loops" : "No loop"} · {overrides ? `${overrides} override${overrides === 1 ? "" : "s"}` : "no overrides"}
               {scriptOn ? " · script" : ""}
             </span>
           </span>
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-600" />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-fg-meta" />
         </button>
       </div>
     </aside>
@@ -261,5 +261,5 @@ export const StepRail: React.FC<{ className?: string; searchRef?: React.RefObjec
 };
 
 const DropLine: React.FC<{ className: string }> = ({ className }) => (
-  <span aria-hidden className={`pointer-events-none absolute right-2 left-2 z-10 h-0.5 rounded-full bg-emerald-400 ${className}`} />
+  <span aria-hidden className={`pointer-events-none absolute right-2 left-2 z-10 h-0.5 rounded-full bg-go ${className}`} />
 );

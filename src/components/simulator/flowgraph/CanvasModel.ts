@@ -79,7 +79,7 @@ export function overrideKeys(p: PolicyOverrides | undefined): string[] {
 export type StepNodeBase = Omit<StepNodeData, "hotRow" | "inHot" | "hiddenIn">;
 
 /** Everything a node shows that depends only on the plot (cheap per-render extras are added later). */
-export function stepNodeBase(plot: ScenarioPlot, i: number, scripted: boolean): StepNodeBase {
+export function stepNodeBase(plot: ScenarioPlot, i: number, scripted: boolean, secondsPerCycle = 0): StepNodeBase {
   const steps = plot.flow.steps;
   const s: FlowStep = steps[i];
   const facts = layoutFacts(s);
@@ -103,7 +103,7 @@ export function stepNodeBase(plot: ScenarioPlot, i: number, scripted: boolean): 
       const t = exitTarget(plot, i, e);
       return {
         kind: exitKind(plot, i, e),
-        text: conditionSummary(e.when, e.match, steps),
+        text: conditionSummary(e.when, e.match, steps, secondsPerCycle),
         to: t.kind === "step" ? String(t.index + 1) : t.kind === "finish" ? "Finish" : "Missing",
         toTitle: `Goes to ${targetName(plot, i, t)}`,
       };
@@ -234,7 +234,7 @@ function freeGap(rects: Rect[], x0: number, x1: number, y0: number, y1: number):
 }
 
 /** An orthogonal polyline with rounded corners. */
-function rounded(pts: [number, number][], r: number): string {
+function roundedPath(pts: [number, number][], r: number): string {
   let d = `M${pts[0][0]},${pts[0][1]}`;
   for (let i = 1; i < pts.length - 1; i++) {
     const [px, py] = pts[i - 1];
@@ -274,7 +274,7 @@ export function wirePath(route: Route, sx: number, sy: number, tx: number, ty: n
     const ox = sx + off;
     const ix = tx - off;
     const ly = route.y;
-    const d = rounded([[sx, sy], [ox, sy], [ox, ly], [ix, ly], [ix, ty], [tx, ty]], 12);
+    const d = roundedPath([[sx, sy], [ox, sy], [ox, ly], [ix, ly], [ix, ty], [tx, ty]], 12);
     if (Math.abs(ix - ox) > 40) return { d, mid: { x: (ox + ix) / 2, y: ly }, angle: ix < ox ? 180 : 0 };
     return { d, mid: { x: ox, y: (sy + ly) / 2 }, angle: ly > sy ? 90 : -90 };
   }
@@ -290,14 +290,18 @@ export function wirePath(route: Route, sx: number, sy: number, tx: number, ty: n
 
 export type FrameTone = FlowUiColor | "script";
 
-export const FRAME_TONE: Record<FrameTone, { border: string; fill: string; text: string }> = {
-  slate: { border: "color-mix(in oklab, var(--color-fg-body) 32%, transparent)", fill: "color-mix(in oklab, var(--color-fg-body) 3.5%, transparent)", text: "var(--color-fg-body)" },
-  emerald: { border: "color-mix(in oklab, var(--color-go-fg) 32%, transparent)", fill: "color-mix(in oklab, var(--color-go-fg) 3.5%, transparent)", text: "var(--color-go-fg)" },
-  sky: { border: "color-mix(in oklab, var(--color-select-fg) 32%, transparent)", fill: "color-mix(in oklab, var(--color-select-fg) 3.5%, transparent)", text: "var(--color-select-fg)" },
-  violet: { border: "color-mix(in oklab, var(--color-restart) 32%, transparent)", fill: "color-mix(in oklab, var(--color-restart) 3.5%, transparent)", text: "var(--color-restart)" },
-  amber: { border: "color-mix(in oklab, var(--color-warn) 32%, transparent)", fill: "color-mix(in oklab, var(--color-warn) 3.5%, transparent)", text: "var(--color-warn)" },
-  rose: { border: "color-mix(in oklab, var(--color-problem) 32%, transparent)", fill: "color-mix(in oklab, var(--color-problem) 3.5%, transparent)", text: "var(--color-problem)" },
-  script: { border: "color-mix(in oklab, var(--color-script) 32%, transparent)", fill: "color-mix(in oklab, var(--color-script) 3.5%, transparent)", text: "var(--color-script)" },
+/**
+ * A group's colour (the saved names are the old palette names; each maps to a role token). The box
+ * draws it at 32% (dashed border) and 3.5% (fill) via `.fg-frame` in canvas.css; the label uses it as is.
+ */
+export const FRAME_TONE: Record<FrameTone, { text: string }> = {
+  slate: { text: "var(--color-fg-body)" },
+  emerald: { text: "var(--color-go-fg)" },
+  sky: { text: "var(--color-select-fg)" },
+  violet: { text: "var(--color-restart)" },
+  amber: { text: "var(--color-warn)" },
+  rose: { text: "var(--color-problem)" },
+  script: { text: "var(--color-script)" },
 };
 
 export type FrameBox = {

@@ -37,24 +37,26 @@ export const PlotLegendStrip: React.FC<{
     <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-2">
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
         {open ? (
-          <PlotMarkLegend normalProfile={normalProfile} highlight={highlight} className="text-[11.5px]" />
+          <PlotMarkLegend normalProfile={normalProfile} highlight={highlight} className="text-secondary" />
         ) : (
-          <PlotMarkLegend normalProfile={normalProfile} highlight={highlight} items={[...COMMON, ...extra]} className="text-[11.5px]" />
+          <PlotMarkLegend normalProfile={normalProfile} highlight={highlight} items={[...COMMON, ...extra]} className="text-secondary" />
         )}
         <button
           type="button"
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1 text-[11.5px] text-slate-400 transition-colors duration-150 hover:text-slate-200"
+          className="focus-ring hit-area inline-flex cursor-pointer items-center gap-1 rounded-inner px-1 text-secondary text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg-body"
         >
-          <ChevronDown className={`h-3 w-3 transition-transform duration-200 ease-snappy ${open ? "rotate-180" : ""}`} />
+          <ChevronDown className={`size-3 transition-transform duration-(--duration-ink) ease-snappy ${open ? "rotate-180" : ""}`} />
           {open ? "Fewer" : `${more} more`}
         </button>
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        {sanityOn && <span className="hidden text-[11.5px] text-slate-500 sm:inline">Hover an empty cell or target slot</span>}
+        {sanityOn && <span className="hidden text-secondary text-fg-meta sm:inline">Hover an empty cell or target slot</span>}
         <KitButton
-          variant={sanityOn ? "accent" : "ghost"}
+          variant="ghost"
+          // On is a selected state (a mode you are in), so it takes the selection colour, not go.
+          className={sanityOn ? "border-select/35 bg-select/10 text-select-fg hover:bg-select/20 hover:text-select-fg" : undefined}
           aria-pressed={sanityOn}
           onClick={onSanityToggle}
           title="Hover an empty cell or target slot to see which mutations could spawn there now, and why the others can't"
@@ -72,11 +74,11 @@ const AddPlotTile: React.FC<{ next: number; onLoadLayout: () => void; onEmptyPlo
   <div className="min-w-0">
     {/* Same offset as a plot's header (30px + 8px gap), so the tile lines up with the grids. */}
     <div
-      className="mx-auto mt-[38px] flex aspect-square flex-col items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-dashed border-slate-600/50 p-4 text-center"
+      className="mx-auto mt-[38px] flex aspect-square flex-col items-center justify-center gap-2.5 rounded-container border-[1.5px] border-dashed border-line-strong p-4 text-center"
       style={{ width: `min(100%, max(320px, calc(100vh - ${FIT_HEIGHT_RESERVE}px)))` }}
     >
-      <b className="text-[13px] font-semibold text-slate-100">Add plot {next}</b>
-      <span className="text-[12px] text-slate-500">Up to 3 plots share one inventory and clock</span>
+      <b className="text-body font-semibold text-fg">Add plot {next}</b>
+      <span className="text-secondary text-fg-meta">Up to 3 plots share one inventory and clock</span>
       <div className="mt-1 flex flex-wrap justify-center gap-1.5">
         <KitButton onClick={onLoadLayout}>
           <FolderOpen />

@@ -6,6 +6,7 @@ import type { FlowStep, StepLayout } from "../../../simulator";
 import type { LayoutTransform } from "../../../utilities";
 import { CropSelectionPalette, DesignerGrid, LayoutClearControls, LayoutCropSummary, LayoutHistoryControls, LayoutTransformControls, MutationValidator } from "../../designer";
 import { useToast } from "../../ui";
+import { InfoHint } from "../../ui/InfoHint";
 import { KitButton, KitLabel } from "../../ui/kit";
 import { surface } from "../../ui/surface";
 import { LayoutPickerDialog } from "../LayoutPicker";
@@ -53,24 +54,27 @@ export const LayoutWorkspace: React.FC<{
 
   return (
     <div
-      className={`absolute inset-0 z-30 flex flex-col bg-slate-950 transition-[opacity,transform] duration-150 ease-snappy ${closing ? "opacity-0 scale-[0.99]" : "kit-pop-in"}`}
+      className={`absolute inset-0 z-30 flex flex-col bg-surface-page transition-[opacity,transform] duration-150 ease-snappy ${closing ? "opacity-0 scale-[0.99]" : "kit-pop-in"}`}
       style={{ transformOrigin: "center 40%" }}
       role="region"
       aria-label={`Layout of step ${index + 1}`}
     >
-      <div className="flex h-[52px] shrink-0 items-center gap-1.5 border-b border-slate-700/60 bg-surface-panel px-2 sm:gap-2 sm:px-3">
+      <div className="flex h-[52px] shrink-0 items-center gap-1.5 border-b border-line bg-surface-panel px-2 sm:gap-2 sm:px-3">
         <KitButton variant="ghost" onClick={close} aria-label="Back to the flow" className="px-2 sm:px-2.5">
           <ArrowLeft /> <span className="hidden sm:inline">Back to flow</span>
         </KitButton>
-        <span className="hidden h-6 w-px bg-slate-700/70 sm:block" aria-hidden />
-        <nav className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] text-slate-500" aria-label="Breadcrumb">
+        <span className="hidden h-6 w-px bg-line-strong sm:block" aria-hidden />
+        <nav className="flex min-w-0 flex-1 items-center gap-1.5 text-body text-fg-meta" aria-label="Breadcrumb">
           <span className="hidden shrink-0 md:inline">Plot {plotId}</span>
           <ChevronRight className="hidden h-3.5 w-3.5 shrink-0 md:block" />
-          <span className="min-w-0 truncate text-slate-300" title={stepTitle(step, index)}>
+          <span className="min-w-0 truncate text-fg-body" title={stepTitle(step, index)}>
             {stepTitle(step, index)}
           </span>
           <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-          <span className="shrink-0 font-semibold text-slate-100">Layout</span>
+          <span className="shrink-0 font-semibold text-fg">Layout</span>
+          <InfoHint title="Inputs and targets">
+            Inputs are planted (base crops and fire are free; mutation items come from the inventory after setup). Targets are empty cells labelled with the mutation expected to spawn there.
+          </InfoHint>
         </nav>
         <KitButton onClick={() => setPicking(true)} aria-label="Load layout" title="Replace this step's layout with one from the Calculator, the Designer, your saved layouts or a share link">
           <FolderInput /> <span className="hidden md:inline">Load layout…</span>
@@ -87,7 +91,7 @@ export const LayoutWorkspace: React.FC<{
           <Copy /> <span className="hidden lg:inline">Copy code</span>
         </KitButton>
         <a
-          className="hidden h-7 shrink-0 items-center gap-1.5 rounded-lg border border-slate-600/40 bg-slate-800/60 px-2.5 text-xs font-medium text-slate-200 transition-[background-color,transform] duration-150 ease-snappy hover:bg-slate-700/70 active:scale-[0.97] sm:inline-flex [&>svg]:h-3.5 [&>svg]:w-3.5"
+          className="focus-ring hidden h-7 shrink-0 items-center gap-1.5 rounded-control border border-line-strong bg-surface-control px-2.5 text-secondary font-medium text-fg-body transition-[background-color,transform] duration-150 ease-snappy hover:bg-surface-hover active:scale-[0.97] sm:inline-flex [&>svg]:h-3.5 [&>svg]:w-3.5"
           href={`/designer?layout=${encodeURIComponent(code)}`}
           target="_blank"
           rel="noopener noreferrer"
@@ -100,10 +104,7 @@ export const LayoutWorkspace: React.FC<{
           Done
         </KitButton>
       </div>
-      <p className="shrink-0 border-b border-slate-800 bg-slate-900/60 px-4 py-1.5 text-[11.5px] leading-snug text-slate-500">
-        Inputs are planted (base crops and fire are free; mutation items come from the inventory after setup). Targets are <span className="text-slate-300">empty</span> cells labelled
-        with the mutation expected to spawn there.
-      </p>
+
 
       {picking && (
         <LayoutPickerDialog
@@ -148,7 +149,7 @@ export const LayoutWorkspace: React.FC<{
               <KitLabel>Clear</KitLabel>
               <LayoutClearControls />
             </div>
-            <div className="border-t border-slate-700/50 pt-3">
+            <div className="border-t border-line pt-3">
               <MutationValidator />
             </div>
           </div>

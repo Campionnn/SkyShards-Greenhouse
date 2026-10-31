@@ -142,11 +142,11 @@ export const AddStepMenu: React.FC<{
       ref={ref}
       role="dialog"
       aria-label="Add a step"
-      className={`fixed z-[60] w-[min(340px,calc(100vw-16px))] p-1.5 ${surface.raised} kit-pop-in`}
+      className={`fixed z-(--z-popover) w-[min(340px,calc(100vw-16px))] p-1.5 ${surface.raised} kit-pop-in`}
       style={{ left: pos?.left ?? screen.x, top: pos?.top ?? screen.y, transformOrigin: pos?.origin ?? "top left", visibility: pos ? "visible" : "hidden" }}
       onKeyDown={onKeyDown}
     >
-      <label className="mb-1 flex h-9 items-center gap-2 rounded-lg border border-slate-700/60 bg-slate-950/60 px-2.5 text-slate-500 transition-colors duration-150 focus-within:border-emerald-500/60">
+      <label className="mb-1 flex h-9 items-center gap-2 rounded-control border border-line bg-surface-well px-2.5 text-fg-meta transition-colors duration-150 focus-within:border-focus">
         <Search className="h-3.5 w-3.5" />
         <input
           ref={inputRef}
@@ -156,19 +156,19 @@ export const AddStepMenu: React.FC<{
             setActive(0);
           }}
           placeholder="New step from… (or paste a share link)"
-          className="w-full bg-transparent text-[13px] text-slate-100 placeholder:text-slate-500 outline-none"
+          className="w-full bg-transparent text-body text-fg placeholder:text-fg-meta outline-none"
           aria-label="Search layouts"
         />
       </label>
       <div className="max-h-[380px] overflow-y-auto overscroll-contain scrollbar-dark" role="listbox">
-        {shown.length === 0 && <p className="px-3 py-6 text-center text-xs text-slate-500">Nothing matches. Paste a share link to use it.</p>}
+        {shown.length === 0 && <p className="px-3 py-6 text-center text-secondary text-fg-meta">Nothing matches. Paste a share link to use it.</p>}
         {shown.map((it, i) => {
           const header = it.group !== lastGroup;
           lastGroup = it.group;
           return (
             <React.Fragment key={it.key}>
               {header && (
-                <div className="px-2 pt-2 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-slate-500 first:pt-1">{it.group === "new" ? "New step" : "From a layout"}</div>
+                <div className="px-2 pt-2 pb-1 text-label uppercase text-fg-meta first:pt-1">{it.group === "new" ? "New step" : "From a layout"}</div>
               )}
               <button
                 type="button"
@@ -176,14 +176,14 @@ export const AddStepMenu: React.FC<{
                 aria-selected={i === current}
                 onMouseMove={() => i !== current && setActive(i)}
                 onClick={it.run}
-                className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 ${i === current ? "bg-slate-400/10" : ""}`}
+                className={`flex w-full cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-150 ${i === current ? "bg-fg-muted/10" : ""}`}
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[7px] bg-slate-800 text-slate-400 shadow-[inset_0_0_0_1px_var(--color-line)] [&>svg]:h-4 [&>svg]:w-4">{it.icon}</span>
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-inner bg-surface-hover text-fg-muted ring-1 ring-inset ring-line [&>svg]:h-4 [&>svg]:w-4">{it.icon}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium text-slate-100" title={it.title}>
+                  <span className="block truncate text-body font-medium text-fg" title={it.title}>
                     {it.title}
                   </span>
-                  <span className="block truncate text-[11.5px] text-slate-500" title={it.detail}>
+                  <span className="block truncate text-secondary text-fg-meta" title={it.detail}>
                     {it.detail}
                   </span>
                 </span>
@@ -192,7 +192,7 @@ export const AddStepMenu: React.FC<{
           );
         })}
       </div>
-      <div className="mt-1 flex items-center gap-3 border-t border-slate-700/60 px-2 pt-1.5 pb-0.5 text-[11px] text-slate-500">
+      <div className="mt-1 flex items-center gap-3 border-t border-line px-2 pt-1.5 pb-0.5 text-meta text-fg-meta">
         <span className="flex items-center gap-1">
           <Kbd>↑</Kbd>
           <Kbd>↓</Kbd> move

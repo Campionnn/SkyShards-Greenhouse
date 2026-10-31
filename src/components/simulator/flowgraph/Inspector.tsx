@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import { ClipboardPaste, CodeXml, Copy, CopyPlus, Ellipsis, LayoutGrid, Pencil, Play, Trash2 } from "lucide-react";
 import { mergePolicies } from "../../../simulator";
 import { CropImage } from "../../shared";
+import { InfoHint } from "../../ui/InfoHint";
 import { IconButton, KitButton, Pill, Switch, Tabs } from "../../ui/kit";
 import { useContextMenu } from "../../ui/contextMenuContext";
 import { ActionsTab } from "./ActionsTab";
@@ -24,7 +25,7 @@ export const Inspector: React.FC<{ className?: string }> = ({ className = "" }) 
   const i = api.selected;
   const step = i === null ? undefined : api.plot.flow.steps[i];
   return (
-    <aside aria-label={step ? "Step inspector" : "Plot settings"} className={`@container flex min-h-0 flex-col border-l border-slate-700/60 bg-slate-900 ${className}`}>
+    <aside aria-label={step ? "Step inspector" : "Plot settings"} className={`@container flex min-h-0 flex-col border-l border-line bg-surface-panel ${className}`}>
       {i === null || !step ? (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-dark">
           <PlotSettings />
@@ -60,15 +61,26 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
     { value: "exits", label: "Exits", count: step.exits.length },
     {
       value: "targets",
+      // One accessible name ("Checked targets") at every width; narrow inspectors show "Targets".
       label: (
-        <span className="whitespace-nowrap">
-          <span className="hidden @[24rem]:inline">Checked t</span>
-          <span className="@[24rem]:hidden">T</span>argets
+        <span className="whitespace-nowrap" aria-label="Checked targets">
+          <span aria-hidden className="hidden @[28rem]:inline">
+            Checked targets
+          </span>
+          <span aria-hidden className="@[28rem]:hidden">
+            Targets
+          </span>
         </span>
       ),
       count: targets ? checked : null,
     },
-    { value: "actions", label: "Actions", count: overrides },
+    {
+      value: "actions",
+      label: (
+        <span className="whitespace-nowrap">While on this step</span>
+      ),
+      count: overrides,
+    },
     { value: "notes", label: "Notes", count: null },
   ];
 
@@ -83,23 +95,23 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
             openMenu(e, stepMenu(api, i));
           }}
         >
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-slate-800 shadow-[inset_0_0_0_1px_var(--color-line)]">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-surface-hover ring-1 ring-inset ring-line">
             <CropImage cropId={facts.icon} cropName={stepLabel(step)} size="custom" width={28} height={28} showFallback={false} />
           </span>
           <div className="min-w-0 flex-1">
             <StepName key={step.id} index={i} />
-            <p className="mt-0.5 text-[12px] tabular-nums text-slate-500">
+            <p className="mt-0.5 text-secondary tabular-nums text-fg-meta">
               Step {i + 1} of {steps.length}
-              {isStart && <span className="text-emerald-400/90"> · start step</span>} · {facts.plants} {facts.plants === 1 ? "plant" : "plants"}, {targets}{" "}
+              {isStart && <span className="text-go-fg"> · start step</span>} · {facts.plants} {facts.plants === 1 ? "plant" : "plants"}, {targets}{" "}
               {targets === 1 ? "target" : "targets"}
-              {!facts.ok && <span className="text-red-300"> · layout unreadable</span>}
+              {!facts.ok && <span className="text-problem"> · layout unreadable</span>}
             </p>
             {scriptOn && api.openScript && (
               <button
                 type="button"
                 onClick={() => api.openScript!("plot")}
                 title={`This plot has a script (${scriptLines} line${scriptLines === 1 ? "" : "s"}): it can move the plot between steps. Click to edit it.`}
-                className="mt-1.5 inline-flex cursor-pointer items-center gap-1 rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[11px] font-medium text-sky-300 transition-colors duration-150 hover:bg-sky-400/20 active:scale-[0.97]"
+                className="mt-1.5 inline-flex cursor-pointer items-center gap-1 rounded-inner bg-script/10 px-1.5 py-0.5 text-meta font-medium text-script transition-colors duration-150 hover:bg-script/20 active:scale-[0.97]"
               >
                 <CodeXml className="h-3 w-3" /> Plot script
               </button>
@@ -107,7 +119,7 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
           </div>
         </div>
         <div className="mt-3 flex items-center gap-1">
-          <KitButton variant="accent" onClick={() => api.openLayout(i)}>
+          <KitButton onClick={() => api.openLayout(i)}>
             <LayoutGrid /> Edit layout
           </KitButton>
           {isStart ? (
@@ -130,18 +142,23 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
             variant="neutral"
             disabled={steps.length <= 1}
             onClick={() => api.deleteStep(i)}
-            className="hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300"
+            className="hover:border-problem/40 hover:bg-problem/10 hover:text-problem"
           >
             <Trash2 />
           </IconButton>
         </div>
-        <label className="mt-3 flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-700/50 bg-slate-950/30 px-2.5 py-2" title="Break every plant when the plot enters this step">
-          <Switch checked={!!step.fullClear} onChange={(v) => api.editStep(i, (s) => fullClear(s, v))} label="Full clear on entry" />
-          <span className="min-w-0 flex-1 text-[12.5px] text-slate-200">
-            Full clear on entry
-            <span className="block text-[11.5px] text-slate-500 @[25rem]:ml-1.5 @[25rem]:inline">{step.fullClear ? "every plant is broken first" : "otherwise identical plants are kept"}</span>
-          </span>
-        </label>
+        <div className="mt-3 flex items-center gap-2.5 rounded-control border border-line bg-surface-well px-2.5 py-2">
+          <Switch checked={!!step.fullClear} onChange={(v) => api.editStep(i, (s) => fullClear(s, v))} label="Break everything when this step starts" className="min-w-0 flex-1">
+            <span className="min-w-0 text-body text-fg-body">
+              Break everything when this step starts
+              <span className="block text-secondary text-fg-meta">{step.fullClear ? "every plant is broken first" : "plants that match the layout are kept"}</span>
+            </span>
+          </Switch>
+          <InfoHint title="Break everything when this step starts">
+            Off: when the plot enters this step, plants already standing where the layout wants the same plant are kept, and only the rest is replaced. On: every plant is broken first and
+            the whole layout is planted again.
+          </InfoHint>
+        </div>
         <Tabs className="mt-3 @max-[23rem]:[&>button]:px-1.5" value={api.tab} onChange={api.setTab} items={tabs} />
       </header>
       <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3.5 pb-6 scrollbar-dark" role="tabpanel">
@@ -160,7 +177,7 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
             }
             inherited={mergePolicies(api.scenario.settings.policies, plot.policies)}
             inheritsFrom={plot.policies ? "the plot" : "the scenario defaults"}
-            hint="What the player does while this step is active. Everything not overridden follows the plot, then the scenario defaults."
+            hint="What the player does while the plot is on this step. Everything not overridden follows the plot, then the scenario defaults."
           />
         )}
         {api.tab === "notes" && <NotesTab />}
@@ -221,7 +238,7 @@ const StepName: React.FC<{ index: number }> = ({ index: i }) => {
             setDraft(null);
           }
         }}
-        className="-mx-1.5 -my-0.5 w-[calc(100%+12px)] rounded-md border border-emerald-500/50 bg-slate-950/60 px-1.5 py-0.5 text-[15px] font-semibold leading-[1.3] text-slate-100 outline-none"
+        className="-mx-1.5 -my-0.5 w-[calc(100%+12px)] rounded-inner border border-focus bg-surface-well px-1.5 py-0.5 text-title font-semibold text-fg outline-none"
       />
     );
   return (
@@ -229,10 +246,10 @@ const StepName: React.FC<{ index: number }> = ({ index: i }) => {
       type="button"
       onClick={() => setDraft(step.label ?? "")}
       title="Rename step"
-      className="group/name -mx-1.5 -my-0.5 flex w-[calc(100%+12px)] cursor-text items-start gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-left transition-colors duration-150 hover:bg-slate-400/[0.07]"
+      className="group/name -mx-1.5 -my-0.5 flex w-[calc(100%+12px)] cursor-text items-start gap-1.5 rounded-inner border border-transparent px-1.5 py-0.5 text-left transition-colors duration-150 hover:bg-fg-muted/[0.06]"
     >
-      <span className={`min-w-0 flex-1 text-[15px] font-semibold leading-[1.3] ${step.label?.trim() ? "text-slate-100" : "text-slate-500"}`}>{stepLabel(step)}</span>
-      <Pencil className="mt-1 h-3 w-3 shrink-0 text-slate-500 opacity-0 transition-opacity duration-150 group-hover/name:opacity-100" />
+      <span className={`min-w-0 flex-1 text-title font-semibold [overflow-wrap:anywhere] ${step.label?.trim() ? "text-fg" : "text-fg-meta"}`}>{stepLabel(step)}</span>
+      <Pencil className="mt-1 h-3 w-3 shrink-0 text-fg-meta opacity-0 transition-opacity duration-150 group-hover/name:opacity-100" />
     </button>
   );
 };
@@ -249,7 +266,7 @@ const StepMenu: React.FC<{ index: number }> = ({ index: i }) => {
       chevron={false}
       align="end"
       width={230}
-      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-slate-600/40 bg-slate-800/60 text-slate-200 transition-[background-color,transform] duration-150 ease-snappy hover:bg-slate-700/70 active:scale-[0.97]"
+      className="grid h-7 w-7 shrink-0 place-items-center rounded-control border border-line-strong bg-surface-control text-fg-body transition-[background-color,transform] duration-150 ease-snappy hover:bg-surface-hover active:scale-[0.97]"
       button={<Ellipsis className="h-3.5 w-3.5" />}
     >
       {(close) => (

@@ -200,6 +200,8 @@ export function checkPalette(theme: Vars): Pair[] {
     add(role, "surface-page", page, 4.5);
   }
   add("on-go", "go", over(tok("go"), page), 4.5);
+  add("on-go", "go-hover", over(tok("go-hover"), page), 4.5); // primary button hover
+  add("on-go", "go-strong", over(tok("go-strong"), page), 4.5); // the Run button's count / menu segments
   for (const n of ["surface-page", "surface-card (over page)", "surface-raised (over page)"]) {
     add("focus", n, backdrops[n], 3);
     add("select", n, backdrops[n], 3); // tab ink, selected outlines (WCAG 1.4.11)

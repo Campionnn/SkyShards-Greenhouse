@@ -36,7 +36,8 @@ import { ItemPicker } from "../ItemPicker";
 import { defaultGroup, defaultTrigger } from "../scenarioEdit";
 import { Dropdown, MenuItem, MenuLabel, MenuSeparator, Popover } from "./InspectorPopover";
 import { RiseScope, useRiseIn } from "./InspectorMotion";
-import { layoutFacts, stepTitle } from "./shared";
+import { useFlowEditor } from "./context";
+import { cycleTime, layoutFacts, stepTitle } from "./shared";
 
 // Exit conditions as sentences with editable tokens: "[Ashwreath ▾] in stock is below [20]".
 // The icon square in front of a condition opens the kind menu. Lists of 2+ entries get an
@@ -134,7 +135,7 @@ function convertTrigger(prev: Trigger, kind: TriggerKind): Trigger {
 // ---- Tokens -------------------------------------------------------------------------------------
 
 const tokenBase =
-  "inline-flex h-[22px] max-w-full items-center gap-1 rounded-[5px] bg-slate-700/60 px-1.5 align-middle font-medium text-slate-100 shadow-[inset_0_0_0_1px_var(--color-line)] transition-colors duration-150 hover:bg-slate-600/70";
+  "inline-flex h-[22px] max-w-full items-center gap-1 rounded-inner bg-surface-hover px-1.5 align-middle font-medium text-fg ring-1 ring-inset ring-line transition-colors duration-150 hover:bg-surface-hover";
 
 /** An item / mutation / plant token: opens the searchable item picker. */
 const IdToken: React.FC<{ value: string; ids: readonly string[]; onChange: (id: string) => void; label: string }> = ({ value, ids, onChange, label }) => {
@@ -162,10 +163,10 @@ const IdToken: React.FC<{ value: string; ids: readonly string[]; onChange: (id: 
       >
         <CropImage cropId={value} cropName={nameOf(value)} size="custom" width={15} height={15} showFallback={false} className="shrink-0" />
         <span className="truncate">{nameOf(value)}</span>
-        <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" />
+        <ChevronDown className="h-3 w-3 shrink-0 text-fg-meta" />
       </button>
       <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label={label} width={300} reserve={430} bare>
-        <div ref={boxRef} className="rounded-md bg-slate-900 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.9)]">
+        <div ref={boxRef} className="rounded-inner bg-surface-panel shadow-raised">
           <ItemPicker value={value} ids={ids} onChange={onChange} onPicked={() => setOpen(false)} />
         </div>
       </Popover>
@@ -184,7 +185,7 @@ const NumberToken: React.FC<{ value: number; onChange: (n: number) => void; min?
     title={title ?? label}
     // Grows with the number (field-sizing isn't everywhere yet).
     style={{ width: `calc(${Math.min(9, Math.max(1, String(value).length))}ch + 14px)` }}
-    className={`${tokenBase} cursor-text text-center tabular-nums [appearance:textfield] focus:bg-slate-950/70 focus:shadow-[inset_0_0_0_1px_rgba(52,211,153,0.6)] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
+    className={`${tokenBase} cursor-text text-center tabular-nums [appearance:textfield] focus:bg-surface-well focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
   />
 );
 
@@ -225,7 +226,7 @@ const SinceStepToken: React.FC<{ value: string | undefined; steps: FlowStep[]; o
       button={
         <>
           {i >= 0 && <CropImage cropId={layoutFacts(steps[i]).icon} cropName="" size="custom" width={15} height={15} showFallback={false} className="shrink-0" />}
-          <span className={`truncate ${i < 0 && value !== undefined ? "text-red-300" : ""}`}>{text}</span>
+          <span className={`truncate ${i < 0 && value !== undefined ? "text-problem" : ""}`}>{text}</span>
         </>
       }
     >
@@ -273,9 +274,9 @@ const ScriptExpression: React.FC<{ expr: string; onChange: (expr: string) => voi
         placeholder='plot.count("chorus_fruit") >= 4 && shared.ready'
         title="A script expression. It sees the plot script's variables and functions, plot, shared, inventory and the rest of the script API. It may only read."
         onChange={(e) => onChange(e.target.value)}
-        className={`h-7 w-full font-mono text-[12px] ${problem ? "border-red-500/60 focus:border-red-400/70" : ""}`}
+        className={`h-7 w-full font-mono text-secondary ${problem ? "border-problem/60 focus:border-problem/70" : ""}`}
       />
-      {problem && <span className="text-[11px] leading-snug text-red-300">{problem}</span>}
+      {problem && <span className="text-meta leading-snug text-problem">{problem}</span>}
     </span>
   );
 };
@@ -291,7 +292,7 @@ function Sentence({ t, edit, steps, keyBase }: { t: Trigger; edit: Edit; steps: 
     case "cycles":
       return (
         <>
-          <NumberToken min={1} label="Cycles" value={t.n} onChange={(n) => edit({ ...t, n }, num("n"))} /> cycles spent in this step
+          <NumberToken min={1} label="Cycles" value={t.n} onChange={(n) => edit({ ...t, n }, num("n"))} /> cycles spent in this step<CycleHint n={t.n} />
         </>
       );
     case "inventoryAtLeast":
@@ -313,7 +314,7 @@ function Sentence({ t, edit, steps, keyBase }: { t: Trigger; edit: Edit; steps: 
     case "layoutShort":
       return (
         <span title="For some placed item (mutation, Fermento, Dead Plant; not base crops or fire), more cells lack it than the inventory holds.">
-          The inventory <b className="font-semibold text-slate-100">can't build</b> this step's layout
+          The inventory <b className="font-semibold text-fg">can't build</b> this step's layout
         </span>
       );
     case "allFullyGrown":
@@ -330,7 +331,7 @@ function Sentence({ t, edit, steps, keyBase }: { t: Trigger; edit: Edit; steps: 
     case "decayImminent":
       return (
         <>
-          Something decays within <NumberToken label="Cycles" value={t.withinCycles} onChange={(withinCycles) => edit({ ...t, withinCycles }, num("within"))} /> cycles
+          Something decays within <NumberToken label="Cycles" value={t.withinCycles} onChange={(withinCycles) => edit({ ...t, withinCycles }, num("within"))} /> cycles<CycleHint n={t.withinCycles} />
         </>
       );
     case "plantDecayed":
@@ -413,7 +414,18 @@ function Sentence({ t, edit, steps, keyBase }: { t: Trigger; edit: Edit; steps: 
   }
 }
 
-const Aside: React.FC<{ children: React.ReactNode }> = ({ children }) => <span className="ml-1 text-[11.5px] text-slate-500">({children})</span>;
+const Aside: React.FC<{ children: React.ReactNode }> = ({ children }) => <span className="ml-1 text-secondary text-fg-meta">({children})</span>;
+
+/** "≈ 35 min" after a cycle count, from the scenario's player stats (nothing when unknown). */
+const CycleHint: React.FC<{ n: number }> = ({ n }) => {
+  const { secondsPerCycle = 0 } = useFlowEditor();
+  const t = cycleTime(n, secondsPerCycle);
+  return t ? (
+    <span className="ml-1 text-secondary tabular-nums text-fg-meta" title="At your player stats' cycle length (Player settings)">
+      {t}
+    </span>
+  ) : null;
+};
 
 /** The icon square in front of a condition: opens the kind menu. */
 const KindButton: React.FC<{ t: Trigger; onPick: (k: TriggerKind) => void }> = ({ t, onPick }) => {
@@ -426,7 +438,7 @@ const KindButton: React.FC<{ t: Trigger; onPick: (k: TriggerKind) => void }> = (
       look="plain"
       chevron={false}
       width={272}
-      className="mt-px grid h-6 w-6 shrink-0 place-items-center rounded-md bg-slate-400/10 text-slate-400 transition-colors duration-150 hover:bg-slate-400/20 hover:text-slate-200 active:scale-[0.97]"
+      className="mt-px grid h-6 w-6 shrink-0 place-items-center rounded-inner bg-fg-muted/10 text-fg-muted transition-colors duration-150 hover:bg-fg-muted/20 hover:text-fg-body active:scale-[0.97]"
       button={<Icon className="h-[13px] w-[13px]" />}
     >
       {(close) =>
@@ -464,12 +476,12 @@ const ConditionRow: React.FC<{
 }> = ({ t, steps, keyBase, onChange, onRemove, onMenu }) => {
   const rise = useRiseIn();
   return (
-    <div className={`group/cond flex items-start gap-2 rounded-lg border border-slate-700/50 bg-slate-950/35 py-1.5 pr-1 pl-1.5 ${rise}`} onContextMenu={onMenu}>
+    <div className={`group/cond flex items-start gap-2 rounded-control border border-line bg-surface-well py-1.5 pr-1 pl-1.5 ${rise}`} onContextMenu={onMenu}>
       <KindButton t={t} onPick={(k) => onChange(convertTrigger(t, k))} />
-      <div className="min-w-0 flex-1 py-px text-[12.5px] leading-[24px] text-slate-300">
+      <div className="min-w-0 flex-1 py-px text-body leading-[24px] text-fg-body">
         <Sentence t={t} edit={onChange} steps={steps} keyBase={keyBase} />
       </div>
-      <IconButton aria-label="Remove condition" onClick={onRemove} className="h-6 w-6 text-slate-500 hover:text-slate-200">
+      <IconButton aria-label="Remove condition" onClick={onRemove} className="h-6 w-6 text-fg-meta hover:text-fg-body">
         <X />
       </IconButton>
     </div>
@@ -479,7 +491,7 @@ const ConditionRow: React.FC<{
 // ---- Groups and lists -----------------------------------------------------------------------------
 
 const Joiner: React.FC<{ match: ConditionMatch }> = ({ match }) => (
-  <div className="pl-2.5 text-[10.5px] font-bold tracking-[0.06em] text-slate-500" aria-hidden>
+  <div className="pl-2.5 text-meta font-bold tracking-[0.06em] text-fg-meta" aria-hidden>
     {match === "any" ? "OR" : "AND"}
   </div>
 );
@@ -500,12 +512,12 @@ const GroupBox: React.FC<{
 }> = ({ group, steps, depth, keyBase, onChange, onRemove, onMenu }) => {
   const rise = useRiseIn();
   return (
-    <div className={`flex flex-col gap-1.5 rounded-[10px] border border-violet-400/25 bg-violet-500/[0.05] p-2 ${rise}`} onContextMenu={onMenu}>
-      <div className="flex items-center gap-2 text-[12px] text-slate-400">
+    <div className={`flex flex-col gap-1.5 rounded-control border border-restart/25 bg-restart/[0.05] p-2 ${rise}`} onContextMenu={onMenu}>
+      <div className="flex items-center gap-2 text-secondary text-fg-muted">
         <Segmented label="Combine this group with" value={group.match} options={MATCH_OPTIONS} onChange={(m) => onChange({ ...group, match: m })} />
         <span>of this group</span>
         <span className="flex-1" />
-        <IconButton aria-label="Remove group" onClick={onRemove} className="h-6 w-6 text-slate-500 hover:text-slate-200">
+        <IconButton aria-label="Remove group" onClick={onRemove} className="h-6 w-6 text-fg-meta hover:text-fg-body">
           <X />
         </IconButton>
       </div>
@@ -569,12 +581,12 @@ const ConditionList: React.FC<{
   return (
     <div className="flex flex-col gap-1.5">
       {lead !== undefined && list.length > 1 && (
-        <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-400">
+        <div className="flex flex-wrap items-center gap-2 text-secondary text-fg-muted">
           <span className="whitespace-nowrap">{lead}</span> <Segmented label="Combine conditions with" value={match} options={MATCH_OPTIONS} onChange={(m) => onChange(list, m)} />{" "}
           <span className="whitespace-nowrap">of these hold</span>
         </div>
       )}
-      {list.length === 0 && empty && <p className="px-0.5 text-[12px] text-slate-500">{empty}</p>}
+      {list.length === 0 && empty && <p className="px-0.5 text-secondary text-fg-meta">{empty}</p>}
       {list.map((c, i) => (
         <React.Fragment key={i}>
           {i > 0 && <Joiner match={match} />}

@@ -707,8 +707,8 @@ describe("simulator panels render", () => {
       expect(html).toContain("of this group");
       expect(html).toContain("cycles spent in this step");
       expect(html).toContain("in stock is below");
-      expect(html).toContain("Also check on arrival");
-      expect(html).toContain("also on arrival"); // exit 3, collapsed
+      expect(html).toContain("Skip this step if it&#x27;s already true");
+      expect(html).toContain("skips this step if already true"); // exit 3, collapsed
     });
 
     it("a step-visits sentence names its step", () => {
@@ -744,7 +744,7 @@ describe("simulator panels render", () => {
       expect(html).toContain("Plot settings");
       expect(html).toContain("Steps · 3");
       expect(html).toContain("START");
-      expect(html).toContain("3. s3</span><span class=\"text-slate-500\"> when </span>");
+      expect(html).toContain("3. s3</span><span class=\"text-fg-meta\"> when </span>");
       expect(html).toContain("Finish (hold this step)");
     });
   });

@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, ChevronDown, Copy, Ellipsis, Flag, GripVertical, Pl
 import type { FlowStep, StepExit } from "../../../simulator";
 import { CropImage } from "../../shared";
 import { useContextMenu } from "../../ui/contextMenuContext";
+import { InfoHint } from "../../ui/InfoHint";
 import { Divider, IconButton, KitButton, Switch } from "../../ui/kit";
 import { defaultTrigger } from "../scenarioEdit";
 import { ConditionEditor } from "./ConditionEditor";
@@ -17,11 +18,11 @@ import { conditionSummary, EXIT_STYLE, exitKind, layoutFacts, stepTitle, targetN
 
 /** Card border / tint per exit kind (EXIT_STYLE colours, as Tailwind classes). */
 const CARD_TONE: Record<ExitKind, { open: string; rest: string; dot: string }> = {
-  normal: { open: "border-emerald-400/30", rest: "border-slate-700/50", dot: "bg-emerald-400" },
-  arrive: { open: "border-amber-400/35", rest: "border-amber-400/20", dot: "bg-amber-400" },
-  restart: { open: "border-violet-400/35", rest: "border-violet-400/20", dot: "bg-violet-400" },
-  finish: { open: "border-slate-400/35", rest: "border-slate-600/50", dot: "bg-slate-300" },
-  missing: { open: "border-red-400/45", rest: "border-red-400/35", dot: "bg-red-400" },
+  normal: { open: "border-select/30", rest: "border-line", dot: "bg-go" },
+  arrive: { open: "border-warn/35", rest: "border-warn/20", dot: "bg-warn" },
+  restart: { open: "border-restart/35", rest: "border-restart/20", dot: "bg-restart" },
+  finish: { open: "border-line-control", rest: "border-line-strong", dot: "bg-fg-muted" },
+  missing: { open: "border-problem/45", rest: "border-problem/35", dot: "bg-problem" },
 };
 
 /** Where a new exit goes: the following step (step 1 after the last), or this step if it is the only one. */
@@ -80,13 +81,16 @@ export const ExitsTab: React.FC = () => {
   return (
     <RiseScope>
       <div className="@container">
-      <p className="mb-3 text-[12px] leading-relaxed text-slate-500">
-        Checked top to bottom whenever the player is online. The first exit whose conditions hold is taken.{exits.length > 1 ? " Drag to change the order." : ""}
-      </p>
+      <div className="mb-3 flex items-center gap-1.5 text-secondary text-fg-meta">
+        <span>Checked top to bottom; the first that holds is taken.</span>
+        <InfoHint title="How exits work">
+          Exits are checked top to bottom whenever the player is online. The first exit whose conditions hold is taken.{exits.length > 1 ? " Drag an exit by its grip to change the order." : ""}
+        </InfoHint>
+      </div>
       {exits.length === 0 && (
-        <div className="mb-3 rounded-xl border border-dashed border-slate-700/70 px-4 py-5 text-center text-[12.5px] text-slate-400">
+        <div className="mb-3 rounded-container border border-dashed border-line px-4 py-5 text-center text-body text-fg-muted">
           No exits: the plot stays on this step.
-          <div className="mt-0.5 text-[11.5px] text-slate-500">Add one to move on when something happens.</div>
+          <div className="mt-0.5 text-secondary text-fg-meta">Add one to move on when something happens.</div>
         </div>
       )}
       <div
@@ -155,15 +159,16 @@ const ExitCard: React.FC<{
   const kind = exitKind(plot, stepIndex, exit);
   const tone = CARD_TONE[kind];
   const hot = api.hotExit?.[0] === stepIndex && api.hotExit[1] === j;
-  const summary = `when ${conditionSummary(exit.when, exit.match, steps)}${exit.checkOnEntry ? " · also on arrival" : ""}`;
+  const summary = `when ${conditionSummary(exit.when, exit.match, steps, api.secondsPerCycle)}${exit.checkOnEntry ? " · skips this step if already true" : ""}`;
   const toggle = () => api.setOpenExit(open ? -1 : j);
   const openMenu = useContextMenu();
 
   return (
     <div
-      className={`relative overflow-visible rounded-[11px] border transition-[border-color,background-color,opacity] duration-150 ${
-        open ? `${tone.open} bg-slate-800/55` : `${tone.rest} bg-slate-800/35 hover:bg-slate-800/50`
-      } ${hot && !open ? "bg-slate-800/55" : ""} ${dragging ? "opacity-40" : ""} ${rise}`}
+      className={`relative overflow-visible rounded-container border transition-[border-color,background-color,opacity] duration-150 ${
+        open ? `${tone.open} bg-surface-control` : `${tone.rest} bg-surface-card hover:bg-surface-control`
+      } ${hot && !open ? "bg-surface-control" : ""} ${dragging ? "opacity-40" : ""} ${rise}`}
+      data-exit-card={j}
       draggable={armed}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
@@ -189,7 +194,7 @@ const ExitCard: React.FC<{
           { label: "Move later", icon: <ArrowDown />, disabled: j === count - 1, onSelect: () => onMove(j + 1) },
           { label: "Duplicate", icon: <Copy />, onSelect: onDuplicate },
           {
-            label: exit.checkOnEntry ? "Stop checking on arrival" : "Also check on arrival",
+            label: exit.checkOnEntry ? "Don't skip this step if it's already true" : "Skip this step if it's already true",
             icon: <Zap />,
             onSelect: () => {
               const next: StepExit = { ...exit };
@@ -215,19 +220,19 @@ const ExitCard: React.FC<{
         }}
       >
         <span
-          className={`grid h-6 w-4 shrink-0 place-items-center text-slate-600 ${count > 1 ? "cursor-grab hover:text-slate-400 active:cursor-grabbing" : "opacity-40"}`}
+          className={`grid h-6 w-4 shrink-0 place-items-center text-fg-meta ${count > 1 ? "cursor-grab hover:text-fg-muted active:cursor-grabbing" : "opacity-40"}`}
           onPointerDown={() => count > 1 && setArmed(true)}
           onPointerUp={() => setArmed(false)}
           aria-hidden
         >
           <GripVertical className="h-3.5 w-3.5" />
         </span>
-        <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-[5px] px-1 text-[10.5px] font-semibold tabular-nums text-slate-400 shadow-[inset_0_0_0_1px_var(--color-line-strong)]">{j + 1}</span>
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] text-slate-400">
+        <span className="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-inner px-1 text-meta font-semibold tabular-nums text-fg-muted ring-1 ring-inset ring-line-strong">{j + 1}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-body text-fg-muted">
           <span className="hidden shrink-0 @[22rem]:inline">Go to</span>
           <TargetPicker stepIndex={stepIndex} exit={exit} onChange={onChange} />
         </span>
-        <Dropdown label={`Exit ${j + 1} actions`} look="plain" chevron={false} align="end" width={200} className="hidden h-7 w-6 shrink-0 @[22rem]:grid place-items-center rounded-lg text-slate-500 transition-colors duration-150 hover:bg-slate-700/50 hover:text-slate-200" button={<Ellipsis className="h-3.5 w-3.5" />}>
+        <Dropdown label={`Exit ${j + 1} actions`} look="plain" chevron={false} align="end" width={200} className="hidden h-7 w-6 shrink-0 @[22rem]:grid place-items-center rounded-control text-fg-meta transition-colors duration-150 hover:bg-surface-hover hover:text-fg-body" button={<Ellipsis className="h-3.5 w-3.5" />}>
           {(close) => (
             <>
               <MenuItem icon={<ArrowUp />} disabled={j === 0} onSelect={() => (onMove(j - 1), close())}>
@@ -247,18 +252,18 @@ const ExitCard: React.FC<{
           )}
         </Dropdown>
         {open && (
-          <IconButton aria-label="Delete exit" onClick={onRemove} className="hidden w-6 text-slate-500 hover:text-red-300 @[22rem]:inline-flex">
+          <IconButton aria-label="Delete exit" onClick={onRemove} className="hidden w-6 text-fg-meta hover:text-problem @[22rem]:inline-flex">
             <Trash2 />
           </IconButton>
         )}
-        <IconButton aria-label={open ? "Collapse exit" : "Edit exit"} aria-expanded={open} onClick={toggle} className="w-6 text-slate-500">
+        <IconButton aria-label={open ? "Collapse exit" : "Edit exit"} aria-expanded={open} onClick={toggle} className="w-6 text-fg-meta">
           <ChevronDown className={`transition-transform duration-200 ease-snappy ${open ? "rotate-180" : ""}`} />
         </IconButton>
       </div>
       {open ? (
         <div className="flex flex-col gap-2.5 px-3 pb-3">
           {kind === "missing" && (
-            <p className="flex items-center gap-1.5 text-[12px] text-red-300">
+            <p className="flex items-center gap-1.5 text-secondary text-problem">
               <TriangleAlert className="h-3.5 w-3.5" /> {EXIT_STYLE.missing.help}
             </p>
           )}
@@ -285,8 +290,8 @@ const ExitCard: React.FC<{
           />
         </div>
       ) : (
-        <button type="button" onClick={toggle} title={summary} className="-mt-1 block w-full cursor-pointer truncate pr-3 pb-2.5 pl-[50px] text-left text-[12px] text-slate-500">
-          {exit.checkOnEntry && <Zap className="mr-1 inline h-3 w-3 -translate-y-px text-amber-400" />}
+        <button type="button" onClick={toggle} title={summary} className="-mt-1 block w-full cursor-pointer truncate pr-3 pb-2.5 pl-[50px] text-left text-secondary text-fg-meta">
+          {exit.checkOnEntry && <Zap className="mr-1 inline h-3 w-3 -translate-y-px text-warn" />}
           {summary}
         </button>
       )}
@@ -295,26 +300,26 @@ const ExitCard: React.FC<{
 };
 
 const DropLine: React.FC<{ className: string }> = ({ className }) => (
-  <span aria-hidden className={`pointer-events-none absolute right-2 left-2 z-10 h-0.5 rounded-full bg-emerald-400 ${className}`} />
+  <span aria-hidden className={`pointer-events-none absolute right-2 left-2 z-10 h-0.5 rounded-full bg-go ${className}`} />
 );
 
 const ArrivalToggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void }> = ({ checked, onChange }) => (
   <div
-    className={`flex items-start gap-2.5 rounded-[10px] border px-2.5 py-2.5 transition-colors duration-150 ${
-      checked ? "border-amber-400/25 bg-amber-400/[0.06]" : "border-slate-700/50 bg-slate-950/30"
+    className={`flex items-start gap-2.5 rounded-control border px-2.5 py-2.5 transition-colors duration-150 ${
+      checked ? "border-warn/25 bg-warn/[0.06]" : "border-line bg-surface-well"
     }`}
   >
     <span className="pt-px">
-      <Switch checked={checked} onChange={onChange} label="Also check on arrival" tone="amber" />
+      <Switch checked={checked} onChange={onChange} label="Skip this step if it's already true" tone="amber" />
     </span>
-    <button type="button" className="min-w-0 cursor-pointer text-left" onClick={() => onChange(!checked)}>
-      <span className={`flex items-center gap-1 text-[12.5px] font-medium ${checked ? "text-amber-200" : "text-slate-200"}`}>
-        <Zap className={`h-3 w-3 ${checked ? "text-amber-400" : "text-slate-500"}`} /> Also check on arrival
-      </span>
-      <span className="mt-0.5 block text-[11.5px] leading-snug text-slate-500">
-        If this already holds when the plot arrives, skip this step entirely: no layout is built and no cycle is spent here.
+    <button type="button" tabIndex={-1} className="min-w-0 flex-1 cursor-pointer text-left" onClick={() => onChange(!checked)}>
+      <span className={`flex items-center gap-1 text-body font-medium ${checked ? "text-warn" : "text-fg-body"}`}>
+        <Zap className={`h-3 w-3 shrink-0 ${checked ? "text-warn" : "text-fg-meta"}`} /> Skip this step if it's already true
       </span>
     </button>
+    <InfoHint title="Skip this step if it's already true" className="mt-0.5">
+      Also checked the moment the plot arrives: if the conditions already hold, the step is skipped entirely. No layout is built and no cycle is spent here.
+    </InfoHint>
   </div>
 );
 
@@ -336,22 +341,23 @@ const TargetPicker: React.FC<{ stepIndex: number; exit: StepExit; onChange: (e: 
     t.kind === "step" && t.index !== stepIndex ? (
       <CropImage cropId={layoutFacts(steps[t.index]).icon} cropName="" size="custom" width={16} height={16} showFallback={false} className="shrink-0" />
     ) : t.kind === "finish" ? (
-      <Flag className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+      <Flag className="h-3.5 w-3.5 shrink-0 text-fg-body" />
     ) : t.kind === "missing" ? (
-      <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-red-300" />
+      <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-problem" />
     ) : (
-      <Repeat className="h-3.5 w-3.5 shrink-0 text-violet-300" />
+      <Repeat className="h-3.5 w-3.5 shrink-0 text-restart" />
     );
   return (
     <Dropdown
       label="Exit target"
       title={`${name}: ${EXIT_STYLE[kind].help}`}
       width={300}
-      className={`${kind === "missing" ? "border-red-400/50 text-red-200" : kind === "restart" ? "text-violet-200" : ""}`}
+      // Long step names wrap onto a second line instead of being cut off.
+      className={`h-auto min-h-[26px] py-0.5 ${kind === "missing" ? "border-problem/50 text-problem" : kind === "restart" ? "text-restart" : ""}`}
       button={
         <>
           {icon}
-          <span className="truncate">{name}</span>
+          <span className="min-w-0 text-left [overflow-wrap:anywhere]">{name}</span>
         </>
       }
     >
@@ -374,7 +380,7 @@ const TargetPicker: React.FC<{ stepIndex: number; exit: StepExit; onChange: (e: 
           <MenuSeparator />
           <MenuItem
             checked={t.kind === "step" && t.index === stepIndex}
-            icon={<Repeat className="text-violet-300" />}
+            icon={<Repeat className="text-restart" />}
             hint={EXIT_STYLE.restart.help}
             onSelect={() => (set(steps[stepIndex].id), close())}
           >

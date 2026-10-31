@@ -23,7 +23,7 @@ import { GRID_SIZE } from "../../constants";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { getCellPixelPosition, getGridDimensions } from "../../utilities";
 import { CropImage } from "../shared";
-import { kindData, nameOf, plantIconOf } from "./format";
+import { formatPercent, kindData, nameOf, plantIconOf } from "./format";
 import { hoveredCellOffset } from "./sanityFormat";
 import { PlotMarkLegend } from "./markers";
 import { DRY_FILTER, MARK_STYLE, markerKey, type GridMarker, type Mark } from "./markerStyles";
@@ -87,8 +87,6 @@ export interface PlotViewProps {
  */
 export const FIT_HEIGHT_RESERVE = 56 + 100 + 38 + 28 + 40 + 52;
 
-/** One decimal, never rounding a not-quite-full uptime up to "100%" (that would read as perfect). */
-const formatUptime = (r: number) => `${r >= 1 ? "100" : (Math.floor(r * 1000) / 10).toFixed(1)}%`;
 
 /** One plot, read-only: standing plants, empty labelled target cells, and what changed this cycle. */
 export const PlotView: React.FC<PlotViewProps> = ({
@@ -293,7 +291,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
             {def!.flow.steps.length <= 8 && def!.flow.steps.length > 1 && (
               <span className="hidden shrink-0 items-center gap-[3px] @[420px]:flex" aria-hidden title={`Step ${runner!.stepIndex + 1} of ${def!.flow.steps.length}`}>
                 {def!.flow.steps.map((s, i) => (
-                  <i key={s.id} className={`h-1.5 w-1.5 rounded-[2px] ${i === runner!.stepIndex ? "bg-slate-100" : "bg-slate-400/20"}`} />
+                  <i key={s.id} className={`size-1.5 rounded-full ${i === runner!.stepIndex ? "bg-select" : "bg-fg-muted/25"}`} />
                 ))}
               </span>
             )}
@@ -494,40 +492,41 @@ export const PlotView: React.FC<PlotViewProps> = ({
         </div>
       </div>
 
-      <div className="mx-auto mt-2 flex min-h-5 w-full flex-wrap items-baseline gap-x-3.5 gap-y-0.5 text-[12px] text-slate-500" style={{ maxWidth: width }}>
+      <div className="mx-auto mt-2 flex min-h-5 w-full flex-wrap items-baseline gap-x-3.5 gap-y-0.5 text-secondary text-fg-meta" style={{ maxWidth: width }}>
         <span title="Placed and planted layout plants">
-          <b className="font-semibold tabular-nums text-slate-300">{counts.standing}</b> planted
+          <b className="font-semibold tabular-nums text-fg-body">{counts.standing}</b> planted
         </span>
         <span title="Natural spawns standing on the plot">
-          <b className="font-semibold tabular-nums text-slate-300">{counts.spawns}</b> spawned
+          <b className="font-semibold tabular-nums text-fg-body">{counts.spawns}</b> spawned
         </span>
         {runner && (
           <span className="hidden @[420px]:inline">
-            <b className="font-semibold tabular-nums text-slate-300">{runner.cyclesInStep}</b> cycles in step
+            <b className="font-semibold tabular-nums text-fg-body">{runner.cyclesInStep}</b> cycles in step
           </span>
         )}
         {counts.openSlots > 0 && (
           <span className="hidden @[340px]:inline" title="Target cells without their mutation">
-            <b className="font-semibold tabular-nums text-slate-300">{counts.openSlots}</b> open
+            <b className="font-semibold tabular-nums text-fg-body">{counts.openSlots}</b> open
           </span>
         )}
-        {counts.dead > 0 && <span className="text-red-300/90">{counts.dead} dead</span>}
+        {counts.dead > 0 && <span className="text-problem">{counts.dead} dead</span>}
         {counts.dry > 0 && (
-          <span className="text-amber-400/90" title="Dried out: halted until watered">
+          <span className="text-warn" title="Dried out: halted until watered">
             {counts.dry} dried out
           </span>
         )}
         {missing.length > 0 && (
-          <span className="text-red-300" title="Layout plants the player could not re-place (no stock)">
+          <span className="text-problem" title="Layout plants the player could not re-place (no stock)">
             {missing.length} missing
           </span>
         )}
         {uptime && (
           <span
-            className={`ml-auto font-semibold tabular-nums ${uptime.unsustainable ? "text-red-300" : "text-slate-200"}`}
+            // Red only when this plot itself had requirement downtime; blocked or dried-out downtime stays plain.
+            className={`ml-auto font-semibold tabular-nums ${uptime.unsustainable ? "text-problem" : "text-fg-body"}`}
             title={`Uptime of this plot's checked targets so far${uptime.unsustainable ? ": a checked target lacked its requirements (not sustainable)" : ""}`}
           >
-            {formatUptime(uptime.ratio)} up
+            {formatPercent(uptime.ratio)} up
           </span>
         )}
       </div>
