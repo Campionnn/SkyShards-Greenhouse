@@ -4,10 +4,14 @@ import { rarityOf } from "../simulator/format";
 
 /** Non-component helpers for the leaderboard components (kept apart for fast refresh). */
 
+/**
+ * The revenue split's three parts as neutral steps (charts are neutral; colour is for roles):
+ * mutation items brightest, crops in the middle, rare crops and drops darkest. The legend names them.
+ */
 export const SPLIT_STYLE = {
-  crops: { label: "crops", bar: "bg-emerald-400/80", text: "text-emerald-300" },
-  mutations: { label: "mutations", bar: "bg-amber-400/80", text: "text-amber-300" },
-  rare: { label: "rare", bar: "bg-sky-400/80", text: "text-sky-300" },
+  crops: { label: "crops", bar: "bg-fg-meta", text: "text-fg-muted" },
+  mutations: { label: "mutations", bar: "bg-fg-body", text: "text-fg-muted" },
+  rare: { label: "rare", bar: "bg-line-control", text: "text-fg-muted" },
 } as const;
 
 export const EFFORT_LABEL: Record<string, string> = {
@@ -37,14 +41,17 @@ export function topRarity(ids: readonly string[]): string | null {
   return best >= 0 ? order[best] : null;
 }
 
-/** Effort per login on a rough log scale: 5 bars, from a quick harvest to a full rebuild. */
+/**
+ * Effort per login on a rough log scale: 5 bars, from a quick harvest to a full rebuild. Neutral at
+ * every level: effort is a cost to weigh, not a warning or a problem.
+ */
 export function effortLevel(avg: number | null): { bars: number; label: string; tone: string } {
-  if (avg === null) return { bars: 0, label: "unknown", tone: "text-slate-500" };
-  if (avg < 10) return { bars: 1, label: "Relaxed", tone: "text-emerald-300" };
-  if (avg < 25) return { bars: 2, label: "Light", tone: "text-emerald-300" };
-  if (avg < 60) return { bars: 3, label: "Moderate", tone: "text-amber-200" };
-  if (avg < 150) return { bars: 4, label: "Busy", tone: "text-orange-300" };
-  return { bars: 5, label: "Intense", tone: "text-red-300" };
+  if (avg === null) return { bars: 0, label: "unknown", tone: "text-fg-meta" };
+  if (avg < 10) return { bars: 1, label: "Relaxed", tone: "text-fg-muted" };
+  if (avg < 25) return { bars: 2, label: "Light", tone: "text-fg-muted" };
+  if (avg < 60) return { bars: 3, label: "Moderate", tone: "text-fg-muted" };
+  if (avg < 150) return { bars: 4, label: "Busy", tone: "text-fg-muted" };
+  return { bars: 5, label: "Intense", tone: "text-fg-muted" };
 }
 
 /** Plot-level static numbers for the detail hero ("3 plots · 7 steps · scripted"). */

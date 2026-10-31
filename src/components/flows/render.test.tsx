@@ -9,8 +9,10 @@ import { mockAdminList, mockDetail, mockList } from "../../services/flowsMock";
 import { normalizeDetail } from "../../services/flowsService";
 import { AuthCallbackPage } from "../../pages/AuthCallbackPage";
 import { FlowDetailView, ModerationBox } from "../../pages/FlowDetailPage";
+import type { FlowDetail } from "../../leaderboard/api";
 import { AdminCards, AdminTable, FlowsAdminPage } from "../../pages/FlowsAdminPage";
-import { CantMakeSection, FlowRowItem, FlowsPage } from "../../pages/FlowsPage";
+import { FlowsPage } from "../../pages/FlowsPage";
+import { useFlowViewer } from "../../hooks/useFlowViewer";
 import { DEFAULT_FILTERS, maxProfit, rankEntries, splitRanked, type ViewSettings } from "../../leaderboard/view";
 import type { Board } from "../../leaderboard/rules";
 import { DEFAULT_BAZAAR_PRICING } from "../../simulator";
@@ -24,6 +26,10 @@ import { previewScenarioOf, withPreviewSeed } from "../simulator/fromNothingPrev
 import { ToastProvider } from "../ui";
 import { ReportPanel } from "./FlowDetailSections";
 import { FilterBar } from "./FlowFilters";
+import { StatsForm } from "./FlowControls";
+import { FlowRowItem, PhoneRowItem, RowPeek } from "./ranking/RankingRow";
+import { facetCounts } from "./ranking/rankingHelpers";
+import { CantMakeSection } from "./ranking/SetApart";
 import { FlowMarkdown } from "./FlowMarkdown";
 
 // Server-render the leaderboard pages and the submit dialog body with a fake fetch, to catch
@@ -62,8 +68,8 @@ const DATA = defaultGameData();
 
 /**
  * The mock list on a board (and the starting-items switch), rendered like the page: ranked rows
- * with the page's row component, then (from nothing) the open "can't make its starting items"
- * section. `ranked` / `blocked` are the split rows.
+ * with the page's desktop row (peek open on every row, so its facts render too) and the phone row,
+ * then (from nothing) the open set-apart section. `ranked` / `blocked` are the split rows.
  */
 async function renderRows(board: Board, kit = false) {
   const list = await mockList(board, "max", 1, undefined, kit);
@@ -71,45 +77,79 @@ async function renderRows(board: Board, kit = false) {
   const { ranked, cantMake } = splitRanked(rankEntries(DATA, list.entries, s, 1));
   const like = { liked: false, busy: false };
   const top = maxProfit(ranked);
-  const ranks = text(wrap(<ol>{ranked.map((r, i) => <FlowRowItem key={r.entry.id} row={r} top={top} every={1} board={board} kit={kit} index={i} like={like} sort="profit" />)}</ol>));
+  const search = "?sort=effort&q=gl";
+  const ranks = text(
+    wrap(
+      <ol>
+        {ranked.map((r, i) => (
+          <FlowRowItem key={r.entry.id} row={r} top={top} every={1} board={board} kit={kit} index={i} like={like} sort="profit" open rankingSearch={search} />
+        ))}
+      </ol>
+    )
+  );
+  const phone = text(
+    wrap(
+      <ol>
+        {ranked.map((r, i) => (
+          <PhoneRowItem key={r.entry.id} row={r} top={top} every={1} board={board} kit={kit} index={i} like={like} sort="profit" />
+        ))}
+      </ol>
+    )
+  );
   const section = cantMake.length ? text(wrap(<CantMakeSection rows={cantMake} onSwitch={() => {}} defaultOpen />)) : "";
-  return { html: ranks + section, ranks, section, ranked, blocked: cantMake };
+  return { html: ranks + section, ranks, phone, section, ranked, blocked: cantMake };
 }
 
+/** The shared "Your stats" form with a real viewer (the page keeps it in a closed drawer, so SSR doesn't show it). */
+const StatsFormHost: React.FC = () => <StatsForm viewer={useFlowViewer()} />;
+
 describe("leaderboard pages render", () => {
-  it("/flows renders the stats panel, the two boards, the starting-items switch, sorting, filters and a loading state", () => {
+  it("/flows renders the toolbar, the frequency, the stats chip, sorting, filters and a loading state; the form lives in the drawer", () => {
     const html = text(wrap(<FlowsPage />));
-    for (const s of ["Flow rankings", "Your stats", "How often you log in", "Crop Growth", "Farming Fortune", "Per-crop fortune", "Import from Hypixel", "Farming armor", "Scored at", "Profit per effort", "Most forgiving", "Search flows, authors, crops", "Loading the rankings..."]) {
+    for (const s of ["Flow rankings", "Online every", "Max stats · set yours", "Coins/day", "Effort", "Forgiving", "More sorts", "NPC prices", "Key", "Search flows, authors, crops", "Loading the rankings...", "Submit a flow"]) {
       expect(html).toContain(s);
     }
-    for (const s of ["Ironman", "Normal", "Earning", "I have the starting items"]) expect(html).toContain(s);
+    for (const s of ["Ironman", "Normal", "Earning", "Plots", "I have the starting items"]) expect(html).toContain(s);
     expect(html).not.toMatch(/from nothing<\/button>|with starting items<\/button>/);
     expect(html).toMatch(/role="switch" aria-checked="false"[^>]*>.{0,600}I have the starting items/s);
+    // The sorts are pressed buttons in sortable column heads, not fake tabs; the frequency is a radio group.
+    expect(html).toMatch(/aria-sort="descending".{0,200}aria-pressed="true"[^>]*aria-label="Sort by profit"/s);
+    expect(html).not.toContain('role="tab"');
+    expect(html).toMatch(/role="radiogroup" aria-label="Online every N cycles"/);
+    expect(html).toMatch(/role="radio" aria-checked="true"[^>]*>1</);
     expect(html).toContain('data-testid="filter-bar"');
-    expect(html).toContain('data-testid="tier-meter"');
-    // Ironman (the default) has the starting-items switch in the filter bar and the starting-item filters in both modes.
-    for (const s of ["No upkeep", "Starting items"]) expect(html).toContain(s);
+    expect(html).toContain('data-testid="viewer-tools"');
+    expect(html).toContain('data-testid="kit-switch"');
+    // Ironman (the default) has the starting-item filters.
+    for (const s of ["Upkeep", "Starting items"]) expect(html).toContain(s);
     for (const s of ["Least upkeep", "Steady rate", "I own the starting items"]) expect(html).not.toContain(s);
-    expect(html).toMatch(/data-testid="filter-bar".{0,4000}data-testid="kit-switch"/s);
-    expect(html).toContain("each flow's starting items are made first");
-    // Friendly inputs: Bioanalysis is a dropdown of the accessories, the upgrades are tier lists.
-    for (const s of ["Bioanalysis", "Artifact · +15%", "Talisman · +5%", "Tier 9 · +50%", "Evergreen Chip"]) expect(html).toContain(s);
+    // The board intro is the InfoHint by the board toggle.
+    expect(html).toContain('aria-label="About this board"');
+    expect(html).not.toContain('data-testid="stats-drawer"');
+  });
+
+  it("the stats form (the drawer's body): tiers, frequency, yield, import", () => {
+    const html = text(wrap(<StatsFormHost />));
+    for (const s of ["How often you log in", "Crop Growth", "Farming Fortune", "Per-crop fortune", "Import from Hypixel", "Farming armor", "Scored at", "Bioanalysis", "Artifact · +15%", "Tier 9 · +50%", "Evergreen Chip"]) expect(html).toContain(s);
+    expect(html).toContain('data-testid="tier-meter"');
+    expect(html).toContain('data-testid="stats-panel"');
   });
 
   it("/flows?board=ironman&kit=1 and v2's links: the switch on, the filters kept; Normal has neither", () => {
     const html = text(wrap(<FlowsPage />, "/flows?board=ironman&kit=1&noUpkeep=1&maxStart=60"));
-    for (const s of ["No upkeep", "Starting items", "≤ 60", "≤ 200", "As if you already own each flow's starting items"]) expect(html).toContain(s);
-    expect(html).toMatch(/aria-pressed="true"[^>]*>No upkeep/);
+    for (const s of ["Upkeep", "Starting items", "≤ 60"]) expect(html).toContain(s);
+    expect(html).toMatch(/Upkeep<\/span> <span class="[^"]*text-select-fg[^"]*">None/);
     expect(html).toMatch(/role="switch" aria-checked="true"/);
     // v2's links open the right view.
     expect(text(wrap(<FlowsPage />, "/flows?board=ironman_borrow"))).toMatch(/role="switch" aria-checked="true"/);
     const strict = text(wrap(<FlowsPage />, "/flows?board=ironman_strict"));
     expect(strict).toMatch(/role="switch" aria-checked="false"/);
-    expect(strict).toContain("each flow's starting items are made first");
     const normal = text(wrap(<FlowsPage />, "/flows?board=normal&kit=1"));
     expect(normal).not.toContain("I have the starting items");
-    expect(normal).not.toContain("No upkeep");
+    expect(normal).not.toContain("Upkeep");
     expect(normal).toContain("Bazaar prices");
+    // A sort and the 30-day likes come from the URL.
+    expect(text(wrap(<FlowsPage />, "/flows?sort=liked30d"))).toMatch(/aria-pressed="true"[^>]*aria-label="Sort by most liked"/);
   });
 
   it("ranking rows from nothing: the starting-items line, upkeep and Stall; flows whose starting items can't be made are set apart", async () => {
@@ -120,97 +160,156 @@ describe("leaderboard pages render", () => {
     expect(r.blocked.map((x) => x.entry.id).sort()).toEqual(["mockDevr0007", "mockGods0009"]);
     expect(r.blocked.every((x) => x.rank === 0)).toBe(true);
     expect(r.ranks).not.toContain("Godseed showcase");
-    // The starting-items line: the kit, largest first, and how long the builder takes; the tooltip lists the whole kit.
+    // The row: the kit count and build time; the peek: the starting-items line (kit, largest first) with the whole kit in its title.
+    expect(r.ranks).toMatch(/144 starting items · made in ~12 days/);
     expect(r.ranks).toContain('data-testid="starting-items"');
-    expect(r.section).toMatch(/Stops once its starting items run out: it needs 93 Zombud \+ 91 Puffercloud a day it doesn't grow/);
+    expect(r.section).toMatch(/Stops once its starting items run out: it needs <span[^>]*>93 Zombud \+ 91 Puffercloud a day<\/span> it doesn't grow/);
     expect(r.ranks).toMatch(/Starting items: 141 Magic Jellybean, 2 All-in Aloe, 1 Blastberry · made in ~12 days/);
     expect(r.ranks).toMatch(/Starting items: 26 Witherbloom, 15 Chloronite, 9 Magic Jellybean · made in ~5 days/);
     expect(r.ranks).toContain('title="Starting items: 141 Magic Jellybean, 2 All-in Aloe, 1 Blastberry"');
     expect(r.ranks).toContain("No starting items");
-    // Upkeep in both modes, Stall as before, and no v2 Kit chip.
+    // Upkeep, Stall (its reason visible in the peek), and no v2 Kit chip.
     expect(r.ranks).toContain('data-testid="row-upkeep"');
     expect(r.ranks).toContain("0.04 Cindershade /day");
     expect(r.ranks).toContain(">Stall<");
     expect(r.ranks).toContain("Plot 3, step-1: 5.6 Magic Jellybean cells empty on average: the stock ran out.");
     expect(r.ranks).toContain("Needs daily");
     expect(r.html).not.toMatch(/Kit \+|Kit needed|Infinity|NaN/);
+    // Every row is a real link carrying the board; Open in simulator carries the board too.
+    expect(r.ranks).toMatch(/href="\/flows\/mock\w+\?board=ironman"/);
+    expect(r.ranks).toMatch(/href="\/simulator\?flow=mock\w+&board=ironman"/);
+    // The earners are named in the row (desktop) and the phone row.
+    expect(r.ranks).toContain("Magic Jellybean");
+    expect(r.phone).toMatch(/data-testid="flow-row".{0,3000}Open .{1,80} in the simulator/s);
     // The set-apart section: its count, the explanation, the kit and the number with the starting items.
     expect(r.section).toContain('data-testid="cant-make-section"');
     expect(r.section).toContain("Not ranked from nothing (2)");
-    expect(r.section).toContain("can't get their starting items before the scored part of the run, or stop earning once the");
+    expect(r.section).toContain(`aria-label="Why these aren't ranked"`);
+    expect(r.section).toContain("Rank them with the starting items");
     expect(r.section).toContain("Starting items: 1 Godseed · can't be made within the run");
     expect(r.section).toContain('href="/flows/mockGods0009?board=ironman&kit=1"');
     expect(r.section).toContain("/day with the starting items");
+    expect(r.section).toContain('data-testid="stops-line"');
   });
 
-  it("ranking rows with the starting items: the same line, the from-nothing number in the tooltip, nothing set apart", async () => {
+  it("ranking rows with the starting items: the same facts, the from-nothing number (title and peek), nothing set apart; links carry kit", async () => {
     const r = await renderRows("ironman", true);
     expect(r.blocked).toHaveLength(0);
     expect(r.ranked.map((x) => x.entry.id)).toContain("mockGods0009");
     const html = r.html;
     expect(html).toMatch(/Starting items: 165 Zombud, 116 Puffercloud · made in/);
     expect(html).toMatch(/title="From nothing: [\d.]+[kMB]?\/day \(making the starting items first\)"/);
+    expect(html).toContain("/day (making the starting items first)");
     expect(html).toContain("93 Zombud + 91 Puffercloud /day");
     expect(html).toContain('href="/flows/mockDevr0007?board=ironman&kit=1"');
+    expect(html).toContain('href="/simulator?flow=mockDevr0007&board=ironman&kit=1"');
     expect(html).not.toContain("Can't make its starting items");
   });
 
   it("ranking rows on Normal: no ironman parts; links keep the board", async () => {
     const { html, blocked } = await renderRows("normal");
     expect(blocked).toHaveLength(0);
-    expect(html).toContain("coins / day");
+    expect(html).toContain("Effort per login");
+    expect(html).not.toContain("From nothing");
     expect(html).not.toContain('data-testid="row-upkeep"');
     expect(html).not.toContain('data-testid="starting-items"');
     expect(html).not.toMatch(/Kit |>Stall</);
     expect(html).toContain('href="/flows/mockDevr0007?board=normal"');
+    expect(html).toContain('href="/simulator?flow=mockDevr0007&board=normal"');
   });
 
-  it("the filter bar on each board", () => {
+  it("the row peek and the phone row: every title-only fact visible, open in simulator labelled", async () => {
+    const list = await mockList("ironman", "max", 1);
+    const s: ViewSettings = { board: "ironman", quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false, now: Date.now() };
+    const { ranked } = splitRanked(rankEntries(DATA, list.entries, s, 4));
+    const row = ranked[0];
+    const html = text(wrap(<RowPeek row={row} top={maxProfit(ranked)} every={4} board="ironman" kit={false} />));
+    for (const sNeed of ['data-testid="row-peek"', "Effort per login", "at the heaviest", "By frequency", "Open in simulator", "Details", "most-used layout"]) expect(html).toContain(sNeed);
+    // Forgiving above 100% reads 100%+, never 107%.
+    const over = text(wrap(<ol><FlowRowItem row={{ ...row, slack: 1.07 }} top={1} every={1} board="ironman" index={0} like={{ liked: false, busy: false }} sort="profit" /></ol>));
+    expect(over).toContain("100%+");
+    expect(over).not.toContain("107%");
+  });
+
+  it("the filter bar on each board, with counts", async () => {
     const none = () => {};
-    const normal = text(wrap(<FilterBar board="normal" filters={{ ...DEFAULT_FILTERS, earning: ["chorus_fruit"] }} earningOptions={["chorus_fruit"]} kitSwitch={<span>KIT</span>} onChange={none} />));
+    const normal = text(wrap(<FilterBar board="normal" filters={{ ...DEFAULT_FILTERS, earning: ["chorus_fruit"] }} earningOptions={["chorus_fruit"]} onChange={none} />));
     expect(normal).toContain("Chorus Fruit");
     expect(normal).toContain("top 3");
     expect(normal).toContain("Clear filters");
-    expect(normal).not.toContain("No upkeep");
-    const borrow = text(wrap(<FilterBar board="ironman" filters={DEFAULT_FILTERS} earningOptions={[]} kitSwitch={<span>KIT</span>} onChange={none} />));
-    for (const s of ["KIT", "No upkeep", "Starting items", "Any"]) expect(borrow).toContain(s);
+    expect(normal).not.toContain("Upkeep");
+    const borrow = text(wrap(<FilterBar board="ironman" filters={DEFAULT_FILTERS} earningOptions={[]} plots="any" onPlots={none} onChange={none} lead={<span>LEAD</span>} />));
+    for (const sNeed of ["LEAD", "Plots", "Upkeep", "Starting items", "Any"]) expect(borrow).toContain(sNeed);
     expect(borrow).not.toContain("I own the starting items");
-    expect(normal).not.toContain("KIT");
+    expect(borrow).toContain('data-testid="earning-filter"');
+    // Facet counts over the ranked rows.
+    const list = await mockList("ironman", "max", 1);
+    const s: ViewSettings = { board: "ironman", quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false, now: Date.now() };
+    const c = facetCounts(splitRanked(rankEntries(DATA, list.entries, s, 1)).ranked);
+    expect(c.caps["200"]).toBeGreaterThanOrEqual(c.caps["60"] ?? 0);
+    expect(Object.values(c.top3).every((n) => n > 0)).toBe(true);
   });
 
-  it("/flows/:id renders every section from a full entry", async () => {
+  // The detail page renders one tab at a time (?tab=need|earn|freq|flow|proof); `detailAt` renders each.
+  const detailAt = (detail: FlowDetail, url = "/flows/x") => text(wrap(<FlowDetailView detail={detail} onChange={() => {}} onReload={() => {}} />, url));
+  const allTabs = (detail: FlowDetail, query = "") =>
+    ["need", "earn", "freq", "flow", "proof"].map((t) => detailAt(detail, `/flows/${detail.id}?${query}${query ? "&" : ""}tab=${t}`)).join("\n");
+
+  it("/flows/:id renders the strip and every section from a full entry", async () => {
     const detail = normalizeDetail((await mockDetail("mockChloro01"))!);
-    const html = text(wrap(<FlowDetailView detail={detail} onChange={() => {}} onReload={() => {}} />));
-    for (const s of ["Chloronite engine with wheat filler", "Open in simulator", "Copy link", "Profit by online frequency", "forgiving", "What you earn", "Where it comes from", "Top earners", "The flow", "Plot 1", "Consistency across seeds", "Work per login", "Description", "Mutations / day", "Seed spread"]) {
-      expect(html).toContain(s);
-    }
-    // Three numbers: from nothing, with the starting items, normal; the current (the default: from nothing) highlighted.
+    const html = detailAt(detail);
+    for (const s of ["Chloronite engine with wheat filler", "Open in simulator", "Copy link", "Forgiving", "Flow rankings", "Read more"]) expect(html).toContain(s);
+    // Whose stats: the default stats say so, with Set your stats and Import from Hypixel right there.
+    expect(html).toContain('data-testid="stats-row"');
+    expect(html).toMatch(/These numbers are for <b[^>]*>max stats<\/b>/);
+    for (const s of ["Set your stats", "Import from Hypixel"]) expect(html).toContain(s);
+    // The login frequency is an inline control in the strip.
+    expect(html).toContain('data-testid="frequency-picker"');
+    // Three numbers: from nothing, with the starting items, normal; the current (the default: from nothing) checked and large.
     expect(html).toContain('data-testid="board-numbers"');
-    for (const s of ["Ironman · from nothing", "Ironman · with the starting items", "Normal · Bazaar"]) expect(html).toContain(s);
-    expect(html).toMatch(/aria-selected="true"[^>]*>.{0,400}Ironman · from nothing/s);
-    // The builder line under the numbers.
+    for (const s of ["From nothing · Ironman", "With the starting items · Ironman", "Normal · Bazaar"]) expect(html).toContain(s);
+    expect(html).toMatch(/role="radio" aria-checked="true"[^>]*data-testid="board-number-ironman"/);
+    expect(html).toMatch(/data-testid="board-number-ironman".{0,600}text-hero/s);
+    expect(html).toContain("starting items made in 3 days");
+    // The sections are tabs; each renders.
+    for (const s of ["What you need", "Earnings", "Login frequency", "How it works", "Effort and seeds"]) expect(html).toContain(s);
+    const all = allTabs(detail);
+    for (const s of [
+      "Profit by online frequency",
+      'role="radiogroup" aria-label="Online frequency"',
+      "What you earn",
+      "Where it comes from",
+      "Top earners",
+      "The flow",
+      "Plot 1",
+      "Consistency across seeds",
+      "Work per login",
+      "Description",
+      "Mutations / day",
+      "Seed spread",
+      "secret seeds",
+    ]) expect(all).toContain(s);
+    // The builder line in What you need.
     expect(html).toContain('data-testid="builder-line"');
     expect(html).toMatch(/Starting items: 6 Magic Jellybean, 4 Chloronite · made in ~3 days/);
     expect(html).toContain("The site's builder makes the starting items in ~3 days, then this flow runs from exactly them. The builder's crops meanwhile count.");
-    expect(html).toContain("starting items made in 3 days");
-    // "What you need" on both ironman variants.
     expect(html).toContain('data-testid="what-you-need"');
-    expect(html).toContain("Layout complete after ~");
-    expect(html).not.toMatch(/paid back|on credit|Infinity|NaN/i);
-    // Restricted Markdown: headings and emphasis render; links are unwrapped to text.
-    expect(html).toContain("<h3>How it works</h3>");
-    expect(html).toContain("<strong>Chloronite</strong>");
-    expect(html).not.toContain("<a href=\"https://example.com");
-    expect(html).toContain("links are not rendered");
-    // Logged out: no owner or report buttons.
-    expect(html).not.toContain(">Delete<");
-    expect(html).not.toContain(">Report<");
+    expect(html).toContain("Layout complete");
+    expect(all).not.toMatch(/paid back|on credit|Infinity|NaN/i);
+    // Restricted Markdown in How it works: headings and emphasis render; links are unwrapped to text.
+    const flow = detailAt(detail, "/flows/x?tab=flow");
+    expect(flow).toContain("<h3>How it works</h3>");
+    expect(flow).toContain("<strong>Chloronite</strong>");
+    expect(flow).not.toContain('<a href="https://example.com');
+    expect(flow).toContain("links are not rendered");
+    // Logged out: no owner or report actions.
+    expect(all).not.toMatch(/Delete…|Report…|Edit title and description/);
   });
 
   it("/flows/:id with the starting items (and v2's ?board=ironman_borrow): What you need, upkeep, used up, returned each session", async () => {
     const devourer = normalizeDetail((await mockDetail("mockDevr0007"))!);
     for (const url of ["/flows/mockDevr0007?board=ironman&kit=1", "/flows/mockDevr0007?board=ironman_borrow"]) {
-      const html = text(wrap(<FlowDetailView detail={devourer} onChange={() => {}} onReload={() => {}} />, url));
+      const html = detailAt(devourer, url);
       expect(html).toContain('data-testid="what-you-need"');
       for (const s of [
         "What you need",
@@ -218,49 +317,69 @@ describe("leaderboard pages render", () => {
         "To start with",
         "needs 165",
         "bring 207",
-        "uses up",
-        "98</span> Zombud once",
+        "Used up once",
+        "98</b> Zombud",
         "Then per day (upkeep)",
-        "93</span> Zombud / day",
-      ]) expect(html).toContain(s);
+        "93 / day",
+      ])
+        expect(html).toContain(s);
       // The current number is "with the starting items"; the builder line says it ran real (upkeep).
-      expect(html).toMatch(/aria-selected="true"[^>]*>.{0,400}Ironman · with the starting items/s);
+      expect(html).toMatch(/role="radio" aria-checked="true"[^>]*data-testid="board-number-ironman_kit"/);
       expect(html).toMatch(/The site's builder makes the starting items in ~\d+ days \(\d+–\d+\), then this flow runs from exactly them/);
+      // Open in simulator keeps the starting-items switch.
+      expect(html).not.toContain("Profit by online frequency");
     }
     const aloe = normalizeDetail((await mockDetail("mockAloe0002"))!);
-    const a = text(wrap(<FlowDetailView detail={aloe} onChange={() => {}} onReload={() => {}} />, "/flows/mockAloe0002?board=ironman&kit=1"));
+    const a = detailAt(aloe, "/flows/mockAloe0002?board=ironman&kit=1");
     expect(a).toContain("returned each session");
     expect(a).toContain("None: it gives back everything it borrows.");
   });
 
   it("/flows/:id from nothing: the number, the builder line, What you need and the empty cells; a kit that can't be made is said so", async () => {
     const devourer = normalizeDetail((await mockDetail("mockDevr0007"))!);
-    const html = text(wrap(<FlowDetailView detail={devourer} onChange={() => {}} onReload={() => {}} />, "/flows/mockDevr0007?board=ironman_strict"));
-    expect(html).toMatch(/aria-selected="true"[^>]*>.{0,400}Ironman · from nothing/s);
+    const html = detailAt(devourer, "/flows/mockDevr0007?board=ironman_strict");
+    expect(html).toMatch(/role="radio" aria-checked="true"[^>]*data-testid="board-number-ironman"/);
     expect(html).toContain('data-testid="what-you-need"');
-    expect(html).toContain("Top earners");
-    for (const s of ["Empty layout cells", 'data-testid="empty-cells"', "Plot 1, step 1: 30 Zombud cells empty on average"]) expect(html).toContain(s);
+    expect(detailAt(devourer, "/flows/mockDevr0007?board=ironman_strict&tab=earn")).toContain("Top earners");
+    for (const s of ["Empty layout cells", 'data-testid="empty-cells"', "Plot 1, step 1: "]) expect(html).toContain(s);
+    expect(html).toMatch(/Plot 1, step 1: <b[^>]*>30<\/b> Zombud cells empty on average/);
     expect(html).not.toMatch(/Kit needed|Kit \+|Can't start/);
-    // It stops from nothing: the tile and the note say why, in the game's terms.
+    // It stops from nothing: the number and the note say why, in the game's terms.
     expect(html).toContain("stops once its starting items run out");
     expect(html).toContain('data-testid="stops-note"');
     expect(html).toMatch(/it uses 93 Zombud \+ 91 Puffercloud a day that it doesn't grow\. Leftover placed items that never helped enough mutations don't decay/);
-    // A flow that stalls keeps its chips.
+    // A flow that stalls keeps its chip, naming the plot (the step in its title).
     const chloro = normalizeDetail((await mockDetail("mockChloro01"))!);
-    const c = text(wrap(<FlowDetailView detail={chloro} onChange={() => {}} onReload={() => {}} />, "/flows/mockChloro01?board=ironman"));
-    expect(c).toContain(">Stall<");
+    const c = detailAt(chloro, "/flows/mockChloro01?board=ironman");
+    expect(c).toContain(">Stall · plot 3<");
     expect(c).toContain("Plot 3, step 1: 5.6 Magic Jellybean cells empty on average");
     // The Godseed flow: the builder can't make its kit within the run.
     const gods = normalizeDetail((await mockDetail("mockGods0009"))!);
-    const g = text(wrap(<FlowDetailView detail={gods} onChange={() => {}} onReload={() => {}} />, "/flows/mockGods0009?board=ironman"));
+    const g = detailAt(gods, "/flows/mockGods0009?board=ironman");
     expect(g).toContain("can't make its starting items in time");
     expect(g).toContain("The site's builder couldn't make the starting items before the scored part of the run (it had 0 of 1 Godseed), so this flow has no from-nothing number.");
-    // A flow with no empty cells hides the panel; one with no starting items says so.
+    // A flow with no empty cells hides the list; one with no starting items says so.
     const veil = normalizeDetail((await mockDetail("mockVeil0008"))!);
-    const v = text(wrap(<FlowDetailView detail={veil} onChange={() => {}} onReload={() => {}} />));
+    const v = detailAt(veil);
     expect(v).not.toContain("Empty layout cells");
     expect(v).toContain("No starting items");
     expect(v).toContain("no starting items needed");
+  });
+
+  it("/flows/:id keeps the ranking's query in the back link and the starting-items switch in Open in simulator", async () => {
+    const detail = normalizeDetail((await mockDetail("mockAloe0002"))!);
+    const plain = detailAt(detail, "/flows/mockAloe0002?board=ironman&kit=1");
+    expect(plain).toContain('href="/flows?board=ironman&kit=1"');
+    const fromRanking = renderToString(
+      <MemoryRouter initialEntries={[{ pathname: "/flows/mockAloe0002", search: "?board=ironman", state: { rankingSearch: "?sort=liked&q=aloe&plots=3" } }]}>
+        <ToastProvider>
+          <GreenhouseDataProvider>
+            <FlowDetailView detail={detail} onChange={() => {}} onReload={() => {}} />
+          </GreenhouseDataProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    expect(text(fromRanking)).toContain('href="/flows?sort=liked&q=aloe&plots=3"');
   });
 
   it("an old entry (pre-v2 'ironman' cells with payback fields) still renders", async () => {
@@ -278,11 +397,13 @@ describe("leaderboard pages render", () => {
         }) as unknown as typeof d.cells,
       seeds: [],
     });
-    const html = text(wrap(<FlowDetailView detail={old} onChange={() => {}} onReload={() => {}} />));
+    const html = allTabs(old);
     expect(html).toContain("Glasscorn trio");
     expect(html).toContain("not verified yet");
-    expect(html).not.toContain("Layout complete");
-    expect(html).not.toMatch(/paid back/i);
+    expect(html).toContain("not recorded for this entry");
+    expect(html).not.toMatch(/Layout complete after|paid back|Infinity|NaN/i);
+    // No seeds: the Effort and seeds tab has no empty column.
+    expect(html).not.toContain("Consistency across seeds");
   });
 
   it("the auth callback without a fragment explains itself", () => {

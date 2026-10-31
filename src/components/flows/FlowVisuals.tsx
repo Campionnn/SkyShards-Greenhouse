@@ -10,11 +10,14 @@ import { getCropPreviewColor } from "../../data/cropColors";
 import { FarmPicture } from "../guide/FarmPicture";
 import { CropImage } from "../shared";
 import { formatCoins, formatRate, nameOf, rarityOf } from "../simulator/format";
+import { cn } from "../ui/cn";
 import { EFFORT_LABEL, effortLevel, SPLIT_STYLE } from "./flowsDisplay";
 
 /**
  * Small visual pieces for the leaderboard: the revenue split bar, the frequency sparkline, layout
- * thumbnails (drawn like the Guide's farm pictures), mutation chips and the effort meter.
+ * thumbnails (drawn like the Guide's farm pictures), mutation chips and the effort meter. Also used
+ * by the simulator (StepNode: LayoutBoxes, MutationChip). On the design system: neutral data marks,
+ * `select` for "yours", `coin` for money.
  */
 
 const DATA = defaultGameData();
@@ -26,8 +29,8 @@ export const SplitBar: React.FC<{ split: RevenueSplit | null; fraction: number; 
   const total = split ? split.crops + split.mutations + split.rare : 0;
   const width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
   return (
-    <div className={`h-1.5 w-full overflow-hidden rounded-full bg-slate-700/40 ${className}`} aria-hidden>
-      <div className="flex h-full transition-[width] duration-300 ease-out" style={{ width }}>
+    <div className={cn("h-1.5 w-full overflow-hidden rounded-full bg-line", className)} aria-hidden>
+      <div className="flex h-full gap-px" style={{ width }}>
         {total > 0 &&
           (["crops", "mutations", "rare"] as const).map((k) =>
             split![k] > 0 ? <div key={k} className={SPLIT_STYLE[k].bar} style={{ width: `${(split![k] / total) * 100}%` }} /> : null
@@ -37,15 +40,16 @@ export const SplitBar: React.FC<{ split: RevenueSplit | null; fraction: number; 
   );
 };
 
-/** "crops 44.8M/day · mutation 54.9M/day · rare 4.7M/day" */
+/** "▬ crops 44.8M/day · ▬ mutations 54.9M/day · ▬ rare 4.7M/day": names the bar's three shades. */
 export const SplitLegend: React.FC<{ split: RevenueSplit | null; className?: string }> = ({ split, className = "" }) => {
   if (!split) return null;
   return (
-    <div className={`flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums ${className}`}>
+    <div className={cn("flex flex-wrap gap-x-3 gap-y-0.5 text-meta tabular-nums", className)}>
       {(["crops", "mutations", "rare"] as const).map((k) =>
         split[k] > 0 ? (
-          <span key={k} className="whitespace-nowrap">
-            <span className={SPLIT_STYLE[k].text}>{SPLIT_STYLE[k].label}</span> <span className="text-slate-400">{formatCoins(split[k])}/day</span>
+          <span key={k} className="inline-flex items-center gap-1 whitespace-nowrap">
+            <span aria-hidden className={cn("h-1.5 w-2.5 rounded-full", SPLIT_STYLE[k].bar)} />
+            <span className={SPLIT_STYLE[k].text}>{SPLIT_STYLE[k].label}</span> <span className="text-fg-body">{formatCoins(split[k])}/day</span>
           </span>
         ) : null
       )}
@@ -56,24 +60,23 @@ export const SplitLegend: React.FC<{ split: RevenueSplit | null; className?: str
 // ---- Frequency sparkline ---------------------------------------------------------------------
 
 /**
- * Profit per day across the online frequencies, as tiny bars (1, 2, 3, 4, 6, 8, 12 cycles). The
- * viewer's frequency is the bright one, so it reads as "how much do I lose by logging in less".
+ * Profit per day across the online frequencies, as tiny bars (1, 2, 3, 4, 6, 8, 12 cycles). Neutral
+ * bars; the viewer's frequency is the `select` one, so it reads as "how much do I lose by logging in
+ * less". The values are in the label (and the ranking's peek lists them).
  */
 export const Sparkline: React.FC<{ points: FrequencyPoint[]; selected: number; className?: string }> = ({ points, selected, className = "" }) => {
   const max = Math.max(1, ...points.map((p) => p.profitPerDay ?? 0));
   if (!points.some((p) => p.profitPerDay !== null)) return null;
+  const label = `Profit by login frequency: ${points.map((p) => `every ${p.every} ${p.profitPerDay === null ? "not verified" : formatCoins(Math.max(0, p.profitPerDay))}`).join(", ")}`;
   return (
-    <div className={`flex h-7 items-end gap-[3px] ${className}`} role="img" aria-label="Profit by online frequency">
+    <div className={cn("flex h-7 items-end gap-[3px]", className)} role="img" aria-label={label}>
       {points.map((p) => {
         const v = Math.max(0, p.profitPerDay ?? 0);
         const h = p.profitPerDay === null ? 0 : Math.max(8, (v / max) * 100);
         const active = p.every === selected;
         return (
-          <div key={p.every} className="flex h-full w-2 items-end" title={`Every ${p.every}: ${p.profitPerDay === null ? "not verified" : `${formatCoins(v)}/day`}`}>
-            <div
-              className={`w-full rounded-sm ${p.profitPerDay === null ? "bg-slate-700/40" : active ? "bg-emerald-400" : "bg-emerald-400/30"}`}
-              style={{ height: p.profitPerDay === null ? "15%" : `${h}%` }}
-            />
+          <div key={p.every} className="flex h-full w-1.5 items-end" title={`Every ${p.every}: ${p.profitPerDay === null ? "not verified" : `${formatCoins(v)}/day`}`}>
+            <div className={cn("w-full rounded-full", p.profitPerDay === null ? "bg-line" : active ? "bg-select" : "bg-line-control")} style={{ height: p.profitPerDay === null ? "15%" : `${h}%` }} />
           </div>
         );
       })}
@@ -101,10 +104,14 @@ export const LayoutThumb: React.FC<{ layout: StepLayout | null; cellSize?: numbe
   }, [layout]);
   if (!resolved) {
     const px = (cellSize ?? 8) * 10 + 9;
-    return <div className={`grid place-items-center rounded-md border border-slate-700/60 bg-slate-900/60 text-[10px] text-slate-600 ${className}`} style={{ width: px, height: px }}>no picture</div>;
+    return (
+      <div className={cn("grid place-items-center rounded-inner border border-line bg-surface-well text-meta text-fg-meta", className)} style={{ width: px, height: px }}>
+        no picture
+      </div>
+    );
   }
   return (
-    <div className={`rounded-md bg-slate-950/70 p-1 ring-1 ring-slate-700/50 ${className}`}>
+    <div className={cn("rounded-inner bg-surface-well p-1 ring-1 ring-line", className)}>
       <FarmPicture layout={resolved} nameOf={nameOf} data={DATA} cellSize={cellSize} maxCell={maxCell} tooltips={tooltips} />
     </div>
   );
@@ -130,11 +137,11 @@ export const LayoutBoxes: React.FC<{ layout: StepLayout | null; cell?: number; c
   const gap = 1;
   const px = cell * 10 + gap * 9;
   return (
-    <div className={`rounded-md bg-slate-950/80 p-1 ring-1 ring-slate-700/50 ${className}`} style={{ width: px + 8, height: px + 8 }} aria-hidden>
+    <div className={cn("rounded-inner bg-surface-well p-1 ring-1 ring-line", className)} style={{ width: px + 8, height: px + 8 }} aria-hidden>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(10, ${cell}px)`, gap }}>
         {Array.from({ length: 100 }, (_, i) => {
           const c = cells?.get(i);
-          if (!c) return <div key={i} style={{ width: cell, height: cell, borderRadius: 1.5, background: "rgb(30 41 59 / 0.7)" }} />;
+          if (!c) return <div key={i} className="bg-line" style={{ width: cell, height: cell, borderRadius: 1.5 }} />;
           const color = getCropPreviewColor(c.id, c.target);
           return (
             <div
@@ -156,43 +163,42 @@ export const LayoutBoxes: React.FC<{ layout: StepLayout | null; cell?: number; c
 
 // ---- Mutation chips --------------------------------------------------------------------------
 
-export const MutationChip: React.FC<{ id: string; count?: number; size?: "sm" | "md"; earning?: number | null }> = ({ id, count, size = "sm", earning }) => {
+export const MutationChip: React.FC<{ id: string; count?: number; size?: "sm" | "md"; earning?: number | null; className?: string }> = ({ id, count, size = "sm", earning, className }) => {
   const rarity = rarityOf(id);
   const px = size === "md" ? 20 : 16;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-md border border-slate-600/40 bg-slate-900/60 ${size === "md" ? "px-1.5 py-0.5 text-xs" : "px-1 py-0.5 text-[11px]"}`}
+      className={cn("inline-flex min-w-0 items-center gap-1 rounded-inner border border-line bg-surface-well", size === "md" ? "px-1.5 py-0.5 text-secondary" : "px-1 py-px text-meta", className)}
       title={earning != null ? `${nameOf(id)}: ${formatCoins(earning)} / day from its harvests` : undefined}
     >
       <CropImage cropId={id} cropName={nameOf(id)} size="custom" width={px} height={px} showFallback />
-      <span className={`whitespace-nowrap ${rarity ? getRarityTextColor(rarity) : "text-slate-300"}`}>{nameOf(id)}</span>
-      {count !== undefined && count > 1 && <span className="text-slate-500 tabular-nums">×{count}</span>}
-      {earning != null && earning > 0 && <span className="tabular-nums text-slate-400">{formatCoins(earning)}</span>}
+      <span className={cn("truncate whitespace-nowrap", rarity ? getRarityTextColor(rarity) : "text-fg-body")}>{nameOf(id)}</span>
+      {count !== undefined && count > 1 && <span className="tabular-nums text-fg-meta">×{count}</span>}
+      {earning != null && earning > 0 && <span className="tabular-nums text-fg-muted">{formatCoins(earning)}</span>}
     </span>
   );
 };
 
 // ---- Effort meter --------------------------------------------------------------------------
 
+/** Effort per login: 5 neutral bars and the level's word. A cost to weigh, never a warning colour. */
 export const EffortMeter: React.FC<{ avg: number | null; peak: number | null; compact?: boolean }> = ({ avg, peak, compact = false }) => {
   const lvl = effortLevel(avg);
-  const color = ["", "bg-emerald-400", "bg-emerald-400", "bg-amber-300", "bg-orange-400", "bg-red-400"][lvl.bars];
   return (
     <span className="inline-flex items-center gap-1.5" title={avg === null ? "Effort unknown" : `Effort per login: ${Math.round(avg)} on average, ${Math.round(peak ?? 0)} at the heaviest`}>
       <span className="inline-flex items-end gap-[2px]" aria-hidden>
         {[1, 2, 3, 4, 5].map((i) => (
-          <span key={i} className={`w-1 rounded-sm ${i <= lvl.bars ? color : "bg-slate-700/60"}`} style={{ height: 4 + i * 2 }} />
+          <span key={i} className={cn("w-1 rounded-full", i <= lvl.bars ? "bg-fg-muted" : "bg-line")} style={{ height: 4 + i * 2 }} />
         ))}
       </span>
-      {!compact && <span className={`text-[11px] ${lvl.tone}`}>{lvl.label}</span>}
+      {compact ? <span className="sr-only">Effort: {lvl.label}</span> : <span className={cn("text-meta", lvl.tone)}>{lvl.label}</span>}
     </span>
   );
 };
 
 /**
  * Effort per login, broken down by action: how many of each per login, with a bar for its share of
- * the work (count × the engine's `EFFORT_WEIGHTS`). Used by the leaderboard detail page and the
- * simulator's Effort panel, so both read the same.
+ * the work (count × the engine's `EFFORT_WEIGHTS`). Used by the leaderboard detail page.
  */
 export const EffortBreakdown: React.FC<{ effort: EffortResult }> = ({ effort }) => {
   const rows = Object.entries(effort.byKind)
@@ -200,7 +206,7 @@ export const EffortBreakdown: React.FC<{ effort: EffortResult }> = ({ effort }) 
     .filter((r) => r.n > 0)
     .sort((a, b) => b.w - a.w);
   const total = rows.reduce((s, r) => s + r.w, 0);
-  if (!rows.length) return <p className="text-xs text-slate-500">No actions recorded.</p>;
+  if (!rows.length) return <p className="text-secondary text-fg-meta">No actions recorded.</p>;
   return (
     <ul className="space-y-1.5" aria-label="Effort by action">
       {rows.map((r) => {
@@ -208,14 +214,14 @@ export const EffortBreakdown: React.FC<{ effort: EffortResult }> = ({ effort }) 
         return (
           <li
             key={r.k}
-            className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 text-xs"
+            className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 text-secondary"
             title={`${EFFORT_LABEL[r.k] ?? r.k}: ${EFFORT_WEIGHTS[r.k as EffortKind] ?? 1} effort each, ${Math.round(share * 100)}% of the work`}
           >
-            <span className="truncate text-slate-300">{EFFORT_LABEL[r.k] ?? r.k}</span>
-            <span className="h-1.5 overflow-hidden rounded-full bg-slate-700/40">
-              <span className="block h-full rounded-full bg-emerald-400/70" style={{ width: `${share * 100}%` }} />
+            <span className="truncate text-fg-body">{EFFORT_LABEL[r.k] ?? r.k}</span>
+            <span className="h-1.5 overflow-hidden rounded-full bg-line">
+              <span className="block h-full rounded-full bg-fg-meta" style={{ width: `${share * 100}%` }} />
             </span>
-            <span className="w-24 text-right tabular-nums text-slate-400">{formatRate(r.n)} / login</span>
+            <span className="w-24 text-right tabular-nums text-fg-muted">{formatRate(r.n)} / login</span>
           </li>
         );
       })}

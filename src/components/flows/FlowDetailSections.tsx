@@ -1,20 +1,19 @@
-import React, { useEffect, useRef, useState } from "react";
-import { ArrowRight, Code2, Flag, Loader2, Repeat, RotateCcw, TrendingUp } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Flag, LoaderCircle } from "lucide-react";
 import type { FlowDetail, FlowSeedResult, FlowStatusResponse } from "../../leaderboard/api";
 import type { Board, CellKind } from "../../leaderboard/rules";
 import { valueResult, type Quotes } from "../../leaderboard/pricing";
 import { spreadRatio, type RunResult } from "../../leaderboard/result";
 import {
   BOARD_LABEL,
-  CELL_KIND_LABEL,
   KIT_MARGIN,
-  prepDays,
-  stopsAt,
   kitSummaryText,
   needLines,
+  OUTLIER_RATIO,
   percent,
   rampText,
   ratioText,
+  REPORT_MAX,
   starvedList,
   starvedText,
   STALL_CELLS,
@@ -33,296 +32,311 @@ import type { FlowStep } from "../../simulator/flow/types";
 import { getFlowStatus, reportFlow } from "../../services/flowsService";
 import { CropImage } from "../shared";
 import { formatCoins, formatRate, formatUnitPrice, nameOf } from "../simulator/format";
-import { buttonClass, inputClass } from "../simulator/styles";
 import { useToast } from "../ui";
-import { Badge } from "./FlowControls";
-import { LayoutThumb, MutationChip } from "./FlowVisuals";
+import { LinkButton } from "../ui/Card";
+import { cn } from "../ui/cn";
+import { InfoHint } from "../ui/InfoHint";
+import { KitButton, KitLabel, KitTextarea, Pill, Segmented } from "../ui/kit";
 import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
+import { LayoutThumb, MutationChip } from "./FlowVisuals";
+import { KIND_BOARD, KIND_NAME, KIND_SHORT, LIST_ROWS, numberSub, SEEDS_MAX_TIER, SEEDS_OTHER_TIERS } from "./detail/detailText";
+
+/**
+ * The /flows/:id sections (FlowDetailPage composes them), on the design system: flat lists, the
+ * kit, `coin` for coins. StatusBox, ReportDialog and FlowMarkdown are also used by the simulator's
+ * Leaderboard tab and submit dialog.
+ */
 
 const DATA = defaultGameData();
 
-/** A labelled stat tile. */
-export const StatTile: React.FC<{ label: React.ReactNode; value: React.ReactNode; sub?: React.ReactNode; tone?: string; title?: string }> = ({ label, value, sub, tone = "text-slate-100", title }) => (
-  <div className="min-w-0 rounded-lg border border-slate-700/50 bg-slate-900/40 px-3 py-2.5" title={title}>
-    <div className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</div>
-    <div className={`mt-0.5 text-base font-semibold tabular-nums ${tone}`}>{value}</div>
-    {sub && <div className="mt-0.5 text-[11px] text-slate-500">{sub}</div>}
+/** A labelled number (kept for callers; the detail page uses the summary strip). */
+export const StatTile: React.FC<{ label: React.ReactNode; value: React.ReactNode; sub?: React.ReactNode; tone?: string; title?: string }> = ({ label, value, sub, tone = "text-fg", title }) => (
+  <div className="min-w-0" title={title}>
+    <div className="truncate text-meta text-fg-meta">{label}</div>
+    <div className={cn("text-title tabular-nums", tone)}>{value}</div>
+    {sub && <div className="text-meta text-fg-meta">{sub}</div>}
   </div>
 );
 
-const KIND_SUB: Record<CellKind, string> = {
-  ironman: "Ironman · from nothing",
-  ironman_kit: "Ironman · with the starting items",
-  normal: "Normal · Bazaar",
-};
-
-/** The three numbers side by side (from nothing, with the starting items, normal); the current one highlighted, the others switch to theirs. */
-export const BoardNumbers: React.FC<{ numbers: BoardNumber[]; current: CellKind; onSelect: (k: CellKind) => void; tierLabel: string; every: number }> = ({ numbers, current, onSelect, tierLabel, every }) => (
-  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="tablist" aria-label="Boards" data-testid="board-numbers">
+/**
+ * The three numbers side by side (from nothing, with the starting items, Normal), a radio group:
+ * the current one is large in `coin` with the `select` underline, the others smaller and muted;
+ * clicking one switches the board and the starting-items switch. `deltas` (optional) replaces each
+ * sub-line with "−x% vs max stats".
+ */
+export const BoardNumbers: React.FC<{
+  numbers: BoardNumber[];
+  current: CellKind;
+  onSelect: (k: CellKind) => void;
+  tierLabel: string;
+  every: number;
+  deltas?: Partial<Record<CellKind, string | null>>;
+  compact?: boolean;
+}> = ({ numbers, current, onSelect, tierLabel, every, deltas, compact }) => (
+  <div role="radiogroup" aria-label="Board" className={cn("grid grid-cols-3", compact ? "gap-1" : "divide-x divide-line")} data-testid="board-numbers">
     {numbers.map((n) => {
-      const active = n.kind === current;
+      const on = n.kind === current;
       const negative = n.profitPerDay !== null && n.profitPerDay < 0;
-      const cantMake = n.kind === "ironman" && n.prep !== null && !n.prep.done;
-      const kitValue = numbers.find((x) => x.kind === "ironman_kit")?.profitPerDay ?? null;
-      const stops = n.kind === "ironman" && stopsAt(n.slowing, n.profitPerDay, kitValue);
-      const sub =
-        n.profitPerDay === null
-          ? "not verified yet"
-          : n.kind === "normal"
-            ? [n.boughtPerDay > 0 ? `${formatCoins(n.boughtPerDay)}/day bought` : null, n.buildCost > 0 ? `${formatCoins(n.buildCost)} to build` : null].filter(Boolean).join(" · ") || "nothing to buy"
-            : cantMake
-              ? "can't make its starting items in time"
-              : stops
-                ? "stops once its starting items run out"
-                : n.slowing
-                  ? "settles lower once its starting items run out"
-                  : n.kind === "ironman"
-                    ? n.prep
-                      ? Object.keys(n.prep.kit).length === 0
-                        ? "no starting items needed"
-                        : `starting items made in ${Math.max(1, Math.round(prepDays(n.prep)))} day${Math.round(prepDays(n.prep)) <= 1 ? "" : "s"}`
-                      : "builder first, then the flow"
-                    : "if you own the starting items";
+      const sub = numberSub(n, numbers);
+      const delta = deltas?.[n.kind] ?? null;
       return (
         <button
           key={n.kind}
           type="button"
-          role="tab"
-          aria-selected={active}
+          role="radio"
+          aria-checked={on}
           onClick={() => onSelect(n.kind)}
-          title={active ? `${CELL_KIND_LABEL[n.kind]}: ${tierLabel} tier, online every ${every}` : `Show this flow's ${CELL_KIND_LABEL[n.kind]} number`}
-          className={`min-w-0 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.99] ${
-            active ? "border-emerald-500/50 bg-emerald-500/10 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]" : "border-slate-700/50 bg-slate-900/40 hover:border-slate-500/50 hover:bg-slate-800/60"
-          }`}
+          title={on ? `${KIND_NAME[n.kind]}: ${tierLabel} tier, online every ${every}` : `Show this flow's ${KIND_NAME[n.kind].toLowerCase()} number`}
           data-testid={`board-number-${n.kind}`}
+          className={cn(
+            "focus-ring-inset relative min-w-0 cursor-pointer text-left transition-colors duration-(--duration-hover)",
+            compact ? "rounded-control px-2 py-2" : "px-4 py-3",
+            on ? "bg-surface-hover" : "hover:bg-surface-hover/50",
+          )}
         >
-          <div className={`text-[10px] font-medium uppercase tracking-wide ${active ? "text-emerald-300" : "text-slate-500"}`}>{KIND_SUB[n.kind]}</div>
-          <div className={`mt-0.5 font-bold tabular-nums leading-tight ${active ? "text-3xl" : "text-2xl"} ${n.profitPerDay === null ? "text-slate-500" : negative ? "text-red-300" : active ? "text-amber-300" : "text-amber-200/80"}`}>
+          <span className={cn("block truncate text-meta", on ? "text-fg-body" : "text-fg-meta")}>
+            {compact ? KIND_SHORT[n.kind] : `${KIND_NAME[n.kind]} · ${KIND_BOARD[n.kind]}`}
+          </span>
+          <span
+            className={cn(
+              "block truncate tabular-nums",
+              on ? "text-hero" : "text-title",
+              n.profitPerDay === null ? "text-fg-meta" : negative ? "text-problem" : on ? "text-coin" : "text-fg-muted",
+            )}
+          >
             {n.profitPerDay === null ? "—" : formatCoins(n.profitPerDay)}
-            <span className="ml-1 text-xs font-normal text-slate-500">/ day</span>
-          </div>
-          <div className={`mt-0.5 min-h-[1rem] text-[11px] ${cantMake || stops ? "text-amber-300/90" : "text-slate-500"}`}>{sub}</div>
+            {on && !compact && <span className="ml-1 text-secondary text-fg-meta">/ day</span>}
+          </span>
+          {!compact && (
+            <span className={cn("block text-meta", delta ? "text-fg-muted" : sub.warn ? "text-warn" : "text-fg-meta")}>{delta ?? sub.text}</span>
+          )}
+          {compact && delta && <span className="block truncate text-meta text-fg-muted">{delta.replace(" vs max stats", "")}</span>}
+          {on && <span aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-select" />}
         </button>
       );
     })}
   </div>
 );
 
-/** "With starting items": what to start with, what is used up once, and what it needs every day after that. */
-export const WhatYouNeed: React.FC<{ result: Pick<RunResult, "startItems" | "sessionOnly" | "usedUp" | "upkeep"> }> = ({ result }) => {
+const ItemRow: React.FC<{ id: string; children: React.ReactNode; right?: React.ReactNode; size?: number }> = ({ id, children, right, size = 20 }) => (
+  <li className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-2.5 py-1.5">
+    <CropImage cropId={id} cropName={nameOf(id)} size="custom" width={size} height={size} showFallback />
+    <div className="min-w-0">{children}</div>
+    {right}
+  </li>
+);
+
+/** What you need (F75): to start with (needs · bring), used up once, then per day (upkeep). */
+export const WhatYouNeed: React.FC<{ result: Pick<RunResult, "startItems" | "sessionOnly" | "usedUp" | "upkeep">; children?: React.ReactNode }> = ({ result, children }) => {
   const need = needLines(result);
   const used = usedUpLines(result.usedUp);
   const upkeep = upkeepLines(result.upkeep);
   return (
-    <div className="space-y-3 text-xs" data-testid="what-you-need">
-      <p className="text-slate-200" data-testid="kit-summary">
+    <div className="space-y-4" data-testid="what-you-need">
+      <p className="text-body text-fg-body" data-testid="kit-summary">
         {kitSummaryText(result)}
       </p>
-      <div>
-        <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[11px] uppercase tracking-wide text-slate-500">
-          <span>To start with</span>
-          {need.length > 0 && <span className="normal-case tracking-normal">needs · bring (+{Math.round(KIT_MARGIN * 100)}%)</span>}
-        </div>
+      <section aria-label="To start with">
+        <KitLabel actions={need.length > 0 ? <span className="text-meta tabular-nums text-fg-meta">needs · bring (+{Math.round(KIT_MARGIN * 100)}%)</span> : null}>To start with</KitLabel>
         {need.length === 0 ? (
-          <p className="text-emerald-300">None: it starts from an empty inventory.</p>
+          <p className="mt-1 text-body text-fg-body">None: it starts from an empty inventory.</p>
         ) : (
-          <ul className="space-y-1">
+          <ul className="mt-1 divide-y divide-line">
             {need.map((l) => (
-              <li key={l.item} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2">
-                <CropImage cropId={l.item} cropName={nameOf(l.item)} size="custom" width={18} height={18} showFallback />
+              <ItemRow
+                key={l.item}
+                id={l.item}
+                right={
+                  <span className="whitespace-nowrap text-body tabular-nums text-fg-muted">
+                    needs {l.needs.toLocaleString("en-US")} · <b className="font-semibold text-fg">bring {l.bring.toLocaleString("en-US")}</b>
+                  </span>
+                }
+              >
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate text-slate-200">{nameOf(l.item)}</span>
-                  {l.sessionOnly && (
-                    <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded border border-cyan-500/30 bg-cyan-500/10 px-1 text-[10px] text-cyan-200" title="Only borrowed for a moment within a login and given back before it ends">
-                      <RotateCcw className="h-2.5 w-2.5" /> returned each session
-                    </span>
-                  )}
+                  <span className="truncate text-body text-fg-body">{nameOf(l.item)}</span>
+                  {l.sessionOnly && <Pill title="Only borrowed for a moment within a login and given back before it ends">returned each session</Pill>}
                 </span>
-                <span className="whitespace-nowrap tabular-nums text-slate-400">
-                  needs {l.needs.toLocaleString("en-US")} · <span className="font-medium text-slate-100">bring {l.bring.toLocaleString("en-US")}</span>
-                </span>
-              </li>
+              </ItemRow>
             ))}
           </ul>
         )}
-      </div>
+      </section>
       {used.length > 0 && (
-        <div>
-          <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Used up once</div>
-          <p className="text-slate-300" title="Part of the starting items that isn't given back by the end of the run (not counting the daily upkeep)">
-            {used.map((u, i) => (
-              <span key={u.item}>
-                {i > 0 ? ", " : ""}
-                uses up <span className="tabular-nums text-amber-200">{u.units.toLocaleString("en-US")}</span> {nameOf(u.item)} once
-              </span>
-            ))}
-          </p>
-        </div>
+        <p className="text-secondary text-fg-muted" title="Part of the starting items that isn't given back by the end of the run (not counting the daily upkeep)">
+          Used up once:{" "}
+          {used.map((u, i) => (
+            <span key={u.item}>
+              {i > 0 ? ", " : ""}
+              <b className="font-semibold tabular-nums text-fg-body">{u.units.toLocaleString("en-US")}</b> {nameOf(u.item)}
+            </span>
+          ))}
+        </p>
       )}
-      <div>
-        <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">Then per day (upkeep)</div>
+      <section aria-label="Then per day (upkeep)">
+        <KitLabel
+          actions={
+            upkeep.length > 0 ? (
+              <InfoHint title="Upkeep">It uses these up faster than it grows them: you supply them every day, on top of the starting items.</InfoHint>
+            ) : null
+          }
+        >
+          Then per day (upkeep)
+        </KitLabel>
         {upkeep.length === 0 ? (
-          <p className="text-emerald-300">None: it gives back everything it borrows.</p>
+          <p className="mt-1 text-body text-fg-body">None: it gives back everything it borrows.</p>
         ) : (
-          <ul className="space-y-0.5">
+          <ul className="mt-1 divide-y divide-line">
             {upkeep.map((u) => (
-              <li key={u.item} className="flex items-center gap-2 text-amber-300">
-                <CropImage cropId={u.item} cropName={nameOf(u.item)} size="custom" width={16} height={16} showFallback />
-                <span className="tabular-nums">{Math.ceil(u.perDay - 1e-9).toLocaleString("en-US")}</span> {nameOf(u.item)} / day
-              </li>
+              <ItemRow key={u.item} id={u.item} size={18} right={<span className="text-body tabular-nums text-warn">{Math.ceil(u.perDay - 1e-9).toLocaleString("en-US")} / day</span>}>
+                <span className="block truncate text-body text-fg-body">{nameOf(u.item)}</span>
+              </ItemRow>
             ))}
-            <li className="pt-0.5 text-[11px] text-slate-500">It uses these up faster than it grows them: you supply them every day, on top of the starting items.</li>
           </ul>
         )}
-      </div>
+      </section>
+      {children}
     </div>
   );
 };
 
-/** "Layout complete after ~16 days · then 12.3M/day". */
+/** "Layout complete after ~16 days · then 12.3M/day" (F61). */
 export const RampLine: React.FC<{ result: Pick<RunResult, "ramp" | "days" | "cycles">; steadyPerDay: number | null }> = ({ result, steadyPerDay }) => {
   const text = rampText(result, steadyPerDay);
   if (!text) return null;
   const never = result.ramp?.complete === null;
   return (
-    <p className={`flex items-center gap-1.5 text-xs ${never ? "text-amber-200/90" : "text-slate-300"}`} data-testid="ramp-line" title="When the layouts first had every cell filled, and the rate over the second half of the run">
-      <TrendingUp className={`h-3.5 w-3.5 ${never ? "text-amber-400" : "text-emerald-400"}`} /> {text}
+    <p className={cn("text-secondary", never ? "text-warn" : "text-fg-muted")} data-testid="ramp-line" title="When the layouts first had every cell filled, and the rate over the second half of the run">
+      {text}
     </p>
   );
 };
 
-/** Layout cells left empty for lack of stock (author feedback); ≥ STALL_CELLS highlighted. Null when there are none. */
-export const EmptyCells: React.FC<{ starved: unknown; stepName: StepNamer }> = ({ starved, stepName }) => {
+/** Layout cells left empty for lack of stock (F76): the sentence in body text, the count in warn when it holds a plot back. */
+export const EmptyCells: React.FC<{ starved: unknown; stepName: StepNamer; limit?: number }> = ({ starved, stepName, limit = LIST_ROWS }) => {
+  const [all, setAll] = useState(false);
   const list = starvedList(starved);
   if (!list.length) return null;
+  const rows = all ? list : list.slice(0, limit);
   return (
-    <ul className="space-y-1 text-xs" data-testid="empty-cells">
-      {list.map((e) => {
-        const hot = e.cells >= STALL_CELLS;
-        return (
-          <li key={`${e.plot}|${e.step}|${e.item}`} className={`flex items-center gap-2 rounded-md px-2 py-1 ${hot ? "border border-amber-500/30 bg-amber-500/10 text-amber-200" : "text-slate-300"}`}>
-            <CropImage cropId={e.item} cropName={nameOf(e.item)} size="custom" width={16} height={16} showFallback />
-            <span className="min-w-0 break-words">{starvedText(e, stepName)}</span>
-          </li>
-        );
-      })}
-    </ul>
+    <div data-testid="empty-cells">
+      <ul className="divide-y divide-line">
+        {rows.map((e) => {
+          const hot = e.cells >= STALL_CELLS;
+          const text = starvedText(e, stepName);
+          const m = /^(.*?: )([\d.]+)( .*)$/.exec(text);
+          return (
+            <ItemRow key={`${e.plot}|${e.step}|${e.item}`} id={e.item} size={18}>
+              <span className="block text-secondary text-fg-body">
+                {m ? (
+                  <>
+                    {m[1]}
+                    <b className={cn("font-semibold tabular-nums", hot ? "text-warn" : "text-fg")}>{m[2]}</b>
+                    {m[3]}
+                  </>
+                ) : (
+                  text
+                )}
+              </span>
+            </ItemRow>
+          );
+        })}
+      </ul>
+      {list.length > limit && (
+        <LinkButton className="mt-1" onClick={() => setAll((x) => !x)}>
+          {all ? "Show fewer" : `Show all ${list.length}`}
+        </LinkButton>
+      )}
+    </div>
   );
 };
 
-/** Rows a breakdown list shows before the rest scrolls (like the simulator's inventory sections). */
-const LIST_ROWS_SHOWN = 8;
-
-/**
- * A `<ul>` that shows its first `LIST_ROWS_SHOWN` rows and scrolls the rest. The cap is measured from the rows
- * themselves (they differ in height between the two lists), with a rough rem estimate until the first measure.
- */
-const ScrollList: React.FC<{ count: number; label: string; estimateRem: number; children: React.ReactNode }> = ({ count, label, estimateRem, children }) => {
-  const ref = useRef<HTMLUListElement>(null);
-  const scrolls = count > LIST_ROWS_SHOWN;
-  const [maxHeight, setMaxHeight] = useState<number | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!scrolls || !el) return;
-    const measure = () => {
-      const next = el.children[LIST_ROWS_SHOWN] as HTMLElement | undefined;
-      // The list is `relative`, so a row's offsetTop is measured from the list's top. Cut a little into the
-      // next row so it's clear there is more.
-      if (next) setMaxHeight(next.offsetTop + Math.min(12, next.offsetHeight / 3));
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [scrolls, count]);
+/** A list that shows `LIST_ROWS` rows and a "Show all N" button (no inner scrolling). */
+const ShowAll: React.FC<{ count: number; label: string; noun: string; children: (limit: number) => React.ReactNode }> = ({ count, label, noun, children }) => {
+  const [all, setAll] = useState(false);
   return (
     <>
-      <ul
-        ref={ref}
-        className={`relative divide-y divide-slate-700/30 ${scrolls ? "overflow-y-auto overscroll-contain scrollbar-dark pr-3 [scrollbar-gutter:stable]" : ""}`}
-        style={scrolls ? { maxHeight: maxHeight !== null ? `${maxHeight}px` : `${LIST_ROWS_SHOWN * estimateRem + 0.75}rem` } : undefined}
-        aria-label={label}
-        tabIndex={scrolls ? 0 : undefined}
-      >
-        {children}
+      <ul className="divide-y divide-line" aria-label={label}>
+        {children(all ? count : LIST_ROWS)}
       </ul>
-      {scrolls && <p className="mt-1.5 text-[11px] text-slate-500">{count} total · scroll for more</p>}
+      {count > LIST_ROWS && (
+        <LinkButton className="mt-1" onClick={() => setAll((x) => !x)}>
+          {all ? "Show fewer" : `Show all ${count} ${noun}`}
+        </LinkButton>
+      )}
     </>
   );
 };
 
-/** Money by source: which harvested plants the coins come from, each with what it drops. */
+/** Money by source (F79): which harvested plants the coins come from, each with what it drops. */
 export const SourceBreakdown: React.FC<{ lines: SourceLine[] }> = ({ lines }) => {
   const shown = lines.filter((l) => l.coinsPerDay > 0);
-  if (!shown.length) return <p className="text-xs text-slate-500">No per-plant numbers for this entry yet (it was verified before they were recorded).</p>;
+  if (!shown.length) return <p className="text-secondary text-fg-meta">No per-plant numbers for this entry yet (it was verified before they were recorded).</p>;
   const total = shown.reduce((s, l) => s + l.coinsPerDay, 0);
   return (
-    <ScrollList count={shown.length} label="Money by source" estimateRem={3.6}>
-      {shown.map((l) => {
-        const share = total > 0 ? l.coinsPerDay / total : 0;
-        const items = Object.entries(l.items).sort((a, b) => b[1] - a[1]);
-        return (
-          <li key={l.kind} className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 py-2">
-            <CropImage cropId={l.kind} cropName={nameOf(l.kind)} size="custom" width={22} height={22} showFallback />
-            <div className="min-w-0">
-              <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="truncate text-slate-200">
-                  {nameOf(l.kind)}
-                  <span className="text-slate-500"> {l.isMutation ? "harvests" : "crops"}</span>
+    <ShowAll count={shown.length} label="Money by source" noun="plants">
+      {(limit) =>
+        shown.slice(0, limit).map((l) => {
+          const share = total > 0 ? l.coinsPerDay / total : 0;
+          const drops = Object.entries(l.items)
+            .sort((a, b) => b[1] - a[1])
+            .map(([i, n]) => `${formatRate(n)} ${nameOf(i)}`)
+            .join(", ");
+          return (
+            <ItemRow key={l.kind} id={l.kind} size={22} right={<span className="w-14 text-right text-body font-semibold tabular-nums text-coin">{formatCoins(l.coinsPerDay)}</span>}>
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-body text-fg-body">
+                  {nameOf(l.kind)} <span className="text-fg-meta">{l.isMutation ? "harvests" : "crops"}</span>
                 </span>
-                <span className="whitespace-nowrap tabular-nums text-slate-500">{Math.round(share * 100)}%</span>
-              </div>
-              <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-700/40">
-                <div className={`h-full rounded-full ${l.isMutation ? "bg-amber-400/70" : "bg-emerald-400/70"}`} style={{ width: `${share * 100}%` }} />
-              </div>
-              <div className="mt-1 truncate text-[10px] text-slate-500" title={items.map(([i, n]) => `${formatRate(n)} ${nameOf(i)}`).join(", ")}>
-                drops {items.slice(0, 3).map(([i, n]) => `${formatRate(n)} ${nameOf(i)}`).join(", ")}
-                {items.length > 3 ? ", ..." : ""} per day
-              </div>
-            </div>
-            <span className="w-16 text-right text-xs font-medium tabular-nums text-emerald-300">{formatCoins(l.coinsPerDay)}</span>
-          </li>
-        );
-      })}
-    </ScrollList>
+                <span className="whitespace-nowrap text-meta tabular-nums text-fg-meta">{Math.round(share * 100)}%</span>
+              </span>
+              <span className="block truncate text-meta text-fg-meta" title={drops}>
+                drops {drops} per day
+              </span>
+            </ItemRow>
+          );
+        })
+      }
+    </ShowAll>
   );
 };
 
-/** Per-item value: a ranked list with shares. */
+/** Per-item value (F78): a ranked list with shares; purchases negative in `problem`. */
 export const ItemBreakdown: React.FC<{ lines: ItemLine[] }> = ({ lines }) => {
-  if (!lines.length) return <p className="text-xs text-slate-500">Nothing produced in this cell.</p>;
+  if (!lines.length) return <p className="text-secondary text-fg-meta">Nothing produced in this cell.</p>;
   const positive = lines.filter((l) => l.coinsPerDay > 0).reduce((s, l) => s + l.coinsPerDay, 0);
   return (
-    <ScrollList count={lines.length} label="Items per day" estimateRem={2.9}>
-      {lines.map((l) => {
-        const share = positive > 0 && l.coinsPerDay > 0 ? l.coinsPerDay / positive : 0;
-        return (
-          <li key={`${l.kind}-${l.item}`} className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 py-2">
-            <CropImage cropId={l.item} cropName={nameOf(l.item)} size="custom" width={22} height={22} showFallback />
-            <div className="min-w-0">
-              <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="truncate text-slate-200">
+    <ShowAll count={lines.length} label="Items per day" noun="items">
+      {(limit) =>
+        lines.slice(0, limit).map((l) => {
+          const share = positive > 0 && l.coinsPerDay > 0 ? l.coinsPerDay / positive : 0;
+          return (
+            <ItemRow
+              key={`${l.kind}-${l.item}`}
+              id={l.item}
+              size={22}
+              right={<span className={cn("w-14 text-right text-body font-semibold tabular-nums", l.coinsPerDay < 0 ? "text-problem" : "text-coin")}>{formatCoins(l.coinsPerDay)}</span>}
+            >
+              <span className="flex min-w-0 items-baseline justify-between gap-2">
+                <span className="truncate text-body text-fg-body">
                   {nameOf(l.item)}
-                  {l.kind === "bought" && <span className="text-slate-500"> bought</span>}
+                  {l.kind === "bought" && <span className="text-fg-meta"> bought</span>}
                 </span>
-                <span className="whitespace-nowrap tabular-nums text-slate-500">
+                <span className="whitespace-nowrap text-meta tabular-nums text-fg-meta">
                   {formatRate(l.perDay)}/day × {l.unitPrice === null ? "no price" : formatUnitPrice(l.unitPrice)}
                 </span>
-              </div>
-              <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-700/40">
-                <div className={`h-full rounded-full ${l.coinsPerDay < 0 ? "bg-red-400/70" : "bg-emerald-400/70"}`} style={{ width: `${l.coinsPerDay < 0 ? 100 : share * 100}%` }} />
-              </div>
-            </div>
-            <span className={`w-16 text-right text-xs font-medium tabular-nums ${l.coinsPerDay < 0 ? "text-red-300" : "text-emerald-300"}`}>{formatCoins(l.coinsPerDay)}</span>
-          </li>
-        );
-      })}
-    </ScrollList>
+              </span>
+              <span className="mt-1 block h-1 overflow-hidden rounded-full bg-surface-hover">
+                <span className={cn("block h-full origin-left rounded-full", l.coinsPerDay < 0 ? "bg-problem/70" : "bg-fg-meta/60")} style={{ transform: `scaleX(${l.coinsPerDay < 0 ? 1 : share})` }} />
+              </span>
+            </ItemRow>
+          );
+        })
+      }
+    </ShowAll>
   );
 };
 
-/** "→ step 2 when 9 Chorus Fruit fully grown" for one step's exits. */
+/** "to step 2 when 9 Chorus Fruit fully grown" for one step's exits. */
 function exitText(step: FlowStep, steps: FlowStep[]): string {
   const name = (id: string) => {
     const i = steps.findIndex((s) => s.id === id);
@@ -334,85 +348,79 @@ function exitText(step: FlowStep, steps: FlowStep[]): string {
     .join("; otherwise ");
 }
 
-/** Every plot's flow, step by step, drawn as the real layouts. */
-export const FlowWalkthrough: React.FC<{ detail: FlowDetail }> = ({ detail }) => {
+/**
+ * Every plot's flow (F82), step by step, as the real layouts (hover a cell for what it is). Plots
+ * that run the same flow fold into one; otherwise a plot switcher. Steps are a list beside the
+ * picture, the current one with its exits.
+ */
+export const FlowWalkthrough: React.FC<{ detail: FlowDetail; cellSize?: number; stacked?: boolean }> = ({ detail, cellSize = 24, stacked }) => {
   const plots = detail.payload?.plots ?? [];
   const summaries = new Map((detail.summary?.plots ?? []).map((p) => [p.id, p]));
+  const [plotIdx, setPlotIdx] = useState(0);
   const [active, setActive] = useState<Record<number, number>>({});
-  if (!plots.length) return <p className="text-xs text-slate-500">No layouts in this entry.</p>;
+  if (!plots.length) return <p className="text-secondary text-fg-meta">No layouts in this entry.</p>;
+  const key = (p: (typeof plots)[number]) => JSON.stringify([p.flow, p.script ?? null]);
+  const same = plots.length > 1 && plots.every((p) => key(p) === key(plots[0]));
+  const p = plots[same ? 0 : Math.min(plotIdx, plots.length - 1)];
+  const steps = p.flow.steps;
+  const idx = Math.min(active[p.id] ?? p.flow.startIndex ?? 0, steps.length - 1);
+  const step = steps[idx];
+  const targets = Object.entries(summaries.get(p.id)?.targets ?? {}).sort((a, b) => b[1] - a[1]);
   return (
-    <div className={`grid grid-cols-1 gap-4 ${plots.length > 1 ? "lg:grid-cols-2" : ""} ${plots.length > 2 ? "xl:grid-cols-3" : ""}`}>
-      {plots.map((p) => {
-        const steps = p.flow.steps;
-        const idx = Math.min(active[p.id] ?? p.flow.startIndex ?? 0, steps.length - 1);
-        const step = steps[idx];
-        const sum = summaries.get(p.id);
-        const targets = Object.entries(sum?.targets ?? {}).sort((a, b) => b[1] - a[1]);
-        return (
-          <article key={p.id} className="min-w-0 rounded-lg border border-slate-700/50 bg-slate-900/40 p-3">
-            <header className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-slate-100">Plot {p.id}</span>
-              <span className="text-[11px] text-slate-500">
-                {steps.length} step{steps.length === 1 ? "" : "s"}
-              </span>
-              {p.flow.loop && steps.length > 1 && (
-                <Badge tone="info" icon={<Repeat />}>
-                  loops
-                </Badge>
-              )}
-              {p.script?.source.trim() && (
-                <Badge tone="violet" icon={<Code2 />}>
-                  script
-                </Badge>
-              )}
-            </header>
-            <LayoutThumb layout={step.layout} maxCell={30} tooltips className="w-full" />
-            {steps.length > 1 && (
-              <div className="mt-2 flex flex-wrap gap-1" role="tablist" aria-label={`Plot ${p.id} steps`}>
-                {steps.map((s, i) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={i === idx}
-                    onClick={() => setActive((cur) => ({ ...cur, [p.id]: i }))}
-                    title={s.label || `Step ${i + 1}`}
-                    className={`rounded-md border px-2 py-0.5 text-[11px] tabular-nums transition-colors ${
-                      i === idx ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-200" : "border-slate-600/40 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
-                    }`}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="mt-2 space-y-1 text-xs">
-              <div className="font-medium text-slate-200">
-                {steps.length > 1 ? `Step ${idx + 1}` : "Layout"}
-                {step.label ? <span className="font-normal text-slate-400"> · {step.label}</span> : null}
-              </div>
-              {steps.length > 1 && (
-                <p className="flex items-start gap-1 text-slate-400">
-                  <ArrowRight className="mt-0.5 h-3 w-3 flex-shrink-0 text-slate-500" />
-                  <span className="break-words">{exitText(step, steps)}</span>
-                </p>
-              )}
-            </div>
-            {targets.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {targets.map(([id, n]) => (
-                  <MutationChip key={id} id={id} count={n} />
-                ))}
-              </div>
-            )}
-          </article>
-        );
-      })}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {same ? (
+          <span className="text-body text-fg-body">Plots 1–{plots.length} run the same flow</span>
+        ) : plots.length > 1 ? (
+          <Segmented label="Plot" value={String(plotIdx)} onChange={(x) => setPlotIdx(Number(x))} options={plots.map((q, i) => ({ value: String(i), label: `Plot ${q.id}` }))} />
+        ) : (
+          <span className="text-body text-fg-body">Plot {p.id}</span>
+        )}
+        <span className="text-secondary tabular-nums text-fg-meta">
+          {steps.length} step{steps.length === 1 ? "" : "s"}
+        </span>
+        {p.flow.loop && steps.length > 1 && <Pill tone="restart">loops</Pill>}
+        {p.script?.source.trim() && <Pill tone="script">script</Pill>}
+      </div>
+      <div className={cn("flex gap-4", stacked ? "flex-col" : "items-start")}>
+        <LayoutThumb layout={step.layout} cellSize={cellSize} tooltips className="shrink-0 self-start" />
+        <ol className="min-w-0 flex-1 space-y-1" aria-label={`Plot ${p.id} steps`}>
+          {steps.map((s, i) => {
+            const on = i === idx;
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setActive((cur) => ({ ...cur, [p.id]: i }))}
+                  className={cn(
+                    "focus-ring flex min-h-8 w-full cursor-pointer items-start gap-2 rounded-control px-2 py-1.5 text-left transition-colors duration-(--duration-hover) pointer-coarse:min-h-11",
+                    on ? "bg-surface-hover" : "hover:bg-surface-hover/60",
+                  )}
+                >
+                  <span className={cn("mt-px w-4 shrink-0 text-secondary font-semibold tabular-nums", on ? "text-select-fg" : "text-fg-meta")}>{i + 1}</span>
+                  <span className="min-w-0">
+                    <span className={cn("block text-body", on ? "text-fg" : "text-fg-body")}>{s.label || `Step ${i + 1}`}</span>
+                    {on && steps.length > 1 && <span className="block break-words text-secondary text-fg-muted">→ {exitText(s, steps)}</span>}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+          {targets.length > 0 && (
+            <li className="flex flex-wrap gap-1 px-2 pt-2">
+              {targets.map(([id, n]) => (
+                <MutationChip key={id} id={id} count={n} />
+              ))}
+            </li>
+          )}
+        </ol>
+      </div>
     </div>
   );
 };
 
-/** Per-seed results of the chosen cell. */
+/** Per-seed results of the chosen cell (F84). */
 export const SeedTable: React.FC<{ seeds: FlowSeedResult[]; board: Board; quotes: Quotes; pricing: BazaarPricing }> = ({ seeds, board, quotes, pricing }) => {
   const rows = seeds
     .slice()
@@ -424,27 +432,33 @@ export const SeedTable: React.FC<{ seeds: FlowSeedResult[]; board: Board; quotes
     <div className="space-y-2">
       <ul className="space-y-1.5">
         {rows.map(({ s, profit }) => (
-          <li key={s.seedIndex} className="grid grid-cols-[2.5rem_1fr_auto_auto] items-center gap-3 text-xs">
-            <span className="text-slate-500">#{s.seedIndex + 1}</span>
-            <span className="h-1.5 overflow-hidden rounded-full bg-slate-700/40">
-              <span className="block h-full rounded-full bg-emerald-400/60" style={{ width: `${Math.max(0, profit / best) * 100}%` }} />
+          <li key={s.seedIndex} className="grid grid-cols-[2rem_1fr_auto_auto] items-center gap-3 text-secondary">
+            <span className="tabular-nums text-fg-meta">#{s.seedIndex + 1}</span>
+            <span className="h-1.5 overflow-hidden rounded-full bg-surface-hover">
+              <span className="block h-full origin-left rounded-full bg-fg-meta/60" style={{ transform: `scaleX(${Math.max(0, profit / best)})` }} />
             </span>
-            <span className="w-14 text-right tabular-nums text-emerald-300">{formatCoins(profit)}</span>
-            <span className="w-16 text-right tabular-nums text-slate-500">{percent(s.result.uptime)} up</span>
+            <span className="w-14 text-right font-semibold tabular-nums text-coin">{formatCoins(profit)}</span>
+            <span className="w-16 text-right tabular-nums text-fg-muted">{percent(s.result.uptime)} up</span>
           </li>
         ))}
       </ul>
-      <p className="text-[11px] text-slate-500">
-        Best / median: <span className={ratio > 2 ? "text-red-300" : "text-slate-300"}>{ratioText(ratio)}</span> (the server rejects over 2×). The ranking uses
-        the median seed, so no single lucky seed counts.
+      <p className="flex flex-wrap items-center gap-1.5 text-secondary text-fg-muted">
+        Best / median <b className={cn("font-semibold tabular-nums", ratio > OUTLIER_RATIO ? "text-problem" : "text-fg-body")}>{ratioText(ratio)}</b>
+        <InfoHint title="Consistency">
+          The ranking uses the median seed, so no single lucky seed counts. The server rejects a flow whose best seed earns over {OUTLIER_RATIO}× its median.
+        </InfoHint>
       </p>
     </div>
   );
 };
 
-const JOB_TONE: Record<string, string> = { done: "text-emerald-300", running: "text-blue-300", failed: "text-red-300", queued: "text-slate-400" };
+const JOB_TONE: Record<string, string> = { done: "text-go-fg", running: "text-fg", failed: "text-problem", queued: "text-fg-muted" };
+const STATUS_TONE: Record<string, "go" | "problem" | "neutral" | "script"> = { live: "go", rejected: "problem", hidden: "neutral", pending: "script" };
 
-/** Owner: verification progress; polls every 5 s while pending. */
+/**
+ * Owner: verification progress (F70); polls every 5 s while pending and calls `onLive` when the
+ * flow goes live. One row with the status, then the job list while pending.
+ */
 export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => void }> = ({ id, initial, onLive }) => {
   const [status, setStatus] = useState<FlowStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -477,32 +491,38 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
   }, [id]);
   const s = status?.status ?? initial;
   return (
-    <div className="space-y-2 rounded-lg border border-slate-700/60 bg-slate-900/40 p-3 text-xs" data-testid="flow-status">
-      <div className="flex items-center gap-2">
-        <span className="text-slate-300">Verification:</span>
-        <Badge tone={s === "live" ? "new" : s === "rejected" ? "danger" : s === "hidden" ? "stale" : "pending"}>{s === "hidden" ? "hidden pending review" : s}</Badge>
-        {pending && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-300" />}
+    <section aria-label="Verification" className="space-y-2" data-testid="flow-status">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-secondary text-fg-muted">
+        <span className="font-semibold text-fg">Verification</span>
+        <Pill tone={STATUS_TONE[s] ?? "neutral"}>{s === "hidden" ? "hidden pending review" : s}</Pill>
+        {pending && <LoaderCircle aria-hidden className="size-3.5 animate-spin text-fg-muted motion-reduce:animate-pulse" />}
+        {pending && <span aria-live="polite">goes live after the Max-tier jobs · updates by itself</span>}
+        {s === "live" && <span>verified on Ironman and Normal</span>}
+        <InfoHint title="Verification" width={320}>
+          The server simulates every login frequency with {SEEDS_MAX_TIER} secret seeds at the Max tier ({SEEDS_OTHER_TIERS} at the others), for Ironman (with and without the starting items) and Normal. This
+          takes a few minutes and updates by itself.
+        </InfoHint>
       </div>
-      {status?.rejectReason && <div className="break-words text-red-300">{status.rejectReason}</div>}
-      {error && <div className="text-amber-300">Could not refresh the status: {error}</div>}
+      {status?.rejectReason && <p className="break-words text-secondary text-problem">{status.rejectReason}</p>}
+      {error && <p className="text-secondary text-warn">Could not refresh the status: {error}</p>}
       {status?.jobs.length ? (
-        <ul className="space-y-1.5">
+        <ul className="grid gap-x-6 gap-y-1.5 text-secondary md:grid-cols-2">
           {status.jobs.map((j, i) => {
             const frac = j.total ? Math.min(1, (j.done ?? 0) / j.total) : 0;
             const label = j.status === "queued" && j.queuePosition ? `queued · #${j.queuePosition} in line` : j.status === "running" && j.total ? `running · ${j.done ?? 0}/${j.total} runs` : j.status;
             const b = (j.runKind === "normal" || j.board === "normal" ? "normal" : j.runKind || j.board ? "ironman" : null) as Board | null;
             return (
-              <li key={j.id ?? i} className="space-y-1">
-                <div className="flex flex-wrap gap-x-2">
-                  <span className="text-slate-400">
-                    {b ? BOARD_LABEL[b] : String(j.board)} · {TIER_LABEL[j.tier as TierId] ?? j.tier} tier · {j.priority === "A" ? "goes live after this" : "background"}
+              <li key={j.id ?? i} className="min-w-0 space-y-1">
+                <div className="flex min-w-0 flex-wrap justify-between gap-x-2">
+                  <span className="text-fg-body">
+                    {b ? BOARD_LABEL[b] : String(j.board)} · {TIER_LABEL[j.tier as TierId] ?? j.tier} tier <span className="text-fg-meta">· {j.priority === "A" ? "goes live after this" : "background"}</span>
                   </span>
-                  <span className={JOB_TONE[j.status] ?? "text-slate-300"}>{label}</span>
-                  {j.error && <span className="break-words text-red-300">{j.error}</span>}
+                  <span className={JOB_TONE[j.status] ?? "text-fg-muted"}>{label}</span>
                 </div>
+                {j.error && <p className="break-words text-meta text-problem">{j.error}</p>}
                 {j.status === "running" && j.total ? (
-                  <div className="h-1 overflow-hidden rounded bg-slate-700/60">
-                    <div className="h-full bg-blue-400/70 transition-[width] duration-500" style={{ width: `${Math.round(frac * 100)}%` }} />
+                  <div className="h-1 overflow-hidden rounded-full bg-surface-hover" role="progressbar" aria-label="Runs done" aria-valuenow={j.done ?? 0} aria-valuemin={0} aria-valuemax={j.total}>
+                    <div className="h-full origin-left rounded-full bg-fg-muted transition-transform duration-500" style={{ transform: `scaleX(${frac})` }} />
                   </div>
                 ) : null}
               </li>
@@ -510,8 +530,7 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
           })}
         </ul>
       ) : null}
-      {pending && <p className="text-slate-500">The server simulates every online frequency with 5 secret seeds, for Ironman (with and without the starting items) and Normal; this takes a few minutes. This updates by itself.</p>}
-    </div>
+    </section>
   );
 };
 
@@ -537,29 +556,33 @@ export const ReportPanel: React.FC<{ id: string; onClose: () => void }> = ({ id,
   return (
     <DialogFrame
       id="report-flow-title"
-      title={
-        <>
-          <Flag className="h-4 w-4 text-red-300" /> Report this flow
-        </>
-      }
+      title="Report this flow"
       onClose={onClose}
       footer={
         <>
-          <button type="button" className={buttonClass.neutral} onClick={onClose}>
+          <KitButton variant="ghost" size="md" onClick={onClose}>
             Cancel
-          </button>
-          <button type="button" className={buttonClass.danger} onClick={send} disabled={busy || !reason.trim()}>
-            <Flag className="h-3.5 w-3.5" /> {busy ? "Sending..." : "Send report"}
-          </button>
+          </KitButton>
+          <KitButton variant="danger" size="md" onClick={send} loading={busy} disabled={!reason.trim()}>
+            <Flag /> Send report
+          </KitButton>
         </>
       }
     >
-      <label className="block space-y-1 text-xs text-slate-300">
-        <span>What's wrong? (offensive text, a copied flow, a broken entry...)</span>
-        <textarea className={`${inputClass} h-24 w-full`} maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
-        <span className="block text-right text-[11px] text-slate-500">{reason.length} / 200</span>
+      <label className="block space-y-1.5">
+        <span className="flex items-center justify-between gap-2 text-secondary text-fg-muted">
+          What's wrong? (offensive text, a copied flow, a broken entry...)
+          <span className="shrink-0 text-meta tabular-nums text-fg-meta">
+            {reason.length} / {REPORT_MAX}
+          </span>
+        </span>
+        <KitTextarea className="h-24 w-full" maxLength={REPORT_MAX} value={reason} onChange={(e) => setReason(e.target.value)} />
       </label>
-      {error && <p className="text-xs text-red-300">{error}</p>}
+      {error && (
+        <p className="text-secondary text-problem" role="alert">
+          {error}
+        </p>
+      )}
     </DialogFrame>
   );
 };

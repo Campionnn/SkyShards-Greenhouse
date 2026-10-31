@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Download, Loader2, UserRound } from "lucide-react";
+import { Check, ChevronDown, Download, UserRound } from "lucide-react";
 import {
   fetchGreenhouseStats,
   IMPORT_FIELDS,
@@ -20,7 +20,11 @@ import {
   type ManualValue,
 } from "../../services/playerImport";
 import type { PlayerStats } from "../../simulator/sim/state";
+import { cn } from "../ui/cn";
+import { KitButton, KitInput, KitLabel } from "../ui/kit";
 import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
+import { Dropdown, MenuItem } from "../ui/Popover";
+import { surface } from "../ui/surface";
 import { ManualSources } from "./ManualSources";
 
 /**
@@ -34,6 +38,8 @@ export interface PlayerImportBoxProps {
   /** Unused since the import moved into a modal; kept so callers don't break. */
   compact?: boolean;
   className?: string;
+  /** The button's look: "primary" where importing is the main action (the leaderboard's stats drawer), "accent" elsewhere. */
+  variant?: "primary" | "accent";
 }
 
 const loadUsername = rememberedUsername;
@@ -43,18 +49,15 @@ const cropLabel = (c: string) => c.replace(/_/g, " ").replace(/\b\w/g, (m) => m.
 
 const fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 
-const input =
-  "min-w-0 bg-slate-900/70 border border-slate-600/40 rounded-md px-2 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors";
-
 const SourceList: React.FC<{ rows: Record<string, number> }> = ({ rows }) => {
   const entries = Object.entries(rows).filter(([, v]) => typeof v === "number" && Number.isFinite(v) && v !== 0);
-  if (!entries.length) return <p className="text-slate-500">Nothing.</p>;
+  if (!entries.length) return <p className="text-fg-meta">Nothing.</p>;
   return (
     <ul className="space-y-0.5">
       {entries.map(([k, v]) => (
         <li key={k} className="flex justify-between gap-3">
-          <span className="truncate text-slate-400">{k}</span>
-          <span className="tabular-nums text-slate-200">{fmt(v)}</span>
+          <span className="truncate text-fg-muted">{k}</span>
+          <span className="tabular-nums text-fg-body">{fmt(v)}</span>
         </li>
       ))}
     </ul>
@@ -63,7 +66,7 @@ const SourceList: React.FC<{ rows: Record<string, number> }> = ({ rows }) => {
 
 const Group: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div>
-    <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">{title}</div>
+    <KitLabel className="mb-1">{title}</KitLabel>
     {children}
   </div>
 );
@@ -74,12 +77,12 @@ const BreakdownDetails: React.FC<{ breakdown?: ImportBreakdown; missing: string[
   const tools = breakdown?.tools && typeof breakdown.tools === "object" ? Object.entries(breakdown.tools).filter(([, r]) => r && typeof r === "object") : [];
   if (!general && !crop.length && !tools.length && !missing.length) return null;
   return (
-    <details className="group rounded-md border border-slate-700/50 bg-slate-900/40 text-xs">
-      <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 px-2.5 py-1.5 text-slate-400 hover:text-slate-200 [&::-webkit-details-marker]:hidden">
-        <ChevronDown className="h-3.5 w-3.5 -rotate-90 transition-transform group-open:rotate-0" />
-        Sources{missing.length > 0 && <span className="text-amber-300/80">· {missing.length} couldn't be read</span>}
+    <details className={cn(surface.well, "group rounded-container text-secondary")}>
+      <summary className="focus-ring-inset flex cursor-pointer select-none list-none items-center gap-1.5 rounded-control px-2.5 py-2 text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg [&::-webkit-details-marker]:hidden">
+        <ChevronDown aria-hidden className="size-3.5 -rotate-90 transition-transform duration-(--duration-ink) group-open:rotate-0" />
+        Sources{missing.length > 0 && <span className="text-warn">· {missing.length} couldn't be read</span>}
       </summary>
-      <div className="space-y-3 border-t border-slate-700/50 px-2.5 py-2">
+      <div className="space-y-3 border-t border-line px-2.5 py-2">
         {general && (
           <Group title="Farming Fortune">
             <SourceList rows={general} />
@@ -97,7 +100,7 @@ const BreakdownDetails: React.FC<{ breakdown?: ImportBreakdown; missing: string[
                 .filter(([, r]) => r && typeof r === "object")
                 .map(([c, rows]) => (
                   <div key={c}>
-                    <div className="text-slate-500">{cropLabel(c)}</div>
+                    <div className="text-fg-meta">{cropLabel(c)}</div>
                     <div className="pl-2">
                       <SourceList rows={rows} />
                     </div>
@@ -108,7 +111,7 @@ const BreakdownDetails: React.FC<{ breakdown?: ImportBreakdown; missing: string[
         ))}
         {missing.length > 0 && (
           <Group title="Couldn't be read">
-            <ul className="list-disc space-y-0.5 pl-4 text-slate-400">
+            <ul className="list-disc space-y-0.5 pl-4 text-fg-muted">
               {missing.map((m) => (
                 <li key={m}>{m}</li>
               ))}
@@ -124,29 +127,20 @@ const BreakdownDetails: React.FC<{ breakdown?: ImportBreakdown; missing: string[
  * A compact "Import from Hypixel" button; the whole import (username, profile, fields, manual
  * sources, sources breakdown) opens in a modal so the stats panels stay short.
  */
-export const PlayerImportBox: React.FC<PlayerImportBoxProps> = ({ onImport, className = "" }) => {
+export const PlayerImportBox: React.FC<PlayerImportBoxProps> = ({ onImport, className, variant = "accent" }) => {
   const [open, setOpen] = useState(false);
   const remembered = useMemo(loadUsername, [open]);
   return (
-    <div className={className} data-testid="player-import">
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-left text-sm text-emerald-200 transition-colors hover:bg-emerald-500/20"
-      >
-        <UserRound className="h-4 w-4 shrink-0 text-emerald-400" />
-        <span className="font-medium">Import from Hypixel</span>
-        <span className="ml-auto truncate text-xs text-emerald-300/60">{remembered ? remembered : "fill in your stats from a username"}</span>
-      </button>
+    <div className={cn("flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1", className)} data-testid="player-import">
+      <KitButton variant={variant} size="md" onClick={() => setOpen(true)} aria-haspopup="dialog">
+        <UserRound /> Import from Hypixel
+      </KitButton>
+      <span className="min-w-0 truncate text-meta text-fg-meta">{remembered ? `last: ${remembered}` : "fill in your stats from a username"}</span>
       {open && (
         <ModalDialog labelledBy="player-import-title" onClose={() => setOpen(false)} maxWidth="max-w-xl">
           <DialogFrame
             id="player-import-title"
-            title={
-              <>
-                <UserRound className="h-4 w-4 text-emerald-400" /> Import from Hypixel
-              </>
-            }
+            title="Import from Hypixel"
             onClose={() => setOpen(false)}
           >
             <PlayerImportPanel
@@ -245,7 +239,7 @@ export const PlayerImportPanel: React.FC<Pick<PlayerImportBoxProps, "onImport">>
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-slate-400">
+      <p className="text-secondary text-fg-muted">
         Reads your SkyBlock profile from Hypixel and fills in your Greenhouse stats. Tick what to use, set what Hypixel doesn't show, then apply.
       </p>
       <form
@@ -255,8 +249,8 @@ export const PlayerImportPanel: React.FC<Pick<PlayerImportBoxProps, "onImport">>
           void load();
         }}
       >
-        <input
-          className={`${input} flex-1`}
+        <KitInput
+          className="flex-1"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder="Minecraft username"
@@ -265,57 +259,62 @@ export const PlayerImportPanel: React.FC<Pick<PlayerImportBoxProps, "onImport">>
           spellCheck={false}
           maxLength={25}
         />
-        <button
-          type="submit"
-          disabled={!valid || loading}
-          className="flex shrink-0 items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/20 px-3 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-          Import
-        </button>
+        <KitButton type="submit" variant="primary" size="md" disabled={!valid} loading={loading}>
+          <Download /> Import
+        </KitButton>
       </form>
 
       {error && (
-        <p className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs text-red-300" role="alert">
+        <p className="rounded-control border border-problem/30 bg-problem/10 px-2.5 py-1.5 text-secondary text-problem" role="alert">
           {error}
         </p>
       )}
 
       {resp && resp.profiles.length > 1 && (
-        <label className="flex items-center gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2 text-secondary text-fg-muted">
           Profile
-          <select
-            className={`${input} flex-1 py-1 text-xs`}
-            value={resp.profileId}
+          <Dropdown
+            label="SkyBlock profile"
+            look="field"
             disabled={loading}
-            onChange={(e) => void load(e.target.value)}
-            aria-label="SkyBlock profile"
+            width={280}
+            className="h-8 min-w-0 flex-1 justify-between pl-2.5 font-normal"
+            button={<span className="truncate">{profile ? `${profileLabel(profile)}${profile.selected ? " · active" : ""}` : ""}</span>}
           >
-            {resp.profiles.map((p) => (
-              <option key={p.profileId} value={p.profileId}>
-                {profileLabel(p)}
-                {p.selected ? " · active" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+            {(close) =>
+              resp.profiles.map((p) => (
+                <MenuItem
+                  key={p.profileId}
+                  checked={p.profileId === resp.profileId}
+                  onSelect={() => {
+                    close();
+                    if (p.profileId !== resp.profileId) void load(p.profileId);
+                  }}
+                >
+                  {profileLabel(p)}
+                  {p.selected ? " · active" : ""}
+                </MenuItem>
+              ))
+            }
+          </Dropdown>
+        </div>
       )}
 
       {resp && (
-        <div className={loading ? "pointer-events-none opacity-60 transition-opacity" : "transition-opacity"}>
+        <div className={cn("transition-opacity duration-(--duration-hover)", loading && "pointer-events-none opacity-60")}>
           {fields.length === 0 ? (
-            <p className="text-xs text-slate-500">No Greenhouse stats found on {profile ? profileLabel(profile) : "this profile"}.</p>
+            <p className="text-secondary text-fg-meta">No Greenhouse stats found on {profile ? profileLabel(profile) : "this profile"}.</p>
           ) : (
             <div className="space-y-2">
-              <ul className="divide-y divide-slate-700/40 rounded-md border border-slate-700/50 bg-slate-900/40">
+              <ul className={cn(surface.well, "divide-y divide-line rounded-container")}>
                 {fields.map(({ field, display }) => {
                   const on = selected.has(field.key);
                   return (
                     <li key={field.key}>
-                      <label className="flex cursor-pointer items-center gap-2 px-2.5 py-1 text-xs hover:bg-slate-800/60">
-                        <input type="checkbox" className="h-3.5 w-3.5 accent-emerald-500" checked={on} onChange={() => toggle(field.key)} />
-                        <span className={on ? "text-slate-300" : "text-slate-500"}>{field.label}</span>
-                        <span className={`ml-auto truncate pl-2 text-right tabular-nums ${on ? "text-slate-100" : "text-slate-500 line-through"}`}>{display}</span>
+                      <label className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-body transition-colors duration-(--duration-hover) hover:bg-surface-hover">
+                        <input type="checkbox" className="focus-ring size-3.5 shrink-0 cursor-pointer accent-go" checked={on} onChange={() => toggle(field.key)} />
+                        <span className={on ? "text-fg-body" : "text-fg-meta"}>{field.label}</span>
+                        <span className={cn("ml-auto truncate pl-2 text-right tabular-nums", on ? "text-fg" : "text-fg-meta line-through")}>{display}</span>
                       </label>
                     </li>
                   );
@@ -323,19 +322,10 @@ export const PlayerImportPanel: React.FC<Pick<PlayerImportBoxProps, "onImport">>
               </ul>
               <ManualSources sources={sources} choices={choices} onChange={setChoice} onReset={resetChoices} />
               <BreakdownDetails breakdown={resp.breakdown} missing={resp.missing ?? []} />
-              <button
-                type="button"
-                onClick={apply}
-                disabled={checkedCount === 0 || loading}
-                className={`flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                  applied
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300/80"
-                    : "border-emerald-500/50 bg-emerald-500/25 text-emerald-200 hover:bg-emerald-500/35"
-                }`}
-              >
-                {applied && <Check className="h-3.5 w-3.5" />}
+              <KitButton variant={applied ? "accent" : "primary"} size="md" className="w-full" onClick={apply} disabled={checkedCount === 0 || loading}>
+                {applied && <Check />}
                 {applied ? "Applied" : `Apply ${checkedCount} ${checkedCount === 1 ? "stat" : "stats"}`}
-              </button>
+              </KitButton>
             </div>
           )}
         </div>

@@ -1,0 +1,101 @@
+import type { Board } from "../../../leaderboard/rules";
+import { kitCount, prepDays, suppliesText, type FlowRow, type RowFilters, type SortKey } from "../../../leaderboard/view";
+import { formatCoins } from "../../simulator/format";
+
+/** Non-component helpers for the /flows ranking (kept apart for fast refresh). */
+
+export const SORT_HINT: Record<SortKey, string> = {
+  profit: "Coins per day at your stats and prices.",
+  perEffort: "Coins per day for each point of work per login: the best return on your time.",
+  effort: "The fewest actions per login first.",
+  forgiving: "How much profit survives logging in late.",
+  liked: "The most likes from players, all time.",
+  liked30d: "The most likes given in the last 30 days.",
+  newest: "Most recently submitted first.",
+};
+
+export const BOARD_INTRO: Record<"ironman" | "ironman_kit" | "normal", string> = {
+  ironman: "From nothing: each flow's starting items are made first with the site's builder flow, then the flow runs; the time it takes counts. Upkeep is what it keeps needing every day.",
+  ironman_kit: "As if you already own each flow's starting items. Upkeep is what it keeps needing every day.",
+  normal: "Bazaar prices: shortfalls are bought and the starting layouts' cost is shown separately.",
+};
+
+/** The detail page's query for a row: the board, and the starting-items switch when on. */
+export const boardQuery = (board: Board, kit: boolean) => `?board=${board}${board === "ironman" && kit ? "&kit=1" : ""}`;
+
+/** Link state for the detail page's back link: the ranking's own query (sort, filters, …), restored on "Flow rankings". */
+export interface RankingLinkState {
+  rankingSearch: string;
+}
+
+export const flowHref = (id: string, board: Board, kit: boolean) => `/flows/${encodeURIComponent(id)}${boardQuery(board, kit)}`;
+export const simHref = (id: string, board: Board, kit: boolean) => `/simulator?flow=${encodeURIComponent(id)}&board=${board}${board === "ironman" && kit ? "&kit=1" : ""}`;
+
+/** The layout the flow spends the most time in (server-picked once verified), else plot 1's start. */
+export function thumbOf(row: FlowRow) {
+  const code = row.entry.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
+  return row.entry.thumb?.layout ?? (code ? { code } : null);
+}
+
+/** A one-line plain-text taste of the description (Markdown marks stripped). */
+export const excerptOf = (row: FlowRow) =>
+  (row.entry.excerpt ?? "")
+    .replace(/[#>*_`[\]()-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** "3 plots, 6 steps" (steps only when there are more than plots). */
+export function shapeText(row: FlowRow): string {
+  const steps = row.entry.summary?.steps ?? null;
+  const plots = row.entry.plots;
+  return `${plots} plot${plots === 1 ? "" : "s"}${steps !== null && steps > plots ? `, ${steps} steps` : ""}`;
+}
+
+/** The row's short starting-items fact: "59 starting items · made in ~5 days" / "No starting items". */
+export function startShort(row: FlowRow): string | null {
+  const p = row.prep;
+  if (!p) return null;
+  const n = kitCount(p.kit);
+  if (!n) return "No starting items";
+  const d = prepDays(p);
+  return `${n.toLocaleString("en-US")} starting items · ${p.done ? (d < 1 ? "made in under a day" : `made in ~${Math.round(d)} days`) : "can't be made"}`;
+}
+
+/** Supplies: Ironman "12 dead plants/day to farm"; Normal "1.2M/day bought". Null when none. */
+export function supplyText(row: FlowRow, board: Board): string | null {
+  if (board === "normal") return row.boughtPerDay ? `${formatCoins(row.boughtPerDay)}/day bought` : null;
+  const t = suppliesText(row.suppliesPerDay);
+  return t === "none" ? null : `${t}/day to farm`;
+}
+
+/** Forgiving as a percentage; above 100% (logging in later earns more) reads "100%+". */
+export function forgivingText(slack: number | null): string {
+  if (slack === null || !Number.isFinite(slack)) return "—";
+  return slack > 1.005 ? "100%+" : `${Math.round(slack * 100)}%`;
+}
+
+export const FORGIVING_HINT = "How much of the profit survives logging in late (up to twice as late). Over 100%: logging in later earns more.";
+
+/** Whether any client-side filter or the search is on (on Normal the Ironman-only ones don't count). */
+export function filtersActive(f: RowFilters, board: Board): boolean {
+  return f.query.trim() !== "" || f.earning.length > 0 || (board === "ironman" && (f.noUpkeep || f.maxStartItems !== null));
+}
+
+/** Facet counts over the board's ranked rows (the other filters ignored): earning (top 3 / anywhere), starting-item caps, no upkeep. */
+export function facetCounts(rows: readonly FlowRow[]) {
+  const top3: Record<string, number> = {};
+  const anywhere: Record<string, number> = {};
+  const caps: Record<string, number> = {};
+  let noUpkeep = 0;
+  for (const r of rows) {
+    r.sources.forEach((s, i) => {
+      anywhere[s.id] = (anywhere[s.id] ?? 0) + 1;
+      if (i < 3) top3[s.id] = (top3[s.id] ?? 0) + 1;
+    });
+    if (!r.entry.cell) continue;
+    if (r.upkeepPerDay <= 0) noUpkeep++;
+    for (const cap of [0, 60, 200]) if (r.startItemsCount <= cap) caps[cap] = (caps[cap] ?? 0) + 1;
+  }
+  return { top3, anywhere, caps, noUpkeep };
+}
+export type FacetCounts = ReturnType<typeof facetCounts>;

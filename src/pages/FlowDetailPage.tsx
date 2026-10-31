@@ -1,67 +1,52 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Activity, ArrowLeft, BarChart3, Clock, Code2, Coins, Eye, EyeOff, FileText, FlaskConical, Flag, Layers, Link2, Package, PauseCircle, Pencil, Save, ShieldCheck, Sprout, Trash2, X } from "lucide-react";
-import { SlowingBadge, StallChip, StartingItemsLine } from "../components/flows/FlowChips";
-import { AccountControl, AuthorLabel, Badge, LikeButton, PriceNote, StatsPanel } from "../components/flows/FlowControls";
-import { FrequencyChart } from "../components/flows/FrequencyChart";
-import { BoardNumbers, EmptyCells, FlowWalkthrough, ItemBreakdown, RampLine, ReportDialog, SeedTable, SourceBreakdown, StatTile, StatusBox, WhatYouNeed } from "../components/flows/FlowDetailSections";
-import { useFlowShape } from "../components/flows/flowsDisplay";
+import React, { useCallback, useEffect, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Ellipsis, Eye, EyeOff, FlaskConical, Flag, Link2, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { AccountControl, AuthorLabel, LikeButton, PriceNote } from "../components/flows/FlowControls";
+import { SLOWING_TITLE } from "../components/flows/FlowChips";
 import { FlowMarkdown } from "../components/flows/FlowMarkdown";
-import { EffortBreakdown, EffortMeter, LayoutThumb, MutationChip, SplitBar, SplitLegend } from "../components/flows/FlowVisuals";
-import { formatCoins, formatRate, nameOf } from "../components/simulator/format";
-import { buttonClass, inputClass } from "../components/simulator/styles";
-import { InfoHint, Panel, useToast } from "../components/ui";
+import { LayoutThumb } from "../components/flows/FlowVisuals";
+import { ReportDialog, StatusBox } from "../components/flows/FlowDetailSections";
+import { ConfirmDialog } from "../components/flows/detail/ConfirmDialog";
+import { DetailTabs } from "../components/flows/detail/DetailTabs";
+import { useIsPhone, useMinuteClock, useScrollPadding } from "../components/flows/detail/detailHooks";
+import { useDetailModel } from "../components/flows/detail/detailModel";
+import { tabFrom, type DetailTab } from "../components/flows/detail/detailText";
+import { SummaryStrip } from "../components/flows/detail/SummaryStrip";
+import { StatsDrawer } from "../components/flows/stats/StatsDrawer";
+import { PlayerImportPanel } from "../components/playerImport/PlayerImportBox";
+import { formatCoins } from "../components/simulator/format";
+import { useToast } from "../components/ui";
+import { LinkButton } from "../components/ui/Card";
+import { cn } from "../components/ui/cn";
+import { InfoHint } from "../components/ui/InfoHint";
+import { IconButton, KitButton, KitInput, KitTextarea, Pill } from "../components/ui/kit";
+import { DialogFrame, ModalDialog } from "../components/ui/ModalDialog";
+import { MenuItem, MenuSeparator, Popover } from "../components/ui/Popover";
 import { useAuth } from "../hooks/useAuth";
 import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
-import { useFlowViewer } from "../hooks/useFlowViewer";
+import { useFlowViewer, type FlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
-import { valueResult } from "../leaderboard/pricing";
 import { boardFrom, kitFromBoard, type CellKind } from "../leaderboard/rules";
-import { cycleHours } from "../leaderboard/tiers";
-import {
-  BADGE_TITLE,
-  BOARD_LABEL,
-  boardNumbers,
-  builderText,
-  CELL_KIND_LABEL,
-  cellKindOfRow,
-  DESCRIPTION_MAX,
-  earningTargets,
-  payloadStepNamer,
-  stallInfo,
-  starvedList,
-  steadyRate,
-  stopsAt,
-  upkeepNeedText,
-  moneyBySource,
-  findCell,
-  formatDate,
-  itemBreakdown,
-  mutationsPerDay,
-  percent,
-  profitByEvery,
-  ratioText,
-  revenueSplit,
-  slackFrom,
-  spreadAt,
-  suppliesOf,
-  suppliesText,
-  TIER_LABEL,
-  TITLE_MAX,
-  viewerResult,
-} from "../leaderboard/view";
+import { BADGE_TITLE, BOARD_LABEL, CELL_KIND_LABEL, DESCRIPTION_MAX, formatDate, percent, starvedText, TIER_LABEL, TITLE_MAX } from "../leaderboard/view";
 import { adminDelete, adminHide, adminUnhide, getAdminKey, hiddenReasonLabel } from "../services/adminService";
+import { ApiError } from "../services/authService";
 import { deleteFlow, flowShareLink, getFlow, updateFlow } from "../services/flowsService";
-import { defaultGameData } from "../simulator";
 
-const DATA = defaultGameData();
+// /flows/:id (Flows v2, direction A "Verdict strip"; plan docs/plans/flows-revamp.md, states
+// research/flows-v2/mockup/detail-states.md). Header with the action, a summary strip that says
+// whose stats the numbers are for, the three board numbers and five facts, then the sections as
+// sticky tabs. Phones get a bottom action bar.
 
+const STATUS_TONE = { live: "go", rejected: "problem", hidden: "neutral", pending: "script" } as const;
+
+/** The owner's inline edit form (F68): replaces the title block. */
 const EditForm: React.FC<{ detail: FlowDetail; onSaved: (title: string, description: string) => void; onCancel: () => void }> = ({ detail, onSaved, onCancel }) => {
   const { toast } = useToast();
   const [title, setTitle] = useState(detail.title);
   const [description, setDescription] = useState(detail.description ?? "");
   const [busy, setBusy] = useState(false);
   const save = async () => {
+    if (busy || !title.trim()) return;
     setBusy(true);
     try {
       await updateFlow(detail.id, { title: title.trim(), description });
@@ -74,39 +59,54 @@ const EditForm: React.FC<{ detail: FlowDetail; onSaved: (title: string, descript
     }
   };
   return (
-    <div className="space-y-2">
-      <label className="block space-y-1 text-xs text-slate-300">
-        <span>Title</span>
-        <input className={`${inputClass} w-full py-1.5 text-sm`} maxLength={TITLE_MAX} value={title} onChange={(e) => setTitle(e.target.value)} />
-      </label>
-      <label className="block space-y-1 text-xs text-slate-300">
-        <span>Description (Markdown, no links or images)</span>
-        <textarea className={`${inputClass} h-40 w-full`} maxLength={DESCRIPTION_MAX} value={description} onChange={(e) => setDescription(e.target.value)} />
-        <span className="block text-right text-[11px] text-slate-500">
-          {description.length} / {DESCRIPTION_MAX}
+    <form
+      className="min-w-0 flex-1 space-y-2.5"
+      aria-label="Edit flow"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
+      <label className="block space-y-1">
+        <span className="flex justify-between text-secondary text-fg-muted">
+          Title
+          <span className="text-meta tabular-nums text-fg-meta">
+            {title.length} / {TITLE_MAX}
+          </span>
         </span>
+        <KitInput className="w-full" maxLength={TITLE_MAX} value={title} onChange={(e) => setTitle(e.target.value)} invalid={!title.trim()} />
+      </label>
+      <label className="block space-y-1">
+        <span className="flex items-center justify-between gap-2 text-secondary text-fg-muted">
+          <span>Description (Markdown, no links or images)</span>
+          <span className="text-meta tabular-nums text-fg-meta">
+            {description.length} / {DESCRIPTION_MAX}
+          </span>
+        </span>
+        <KitTextarea className="h-32 w-full" maxLength={DESCRIPTION_MAX} value={description} onChange={(e) => setDescription(e.target.value)} />
       </label>
       <div className="flex gap-2">
-        <button type="button" className={buttonClass.primary} onClick={save} disabled={busy || !title.trim()}>
-          <Save className="h-3.5 w-3.5" /> {busy ? "Saving..." : "Save"}
-        </button>
-        <button type="button" className={buttonClass.neutral} onClick={onCancel}>
-          <X className="h-3.5 w-3.5" /> Cancel
-        </button>
+        <KitButton type="submit" variant="primary" size="md" loading={busy} disabled={!title.trim()}>
+          Save
+        </KitButton>
+        <KitButton variant="ghost" size="md" onClick={onCancel} disabled={busy}>
+          Cancel
+        </KitButton>
       </div>
-    </div>
+    </form>
   );
 };
 
-/** Admin (key in sessionStorage): hidden / report info with Hide, Unhide and Delete. */
+/** Admin (key in sessionStorage): hidden / report info with Hide, Unhide and Delete (F71). */
 export const ModerationBox: React.FC<{ detail: FlowDetail; onReload: () => void }> = ({ detail, onReload }) => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const hidden = detail.hidden ?? detail.status === "hidden";
   const why = hidden ? hiddenReasonLabel(detail.hiddenReason) : null;
   const run = async (action: "hide" | "unhide" | "delete") => {
-    if (action === "delete" && !window.confirm(`Delete "${detail.title}" for good? This can't be undone.`)) return;
+    if (busy) return;
     setBusy(true);
     try {
       if (action === "hide") await adminHide(detail.id);
@@ -119,57 +119,153 @@ export const ModerationBox: React.FC<{ detail: FlowDetail; onReload: () => void 
       toast({ title: `Could not ${action}`, description: e instanceof Error ? e.message : String(e), variant: "error" });
     } finally {
       setBusy(false);
+      setConfirming(false);
     }
   };
   return (
-    <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs" data-testid="moderation-box">
-      <div className="flex flex-wrap items-center gap-2">
-        <ShieldCheck className="h-4 w-4 text-amber-400" />
-        <span className="font-medium text-slate-200">Moderation</span>
-        <Badge tone={detail.status === "live" ? "new" : detail.status === "rejected" ? "danger" : detail.status === "hidden" ? "stale" : "pending"}>{detail.status}</Badge>
-        {why && <Badge tone={detail.hiddenReason === "ban" ? "danger" : "estimated"}>{why}</Badge>}
-        <span className={detail.reportCount ? "text-amber-300" : "text-slate-400"}>
+    <section aria-label="Moderation" className="space-y-1.5" data-testid="moderation-box">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-secondary text-fg-muted">
+        <span className="font-semibold text-fg">Moderation</span>
+        <Pill tone={STATUS_TONE[detail.status as keyof typeof STATUS_TONE] ?? "neutral"}>{detail.status}</Pill>
+        {why && <Pill tone={detail.hiddenReason === "ban" ? "problem" : "warn"}>{why}</Pill>}
+        <span className={cn("tabular-nums", detail.reportCount ? "text-warn" : undefined)}>
           {detail.reportCount ?? 0} report{detail.reportCount === 1 ? "" : "s"}
         </span>
-        <Link to="/flows/admin" className="text-slate-400 underline-offset-2 hover:text-slate-200 hover:underline">
+        <Link to="/flows/admin" className="focus-ring rounded-inner underline decoration-fg-meta underline-offset-[3px] transition-colors duration-(--duration-hover) hover:text-fg">
           Queue
         </Link>
+        <span className="ml-auto flex gap-1.5">
+          {hidden ? (
+            <KitButton disabled={busy} onClick={() => run("unhide")}>
+              <Eye /> Unhide
+            </KitButton>
+          ) : (
+            <KitButton disabled={busy} onClick={() => run("hide")}>
+              <EyeOff /> Hide
+            </KitButton>
+          )}
+          <KitButton variant="danger" disabled={busy} onClick={() => setConfirming(true)}>
+            <Trash2 /> Delete
+          </KitButton>
+        </span>
       </div>
-      {detail.rejectReason && <div className="break-words text-red-300">Rejected: {detail.rejectReason}</div>}
-      <div className="flex flex-wrap gap-2">
-        {hidden ? (
-          <button type="button" className={buttonClass.neutral} disabled={busy} onClick={() => run("unhide")}>
-            <Eye className="h-3.5 w-3.5" /> Unhide
-          </button>
-        ) : (
-          <button type="button" className={buttonClass.neutral} disabled={busy} onClick={() => run("hide")}>
-            <EyeOff className="h-3.5 w-3.5" /> Hide
-          </button>
-        )}
-        <button type="button" className={buttonClass.danger} disabled={busy} onClick={() => run("delete")}>
-          <Trash2 className="h-3.5 w-3.5" /> Delete
-        </button>
-      </div>
-    </div>
+      {detail.rejectReason && <p className="break-words text-secondary text-problem">Rejected: {detail.rejectReason}</p>}
+      {confirming && (
+        <ConfirmDialog title="Delete for good?" confirmLabel="Delete" tone="problem" busy={busy} onConfirm={() => run("delete")} onClose={() => setConfirming(false)}>
+          <p>"{detail.title}" is removed from the leaderboard with its likes, reports and verification. This can't be undone.</p>
+        </ConfirmDialog>
+      )}
+    </section>
   );
 };
 
-const ActionButton: React.FC<{ onClick: () => void; tone?: "primary" | "neutral" | "danger"; children: React.ReactNode }> = ({ onClick, tone = "neutral", children }) => {
-  const cls =
-    tone === "primary"
-      ? "border-emerald-500/50 bg-emerald-500 text-slate-950 hover:bg-emerald-400"
-      : tone === "danger"
-        ? "border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20"
-        : "border-slate-600/50 bg-slate-800/70 text-slate-200 hover:bg-slate-700/70";
+/** Badges above the title (F56). */
+const Badges: React.FC<{ stale: boolean; scripted: boolean; stall: string | null; stallPlot: number | null; slowing: boolean }> = ({ stale, scripted, stall, stallPlot, slowing }) =>
+  stale || scripted || stall || slowing ? (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      {stale && <Pill title={BADGE_TITLE.stale}>re-verifying</Pill>}
+      {scripted && <Pill tone="script">scripted</Pill>}
+      {stall && (
+        <Pill tone="warn" title={`${stall}: the stock ran out. Nobody tops it up during a run, so a flow that uses items it doesn't grow stalls unless its own steps make them again.`}>
+          Stall · plot {stallPlot}
+        </Pill>
+      )}
+      {slowing && (
+        <Pill tone="warn" title={SLOWING_TITLE}>
+          Slowing
+        </Pill>
+      )}
+    </span>
+  ) : null;
+
+/** Copy link (F66): the API's /share/flow/ID page carries the Discord embed. */
+function useCopyLink(id: string) {
+  const { toast } = useToast();
+  return async () => {
+    try {
+      await navigator.clipboard.writeText(flowShareLink(id));
+      toast({ title: "Link copied", description: "Paste it in Discord for an embed with the flow's stats.", variant: "success" });
+    } catch {
+      toast({ title: "Could not copy", description: flowShareLink(id), variant: "warning" });
+    }
+  };
+}
+
+/** Secondary actions: Copy link (phone), Report (logged in, not the owner), Edit and Delete (owner). */
+const MoreMenu: React.FC<{ size: "md" | "touch"; withCopy: boolean; canReport: boolean; owner: boolean; onCopy: () => void; onReport: () => void; onEdit: () => void; onDelete: () => void }> = ({
+  size,
+  withCopy,
+  canReport,
+  owner,
+  onCopy,
+  onReport,
+  onEdit,
+  onDelete,
+}) => {
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const [open, setOpen] = useState(false);
+  if (!withCopy && !canReport && !owner) return null;
+  const pick = (f: () => void) => () => {
+    setOpen(false);
+    f();
+  };
   return (
-    <button type="button" onClick={onClick} className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-[background-color,transform] duration-150 active:scale-[0.97] ${cls}`}>
-      {children}
-    </button>
+    <>
+      <IconButton ref={setAnchor} variant="neutral" size={size} aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <Ellipsis />
+      </IconButton>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="More actions" role="menu" width={240} align="end" className="p-1">
+        {withCopy && (
+          <MenuItem icon={<Link2 />} hint="Discord embed with the flow's stats" onSelect={pick(onCopy)}>
+            Copy link
+          </MenuItem>
+        )}
+        {canReport && (
+          <MenuItem icon={<Flag />} onSelect={pick(onReport)}>
+            Report…
+          </MenuItem>
+        )}
+        {owner && (
+          <>
+            {withCopy && <MenuSeparator />}
+            <MenuItem icon={<Pencil />} onSelect={pick(onEdit)}>
+              Edit title and description
+            </MenuItem>
+            <MenuItem icon={<Trash2 />} tone="danger" onSelect={pick(onDelete)}>
+              Delete…
+            </MenuItem>
+          </>
+        )}
+      </Popover>
+    </>
   );
 };
+
+/** Import from Hypixel straight from the strip (the drawer has the same button). */
+const ImportDialog: React.FC<{ viewer: FlowViewer; onClose: () => void }> = ({ viewer, onClose }) => (
+  <ModalDialog labelledBy="detail-import-title" onClose={onClose} maxWidth="max-w-xl">
+    <DialogFrame id="detail-import-title" title="Import from Hypixel" onClose={onClose}>
+      <PlayerImportPanel
+        onImport={(patch) => {
+          viewer.setStats(patch);
+          onClose();
+        }}
+      />
+    </DialogFrame>
+  </ModalDialog>
+);
+
+/** The ranking's own query (sort, filters, frequency…) when the visitor came from it; else its board. */
+function useBackLink(viewer: FlowViewer): string {
+  const location = useLocation();
+  const state = location.state as { rankingSearch?: unknown } | null;
+  if (typeof state?.rankingSearch === "string") return `/flows${state.rankingSearch}`;
+  return `/flows?board=${viewer.board}${viewer.board === "ironman" && viewer.kit ? "&kit=1" : ""}`;
+}
 
 export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDetail) => void; onReload: () => void }> = ({ detail, onChange, onReload }) => {
-  // The board and the starting-items switch live in the URL (?board=&kit=1; v2's ironman_strict / ironman_borrow too), so a link shows the same number.
+  // The board, the starting-items switch and the tab live in the URL (?board=&kit=1&tab=; v2's ironman_strict / ironman_borrow too).
+  const location = useLocation();
   const [search, setSearch] = useSearchParams();
   const setQuery = (patch: (q: URLSearchParams) => void) =>
     setSearch(
@@ -178,7 +274,8 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
         patch(next);
         return next;
       },
-      { replace: true }
+      // Keep the ranking's state (the back link) across board and tab changes.
+      { replace: true, state: location.state },
     );
   const viewer = useFlowViewer({
     available: detail.boards,
@@ -197,62 +294,35 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const phone = useIsPhone();
+  const now = useMinuteClock();
+  // Focused controls scroll clear of the sticky tabs and the phone's bottom bar.
+  useScrollPadding(56, phone ? 84 : 0);
   const [editing, setEditing] = useState(false);
   const [reporting, setReporting] = useState(false);
-  const [now] = useState(() => Date.now());
-  const [admin] = useState(() => !!getAdminKey());
-  const shape = useFlowShape(detail);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  // Read on every render: locking the admin key in another tab hides the moderation row on the next render.
+  const admin = !!getAdminKey();
+  const m = useDetailModel(detail, viewer);
   const owner = !!user && user.id === detail.author.id;
   const boardListed = detail.boards.includes(viewer.board);
-  const settings = { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true };
-  const kind = viewer.cellKind;
-  // The viewer's tier, or the max tier standing in while other tiers are still being verified.
-  const exact = findCell(detail.cells, kind, viewer.tier, viewer.every);
-  const cell = exact ?? findCell(detail.cells, kind, "max", viewer.every);
-  const tierShown = exact ? viewer.tier : "max";
-  const points = useMemo(
-    () => profitByEvery(DATA, detail.cells, kind, tierShown, { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true }),
-    [detail.cells, kind, tierShown, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats]
-  );
-  const forgiving = slackFrom(points, viewer.every);
-  const shown = cell ? viewerResult(DATA, cell.median, settings) : null;
-  const quotes = viewer.board === "normal" ? viewer.quotes : {};
-  const value = shown ? valueResult(DATA, shown.result, viewer.board, quotes, viewer.bazaar.pricing) : null;
-  const split = shown ? revenueSplit(DATA, shown.result, viewer.board, quotes, viewer.bazaar.pricing) : null;
-  const lines = shown ? itemBreakdown(DATA, shown.result, viewer.board, viewer.quotes, viewer.bazaar.pricing) : [];
-  const seeds = (detail.seeds ?? []).filter((s) => cellKindOfRow(s) === kind && s.tier === tierShown && s.every === viewer.every);
-  const numbers = useMemo(
-    () => boardNumbers(DATA, detail.cells, viewer.tier, viewer.every, { quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true }),
-    [detail.cells, viewer.tier, viewer.every, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats]
-  );
-  const stepName = useMemo(() => payloadStepNamer(detail.payload?.plots), [detail.payload]);
-  const steady = cell ? steadyRate(DATA, cell.median, { board: viewer.board, ...settings }) : null;
-  const stall = cell ? stallInfo(cell.median.starved) : null;
-  // How the starting items are made: the "from nothing" cell's prep (at this tier / every, else max).
-  const fromNothingN = numbers.find((n) => n.kind === "ironman");
-  const prep = fromNothingN?.prep ?? null;
-  // From nothing it stops once the starting items run out: say why, in the game's terms.
-  const kitN = numbers.find((n) => n.kind === "ironman_kit")?.profitPerDay ?? null;
-  const fnCell = findCell(detail.cells, "ironman", viewer.tier, viewer.every) ?? findCell(detail.cells, "ironman", "max", viewer.every);
-  const need = upkeepNeedText(fnCell?.median.upkeep);
-  const stopsNote =
-    fromNothingN && prep?.done && stopsAt(fromNothingN.slowing, fromNothingN.profitPerDay, kitN)
-      ? `From nothing it stops once the starting items run out${need ? `: it uses ${need} that it doesn't grow` : ""}. Leftover placed items that never helped enough mutations don't decay, so the plots stay blocked (no room for Lonelily). With the items topped up: ${kitN !== null ? formatCoins(kitN) : "?"}/day.`
-      : null;
-  const needPanel = !!cell && viewer.board === "ironman";
+  const tab = tabFrom(search.get("tab"));
+  const setTab = (t: DetailTab) => setQuery((q) => (t === "need" ? q.delete("tab") : q.set("tab", t)));
+  const backLink = useBackLink(viewer);
+  const simLink = `/simulator?flow=${encodeURIComponent(detail.id)}&board=${viewer.board}${viewer.board === "ironman" && viewer.kit ? "&kit=1" : ""}`;
+  const plots = detail.payload?.plots ?? [];
+  const steps = plots.reduce((n, p) => n + p.flow.steps.length, 0);
+  const scripted = !!detail.payload?.script?.source?.trim() || plots.some((p) => !!p.script?.source.trim());
+  const current = m.numbers.find((n) => n.kind === m.kind)?.profitPerDay ?? null;
+
   const selectKind = (k: CellKind) => {
     if (k === "normal") return viewer.setBoard("normal");
     if (viewer.board !== "ironman") viewer.setBoard("ironman");
     viewer.setKit(k === "ironman_kit");
   };
-  const emptyPanel = !!cell && starvedList(cell.median.starved).length > 0;
-  const spread = cell ? spreadAt(cell.spread, viewer.every) : null;
-  const sources = shown ? moneyBySource(DATA, shown.result.bySource, viewer.board, quotes, viewer.bazaar.pricing) : [];
-  const listQuery = `?board=${viewer.board}${viewer.board === "ironman" && viewer.kit ? "&kit=1" : ""}`;
-  const earning = earningTargets(DATA, detail.summary?.targets ?? [], shown?.result.bySource, viewer.board, quotes, viewer.bazaar.pricing);
-  const firstThumb = detail.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
-  const heroLayout = detail.thumb?.layout ?? (firstThumb ? { code: firstThumb } : (detail.payload?.plots?.[0]?.flow.steps[0]?.layout ?? null));
-  const supplies = shown ? suppliesText(suppliesOf(shown.result)) : "none";
 
   const likes = useFlowLikes();
   const liked = likes.isLiked(detail.id, detail.liked ?? false);
@@ -262,302 +332,219 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
     useCallback(
       (_id: string, ok: boolean, error?: string) =>
         toast(ok ? { title: "Logged in and liked", variant: "success" } : { title: "Logged in, but the like wasn't saved", description: error, variant: "warning" }),
-      [toast]
-    )
+      [toast],
+    ),
   );
   const toggleLike = () => {
     likes.toggle(detail.id, !liked).catch((e: unknown) => toast({ title: "Could not save your like", description: e instanceof Error ? e.message : String(e), variant: "error" }));
   };
-
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(flowShareLink(detail.id));
-      toast({ title: "Link copied", description: "Paste it in Discord for an embed with the flow's stats.", variant: "success" });
-    } catch {
-      toast({ title: "Could not copy", description: flowShareLink(detail.id), variant: "warning" });
-    }
-  };
+  const copyLink = useCopyLink(detail.id);
   const remove = async () => {
-    if (!window.confirm(`Delete "${detail.title}" from the leaderboard? This can't be undone.`)) return;
+    if (deleteBusy) return;
+    setDeleteBusy(true);
     try {
       await deleteFlow(detail.id);
       toast({ title: "Flow deleted", variant: "success" });
       navigate("/flows");
     } catch (e) {
       toast({ title: "Could not delete", description: e instanceof Error ? e.message : String(e), variant: "error" });
+      setDeleteBusy(false);
+      setDeleting(false);
     }
   };
 
+  const like =
+    detail.status === "live" || detail.hidden ? (
+      <LikeButton
+        size="md"
+        className={phone ? "h-11 px-4" : undefined}
+        count={likeCount}
+        liked={liked}
+        busy={likes.busy(detail.id) || detail.status !== "live"}
+        onToggle={owner ? undefined : toggleLike}
+        needsLogin={!likes.loggedIn}
+        title={owner ? `${likeCount} like${likeCount === 1 ? "" : "s"} (${likes30d} in the last 30 days)` : !user ? "Log in with Discord to like this flow" : undefined}
+      />
+    ) : null;
+  const more = (
+    <MoreMenu
+      size={phone ? "touch" : "md"}
+      withCopy={phone}
+      canReport={!!user && !owner}
+      owner={owner}
+      onCopy={() => void copyLink()}
+      onReport={() => setReporting(true)}
+      onEdit={() => setEditing(true)}
+      onDelete={() => setDeleting(true)}
+    />
+  );
+  const picture = <LayoutThumb layout={m.heroLayout} cellSize={phone ? 8 : 11} />;
+  const hero = detail.thumb ? (
+    <InfoHint title="Main layout" width={240} label="About this picture" trigger={picture} className="shrink-0 rounded-control">
+      Plot {detail.thumb.plot}'s main layout · {percent(detail.thumb.share)} of the time.
+    </InfoHint>
+  ) : (
+    <span className="shrink-0">{picture}</span>
+  );
+
+  const titleBlock = editing ? (
+    <EditForm
+      detail={detail}
+      onCancel={() => setEditing(false)}
+      onSaved={(title, description) => {
+        onChange({ ...detail, title, description });
+        setEditing(false);
+      }}
+    />
+  ) : (
+    <div className="min-w-0 flex-1 space-y-1.5">
+      <Badges stale={detail.stale} scripted={scripted} stall={m.stall ? starvedText(m.stall.top, m.stepName) : null} stallPlot={m.stall?.plot ?? null} slowing={m.slowing} />
+      <h1 className="break-words text-hero text-fg">{detail.title}</h1>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-secondary text-fg-meta">
+        <span className="text-fg-muted">
+          <AuthorLabel author={detail.author} size={18} />
+        </span>
+        <span className="tabular-nums">
+          {detail.plots} plot{detail.plots === 1 ? "" : "s"}, {steps} step{steps === 1 ? "" : "s"}
+        </span>
+        <span className="tabular-nums">{detail.cycles.toLocaleString("en-US")} cycles simulated</span>
+        <span>Submitted {formatDate(detail.createdAt)}</span>
+      </div>
+      {!phone && detail.description?.trim() && (
+        <div>
+          <div className="line-clamp-2">
+            <FlowMarkdown text={detail.description} />
+          </div>
+          <LinkButton onClick={() => setTab("flow")}>Read more</LinkButton>
+        </div>
+      )}
+    </div>
+  );
+
+  const notes = [
+    !boardListed && { text: `This flow is not entered on the ${BOARD_LABEL[viewer.board]} board.`, warn: true },
+    boardListed && !m.cell && { text: `The ${CELL_KIND_LABEL[m.kind]} number isn't verified at this frequency yet.`, warn: false },
+    viewer.boardForced && { text: `Only entered on the ${BOARD_LABEL[viewer.board]} board, so it's shown with ${BOARD_LABEL[viewer.board]} prices.`, warn: false },
+    boardListed && !m.exact && m.cell && { text: `The ${TIER_LABEL[viewer.tier]} tier isn't verified yet for this flow; showing the Max tier instead.`, warn: true },
+  ].filter((n): n is { text: string; warn: boolean } => !!n);
+
   return (
-    <div className="space-y-4 py-2 sm:py-4">
+    <div className="mx-auto max-w-[1100px] space-y-4 py-2 sm:py-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link to={`/flows${listQuery}`} className="inline-flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-slate-200">
-          <ArrowLeft className="h-3.5 w-3.5" /> Flow rankings
+        <Link to={backLink} className="focus-ring hit-area inline-flex items-center gap-1 rounded-inner text-secondary text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg">
+          <ArrowLeft className="size-3.5" /> Flow rankings
         </Link>
         <AccountControl />
       </div>
 
-      {/* Hero: the first layout, the title and the headline number. */}
-      <section className="relative overflow-hidden rounded-xl border border-slate-600/30 bg-slate-800/40">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(16,185,129,0.10),transparent_55%)]" aria-hidden />
-        <div className="relative grid grid-cols-1 gap-5 p-4 sm:p-5 md:grid-cols-[auto_minmax(0,1fr)]">
-          <figure className="justify-self-center md:justify-self-start">
-            <LayoutThumb layout={heroLayout} cellSize={17} />
-            {detail.thumb && (
-              <figcaption className="mt-1 text-center text-[11px] text-slate-500">
-                Plot {detail.thumb.plot}'s main layout · {percent(detail.thumb.share)} of the time
-              </figcaption>
-            )}
-          </figure>
-          <div className="min-w-0 space-y-3">
-            {editing ? (
-              <EditForm
-                detail={detail}
-                onCancel={() => setEditing(false)}
-                onSaved={(title, description) => {
-                  onChange({ ...detail, title, description });
-                  setEditing(false);
-                }}
-              />
-            ) : (
-              <>
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {detail.stale && (
-                      <Badge tone="stale" title={BADGE_TITLE.stale}>
-                        re-verifying
-                      </Badge>
-                    )}
-                    {shape.scripted && (
-                      <Badge tone="violet" icon={<Code2 />}>
-                        scripted
-                      </Badge>
-                    )}
-                    {stall && <StallChip stall={stall} stepName={stepName} />}
-                    {cell?.median.slowing && <SlowingBadge />}
-                  </div>
-                  <h1 className="break-words text-2xl font-bold tracking-tight text-slate-50">{detail.title}</h1>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                    <AuthorLabel author={detail.author} size={20} />
-                    <span className="inline-flex items-center gap-1">
-                      <Layers className="h-3 w-3" /> {detail.plots} plot{detail.plots === 1 ? "" : "s"}, {shape.steps} step{shape.steps === 1 ? "" : "s"}
-                    </span>
-                    <span>{detail.cycles.toLocaleString()} cycles simulated</span>
-                    <span>Submitted {formatDate(detail.createdAt)}</span>
-                  </div>
-                </div>
-
-                <BoardNumbers numbers={numbers} current={kind} onSelect={selectKind} tierLabel={TIER_LABEL[tierShown]} every={viewer.every} />
-                {viewer.board === "ironman" && prep && (
-                  <div className="space-y-0.5 text-xs" data-testid="builder-line">
-                    <StartingItemsLine prep={prep} />
-                    <p className={prep.done ? "text-slate-500" : "text-amber-200/90"}>{builderText(prep)}</p>
-                    {stopsNote && (
-                      <p className="text-amber-200/90" data-testid="stops-note">
-                        {stopsNote}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-400">
-                  <span>
-                    coins / day · {TIER_LABEL[tierShown]} tier, online every {viewer.every}
-                    {shown?.scaled ? " · scaled to your yield (est.)" : ""}
-                  </span>
-                  {shown && (
-                    <span className="flex items-center gap-2">
-                      <EffortMeter avg={shown.result.effort.avg} peak={shown.result.effort.peak} />
-                      {forgiving !== null && <span>· {percent(forgiving)} forgiving</span>}
-                    </span>
-                  )}
-                </div>
-                {cell && <RampLine result={cell.median} steadyPerDay={steady} />}
-                {split && value && (
-                  <div className="max-w-lg">
-                    <SplitBar split={split} fraction={1} className="h-2" />
-                    <SplitLegend split={split} className="mt-1.5" />
-                  </div>
-                )}
-                {earning.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] uppercase tracking-wide text-slate-500">Top earners</span>
-                    {earning.slice(0, 3).map((t) => (
-                      <MutationChip key={t.id} id={t.id} size="md" earning={t.coinsPerDay} />
-                    ))}
-                    {earning.length > 3 && (
-                      <span className="rounded-md border border-slate-700/50 px-1.5 py-0.5 text-xs tabular-nums text-slate-400" title={earning.slice(3).map((t) => nameOf(t.id)).join(", ")}>
-                        +{earning.length - 3}
-                      </span>
-                    )}
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <ActionButton tone="primary" onClick={() => navigate(`/simulator?flow=${encodeURIComponent(detail.id)}&board=${viewer.board}`)}>
-                    <FlaskConical className="h-3.5 w-3.5" /> Open in simulator
-                  </ActionButton>
-                  {(detail.status === "live" || detail.hidden) && (
-                    <LikeButton
-                      size="md"
-                      count={likeCount}
-                      liked={liked}
-                      busy={likes.busy(detail.id)}
-                      onToggle={owner || detail.status !== "live" ? undefined : toggleLike}
-                      needsLogin={!likes.loggedIn}
-                      title={owner ? `${likeCount} like${likeCount === 1 ? "" : "s"} (${likes30d} in the last 30 days)` : !user ? "Log in with Discord to like this flow" : undefined}
-                    />
-                  )}
-                  <ActionButton onClick={copyLink}>
-                    <Link2 className="h-3.5 w-3.5" /> Copy link
-                  </ActionButton>
-                  {user && !owner && (
-                    <ActionButton onClick={() => setReporting(true)}>
-                      <Flag className="h-3.5 w-3.5" /> Report
-                    </ActionButton>
-                  )}
-                  {owner && (
-                    <>
-                      <ActionButton onClick={() => setEditing(true)}>
-                        <Pencil className="h-3.5 w-3.5" /> Edit
-                      </ActionButton>
-                      <ActionButton tone="danger" onClick={remove}>
-                        <Trash2 className="h-3.5 w-3.5" /> Delete
-                      </ActionButton>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+      {(owner || admin) && (
+        <div className="space-y-3 border-y border-line py-2.5">
+          {owner && <StatusBox id={detail.id} initial={detail.status} onLive={onReload} />}
+          {admin && <ModerationBox detail={detail} onReload={onReload} />}
         </div>
-        {(owner || admin) && (
-          <div className="relative space-y-3 border-t border-slate-700/40 p-4">
-            {owner && <StatusBox id={detail.id} initial={detail.status} onLive={onReload} />}
-            {admin && <ModerationBox detail={detail} onReload={onReload} />}
+      )}
+
+      <header className="flex items-start gap-4">
+        {!phone && !editing && hero}
+        {titleBlock}
+        {phone && !editing && hero}
+        {!phone && !editing && (
+          <div className="flex shrink-0 items-center gap-2">
+            <KitButton variant="primary" size="md" onClick={() => navigate(simLink)}>
+              <FlaskConical /> Open in simulator
+            </KitButton>
+            {like}
+            <IconButton variant="neutral" size="md" aria-label="Copy link" title="Copy link (Discord embed with the flow's stats)" onClick={() => void copyLink()}>
+              <Link2 />
+            </IconButton>
+            {more}
           </div>
         )}
-      </section>
+      </header>
 
-      {detail.description?.trim() && !editing && (
-        <Panel title="Description" icon={<FileText />}>
-          <FlowMarkdown text={detail.description} />
-        </Panel>
-      )}
+      <SummaryStrip viewer={viewer} m={m} phone={phone} onKind={selectKind} onEditStats={() => setStatsOpen(true)} onImport={() => setImporting(true)} />
 
-      <StatsPanel viewer={viewer} defaultOpen={false} />
-
-      {!boardListed && <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">This flow is not entered on the {BOARD_LABEL[viewer.board]} board.</p>}
-      {boardListed && !cell && <p className="rounded-lg border border-slate-600/40 bg-slate-800/40 px-3 py-2 text-xs text-slate-300">The {CELL_KIND_LABEL[kind]} number isn't verified at this frequency yet.</p>}
-      {viewer.boardForced && (
-        <p className="rounded-lg border border-slate-600/40 bg-slate-800/40 px-3 py-2 text-xs text-slate-300">Only entered on the {BOARD_LABEL[viewer.board]} board, so it's shown with {BOARD_LABEL[viewer.board]} prices.</p>
-      )}
-      {boardListed && !exact && cell && (
-        <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
-          The {TIER_LABEL[viewer.tier]} tier isn't verified yet for this flow; showing the Max tier instead.
-        </p>
-      )}
-
-      {cell && (needPanel || emptyPanel) && (
-        <div className={`grid grid-cols-1 items-start gap-4 ${needPanel && emptyPanel ? "lg:grid-cols-2" : ""}`}>
-          {needPanel && (
-            <Panel title="What you need" icon={<Package />} description="The flow's starting items (what its layouts use before it has grown them, with a margin to be safe) and what it uses up. From nothing, the builder makes these first.">
-              <WhatYouNeed result={cell.median} />
-            </Panel>
-          )}
-          {emptyPanel && (
-            <Panel title="Empty layout cells" icon={<PauseCircle />} description="Cells the layouts couldn't fill for lack of stock, on average over the run. 5 or more (amber) holds a plot back.">
-              <EmptyCells starved={cell.median.starved} stepName={stepName} />
-            </Panel>
-          )}
+      {notes.length > 0 && (
+        <div className="space-y-1" role="status">
+          {notes.map((n) => (
+            <p key={n.text} className={cn("text-secondary", n.warn ? "text-warn" : "text-fg-muted")}>
+              {n.text}
+            </p>
+          ))}
         </div>
       )}
 
-      {shown && value && (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          <StatTile label="Revenue / day" value={formatCoins(value.revenuePerDay)} />
-          {viewer.board === "normal" ? (
-            <StatTile label="Supplies / day" value={formatCoins(value.boughtPerDay)} sub={value.buildCost > 0 ? `${formatCoins(value.buildCost)} to build once` : undefined} tone="text-sky-200" />
-          ) : (
-            <StatTile label="Supplies to farm" value={supplies === "none" ? "None" : supplies} sub={supplies === "none" ? undefined : "per day"} tone="text-slate-200" />
-          )}
-          <StatTile label="Mutations / day" value={formatRate(mutationsPerDay(DATA, shown.result))} />
-          <StatTile label="Effort / login" value={`${Math.round(shown.result.effort.avg)}`} sub={`heaviest ${Math.round(shown.result.effort.peak)}`} />
-          <StatTile label="Target uptime" value={percent(shown.result.uptime)} tone={shown.result.sustainable ? "text-emerald-300" : "text-amber-300"} sub={shown.result.sustainable ? "sustainable" : "has downtime"} />
-          <StatTile
-            label="Seed spread"
-            value={ratioText(spread)}
-            sub={`${cell?.seeds ?? 0} secret seeds`}
-            tone={spread !== null && spread > 1.5 ? "text-amber-300" : "text-slate-100"}
-            title="Best seed / median seed. Lower is more consistent."
-          />
-        </div>
-      )}
+      <DetailTabs detail={detail} viewer={viewer} m={m} tab={tab} onTab={setTab} phone={phone} />
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <Panel title="What you earn" icon={<Coins />} description="Each item the flow produces, per day, at your prices.">
-          <ItemBreakdown lines={lines} />
-          {value && value.unpriced.length > 0 && <p className="mt-2 text-[11px] text-amber-300">No price for some items; they count as 0.</p>}
-        </Panel>
-        <Panel title="Where it comes from" icon={<Sprout />} description="Which plants' harvests the money comes from, with what each drops.">
-          <SourceBreakdown lines={sources} />
-        </Panel>
-      </div>
-
-      <Panel
-        title="Profit by online frequency"
-        icon={<BarChart3 />}
-        actions={
-          <span className="flex items-center gap-1 text-xs text-slate-300">
-            <span className="font-medium text-emerald-300">{forgiving === null ? "n/a" : percent(forgiving)}</span> forgiving
-            <InfoHint title="Forgiving" width={300}>
-              How much of your profit you keep when you come back later than planned. It compares the points in the shaded Forgiving range (your frequency
-              up to twice it) with yours, counting the slightly-late ones the most. 100% means being late costs nothing; a low % means the flow falls
-              apart if you miss a login. Shows n/a at 12 cycles (nothing slower was simulated) or with no profit.
-            </InfoHint>
-          </span>
-        }
-        description={`How much you make by how often you log in (${TIER_LABEL[tierShown]} tier). Hover a point for its numbers; click one to use that frequency.`}
-      >
-        <FrequencyChart points={points} selected={viewer.every} hoursPerCycle={cycleHours(viewer.stats)} onSelect={viewer.setEvery} />
-      </Panel>
-
-      <Panel title="The flow" icon={<Layers />} description="Every plot, step by step, as the real layouts. Hover a cell to see what it is.">
-        <FlowWalkthrough detail={detail} />
-      </Panel>
-
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <Panel title="Work per login" icon={<Activity />} description="Weighted by how much work each action is.">
-          {shown ? <EffortBreakdown effort={shown.result.effort} /> : <p className="text-xs text-slate-500">Not verified at this frequency yet.</p>}
-        </Panel>
-        {seeds.length > 0 ? (
-          <Panel title="Consistency across seeds" icon={<Clock />}>
-            <SeedTable seeds={seeds} board={viewer.board} quotes={viewer.quotes} pricing={viewer.bazaar.pricing} />
-          </Panel>
-        ) : (
-          <div />
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-meta text-fg-meta">
         <PriceNote viewer={viewer} now={now} />
         <span>
           Updated {formatDate(detail.updatedAt)} · engine {detail.engineVersion?.slice(0, 8) || "?"}
         </span>
       </div>
 
+      {phone && (
+        <div className="sticky bottom-[var(--ad-bottom,0px)] z-(--z-bar) -mx-1 flex items-center gap-2 border-t border-line bg-surface-panel px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:-mx-2">
+          <KitButton variant="primary" size="touch" className="flex-1" onClick={() => navigate(simLink)}>
+            <FlaskConical /> Open in simulator
+          </KitButton>
+          {like}
+          {more}
+        </div>
+      )}
+
+      <StatsDrawer
+        viewer={viewer}
+        open={statsOpen}
+        onClose={() => setStatsOpen(false)}
+        footer={
+          <div className="flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-secondary text-fg-muted">
+              {CELL_KIND_LABEL[m.kind]} <b className="font-semibold tabular-nums text-coin">{current === null ? "—" : formatCoins(current)}</b>/day
+            </span>
+            <KitButton size="md" onClick={() => setStatsOpen(false)}>
+              Done
+            </KitButton>
+          </div>
+        }
+      />
+      {importing && <ImportDialog viewer={viewer} onClose={() => setImporting(false)} />}
       {reporting && <ReportDialog id={detail.id} onClose={() => setReporting(false)} />}
+      {deleting && (
+        <ConfirmDialog title="Delete this flow?" confirmLabel="Delete" tone="problem" busy={deleteBusy} onConfirm={() => void remove()} onClose={() => setDeleting(false)}>
+          <p>Delete "{detail.title}" from the leaderboard? This can't be undone.</p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 };
 
+/** Loading (F50): the shape of the page. */
+const Skeleton: React.FC = () => (
+  <div className="mx-auto max-w-[1100px] space-y-4 py-4" aria-busy>
+    <div className="h-5 w-32 rounded-control bg-surface-card" />
+    <div className="flex gap-4">
+      <div className="hidden size-[118px] rounded-container bg-surface-card sm:block" />
+      <div className="flex-1 space-y-2 pt-2">
+        <div className="h-5 w-48 max-w-full rounded-control bg-surface-card" />
+        <div className="h-3 w-72 max-w-full rounded-control bg-surface-card" />
+      </div>
+    </div>
+    <div className="h-52 rounded-container border border-line bg-surface-card" />
+    <div className="h-9 border-b border-line" />
+    <span className="sr-only">Loading the flow...</span>
+  </div>
+);
+
 export const FlowDetailPage: React.FC = () => {
   const { id = "" } = useParams();
-  const [state, setState] = useState<{ id: string; detail?: FlowDetail; error?: string } | null>(null);
+  const [state, setState] = useState<{ id: string; detail?: FlowDetail; error?: string; notFound?: boolean } | null>(null);
   const [reload, setReload] = useState(0);
   useEffect(() => {
     let live = true;
     getFlow(id, { adminKey: getAdminKey() })
       .then((detail) => live && setState({ id, detail }))
-      .catch((e: unknown) => live && setState({ id, error: e instanceof Error ? e.message : String(e) }));
+      .catch((e: unknown) => live && setState({ id, error: e instanceof Error ? e.message : String(e), notFound: e instanceof ApiError && e.status === 404 }));
     return () => {
       live = false;
     };
@@ -565,21 +552,37 @@ export const FlowDetailPage: React.FC = () => {
   const onChange = useCallback((detail: FlowDetail) => setState({ id: detail.id, detail }), []);
   const onReload = useCallback(() => setReload((n) => n + 1), []);
 
-  if (!state || state.id !== id)
-    return (
-      <div className="space-y-4 py-4" aria-busy>
-        <div className="h-4 w-32 animate-pulse rounded bg-slate-700/40" />
-        <div className="h-56 animate-pulse rounded-xl border border-slate-700/40 bg-slate-800/40" />
-        <span className="sr-only">Loading the flow...</span>
-      </div>
-    );
+  if (!state || state.id !== id) return <Skeleton />;
   if (state.error || !state.detail)
     return (
-      <div className="space-y-3 px-4 py-10 text-center text-sm">
-        <div className="text-red-300">Could not load this flow: {state.error}</div>
-        <Link to="/flows" className="text-xs text-emerald-300 hover:underline">
-          Back to the rankings
+      <div className="mx-auto max-w-[1100px] space-y-6 py-4">
+        <Link to="/flows" className="focus-ring hit-area inline-flex items-center gap-1 rounded-inner text-secondary text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg">
+          <ArrowLeft className="size-3.5" /> Flow rankings
         </Link>
+        <div className="mx-auto max-w-md space-y-3 py-10 text-center" role={state.notFound ? undefined : "alert"}>
+          <p className="text-title text-fg">{state.notFound ? "This flow isn't on the leaderboard" : "Could not load this flow"}</p>
+          <p className="break-words text-secondary text-fg-muted">{state.notFound ? "It may have been deleted or hidden, or the link is wrong." : state.error}</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {!state.notFound && (
+              <KitButton
+                variant="primary"
+                size="md"
+                onClick={() => {
+                  setState(null);
+                  onReload();
+                }}
+              >
+                <RefreshCw /> Try again
+              </KitButton>
+            )}
+            <Link
+              to="/flows"
+              className="focus-ring inline-flex h-8 items-center rounded-control border border-line-strong bg-surface-control px-3 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover"
+            >
+              Back to the rankings
+            </Link>
+          </div>
+        </div>
       </div>
     );
   return <FlowDetailView detail={state.detail} onChange={onChange} onReload={onReload} />;

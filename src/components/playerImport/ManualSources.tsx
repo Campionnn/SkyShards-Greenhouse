@@ -9,7 +9,12 @@ import {
   type ManualSource,
   type ManualValue,
 } from "../../services/playerImport";
-import { InfoHint } from "../ui";
+import { LinkButton } from "../ui/Card";
+import { cn } from "../ui/cn";
+import { InfoHint } from "../ui/InfoHint";
+import { KitInput, KitLabel } from "../ui/kit";
+import { Dropdown, MenuItem } from "../ui/Popover";
+import { surface } from "../ui/surface";
 import { MANUAL_SOURCE_INFO } from "./manualSourceInfo";
 
 /**
@@ -20,20 +25,26 @@ import { MANUAL_SOURCE_INFO } from "./manualSourceInfo";
 
 const GROUP_LABEL: Record<ManualGroup, string> = { permanent: "Permanent", chips: "Chips", temporary: "Temporary" };
 
-const control =
-  "w-full min-w-0 bg-slate-900/70 border border-slate-600/40 rounded-md px-1.5 py-1 text-xs text-slate-100 tabular-nums focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors";
-
 const SourceSelect: React.FC<{ source: ManualSource; value: ManualValue; onChange: (v: ManualValue) => void }> = ({ source, value, onChange }) => {
   const options = source.options ?? [];
   const index = Math.max(0, options.findIndex((o) => o.value === value));
   return (
-    <select className={control} value={index} onChange={(e) => onChange(options[Number(e.target.value)].value)} aria-label={source.label}>
-      {options.map((o, i) => (
-        <option key={i} value={i}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <Dropdown label={source.label} look="field" width={280} className="h-8 w-full justify-between pl-2.5 font-normal" button={<span className="truncate">{options[index]?.label ?? ""}</span>}>
+      {(close) =>
+        options.map((o, i) => (
+          <MenuItem
+            key={i}
+            checked={i === index}
+            onSelect={() => {
+              onChange(o.value);
+              close();
+            }}
+          >
+            {o.label}
+          </MenuItem>
+        ))
+      }
+    </Dropdown>
   );
 };
 
@@ -47,13 +58,13 @@ const SourceNumber: React.FC<{ source: ManualSource; value: number; onChange: (v
   };
   return (
     <div className="flex items-center gap-1.5">
-      <input
+      <KitInput
         type="number"
         inputMode="decimal"
         min={spec.min}
         max={spec.max}
         step={spec.step}
-        className={control}
+        className="w-full tabular-nums"
         value={text ?? String(value)}
         onChange={(e) => setText(e.target.value)}
         onBlur={(e) => commit(e.target.value)}
@@ -62,7 +73,7 @@ const SourceNumber: React.FC<{ source: ManualSource; value: number; onChange: (v
         }}
         aria-label={source.label}
       />
-      {spec.unit && <span className="shrink-0 text-[11px] text-slate-500">{spec.unit}</span>}
+      {spec.unit && <span className="shrink-0 text-meta text-fg-meta">{spec.unit}</span>}
     </div>
   );
 };
@@ -70,39 +81,36 @@ const SourceNumber: React.FC<{ source: ManualSource; value: number; onChange: (v
 const SourceRow: React.FC<{ source: ManualSource; choices: ManualChoices; onChange: (id: string, v: ManualValue) => void }> = ({ source, choices, onChange }) => {
   const value = manualValue(source, choices);
   const atMax = value === source.default;
+  const parts = [
+    source.condition ? <span key="c">{source.condition}</span> : null,
+    source.input === "number" ? (
+      <span key="v" className={cn(!atMax && "text-warn")}>
+        {describeAdd(manualAddAt(source, value))}
+      </span>
+    ) : !atMax ? (
+      <span key="v" className="text-warn">
+        below max
+      </span>
+    ) : null,
+  ].filter(Boolean);
   return (
     // Label above a full-width control: option labels ("Legendary · +37.5 Overbloom") stay readable in narrow columns.
-    <li className="grid grid-cols-1 gap-1 px-2.5 py-1.5">
+    <li className="grid grid-cols-1 gap-1 px-2.5 py-2">
       <div className="min-w-0">
-        <div className="flex items-center gap-1 text-xs text-slate-300">
+        <div className="flex items-center gap-1 text-body text-fg-body">
           <span className="truncate">{source.label}</span>
           {(source.hint || MANUAL_SOURCE_INFO[source.id]) && (
             <InfoHint title={source.label} width={300}>
               {source.hint && <p>{source.hint}</p>}
               {MANUAL_SOURCE_INFO[source.id]?.map((line, i) => (
-                <p key={i} className="text-slate-400">
+                <p key={i} className="text-fg-muted">
                   {line}
                 </p>
               ))}
             </InfoHint>
           )}
         </div>
-        <div className="truncate text-[10px] leading-tight text-slate-500">
-          {[
-            source.condition ? <span key="c">{source.condition}</span> : null,
-            source.input === "number" ? (
-              <span key="v" className={atMax ? "" : "text-amber-300/80"}>
-                {describeAdd(manualAddAt(source, value))}
-              </span>
-            ) : !atMax ? (
-              <span key="v" className="text-amber-300/80">
-                below max
-              </span>
-            ) : null,
-          ]
-            .filter(Boolean)
-            .flatMap((part, i) => (i ? [" · ", part] : [part]))}
-        </div>
+        {parts.length > 0 && <div className="truncate text-meta text-fg-meta">{parts.flatMap((part, i) => (i ? [" · ", part] : [part]))}</div>}
       </div>
       {source.input === "select" ? (
         <SourceSelect source={source} value={value} onChange={(v) => onChange(source.id, v)} />
@@ -122,16 +130,12 @@ export const ManualSources: React.FC<{
   if (!sources.length) return null;
   const changed = sources.filter((s) => manualValue(s, choices) !== s.default).length;
   return (
-    <div className="rounded-md border border-slate-700/50 bg-slate-900/40" data-testid="manual-sources">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-700/50 px-2.5 py-1.5">
-        <span className="text-xs text-slate-300">
-          Not in the API <span className="text-slate-500">— set these</span>
+    <div className={cn(surface.well, "rounded-container")} data-testid="manual-sources">
+      <div className="flex items-center justify-between gap-2 border-b border-line px-2.5 py-2">
+        <span className="text-body text-fg-body">
+          Not in the API <span className="text-fg-meta">— set these</span>
         </span>
-        {changed > 0 && (
-          <button type="button" onClick={onReset} className="text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline">
-            Reset to max
-          </button>
-        )}
+        {changed > 0 && <LinkButton onClick={onReset}>Reset to max</LinkButton>}
       </div>
       <div>
         {MANUAL_GROUPS.map((g) => {
@@ -139,8 +143,8 @@ export const ManualSources: React.FC<{
           if (!rows.length) return null;
           return (
             <div key={g}>
-              <div className="bg-slate-800/40 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">{GROUP_LABEL[g]}</div>
-              <ul className="divide-y divide-slate-700/30">
+              <KitLabel className="bg-surface-card px-2.5 py-1">{GROUP_LABEL[g]}</KitLabel>
+              <ul className="divide-y divide-line">
                 {rows.map((s) => (
                   <SourceRow key={s.id} source={s} choices={choices} onChange={onChange} />
                 ))}

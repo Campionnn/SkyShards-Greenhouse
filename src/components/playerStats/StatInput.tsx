@@ -1,16 +1,19 @@
 /**
  * One player-stat input, rendered from its shared definition (`statFields.ts`): a number field, a
  * select of game values, or a Garden Chip picked as rarity + level. Used by the simulator's Player
- * tab, the Guide's "How you play" dialog and the leaderboard's "Your stats" panel.
+ * tab, the Guide's "How you play" dialog and the leaderboard's "Your stats" form.
  *
  * A stored value that isn't one of the choices (old saves, an import, a typed number) is kept and
  * shown as "Custom"; it only changes when the player picks something.
  */
 import React, { useId, useRef, useState } from "react";
+import { cn } from "../ui/cn";
 import { InfoHint } from "../ui/InfoHint";
+import { Dropdown, MenuItem } from "../ui/Popover";
+import { surface } from "../ui/surface";
 import { NumberInput } from "../simulator/controls";
-import { inputClass } from "../simulator/styles";
-import { CHIP_RARITIES, CHIP_RARITY_LABEL, chipFromValue, chipValue, type ChipRarity, type ChipSpec, type StatFieldDef, type StatOption } from "./statFields";
+import { CHIP_RARITIES, CHIP_RARITY_LABEL, chipFromValue, chipValue, type ChipRarity, type ChipSpec, type StatFieldDef } from "./statFields";
+import { CUSTOM, selectChoices, type Choice } from "./statChoices";
 
 export type StatInputVariant = "row" | "stacked";
 
@@ -30,11 +33,14 @@ export interface StatInputProps {
   commitOn?: "change" | "blur";
 }
 
-const CUSTOM = "custom";
-const same = (a: number, b: number) => Math.abs(a - b) < 1e-9;
-const shortNumber = (v: number) => String(Number(v.toFixed(4)));
+/** The kit's field look for number inputs (KitInput's recipe, kept here because NumberInput is a plain input). */
+const numberField = cn(
+  surface.well,
+  "h-8 min-w-0 px-2.5 text-body tabular-nums text-fg placeholder:text-fg-meta transition-colors duration-(--duration-hover) enabled:hover:border-fg-meta focus-ring disabled:cursor-not-allowed disabled:opacity-40",
+  "pointer-coarse:text-[16px]", // design-guard-ignore: iOS zooms into focused fields under 16px; not a type role
+);
 
-export const StatInput: React.FC<StatInputProps> = ({ def, value, onChange, variant = "row", disabled, className = "", commitOn = "change" }) => {
+export const StatInput: React.FC<StatInputProps> = ({ def, value, onChange, variant = "row", disabled, className, commitOn = "change" }) => {
   const id = useId();
   const stacked = variant === "stacked";
   const v = Number.isFinite(value) ? value : 0;
@@ -44,7 +50,7 @@ export const StatInput: React.FC<StatInputProps> = ({ def, value, onChange, vari
   if (def.kind === "number") {
     const props = {
       id,
-      className: `${inputClass} ${width} ${stacked ? "" : "text-right"} flex-shrink-0`,
+      className: cn(numberField, width, !stacked && "text-right", "shrink-0"),
       min: def.min,
       max: def.max,
       step: def.step,
@@ -52,14 +58,15 @@ export const StatInput: React.FC<StatInputProps> = ({ def, value, onChange, vari
     };
     control = commitOn === "blur" ? <BlurNumberInput {...props} value={v} onChange={onChange} /> : <NumberInput {...props} value={v} onChange={onChange} />;
   } else if (def.kind === "select") {
-    control = <OptionSelect id={id} options={def.options} value={v} onChange={onChange} disabled={disabled} className={`${width} flex-shrink-0`} />;
+    const { choices, current } = selectChoices(def.options, v);
+    control = <FieldSelect label={def.label} choices={choices} current={current} onPick={(c) => c !== CUSTOM && onChange(Number(c))} disabled={disabled} className={cn(width, "shrink-0")} />;
   } else {
-    control = <ChipPicker id={id} label={def.label} spec={def.chip} value={v} onChange={onChange} disabled={disabled} stacked={stacked} />;
+    control = <ChipPicker label={def.label} spec={def.chip} value={v} onChange={onChange} disabled={disabled} stacked={stacked} />;
   }
 
   const label = (
-    <span className={`flex items-center gap-1 min-w-0 ${stacked ? "text-slate-400" : ""}`}>
-      <label htmlFor={id}>{def.label}</label>
+    <span className={cn("flex min-w-0 items-center gap-1", stacked ? "text-secondary text-fg-muted" : "text-body text-fg-body")}>
+      {def.kind === "number" ? <label htmlFor={id}>{def.label}</label> : <span>{def.label}</span>}
       {def.hint && (
         <InfoHint title={def.label} width={260}>
           {def.hint}
@@ -69,12 +76,12 @@ export const StatInput: React.FC<StatInputProps> = ({ def, value, onChange, vari
   );
 
   return stacked ? (
-    <div className={`block min-w-0 text-xs text-slate-300 ${className}`}>
-      <div className="mb-1">{label}</div>
+    <div className={cn("flex min-w-0 flex-col gap-1", className)}>
+      {label}
       {control}
     </div>
   ) : (
-    <div className={`flex items-center justify-between gap-3 text-xs text-slate-300 ${className}`}>
+    <div className={cn("flex items-center justify-between gap-3", className)}>
       {label}
       {control}
     </div>
@@ -118,39 +125,49 @@ const BlurNumberInput: React.FC<React.ComponentProps<typeof NumberInput>> = ({ v
   );
 };
 
-/** A select of fixed values; a value that matches none gets a "Custom (x)" entry so it isn't silently changed. */
-const OptionSelect: React.FC<{ id: string; options: StatOption[]; value: number; onChange: (v: number) => void; disabled?: boolean; className: string }> = ({
-  id,
-  options,
-  value,
-  onChange,
+/** A select-like field: a Dropdown with the current choice on the trigger and a tick in the menu. */
+const FieldSelect: React.FC<{ label: string; choices: Choice[]; current: string; onPick: (value: string) => void; disabled?: boolean; className?: string }> = ({
+  label,
+  choices,
+  current,
+  onPick,
   disabled,
   className,
 }) => {
-  const match = options.find((o) => same(o.value, value));
+  const shown = choices.find((c) => c.value === current)?.label ?? "";
   return (
-    <select
-      id={id}
-      className={`${inputClass} ${className}`}
-      value={match ? String(match.value) : CUSTOM}
+    <Dropdown
+      label={label}
+      look="field"
       disabled={disabled}
-      onChange={(e) => {
-        if (e.target.value !== CUSTOM) onChange(Number(e.target.value));
-      }}
+      width={240}
+      className={cn("h-8 justify-between pl-2.5 font-normal", className)}
+      button={
+        <span className="truncate" data-selected-choice="true">
+          {shown}
+        </span>
+      }
     >
-      {!match && <option value={CUSTOM}>Custom ({shortNumber(value)})</option>}
-      {options.map((o) => (
-        <option key={o.value} value={String(o.value)}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+      {(close) =>
+        choices.map((c) => (
+          <MenuItem
+            key={c.value}
+            checked={c.value === current}
+            onSelect={() => {
+              onPick(c.value);
+              close();
+            }}
+          >
+            {c.label}
+          </MenuItem>
+        ))
+      }
+    </Dropdown>
   );
 };
 
 /** Garden Chip: rarity + level (0 = no chip), with the resulting bonus. */
-const ChipPicker: React.FC<{ id: string; label: string; spec: ChipSpec; value: number; onChange: (v: number) => void; disabled?: boolean; stacked: boolean }> = ({
-  id,
+const ChipPicker: React.FC<{ label: string; spec: ChipSpec; value: number; onChange: (v: number) => void; disabled?: boolean; stacked: boolean }> = ({
   label,
   spec,
   value,
@@ -172,42 +189,31 @@ const ChipPicker: React.FC<{ id: string; label: string; spec: ChipSpec; value: n
     onChange(chipValue(spec, r, Math.min(spec.maxLevel[r], l)));
   };
 
+  const rarityChoices: Choice[] = [...(custom ? [{ value: CUSTOM, label: "Custom" }] : []), ...CHIP_RARITIES.map((r) => ({ value: r, label: CHIP_RARITY_LABEL[r] }))];
+  const levelChoices: Choice[] = [
+    ...(level === null ? [{ value: CUSTOM, label: "Custom" }] : []),
+    ...Array.from({ length: spec.maxLevel[rarity] + 1 }, (_, l) => ({ value: String(l), label: l === 0 ? "No chip" : `Level ${l}` })),
+  ];
+
   return (
-    <span className={`flex items-center gap-1.5 flex-shrink-0 ${stacked ? "w-full" : ""}`}>
-      <select
-        id={id}
-        aria-label={`${label} rarity`}
-        className={`${inputClass} ${stacked ? "flex-1" : "w-24"}`}
-        value={custom ? CUSTOM : rarity}
+    <span className={cn("flex shrink-0 items-center gap-1.5", stacked && "w-full")}>
+      <FieldSelect
+        label={`${label} rarity`}
+        choices={rarityChoices}
+        current={custom ? CUSTOM : rarity}
+        onPick={(r) => r !== CUSTOM && setRarity(r as ChipRarity)}
         disabled={disabled}
-        onChange={(e) => {
-          if (e.target.value !== CUSTOM) setRarity(e.target.value as ChipRarity);
-        }}
-      >
-        {custom && <option value={CUSTOM}>Custom</option>}
-        {CHIP_RARITIES.map((r) => (
-          <option key={r} value={r}>
-            {CHIP_RARITY_LABEL[r]}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label={`${label} level`}
-        className={`${inputClass} ${stacked ? "flex-1" : "w-24"}`}
-        value={level === null ? CUSTOM : String(level)}
+        className={stacked ? "min-w-0 flex-1" : "w-24"}
+      />
+      <FieldSelect
+        label={`${label} level`}
+        choices={levelChoices}
+        current={level === null ? CUSTOM : String(level)}
+        onPick={(l) => l !== CUSTOM && onChange(chipValue(spec, rarity, Number(l)))}
         disabled={disabled}
-        onChange={(e) => {
-          if (e.target.value !== CUSTOM) onChange(chipValue(spec, rarity, Number(e.target.value)));
-        }}
-      >
-        {level === null && <option value={CUSTOM}>Custom</option>}
-        {Array.from({ length: spec.maxLevel[rarity] + 1 }, (_, l) => (
-          <option key={l} value={String(l)}>
-            {l === 0 ? "No chip" : `Level ${l}`}
-          </option>
-        ))}
-      </select>
-      <span className="w-12 text-right tabular-nums text-emerald-300" aria-live="polite">
+        className={stacked ? "min-w-0 flex-1" : "w-24"}
+      />
+      <span className="w-12 shrink-0 text-right text-body tabular-nums text-fg-body" aria-live="polite">
         {value > 0 ? spec.format(value) : "+0%"}
       </span>
     </span>

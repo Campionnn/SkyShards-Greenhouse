@@ -1,174 +1,204 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Search, Sprout, X } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import type { Board } from "../../leaderboard/rules";
-import { START_ITEM_CAPS, type EarningIn, type RowFilters } from "../../leaderboard/view";
+import { DEFAULT_FILTERS, START_ITEM_CAPS, type EarningIn, type RowFilters } from "../../leaderboard/view";
+import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage } from "../shared/CropImage";
 import { nameOf, rarityOf } from "../simulator/format";
-import { inputClass } from "../simulator/styles";
-import { getRarityTextColor } from "../../utilities/rarity";
+import { LinkButton } from "../ui/Card";
+import { cn } from "../ui/cn";
+import { KitInput, Segmented } from "../ui/kit";
+import { Dropdown, MenuItem, Popover } from "../ui/Popover";
+import type { FacetCounts } from "./ranking/rankingHelpers";
 
 /**
- * The ranking's filter bar (docs/plans/leaderboard-boards-v2.md §7.1): earning crops / mutations,
- * and on the ironman board the "I have the starting items" switch, no upkeep and a starting-items
- * cap. The page keeps the values in its URL; filtering itself is `matchesFilters` (view.ts).
+ * The ranking's filters (F08–F15) as field chips that open kit menus / popovers: plots, earning
+ * crops / mutations (searchable, top 3 or anywhere), and on the ironman board upkeep and a
+ * starting-items cap. Each choice shows how many flows have it. The page keeps the values in its
+ * URL; filtering itself is `matchesFilters` (view.ts); plots is part of the list request.
  */
 
-const pill = (active: boolean) =>
-  `inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-medium transition-[background-color,color,border-color,transform] duration-150 active:scale-[0.97] ${
-    active ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200" : "border-slate-600/40 bg-slate-800/60 text-slate-300 hover:bg-slate-700/60 hover:text-slate-100"
-  }`;
+/** A field chip: "Plots Any ▾". 28px, 44px on touch screens. */
+export const fieldChip =
+  "focus-ring inline-flex h-7 min-w-0 max-w-full shrink-0 cursor-pointer items-center gap-1.5 rounded-control border border-line-control bg-surface-well px-2 text-secondary font-medium text-fg transition-colors duration-(--duration-hover) hover:bg-surface-panel pointer-coarse:h-11";
 
-/** Closes a popover on an outside click or Escape. */
-function useDismiss(open: boolean, ref: React.RefObject<HTMLElement | null>, close: () => void) {
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("mousedown", down);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("mousedown", down);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open, ref, close]);
-}
+const FieldText: React.FC<{ k: string; v: string; on: boolean }> = ({ k, v, on }) => (
+  <span className="min-w-0 truncate">
+    <span className="text-fg-meta">{k}</span> <span className={on ? "text-select-fg" : "text-fg"}>{v}</span>
+  </span>
+);
 
-/** The searchable multi-select of earning plants, with the "in top 3" / "anywhere" mode. */
-export const EarningPicker: React.FC<{
+const countHint = (n: number | undefined) => (n === undefined ? undefined : `${n} flow${n === 1 ? "" : "s"}`);
+
+export type PlotsFilter = "any" | "1" | "2" | "3";
+
+/** F09: plots (part of the list request, so it refetches). */
+export const PlotsField: React.FC<{ value: PlotsFilter; onChange: (p: PlotsFilter) => void; counts?: Record<string, number> }> = ({ value, onChange, counts }) => (
+  <Dropdown look="plain" label="Plots" width={220} className={fieldChip} button={<FieldText k="Plots" v={value === "any" ? "Any" : value} on={value !== "any"} />}>
+    {(close) =>
+      (["any", "1", "2", "3"] as PlotsFilter[]).map((p) => (
+        <MenuItem key={p} checked={value === p} hint={p === "any" ? undefined : countHint(counts?.[p])} onSelect={() => (onChange(p), close())}>
+          {p === "any" ? "Any number of plots" : `${p} plot${p === "1" ? "" : "s"}`}
+        </MenuItem>
+      ))
+    }
+  </Dropdown>
+);
+
+/** F12: Ironman, no upkeep. */
+export const UpkeepField: React.FC<{ value: boolean; onChange: (v: boolean) => void; count?: number }> = ({ value, onChange, count }) => (
+  <Dropdown look="plain" label="Upkeep" width={260} className={fieldChip} button={<FieldText k="Upkeep" v={value ? "None" : "Any"} on={value} />}>
+    {(close) => (
+      <>
+        <MenuItem checked={!value} onSelect={() => (onChange(false), close())}>
+          Any upkeep
+        </MenuItem>
+        <MenuItem checked={value} hint={`Grows back everything it uses${count !== undefined ? ` · ${countHint(count)}` : ""}`} onSelect={() => (onChange(true), close())}>
+          No upkeep
+        </MenuItem>
+      </>
+    )}
+  </Dropdown>
+);
+
+const capLabel = (n: number | null) => (n === null ? "Any" : n === 0 ? "None" : `≤ ${n}`);
+
+/** F13: Ironman, a starting-items cap (Any / 0 / ≤60 / ≤200). */
+export const StartField: React.FC<{ value: number | null; onChange: (v: number | null) => void; counts?: Record<string, number> }> = ({ value, onChange, counts }) => (
+  <Dropdown look="plain" label="Starting items" width={240} className={fieldChip} button={<FieldText k="Starting items" v={capLabel(value)} on={value !== null} />}>
+    {(close) =>
+      START_ITEM_CAPS.map((n) => (
+        <MenuItem key={String(n)} checked={value === n} hint={n === null ? undefined : countHint(counts?.[String(n)])} onSelect={() => (onChange(n), close())}>
+          {n === null ? "Any amount" : n === 0 ? "None needed" : `At most ${n}`}
+        </MenuItem>
+      ))
+    }
+  </Dropdown>
+);
+
+/** F10's panel: search, top 3 / anywhere, a checklist (crop image, rarity colour, count), selected first, Clear. */
+export const EarningPanel: React.FC<{
   options: readonly string[];
   value: readonly string[];
   mode: EarningIn;
   onChange: (ids: string[], mode: EarningIn) => void;
-}> = ({ options, value, mode, onChange }) => {
-  const [open, setOpen] = useState(false);
+  counts?: FacetCounts;
+}> = ({ options, value, mode, onChange, counts }) => {
   const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  useDismiss(open, ref, () => setOpen(false));
+  const per = counts ? (mode === "any" ? counts.anywhere : counts.top3) : null;
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
     // Selected ones first, so they're easy to untick; unknown selected ids (not on this board) stay listed.
-    const all = [...new Set([...value, ...options])];
+    const all = [...new Set([...value, ...options])].sort((a, b) => Number(value.includes(b)) - Number(value.includes(a)) || (per ? (per[b] ?? 0) - (per[a] ?? 0) : 0) || nameOf(a).localeCompare(nameOf(b)));
     return t ? all.filter((id) => nameOf(id).toLowerCase().includes(t) || id.includes(t)) : all;
-  }, [q, options, value]);
+  }, [q, options, value, per]);
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id], mode);
-  const label = value.length === 0 ? "Any" : value.length === 1 ? nameOf(value[0]) : `${nameOf(value[0])} +${value.length - 1}`;
   return (
-    <div className="relative" ref={ref}>
-      <button type="button" className={pill(value.length > 0)} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="listbox" data-testid="earning-filter">
-        <Sprout className="h-3.5 w-3.5 text-emerald-400" />
-        <span className="text-slate-400">Earning</span>
-        {value.length === 1 && <CropImage cropId={value[0]} cropName={nameOf(value[0])} size="custom" width={14} height={14} showFallback={false} />}
-        <span className="max-w-[9rem] truncate">{label}</span>
-        {value.length > 0 && <span className="text-[10px] font-normal text-slate-400">{mode === "any" ? "anywhere" : "top 3"}</span>}
-        <ChevronDown className={`h-3 w-3 text-slate-500 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div className="absolute left-0 z-40 mt-1 w-72 rounded-lg border border-slate-600/50 bg-slate-800 p-2 shadow-xl" role="dialog" aria-label="Earning crops and mutations">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-            <input
-              autoFocus
-              type="search"
-              className={`${inputClass} w-full py-1.5 pl-7 text-xs`}
-              placeholder="Find a crop or mutation"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              aria-label="Find a crop or mutation"
-            />
-          </label>
-          <div className="mt-2 flex gap-1" role="group" aria-label="Where it earns">
-            {(["top3", "any"] as const).map((m) => (
+    <div className="space-y-2 p-1.5">
+      <label className="relative block">
+        <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-meta" />
+        <KitInput type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a crop or mutation" aria-label="Find a crop or mutation" className="w-full pl-8" />
+      </label>
+      <Segmented
+        label="Where it earns"
+        value={mode}
+        onChange={(m) => onChange([...value], m)}
+        options={[
+          { value: "top3", label: "In its top 3", title: "Among the flow's three biggest earners on this board" },
+          { value: "any", label: "Anywhere", title: "Earns any coins on this board" },
+        ]}
+      />
+      <ul className="scrollbar-dark max-h-60 overflow-y-auto overscroll-contain" aria-label="Crops and mutations">
+        {shown.map((id) => {
+          const on = value.includes(id);
+          const rarity = rarityOf(id);
+          return (
+            <li key={id}>
               <button
-                key={m}
                 type="button"
-                onClick={() => onChange([...value], m)}
-                className={`flex-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${
-                  mode === m ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200" : "border-slate-600/40 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
-                }`}
-                title={m === "top3" ? "Among the flow's three biggest earners on this board" : "Earns any coins on this board"}
+                role="checkbox"
+                aria-checked={on}
+                onClick={() => toggle(id)}
+                className="focus-ring-inset flex h-8 w-full cursor-pointer items-center gap-2 rounded-inner px-1.5 text-left text-body transition-colors duration-(--duration-hover) hover:bg-surface-hover pointer-coarse:h-11"
               >
-                {m === "top3" ? "In its top 3" : "Anywhere"}
+                <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center rounded-inner border", on ? "border-select bg-select text-surface-page" : "border-line-control")}>
+                  {on && <Check className="size-3" strokeWidth={3} />}
+                </span>
+                <CropImage cropId={id} cropName={nameOf(id)} size="custom" width={18} height={18} showFallback />
+                <span className={cn("min-w-0 truncate", rarity ? getRarityTextColor(rarity) : "text-fg-body")}>{nameOf(id)}</span>
+                {per && <span className="ml-auto text-meta tabular-nums text-fg-meta">{per[id] ?? 0}</span>}
               </button>
-            ))}
-          </div>
-          <ul className="scrollbar-dark mt-2 max-h-64 overflow-y-auto overscroll-contain pr-1" role="listbox" aria-multiselectable>
-            {shown.length === 0 && <li className="px-2 py-3 text-center text-xs text-slate-500">Nothing matches.</li>}
-            {shown.map((id) => {
-              const on = value.includes(id);
-              const rarity = rarityOf(id);
-              return (
-                <li key={id} role="option" aria-selected={on}>
-                  <button type="button" onClick={() => toggle(id)} className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors ${on ? "bg-emerald-500/10" : "hover:bg-slate-700/50"}`}>
-                    <span className={`grid h-3.5 w-3.5 place-items-center rounded border ${on ? "border-emerald-400 bg-emerald-500/80 text-slate-950" : "border-slate-500"}`}>{on && <Check className="h-2.5 w-2.5" strokeWidth={3} />}</span>
-                    <CropImage cropId={id} cropName={nameOf(id)} size="custom" width={18} height={18} showFallback />
-                    <span className={`truncate ${rarity ? getRarityTextColor(rarity) : "text-slate-200"}`}>{nameOf(id)}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          {value.length > 0 && (
-            <button type="button" className="mt-1.5 w-full rounded-md px-2 py-1 text-[11px] text-slate-400 transition-colors hover:bg-slate-700/50 hover:text-slate-200" onClick={() => onChange([], mode)}>
-              Clear
-            </button>
-          )}
-        </div>
-      )}
+            </li>
+          );
+        })}
+        {!shown.length && <li className="px-1.5 py-3 text-center text-secondary text-fg-meta">Nothing matches.</li>}
+      </ul>
+      <div className="flex items-center justify-between gap-2 border-t border-line px-1 pt-2">
+        <span className="text-meta text-fg-meta">{value.length ? `${value.length} picked` : "Pick any number"}</span>
+        <LinkButton disabled={!value.length} onClick={() => onChange([], mode)}>
+          Clear
+        </LinkButton>
+      </div>
     </div>
   );
 };
 
-const capLabel = (n: number | null) => (n === null ? "Any" : n === 0 ? "0" : `≤ ${n}`);
+const earningLabel = (value: readonly string[], mode: EarningIn) =>
+  value.length ? `${nameOf(value[0])}${value.length > 1 ? ` +${value.length - 1}` : ""} · ${mode === "any" ? "anywhere" : "top 3"}` : "Any";
 
-/** The whole filter bar. `kitSwitch` (the ironman "I have the starting items" switch) leads the ironman-only filters. */
+/** F10: the earning chip; its popover takes focus (the search box). */
+export const EarningField: React.FC<{
+  options: readonly string[];
+  value: readonly string[];
+  mode: EarningIn;
+  onChange: (ids: string[], mode: EarningIn) => void;
+  counts?: FacetCounts;
+}> = (props) => {
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button ref={setAnchor} type="button" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={fieldChip} data-testid="earning-filter">
+        <FieldText k="Earning" v={earningLabel(props.value, props.mode)} on={props.value.length > 0} />
+        <ChevronDown aria-hidden className={cn("size-3 shrink-0 text-fg-meta transition-transform duration-(--duration-ink)", open && "rotate-180")} />
+      </button>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="Earning crops and mutations" width={300} reserve={360} initialFocus="first">
+        <EarningPanel {...props} />
+      </Popover>
+    </>
+  );
+};
+
+/**
+ * The ranking's filter chips. `board` decides the Ironman-only ones; `counts` (facets over the
+ * board's ranked rows) label each choice; `plots` is optional (the page can place it itself).
+ */
 export const FilterBar: React.FC<{
   board: Board;
   filters: RowFilters;
   earningOptions: readonly string[];
-  kitSwitch?: React.ReactNode;
   onChange: (patch: Partial<RowFilters>) => void;
-}> = ({ board, filters, earningOptions, kitSwitch, onChange }) => {
-  const borrow = board === "ironman";
-  const active = filters.earning.length > 0 || (borrow && (filters.noUpkeep || filters.maxStartItems !== null));
+  plots?: PlotsFilter;
+  onPlots?: (p: PlotsFilter) => void;
+  plotCounts?: Record<string, number>;
+  counts?: FacetCounts;
+  /** Leading controls (the phone's sort chip and starting-items switch). */
+  lead?: React.ReactNode;
+  className?: string;
+}> = ({ board, filters, earningOptions, onChange, plots, onPlots, plotCounts, counts, lead, className }) => {
+  const ironman = board === "ironman";
+  const active = filters.earning.length > 0 || (ironman && (filters.noUpkeep || filters.maxStartItems !== null));
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="filter-bar">
-      <EarningPicker options={earningOptions} value={filters.earning} mode={filters.earningIn} onChange={(earning, earningIn) => onChange({ earning, earningIn })} />
-      {borrow && (
-        <>
-          {kitSwitch}
-          <button type="button" className={pill(filters.noUpkeep)} aria-pressed={filters.noUpkeep} onClick={() => onChange({ noUpkeep: !filters.noUpkeep })} title="Hide flows that need some items supplied every day">
-            No upkeep
-          </button>
-          <div className="flex items-center gap-1" role="group" aria-label="Starting items">
-            <span className="mr-0.5 text-[11px] uppercase tracking-wide text-slate-500">Starting items</span>
-            {START_ITEM_CAPS.map((n) => (
-              <button
-                key={String(n)}
-                type="button"
-                aria-pressed={filters.maxStartItems === n}
-                onClick={() => onChange({ maxStartItems: n })}
-                className={`rounded-md border px-2 py-1 text-xs font-medium tabular-nums transition-colors ${
-                  filters.maxStartItems === n ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200" : "border-transparent text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
-                }`}
-              >
-                {capLabel(n)}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+    <div className={cn("flex items-center gap-1.5", className)} data-testid="filter-bar">
+      {lead}
+      {plots !== undefined && onPlots && <PlotsField value={plots} onChange={onPlots} counts={plotCounts} />}
+      <EarningField options={earningOptions} value={filters.earning} mode={filters.earningIn} counts={counts} onChange={(earning, earningIn) => onChange({ earning, earningIn })} />
+      {ironman && <UpkeepField value={filters.noUpkeep} count={counts?.noUpkeep} onChange={(noUpkeep) => onChange({ noUpkeep })} />}
+      {ironman && <StartField value={filters.maxStartItems} counts={counts?.caps} onChange={(maxStartItems) => onChange({ maxStartItems })} />}
       {active && (
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 text-[11px] text-slate-400 transition-colors hover:text-slate-200"
-          onClick={() => onChange({ earning: [], earningIn: "top3", noUpkeep: false, maxStartItems: null })}
-        >
-          <X className="h-3 w-3" /> Clear filters
-        </button>
+        <LinkButton className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap" onClick={() => onChange({ earning: [], earningIn: DEFAULT_FILTERS.earningIn, noUpkeep: false, maxStartItems: null })}>
+          <X aria-hidden className="size-3" /> Clear filters
+        </LinkButton>
       )}
     </div>
   );

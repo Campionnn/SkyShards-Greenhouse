@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Clock, Coins, Copy, Gauge, Heart, LogOut, RefreshCw, RotateCcw, Sprout, Wrench, X, Zap } from "lucide-react";
+import React, { useCallback, useMemo, useState } from "react";
+import { ChevronDown, Copy, Heart, LogOut, RefreshCw, RotateCcw, X } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import type { FlowViewer, ViewerStats } from "../../hooks/useFlowViewer";
 import type { FlowAuthor } from "../../leaderboard/api";
-import { cycleHours, EVERY, TIER_STATS, TIERS, type TierId } from "../../leaderboard/tiers";
+import { TIER_STATS, TIERS, type TierId } from "../../leaderboard/tiers";
 import { avatarUrl, TIER_LABEL, userName } from "../../leaderboard/view";
 import { ARMOR_SET_LABEL, ARMOR_SETS, BAZAAR_PRODUCTS, FORTUNE_CROPS, type ArmorSet, type FarmingToolStats, type FortuneCrop } from "../../simulator";
 import { PlayerImportBox } from "../playerImport/PlayerImportBox";
@@ -11,20 +11,27 @@ import { StatInput } from "../playerStats/StatInput";
 import { STAT_FIELDS, type NumericStatKey } from "../playerStats/statFields";
 import { BazaarPriceControls, BazaarPriceDialog } from "../simulator/BazaarPanels";
 import { priceAge } from "../simulator/bazaarFormat";
-import { formatDuration } from "../simulator/format";
-import { DiscordIcon, InfoHint, Portal, SegmentedControl } from "../ui";
+import { LinkButton } from "../ui/Card";
+import { cn } from "../ui/cn";
+import { DiscordIcon } from "../ui/DiscordIcon";
+import { InfoHint } from "../ui/InfoHint";
+import { IconButton, KitButton, KitInput, KitLabel, Pill, Segmented, Switch, type Tone } from "../ui/kit";
 import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
+import { Dropdown, MenuItem, Popover } from "../ui/Popover";
+import { EveryNumberInput, EveryRadios, SnapNote } from "./stats/FrequencyPicker";
+import { everyTime, statsSummaryLong } from "./stats/statsSummary";
 
 /**
- * Leaderboard controls shared by /flows and /flows/:id: the board toggle, the "Your stats" panel
- * (granular inputs snapped to the nearest stat tier) and small presentational pieces.
+ * Leaderboard controls shared by /flows and /flows/:id: the board toggle, the "Your stats" form
+ * (granular inputs snapped to the nearest stat tier; shown in StatsDrawer) and small
+ * presentational pieces (badges, likes, the login).
  */
 
 /** The two boards; the default follows the site-wide profile mode. */
-export const BoardToggle: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
-  <SegmentedControl
-    size="xs"
-    nowrap
+export const BoardToggle: React.FC<{ viewer: FlowViewer; className?: string }> = ({ viewer, className }) => (
+  <Segmented
+    label="Board"
+    className={className}
     value={viewer.board}
     onChange={viewer.setBoard}
     options={[
@@ -33,48 +40,29 @@ export const BoardToggle: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
         label: "Ironman",
         title: "Ironman from nothing: the flow's starting items are made first (with the site's builder), then it runs. NPC prices; Dead Plants and Fermento are farmed by you",
       },
-      { value: "normal", label: "Normal", tone: "blue", title: "Bazaar prices; supplies are bought" },
+      { value: "normal", label: "Normal", title: "Bazaar prices; supplies are bought" },
     ]}
   />
 );
 
 /** The ironman board's "I have the starting items" switch: ranks by the number with the starting items already owned. */
-export const KitSwitch: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
+export const KitSwitch: React.FC<{ viewer: FlowViewer; className?: string }> = ({ viewer, className }) => {
   if (viewer.board !== "ironman") return null;
   const on = viewer.kit;
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      onClick={() => viewer.setKit(!on)}
+    <span
+      className={cn("inline-flex", className)}
       title={on ? "Ranked as if you already own each flow's starting items" : "Ranked from nothing: making each flow's starting items first counts. Turn on if you already own them"}
-      className="inline-flex items-center gap-2 rounded-md px-1.5 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-700/40"
       data-testid="kit-switch"
     >
-      <span className={`relative inline-flex h-4 w-7 flex-shrink-0 items-center rounded-full transition-colors duration-150 ${on ? "bg-emerald-500/80" : "bg-slate-600/70"}`}>
-        <span className={`absolute h-3 w-3 rounded-full bg-slate-100 shadow transition-transform duration-150 ${on ? "translate-x-3.5" : "translate-x-0.5"}`} />
-      </span>
-      I have the starting items
-    </button>
+      <Switch checked={on} onChange={viewer.setKit} label="I have the starting items" showLabel />
+    </span>
   );
 };
 
 // ---- Stat inputs ---------------------------------------------------------------------------------
 
 type NumKey = Exclude<keyof ViewerStats, "armorSet" | "cropFortune" | "tools">;
-
-/** A plain number input (online frequency, per-crop fortune). */
-interface FieldSpec {
-  key: string;
-  label: string;
-  min: number;
-  max: number;
-  step?: number;
-  hint?: string;
-  /** Shown after the number. */
-  suffix?: string;
-}
 
 /** A viewer stat with a shared friendly definition (statFields.ts): the stat keys both types have. */
 type StatKey = NumKey & NumericStatKey;
@@ -85,42 +73,35 @@ const SIM_FIELDS: StatKey[] = ["cropGrowth", "growthUpgradeTier", "speedAttribut
 const YIELD_FIELDS_TOP: StatKey[] = ["farmingFortune"];
 const YIELD_FIELDS_REST: StatKey[] = ["plantYieldUpgrade", "overbloom", "evergreenChip"];
 
-const fieldInput =
-  "w-full bg-slate-900/70 border border-slate-600/40 rounded-md px-2 py-1.5 text-sm text-slate-100 tabular-nums focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition-colors";
-
-const NumberStat: React.FC<{ spec: FieldSpec; value: number; onChange: (v: number) => void }> = ({ spec, value, onChange }) => {
+/** A plain number input that commits on blur / Enter (per-crop fortune). The hint sits beside the label, not inside it. */
+const NumberStat: React.FC<{ id: string; label: string; min: number; max: number; step?: number; value: number; onChange: (v: number) => void }> = ({ id, label, min, max, step, value, onChange }) => {
   const [text, setText] = useState<string | null>(null);
   const commit = (raw: string) => {
     const n = Number(raw);
-    if (raw.trim() !== "" && Number.isFinite(n)) onChange(Math.max(spec.min, Math.min(spec.max, n)));
+    if (raw.trim() !== "" && Number.isFinite(n)) onChange(Math.max(min, Math.min(max, n)));
     setText(null);
   };
   return (
-    <label className="block min-w-0">
-      <span className="flex items-center gap-1 text-xs text-slate-400">
-        {spec.label}
-        {spec.hint && (
-          <InfoHint title={spec.label} width={240}>
-            {spec.hint}
-          </InfoHint>
-        )}
-      </span>
-      <input
+    <div className="flex min-w-0 flex-col gap-1">
+      <label htmlFor={id} className="truncate text-secondary text-fg-muted">
+        {label}
+      </label>
+      <KitInput
+        id={id}
         type="number"
         inputMode="decimal"
-        min={spec.min}
-        max={spec.max}
-        step={spec.step ?? 1}
-        className={`${fieldInput} mt-1`}
+        min={min}
+        max={max}
+        step={step ?? 1}
+        className="w-full tabular-nums"
         value={text ?? String(value)}
         onChange={(e) => setText(e.target.value)}
         onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
         }}
-        aria-label={spec.label}
       />
-    </label>
+    </div>
   );
 };
 
@@ -132,51 +113,48 @@ export const TierMeter: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
   const at = (score: number) => (hi > lo ? ((score - lo) / (hi - lo)) * 100 : 100);
   const order: TierId[] = ["low", "mid", "high", "max"];
   return (
-    <div className="space-y-2" data-testid="tier-meter">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Scored at</span>
-        <span className="text-xs text-slate-400">
-          one cycle ≈ <span className="text-slate-200 tabular-nums">{formatDuration(cycleHours(viewer.stats) * 3600)}</span>
+    <div className="space-y-1.5" data-testid="tier-meter">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-secondary">
+        <span className="text-fg-muted">
+          Scored at <b className="font-semibold text-fg">{TIER_LABEL[snap.tier]}</b> tier
+        </span>
+        <span className="text-fg-meta">
+          one cycle ≈ <span className="tabular-nums text-fg-body">{everyTime(viewer, 1)}</span>
         </span>
       </div>
-      <div className="relative h-9">
-        <div className="absolute inset-x-0 top-[14px] h-1 rounded-full bg-slate-700/60" />
-        <div className="absolute left-0 top-[14px] h-1 rounded-full bg-gradient-to-r from-emerald-700/60 to-emerald-400/80 transition-[width] duration-300 ease-out" style={{ width: `${at(snap.score)}%` }} />
-        {order.map((t) => {
-          const active = t === snap.tier;
-          return (
-            <div key={t} className="absolute top-0 -translate-x-1/2 flex flex-col items-center" style={{ left: `${at(snap.scores[t])}%` }}>
-              <span
-                className={`mt-[9px] h-3.5 w-3.5 rounded-full border-2 transition-colors ${
-                  active ? "border-emerald-300 bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]" : "border-slate-500 bg-slate-800"
-                }`}
-              />
-              <span className={`mt-1 text-[10px] font-medium uppercase tracking-wide ${active ? "text-emerald-300" : "text-slate-500"}`}>{TIER_LABEL[t]}</span>
-            </div>
-          );
-        })}
-        <span
-          aria-hidden
-          className="absolute top-[7px] h-[18px] w-0.5 -translate-x-1/2 rounded-full bg-amber-300 shadow-[0_0_6px_rgba(252,211,77,0.7)] transition-[left] duration-300 ease-out"
-          style={{ left: `${at(snap.score)}%` }}
-          title="You"
-        />
+      <div className="relative mx-1.5 h-1 rounded-full bg-line" role="img" aria-label={`Your growth speed snaps to the ${TIER_LABEL[snap.tier]} tier`}>
+        {order.map((t) => (
+          <span
+            key={t}
+            className={cn("absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full", t === snap.tier ? "size-3 bg-select" : "size-2 bg-line-control")}
+            style={{ left: `${at(snap.scores[t])}%` }}
+          />
+        ))}
+        <span aria-hidden title="You" className="absolute -top-1.5 h-4 w-0.5 -translate-x-1/2 rounded-full bg-warn" style={{ left: `${Math.max(0, Math.min(100, at(snap.score)))}%` }} />
       </div>
-      <p className="text-[11px] text-slate-500 pt-1">
-        Your growth speed snaps to the <span className="text-emerald-300 font-medium">{TIER_LABEL[snap.tier]}</span> tier (amber marker). Every flow was simulated
-        at the four tiers; yield stats then scale the result to you.
-      </p>
+      <div className="relative mx-1.5 h-4 text-meta text-fg-meta">
+        {order.map((t, i) => (
+          <span
+            key={t}
+            className={cn("absolute top-0", i === 0 ? "left-0 -translate-x-1.5" : i === order.length - 1 ? "right-0 translate-x-1.5" : "-translate-x-1/2", t === snap.tier && "text-select-fg")}
+            style={i === 0 || i === order.length - 1 ? undefined : { left: `${at(snap.scores[t])}%` }}
+          >
+            {TIER_LABEL[t]}
+          </span>
+        ))}
+      </div>
+      <p className="text-meta text-fg-meta">Your growth speed snaps to the nearest tier (the yellow marker is you); yield stats then scale the result to you.</p>
     </div>
   );
 };
 
 export const TierStatsTable: React.FC<{ highlight: TierId }> = ({ highlight }) => (
-  <table className="w-full text-[11px]">
+  <table className="w-full text-meta tabular-nums">
     <thead>
-      <tr className="text-slate-500">
-        <th className="text-left font-normal pr-2">Stat</th>
+      <tr className="text-fg-meta">
+        <th className="pr-2 text-left font-medium">Stat</th>
         {TIERS.map((t) => (
-          <th key={t} className={`text-right font-normal px-1 ${t === highlight ? "text-emerald-300" : ""}`}>
+          <th key={t} className={cn("px-1 text-right font-medium", t === highlight && "text-select-fg")}>
             {TIER_LABEL[t]}
           </th>
         ))}
@@ -194,9 +172,9 @@ export const TierStatsTable: React.FC<{ highlight: TierId }> = ({ highlight }) =
         ] as const
       ).map(([k, label]) => (
         <tr key={k}>
-          <td className="pr-2 text-slate-400">{label}</td>
+          <td className="pr-2 text-fg-meta">{label}</td>
           {TIERS.map((t) => (
-            <td key={t} className={`text-right px-1 tabular-nums ${t === highlight ? "text-emerald-200" : "text-slate-300"}`}>
+            <td key={t} className={cn("px-1 text-right", t === highlight ? "text-fg" : "text-fg-body")}>
               {TIER_STATS[t][k]}
             </td>
           ))}
@@ -206,53 +184,30 @@ export const TierStatsTable: React.FC<{ highlight: TierId }> = ({ highlight }) =
   </table>
 );
 
-const Group: React.FC<{ icon: React.ReactNode; title: string; hint?: React.ReactNode; children: React.ReactNode }> = ({ icon, title, hint, children }) => (
-  <div className="min-w-0">
-    <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-300">
-      <span className="text-emerald-400 [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
-      {title}
-      {hint}
-    </div>
+/** A form section: an uppercase label (with an optional hint beside it) over its controls. */
+const Section: React.FC<{ title: string; hint?: React.ReactNode; className?: string; children: React.ReactNode }> = ({ title, hint, className, children }) => (
+  <section className={cn("min-w-0 space-y-2.5", className)}>
+    <KitLabel actions={hint}>{title}</KitLabel>
     {children}
-  </div>
+  </section>
 );
 
 /** The online frequency: any number, with the grid's frequencies as quick picks. */
-const EveryInput: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
-  const hours = cycleHours(viewer.stats) * viewer.stats.every;
-  return (
-    <div className="space-y-2">
-      <div className="flex items-end gap-3">
-        <div className="w-28">
-          <NumberStat spec={{ key: "every", label: "Every", min: 1, max: 48, hint: "How often you log in, in greenhouse cycles." }} value={viewer.stats.every} onChange={(every) => viewer.setStats({ every })} />
-        </div>
-        <div className="pb-2 text-xs text-slate-400">
-          cycles <span className="text-slate-500">·</span> about every <span className="text-slate-200 tabular-nums">{formatDuration(hours * 3600)}</span>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-1" role="group" aria-label="Online frequency presets">
-        {EVERY.map((n) => {
-          const active = viewer.every === n;
-          return (
-            <button
-              key={n}
-              type="button"
-              onClick={() => viewer.setStats({ every: n })}
-              className={`min-w-[2.25rem] rounded-md border px-2 py-1 text-xs font-medium tabular-nums transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-                active ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-200" : "border-slate-600/40 bg-slate-800/60 text-slate-400 hover:bg-slate-700/60 hover:text-slate-200"
-              }`}
-            >
-              {n}
-            </button>
-          );
-        })}
-      </div>
-      {viewer.every !== viewer.stats.every && (
-        <p className="text-[11px] text-amber-200/80">Flows were simulated at {EVERY.join(", ")} cycles: showing the nearest, every {viewer.every}.</p>
-      )}
+const EveryInput: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
+  <div className="space-y-2">
+    <div className="flex flex-wrap items-center gap-2">
+      <EveryNumberInput viewer={viewer} id="stats-every" />
+      <label htmlFor="stats-every" className="text-secondary text-fg-muted">
+        cycles · about every <b className="font-semibold tabular-nums text-fg-body">{everyTime(viewer, viewer.stats.every)}</b>
+      </label>
+      <InfoHint title="Login frequency" width={260}>
+        How often you log in, in greenhouse cycles: any number from 1 to 48. It commits on Enter or when you leave the box.
+      </InfoHint>
     </div>
-  );
-};
+    <EveryRadios viewer={viewer} label="Online frequency presets" />
+    <SnapNote viewer={viewer} />
+  </div>
+);
 
 /** Normal board: the simulator's buy / sell side, tax and price editor, shared with it. */
 const BazaarPricing: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
@@ -260,10 +215,10 @@ const BazaarPricing: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
   const [now] = useState(() => Date.now());
   const itemIds = useMemo(() => Object.keys(BAZAAR_PRODUCTS), []);
   return (
-    <Group icon={<Coins />} title="Bazaar prices">
+    <Section title="Bazaar prices">
       <BazaarPriceControls bazaar={viewer.bazaar} now={now} onEditPrices={() => setEditing(true)} />
       {editing && <BazaarPriceDialog bazaar={viewer.bazaar} focusItem={null} itemIds={itemIds} onClose={() => setEditing(false)} />}
-    </Group>
+    </Section>
   );
 };
 
@@ -296,21 +251,20 @@ function toolText(t: FarmingToolStats): string {
 }
 
 /** Crop-specific fortune and tools: a one-line summary with an Edit button; the 13 inputs and the tool list open in a modal. */
-const PerCropFortune: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
+const PerCropFortune: React.FC<{ viewer: FlowViewer; className?: string }> = ({ viewer, className }) => {
   const s = viewer.stats;
   const count = cropBonusCount(s);
   const [open, setOpen] = useState(false);
   const text = [count ? `${count} crop bonus${count === 1 ? "" : "es"}` : "", s.tools.length ? `${s.tools.length} tool${s.tools.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") || "none set";
   return (
-    <div className="col-span-2">
-      <div className="flex items-center gap-2 rounded-md border border-slate-700/50 bg-slate-900/30 px-2.5 py-1.5 text-xs">
-        <Wrench className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-        <span className="text-slate-300">Per-crop fortune &amp; tools</span>
-        <span className="ml-auto truncate text-[11px] text-slate-500">{text}</span>
-        <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded-md border border-slate-600/40 bg-slate-800/60 px-2 py-0.5 text-[11px] text-slate-300 transition-colors hover:bg-slate-700/60">
+    <div className={cn("flex min-w-0 flex-col gap-1", className)}>
+      <span className="text-secondary text-fg-muted">Per-crop fortune &amp; tools</span>
+      <span className="flex h-8 items-center justify-between gap-2 text-body">
+        <span className="min-w-0 truncate text-fg-meta">{text}</span>
+        <KitButton size="sm" onClick={() => setOpen(true)} aria-label="Edit per-crop fortune and tools">
           Edit
-        </button>
-      </div>
+        </KitButton>
+      </span>
       {open && (
         <ModalDialog labelledBy="viewer-crop-fortune-title" onClose={() => setOpen(false)} maxWidth="max-w-xl">
           <DialogFrame
@@ -318,9 +272,9 @@ const PerCropFortune: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
             title="Per-crop fortune & tools"
             onClose={() => setOpen(false)}
             footer={
-              <button type="button" onClick={() => setOpen(false)} className="rounded-md bg-emerald-500/80 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500">
+              <KitButton variant="primary" size="md" onClick={() => setOpen(false)}>
                 Done
-              </button>
+              </KitButton>
             }
           >
             <PerCropFortuneBody viewer={viewer} />
@@ -338,188 +292,198 @@ export const PerCropFortuneBody: React.FC<{ viewer: FlowViewer }> = ({ viewer })
   const setCrop = (c: FortuneCrop) => (v: number) => viewer.setStats({ cropFortune: { ...s.cropFortune, [c]: v } });
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <p className="text-xs text-slate-400">Crop bonus on top of Farming Fortune (Wheat Fortune, Mushroom Fortune, ...). Leave tools out; they are added per harvest below.</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <section className="space-y-2">
+        <KitLabel actions={count > 0 ? <LinkButton onClick={() => viewer.setStats({ cropFortune: {} })}>Clear crop bonuses</LinkButton> : undefined}>Crop fortune on top of Farming Fortune</KitLabel>
+        <p className="text-secondary text-fg-muted">Wheat Fortune, Mushroom Fortune, ... Leave tools out; they are added per harvest below.</p>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3">
           {FORTUNE_CROPS.map((c) => (
-            <NumberStat key={c} spec={{ key: c, label: CROP_LABEL[c], min: 0, max: 2000, step: 5 }} value={s.cropFortune[c] ?? 0} onChange={setCrop(c)} />
+            <NumberStat key={c} id={`crop-fortune-${c}`} label={CROP_LABEL[c]} min={0} max={2000} step={5} value={s.cropFortune[c] ?? 0} onChange={setCrop(c)} />
           ))}
         </div>
-        {count > 0 && (
-          <button type="button" onClick={() => viewer.setStats({ cropFortune: {} })} className="text-[11px] text-slate-400 transition-colors hover:text-slate-200">
-            Clear crop bonuses
-          </button>
-        )}
-      </div>
+      </section>
       {s.tools.length === 0 ? (
-        <p className="text-xs text-slate-500">No tools. Import from Hypixel to fill in your farming tools.</p>
+        <p className="text-secondary text-fg-meta">No tools. Import from Hypixel to fill in your farming tools.</p>
       ) : (
-        <div className="rounded-md border border-slate-700/50 bg-slate-900/30 px-2.5 py-1.5" data-testid="viewer-tools">
-          <div className="mb-1 flex items-center gap-1.5 text-xs text-slate-400">
-            <Wrench className="h-3.5 w-3.5 text-emerald-400" />
+        <section className="space-y-1.5" data-testid="viewer-tools">
+          <KitLabel
+            actions={
+              <span className="flex items-center gap-2">
+                <InfoHint title="Tools" width={260}>
+                  Each crop bundle is scaled with the tool that earns the most on it, as the simulator does per harvest.
+                </InfoHint>
+                <LinkButton onClick={() => viewer.setStats({ tools: [] })}>Clear</LinkButton>
+              </span>
+            }
+          >
             Tools
-            <InfoHint title="Tools" width={260}>
-              Each crop bundle is scaled with the tool that earns the most on it, as the simulator does per harvest.
-            </InfoHint>
-            <button type="button" onClick={() => viewer.setStats({ tools: [] })} className="ml-auto text-[11px] text-slate-500 transition-colors hover:text-slate-200">
-              Clear
-            </button>
-          </div>
-          <ul className="space-y-0.5">
+          </KitLabel>
+          <ul className="divide-y divide-line">
             {s.tools.map((t, i) => (
-              <li key={`${t.name}-${i}`} className="flex items-center gap-2 text-xs">
-                <span className="min-w-0 truncate text-slate-200" title={t.name}>
+              <li key={`${t.name}-${i}`} className="flex items-center gap-2 py-1 text-body">
+                <span className="min-w-0 truncate text-fg-body" title={t.name}>
                   {t.name}
                 </span>
-                <span className="ml-auto whitespace-nowrap text-[11px] tabular-nums text-slate-500">{toolText(t)}</span>
-                <button
-                  type="button"
-                  onClick={() => viewer.setStats({ tools: s.tools.filter((_, j) => j !== i) })}
-                  className="rounded p-0.5 text-slate-500 transition-colors hover:bg-slate-700/60 hover:text-slate-200"
-                  title={`Remove ${t.name}`}
-                  aria-label={`Remove ${t.name}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
+                <span className="ml-auto whitespace-nowrap text-secondary tabular-nums text-fg-meta">{toolText(t)}</span>
+                <IconButton aria-label={`Remove ${t.name}`} onClick={() => viewer.setStats({ tools: s.tools.filter((_, j) => j !== i) })}>
+                  <X />
+                </IconButton>
               </li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
     </div>
   );
 };
 
-/** "Your stats": granular inputs, the tier they snap to, and the board. */
+/** Farming armor as a field dropdown. */
+const ArmorField: React.FC<{ viewer: FlowViewer; className?: string }> = ({ viewer, className }) => (
+  <div className={cn("flex min-w-0 flex-col gap-1", className)}>
+    <span className="text-secondary text-fg-muted">Farming armor</span>
+    <Dropdown
+      label="Farming armor"
+      look="field"
+      className="h-8 w-full justify-between pl-2.5"
+      button={<span className="truncate">{ARMOR_SET_LABEL[viewer.stats.armorSet]}</span>}
+    >
+      {(close) =>
+        ARMOR_SETS.map((a: ArmorSet) => (
+          <MenuItem
+            key={a}
+            checked={viewer.stats.armorSet === a}
+            onSelect={() => {
+              viewer.setStats({ armorSet: a });
+              close();
+            }}
+          >
+            {ARMOR_SET_LABEL[a]}
+          </MenuItem>
+        ))
+      }
+    </Dropdown>
+  </div>
+);
+
+/**
+ * The whole "Your stats" form (F110–F124), in the drawer's order: import, presets, board, login
+ * frequency, growth (+ tier meter), yield (+ per-crop modal), and Bazaar prices on Normal.
+ */
+export const StatsForm: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
+  const s = viewer.stats;
+  const set = (key: NumKey) => (v: number) => viewer.setStats({ [key]: v } as Partial<ViewerStats>);
+  return (
+    <div className="@container space-y-5" data-testid="stats-panel">
+      <PlayerImportBox variant="primary" onImport={(patch) => viewer.setStats(patch)} />
+      <div className="flex flex-wrap items-center gap-1">
+        {viewer.hasSimulatorStats && (
+          <KitButton variant="ghost" onClick={() => viewer.resetStats("simulator")}>
+            <Copy /> Use my simulator stats
+          </KitButton>
+        )}
+        <KitButton variant="ghost" onClick={() => viewer.resetStats("max")}>
+          <RotateCcw /> Max everything
+        </KitButton>
+      </div>
+      <Section title="Board">
+        <BoardToggle viewer={viewer} />
+        <p className="text-meta text-fg-meta">Also sets the simulator's profile.</p>
+      </Section>
+      <Section title="How often you log in">
+        <EveryInput viewer={viewer} />
+      </Section>
+      <Section
+        title="Growth and spawning"
+        hint={
+          <InfoHint title="Stat tiers" width={340}>
+            <p className="mb-2">These change the simulation itself, so they pick which of the four simulated tiers you see.</p>
+            <TierStatsTable highlight={viewer.tier} />
+          </InfoHint>
+        }
+      >
+        <TierMeter viewer={viewer} />
+        <div className="grid gap-x-3 gap-y-2.5 @md:grid-cols-2">
+          {SIM_FIELDS.map((k) => (
+            <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" value={s[k]} onChange={set(k)} />
+          ))}
+        </div>
+      </Section>
+      <Section
+        title="Yield"
+        hint={
+          <InfoHint title="Yield stats" width={300}>
+            The server runs every flow at the wiki maxima, with no crop bonus or tools. These scale the stored crop and rare-crop counts to you; mutation items
+            aren't affected. An estimate, marked as such.
+          </InfoHint>
+        }
+      >
+        <div className="grid gap-x-3 gap-y-2.5 @md:grid-cols-2">
+          {YIELD_FIELDS_TOP.map((k) => (
+            <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" value={s[k]} onChange={set(k)} />
+          ))}
+          <PerCropFortune viewer={viewer} />
+          {YIELD_FIELDS_REST.map((k) => (
+            <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" className={STAT_FIELDS[k].kind === "chip" ? "@md:col-span-2" : undefined} value={s[k]} onChange={set(k)} />
+          ))}
+          <ArmorField viewer={viewer} />
+        </div>
+      </Section>
+      {viewer.board === "normal" && <BazaarPricing viewer={viewer} />}
+    </div>
+  );
+};
+
+/**
+ * "Your stats" inline (legacy layout): a collapsible header with the board toggle over the same
+ * form the drawer shows. The pages now open StatsDrawer instead; kept for callers and tests.
+ */
 export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }> = ({ viewer, defaultOpen = true }) => {
   // Phones start collapsed so the rankings are on screen; the summary line says what is set.
   const [open, setOpen] = useState(() => defaultOpen && (typeof window === "undefined" || window.matchMedia?.("(min-width: 1024px)").matches !== false));
-  const s = viewer.stats;
-  const set = (key: NumKey) => (v: number) => viewer.setStats({ [key]: v } as Partial<ViewerStats>);
-  const crops = cropBonusCount(s);
-  const toolCount = s.tools.length;
-  const summary = useMemo(() => {
-    const perCrop = [crops ? `+${crops} crop bonus${crops === 1 ? "" : "es"}` : "", toolCount ? `${toolCount} tool${toolCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
-    return `${TIER_LABEL[viewer.tier]} tier · every ${viewer.every} cycle${viewer.every === 1 ? "" : "s"} · ${Math.round(s.farmingFortune)} FF${perCrop ? ` (${perCrop})` : ""} · ${ARMOR_SET_LABEL[s.armorSet]}`;
-  }, [viewer.tier, viewer.every, s.farmingFortune, s.armorSet, crops, toolCount]);
   return (
-    <section className="rounded-lg border border-slate-600/30 bg-slate-800/40" data-testid="stats-panel">
+    <section className="rounded-container border border-line bg-surface-card">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-        <button type="button" onClick={() => setOpen((v) => !v)} className="flex min-w-[min(100%,16rem)] flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left" aria-expanded={open}>
-          <span className="flex items-center gap-2 whitespace-nowrap">
-            <Gauge className="h-4 w-4 flex-shrink-0 text-emerald-400" />
-            <span className="text-sm font-medium text-slate-200">Your stats</span>
-            <ChevronDown className={`h-3.5 w-3.5 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="focus-ring flex min-w-[min(100%,16rem)] flex-1 cursor-pointer flex-wrap items-center gap-x-2 gap-y-0.5 rounded-inner text-left"
+          aria-expanded={open}
+        >
+          <span className="flex items-center gap-1.5 whitespace-nowrap text-title text-fg">
+            Your stats
+            <ChevronDown aria-hidden className={cn("size-3.5 text-fg-meta transition-transform duration-(--duration-ink)", open && "rotate-180")} />
           </span>
-          {!open && <span className="min-w-0 text-xs text-slate-500">{summary}</span>}
+          {!open && <span className="min-w-0 text-secondary text-fg-meta">{statsSummaryLong(viewer)}</span>}
         </button>
-        <div className="flex flex-wrap items-center gap-2">
-          <BoardToggle viewer={viewer} />
-        </div>
+        <BoardToggle viewer={viewer} />
       </header>
       {open && (
-        <div className="grid grid-cols-1 gap-x-8 gap-y-5 border-t border-slate-700/40 px-4 py-4 lg:grid-cols-[1.15fr_1fr]">
-          <div className="space-y-5 min-w-0">
-            <Group icon={<Clock />} title="How often you log in">
-              <EveryInput viewer={viewer} />
-            </Group>
-            <Group
-              icon={<Zap />}
-              title="Growth and spawning"
-              hint={
-                <InfoHint title="Stat tiers" width={340}>
-                  <p className="mb-2">These change the simulation itself, so they pick which of the four simulated tiers you see.</p>
-                  <TierStatsTable highlight={viewer.tier} />
-                </InfoHint>
-              }
-            >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {SIM_FIELDS.map((k) => (
-                  <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" value={s[k]} onChange={set(k)} />
-                ))}
-              </div>
-            </Group>
-            <TierMeter viewer={viewer} />
-          </div>
-          <div className="space-y-5 min-w-0">
-            <PlayerImportBox compact onImport={(patch) => viewer.setStats(patch)} />
-            <Group
-              icon={<Sprout />}
-              title="Yield"
-              hint={
-                <InfoHint title="Yield stats" width={300}>
-                  The server runs every flow at the wiki maxima, with no crop bonus or tools. These scale the stored crop and rare-crop counts to you; mutation
-                  items aren't affected. An estimate, marked as such.
-                </InfoHint>
-              }
-            >
-              <div className="grid grid-cols-2 gap-3">
-                {YIELD_FIELDS_TOP.map((k) => (
-                  <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" className="col-span-2" value={s[k]} onChange={set(k)} />
-                ))}
-                <PerCropFortune viewer={viewer} />
-                {YIELD_FIELDS_REST.map((k) => (
-                  <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" className={STAT_FIELDS[k].kind === "chip" ? "col-span-2" : "col-span-2 sm:col-span-1"} value={s[k]} onChange={set(k)} />
-                ))}
-                <label className="col-span-2 block">
-                  <span className="text-xs text-slate-400">Farming armor</span>
-                  <select className={`${fieldInput} mt-1`} value={s.armorSet} onChange={(e) => viewer.setStats({ armorSet: e.target.value as ArmorSet })} aria-label="Farming armor">
-                    {ARMOR_SETS.map((a) => (
-                      <option key={a} value={a}>
-                        {ARMOR_SET_LABEL[a]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </Group>
-            <div className="flex flex-wrap gap-2 pt-1">
-              {viewer.hasSimulatorStats && (
-                <button type="button" onClick={() => viewer.resetStats("simulator")} className="inline-flex items-center gap-1.5 rounded-md border border-slate-600/40 bg-slate-800/60 px-2.5 py-1.5 text-xs text-slate-300 transition-[background-color,transform] duration-150 hover:bg-slate-700/60 active:scale-[0.97]">
-                  <Copy className="h-3.5 w-3.5" /> Use my simulator stats
-                </button>
-              )}
-              <button type="button" onClick={() => viewer.resetStats("max")} className="inline-flex items-center gap-1.5 rounded-md border border-slate-600/40 bg-slate-800/60 px-2.5 py-1.5 text-xs text-slate-300 transition-[background-color,transform] duration-150 hover:bg-slate-700/60 active:scale-[0.97]">
-                <RotateCcw className="h-3.5 w-3.5" /> Max everything
-              </button>
-            </div>
-          </div>
-          {viewer.board === "normal" && (
-            <div className="border-t border-slate-700/40 pt-4 lg:col-span-2">
-              <BazaarPricing viewer={viewer} />
-            </div>
-          )}
+        <div className="border-t border-line px-4 py-4">
+          <StatsForm viewer={viewer} />
         </div>
       )}
     </section>
   );
 };
 
-/** Normal board: where the prices come from, with a refresh link. */
+/** Ironman: NPC prices. Normal: where the Bazaar prices come from, with a refresh link. */
 export const PriceNote: React.FC<{ viewer: FlowViewer; now: number }> = ({ viewer, now }) => {
-  if (viewer.board !== "normal")
-    return (
-      <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
-        <Coins className="h-3 w-3" /> NPC prices; mutation items are kept, not sold
-      </span>
-    );
+  if (viewer.board !== "normal") return <span className="text-meta text-fg-meta">NPC prices; mutation items are kept, not sold</span>;
   const { prices, loading, error, refresh } = viewer.bazaar;
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
-      <Coins className="h-3 w-3 text-blue-300" />
+    <span className="inline-flex flex-wrap items-center gap-x-2 text-meta text-fg-meta">
       <span>
         {loading ? "Fetching Bazaar prices..." : prices ? `Bazaar prices from ${priceAge(prices.fetchedAt, now)}` : "No Bazaar prices yet"}
-        {error ? <span className="text-amber-300"> (refresh failed)</span> : null}
+        {error ? <span className="text-warn"> (refresh failed)</span> : null}
       </span>
-      <button type="button" className="inline-flex items-center gap-1 text-emerald-300 hover:text-emerald-200 disabled:opacity-50" onClick={refresh} disabled={loading}>
-        <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} /> Refresh
-      </button>
+      <LinkButton className="inline-flex items-center gap-1" onClick={refresh} disabled={loading}>
+        <RefreshCw aria-hidden className={cn("size-3", loading && "animate-spin motion-reduce:animate-pulse")} /> Refresh
+      </LinkButton>
     </span>
   );
 };
 
 export const Avatar: React.FC<{ id: string; avatar: string | null; size?: number; className?: string }> = ({ id, avatar, size = 20, className = "" }) => (
-  <img src={avatarUrl(id, avatar)} alt="" width={size} height={size} loading="lazy" className={`flex-shrink-0 rounded-full bg-slate-700 ${className}`} style={{ width: size, height: size }} />
+  <img src={avatarUrl(id, avatar)} alt="" width={size} height={size} loading="lazy" className={cn("shrink-0 rounded-full bg-surface-hover", className)} style={{ width: size, height: size }} />
 );
 
 export const AuthorLabel: React.FC<{ author: FlowAuthor; size?: number }> = ({ author, size = 20 }) => (
@@ -529,130 +493,70 @@ export const AuthorLabel: React.FC<{ author: FlowAuthor; size?: number }> = ({ a
   </span>
 );
 
+/** Discord's brand button (kept blurple by the user's choice, 2026-10-31). */
+const discordButton =
+  // design-guard-ignore: Discord brand colour (user kept the blurple login button)
+  "hit-area focus-ring inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-control bg-[#5865F2] px-3 font-semibold text-fg transition-[background-color,scale] duration-(--duration-hover) hover:bg-[#4752C4] active:scale-97 disabled:opacity-40";
+
+/** The "Log in with Discord" button (the login page and the like prompt). */
+export const DiscordLoginButton = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement> & { size?: "sm" | "md" }>(
+  ({ size = "md", className, children, ...rest }, ref) => (
+    <button ref={ref} type="button" {...rest} className={cn(discordButton, size === "sm" ? "h-7 text-secondary" : "h-8 text-body", className)}>
+      <DiscordIcon className="size-3.5" /> {children ?? "Log in with Discord"}
+    </button>
+  ),
+);
+DiscordLoginButton.displayName = "DiscordLoginButton";
+
 /**
  * The leaderboard login: "Log in with Discord" when logged out, the avatar, name and a log-out
  * button when logged in. Login returns to the current page.
  */
-export const AccountControl: React.FC = () => {
+export const AccountControl: React.FC<{ className?: string }> = ({ className }) => {
   const { user, loading, banned, login, logout } = useAuth();
-  if (loading) return <span className="inline-flex h-7 w-24 animate-pulse rounded-md bg-slate-700/40" aria-label="Checking your login" />;
+  if (loading) return <span className={cn("inline-flex h-8 w-28 animate-pulse rounded-control bg-surface-hover motion-reduce:animate-none", className)} aria-label="Checking your login" />;
   if (user)
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-600/40 bg-slate-800/60 py-1 pl-1.5 pr-1 text-xs text-slate-200" data-testid="account-control">
+      <span className={cn("inline-flex h-8 items-center gap-1.5 rounded-control border border-line-strong bg-surface-control pr-0.5 pl-1.5 text-body text-fg-body", className)} data-testid="account-control">
         <Avatar id={user.id} avatar={user.avatar} size={20} />
-        <span className="max-w-[9rem] truncate" title={`Logged in with Discord as ${userName(user)}`}>
+        <span className="max-w-36 truncate" title={`Logged in with Discord as ${userName(user)}`}>
           {userName(user)}
         </span>
-        <button
-          type="button"
-          onClick={logout}
-          className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-700/60 hover:text-slate-100"
-          title="Log out"
-          aria-label="Log out"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-        </button>
+        <IconButton aria-label="Log out" onClick={logout}>
+          <LogOut />
+        </IconButton>
       </span>
     );
   return (
-    <span className="inline-flex items-center gap-2" data-testid="account-control">
-      {banned && <span className="text-[11px] text-red-300">This account is banned from the leaderboard.</span>}
-      <button
-        type="button"
-        onClick={() => login()}
-        title="Log in to like and submit flows. Only your Discord name and avatar are used."
-        className="inline-flex items-center gap-1.5 rounded-md bg-[#5865F2]/80 px-3 py-1.5 text-xs font-medium text-white transition-[background-color,transform] duration-150 hover:bg-[#5865F2] active:scale-[0.97]"
-      >
-        <DiscordIcon className="h-3.5 w-3.5" /> Log in with Discord
-      </button>
+    <span className={cn("inline-flex items-center gap-2", className)} data-testid="account-control">
+      {banned && <span className="text-meta text-problem">This account is banned from the leaderboard.</span>}
+      <DiscordLoginButton onClick={() => login()} title="Log in to like and submit flows. Only your Discord name and avatar are used." />
     </span>
   );
 };
 
-const LOGIN_POPOVER_WIDTH = 256;
-
 /**
- * The "log in to like" prompt a logged-out heart click opens, anchored under the heart (above it
- * when there's no room). Confirming runs `onLogin` (the caller's toggle: it remembers the like and
- * redirects to Discord). Escape, "Not now" or a click outside closes it. Clicks inside never reach
- * the clickable ranking row behind it (React events bubble through portals).
+ * The "log in to like" prompt a logged-out heart click opens, anchored under the heart. A kit
+ * dialog popover: it takes focus (the login button), Tab stays inside, Escape or an outside press
+ * closes it and returns focus to the heart. Confirming runs `onLogin` (the caller's toggle: it
+ * remembers the like and redirects to Discord). Clicks inside never reach the ranking row behind.
  */
-const LikeLoginPopover: React.FC<{ anchor: React.RefObject<HTMLButtonElement | null>; onLogin: () => void; onClose: () => void }> = ({ anchor, onLogin, onClose }) => {
-  const box = useRef<HTMLDivElement>(null);
-  const loginButton = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; above: boolean } | null>(null);
-
-  useLayoutEffect(() => {
-    const place = () => {
-      const a = anchor.current?.getBoundingClientRect();
-      const h = box.current?.offsetHeight ?? 0;
-      if (!a) return;
-      const gap = 6;
-      const pad = 8;
-      const left = Math.max(pad, Math.min(a.right - LOGIN_POPOVER_WIDTH, window.innerWidth - LOGIN_POPOVER_WIDTH - pad));
-      const above = a.bottom + gap + h > window.innerHeight - pad && a.top - gap - h >= pad;
-      setPos({ top: above ? a.top - gap - h : a.bottom + gap, left, above });
-    };
-    place();
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => {
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
-  }, [anchor]);
-
-  useEffect(() => {
-    loginButton.current?.focus({ preventScroll: true });
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (!box.current?.contains(t) && !anchor.current?.contains(t)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      onClose();
-      anchor.current?.focus();
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [anchor, onClose]);
-
-  return (
-    <Portal>
-      <div
-        ref={box}
-        role="dialog"
-        aria-labelledby="like-login-title"
-        onClick={(e) => e.stopPropagation()}
-        style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, width: LOGIN_POPOVER_WIDTH, visibility: pos ? "visible" : "hidden" }}
-        className={`like-login-pop fixed z-[9999] rounded-lg border border-slate-600/70 bg-slate-800 p-3 text-left shadow-xl shadow-black/40 ${pos?.above ? "origin-bottom-right" : "origin-top-right"}`}
-        data-testid="like-login-popover"
-      >
-        <p id="like-login-title" className="flex items-center gap-1.5 text-sm font-semibold text-slate-100">
-          <Heart className="h-3.5 w-3.5 fill-rose-400 text-rose-400" /> Log in to like flows
-        </p>
-        <p className="mt-1 text-xs leading-relaxed text-slate-400">Likes are tied to your Discord account (only your name and avatar are used). This flow is liked once you're back.</p>
-        <div className="mt-3 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:bg-slate-700/60 hover:text-slate-100">
-            Not now
-          </button>
-          <button
-            ref={loginButton}
-            type="button"
-            onClick={onLogin}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#5865F2]/80 px-3 py-1.5 text-xs font-medium text-white transition-[background-color,transform] duration-150 hover:bg-[#5865F2] active:scale-[0.97]"
-          >
-            <DiscordIcon className="h-3.5 w-3.5" /> Log in with Discord
-          </button>
-        </div>
+const LikeLoginPopover: React.FC<{ anchor: HTMLButtonElement | null; open: boolean; onLogin: () => void; onClose: () => void }> = ({ anchor, open, onLogin, onClose }) => (
+  <Popover anchor={anchor} open={open} onClose={onClose} label="Log in to like flows" width={256} align="end" initialFocus="last" className="p-3">
+    <div data-testid="like-login-popover">
+      <p className="flex items-center gap-1.5 text-body font-semibold text-fg">
+        <Heart aria-hidden className="size-3.5 fill-restart text-restart" /> Log in to like flows
+      </p>
+      <p className="mt-1 text-secondary text-fg-muted">Likes are tied to your Discord account (only your name and avatar are used). This flow is liked once you're back.</p>
+      <div className="mt-3 flex justify-end gap-2">
+        <KitButton variant="ghost" onClick={onClose}>
+          Not now
+        </KitButton>
+        <DiscordLoginButton size="sm" onClick={onLogin} />
       </div>
-    </Portal>
-  );
-};
+    </div>
+  </Popover>
+);
 
 /**
  * Heart + like count. `onToggle` is omitted for a read-only count (own flow). With `needsLogin`
@@ -667,47 +571,55 @@ export const LikeButton: React.FC<{
   needsLogin?: boolean;
   size?: "sm" | "md";
   title?: string;
-}> = ({ count, liked, busy = false, onToggle, needsLogin = false, size = "sm", title }) => {
-  const button = useRef<HTMLButtonElement>(null);
+  className?: string;
+}> = ({ count, liked, busy = false, onToggle, needsLogin = false, size = "sm", title, className }) => {
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [asking, setAsking] = useState(false);
   const closeAsk = useCallback(() => setAsking(false), []);
-  const icon = size === "md" ? "h-3.5 w-3.5" : "h-3 w-3";
-  const box = size === "md" ? "gap-1.5 px-3 py-1.5 text-xs" : "gap-1 px-1.5 py-0.5 text-[11px]";
-  const tone = liked ? "border-rose-500/40 bg-rose-500/15 text-rose-200" : "border-slate-600/50 bg-slate-800/70 text-slate-300";
+  const box = size === "md" ? "h-8 gap-1.5 px-2.5 text-body [&>svg]:size-4" : "h-7 gap-1 px-2 text-secondary [&>svg]:size-3.5";
   const content = (
     <>
-      <Heart className={`${icon} transition-transform duration-150 ${liked ? "fill-rose-400 text-rose-400" : ""}`} />
+      <Heart aria-hidden className={cn("transition-colors duration-(--duration-hover)", liked && "fill-restart text-restart")} />
       <span className="tabular-nums">{count.toLocaleString("en-US")}</span>
     </>
   );
   if (!onToggle)
     return (
-      <span className={`inline-flex items-center rounded-md border ${box} border-slate-700/50 text-slate-400`} title={title ?? `${count} like${count === 1 ? "" : "s"}`}>
+      <span className={cn("inline-flex shrink-0 items-center rounded-control text-fg-muted", box, className)} title={title ?? `${count} like${count === 1 ? "" : "s"}`}>
         {content}
       </span>
     );
   return (
     <>
       <button
-        ref={button}
+        ref={setAnchor}
         type="button"
-        aria-pressed={liked}
+        aria-pressed={needsLogin ? undefined : liked}
         aria-haspopup={needsLogin ? "dialog" : undefined}
         aria-expanded={needsLogin ? asking : undefined}
+        aria-label={needsLogin ? `Like (${count}): log in with Discord first` : liked ? `Remove your like (${count})` : `Like this flow (${count})`}
         disabled={busy}
         title={asking ? undefined : (title ?? (needsLogin ? "Log in with Discord to like this flow" : liked ? "Remove your like" : "Like this flow"))}
         onClick={(e) => {
           e.stopPropagation();
+          e.preventDefault();
           if (needsLogin) setAsking((a) => !a);
           else onToggle();
         }}
-        className={`inline-flex items-center rounded-md border font-medium transition-[background-color,color,transform] duration-150 hover:border-rose-500/40 hover:text-rose-200 active:scale-[0.95] disabled:opacity-60 ${box} ${tone} ${asking ? "border-rose-500/40 text-rose-200" : ""}`}
+        className={cn(
+          "hit-area focus-ring relative inline-flex shrink-0 cursor-pointer items-center rounded-control border font-medium transition-[background-color,border-color,color,scale] duration-(--duration-hover) active:scale-97 disabled:pointer-events-none disabled:opacity-40",
+          box,
+          liked ? "border-restart/40 bg-restart/10 text-restart" : "border-line-strong bg-surface-control text-fg-body hover:border-restart/40 hover:text-restart",
+          asking && "border-restart/40 text-restart",
+          className,
+        )}
       >
         {content}
       </button>
-      {asking && needsLogin && (
+      {needsLogin && (
         <LikeLoginPopover
-          anchor={button}
+          anchor={anchor}
+          open={asking}
           onClose={closeAsk}
           onLogin={() => {
             setAsking(false);
@@ -719,22 +631,24 @@ export const LikeButton: React.FC<{
   );
 };
 
-const BADGE_STYLE = {
-  stale: "bg-slate-600/30 text-slate-300 border-slate-500/40",
-  estimated: "bg-amber-500/15 text-amber-200 border-amber-500/30",
-  new: "bg-emerald-500/15 text-emerald-200 border-emerald-500/30",
-  pending: "bg-blue-500/15 text-blue-200 border-blue-500/30",
-  danger: "bg-red-500/15 text-red-200 border-red-500/30",
-  info: "bg-cyan-500/10 text-cyan-200 border-cyan-500/30",
-  violet: "bg-violet-500/15 text-violet-200 border-violet-500/30",
-  warn: "bg-orange-500/15 text-orange-200 border-orange-500/30",
-} as const;
+/** Status badge tones on the kit's Pill. Old names stay (callers pass them); each maps to a role. */
+const BADGE_TONE = {
+  stale: "neutral",
+  estimated: "warn",
+  new: "neutral",
+  pending: "script",
+  danger: "problem",
+  info: "neutral",
+  violet: "script",
+  warn: "warn",
+} as const satisfies Record<string, Tone>;
 
-export type BadgeTone = keyof typeof BADGE_STYLE;
+export type BadgeTone = keyof typeof BADGE_TONE;
 
-export const Badge: React.FC<{ tone: BadgeTone; title?: string; icon?: React.ReactNode; children: React.ReactNode }> = ({ tone, title, icon, children }) => (
-  <span title={title} className={`inline-flex items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${BADGE_STYLE[tone]}`}>
-    {icon && <span className="[&>svg]:h-2.5 [&>svg]:w-2.5">{icon}</span>}
+export const Badge: React.FC<{ tone: BadgeTone; title?: string; icon?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ tone, title, icon, children, className }) => (
+  <Pill tone={BADGE_TONE[tone]} title={title} className={cn("whitespace-nowrap", className)}>
+    {icon}
     {children}
-  </span>
+  </Pill>
 );
+

@@ -1,0 +1,366 @@
+import React from "react";
+import { Link } from "react-router-dom";
+import { ChevronDown, FlaskConical } from "lucide-react";
+import type { Board } from "../../../leaderboard/rules";
+import { BADGE_TITLE, kitListText, percent, starvedText, upkeepText, type FlowRow, type SortKey } from "../../../leaderboard/view";
+import { formatCoins, nameOf } from "../../simulator/format";
+import { cn } from "../../ui/cn";
+import { IconButton } from "../../ui/kit";
+import { SlowingBadge, StallChip, StartingItemsLine } from "../FlowChips";
+import { Avatar, Badge, LikeButton } from "../FlowControls";
+import { EffortMeter, LayoutBoxes, MutationChip, Sparkline, SplitBar, SplitLegend } from "../FlowVisuals";
+import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, shapeText, simHref, startShort, supplyText, thumbOf, type RankingLinkState } from "./rankingHelpers";
+
+/**
+ * One ranked flow (F27–F42). The title is the row's real link, stretched over the whole row with
+ * ::after (middle-click, keyboard and text selection work; no row onClick). The like, open-in-
+ * simulator and peek controls sit above the stretch. The peek holds everything the one-line row
+ * leaves out, as visible text.
+ */
+
+export interface RowLike {
+  liked: boolean;
+  busy: boolean;
+  /** Omitted on the viewer's own flows (count only). */
+  onToggle?: () => void;
+  /** Logged out: a click asks to log in first. */
+  needsLogin?: boolean;
+}
+
+export interface RowProps {
+  row: FlowRow;
+  /** The largest profit on the board (the split bar's scale). */
+  top: number;
+  /** The viewer's grid frequency (the sparkline's bright bar). */
+  every: number;
+  board: Board;
+  kit?: boolean;
+  index: number;
+  like: RowLike;
+  sort: SortKey;
+  /** The peek is open. */
+  open?: boolean;
+  onPeek?: () => void;
+  /** The ranking's query, handed to the detail page so its back link restores it. */
+  rankingSearch?: string;
+}
+
+/** Desktop grid: # · layout · flow · earns · coins/day · effort · forgiving · likes · simulator · peek. Narrow containers drop the earns column and the effort word. */
+export const ROW_COLS =
+  "grid-cols-[1.5rem_47px_minmax(0,1fr)_6rem_2.5rem_7.5rem_3.5rem_1.75rem_1.75rem] @min-[52rem]:grid-cols-[1.5rem_47px_minmax(0,1fr)_minmax(0,10rem)_6rem_5.5rem_7.5rem_3.5rem_1.75rem_1.75rem] @min-[80rem]:grid-cols-[1.5rem_47px_minmax(0,1fr)_minmax(0,18rem)_6rem_5.5rem_7.5rem_3.5rem_1.75rem_1.75rem]";
+
+export const RowBadges: React.FC<{ row: FlowRow }> = ({ row }) => (
+  <>
+    {row.badges.new && (
+      <Badge tone="new" title={BADGE_TITLE.new}>
+        new
+      </Badge>
+    )}
+    {row.badges.stale && (
+      <Badge tone="stale" title={BADGE_TITLE.stale}>
+        re-verifying
+      </Badge>
+    )}
+    {row.badges.estimated && (
+      <Badge tone="estimated" title={BADGE_TITLE.estimated}>
+        max-tier stand-in
+      </Badge>
+    )}
+    {row.profitPerDay === null && (
+      <Badge tone="pending" title="Not verified at this tier and frequency yet.">
+        pending
+      </Badge>
+    )}
+    {row.stall && <StallChip stall={row.stall} />}
+    {row.slowing && <SlowingBadge />}
+    {row.entry.summary?.scripted && <Badge tone="violet">scripted</Badge>}
+  </>
+);
+
+export const Coins: React.FC<{ value: number | null; className?: string; title?: string }> = ({ value, className, title }) => (
+  <span title={title} className={cn("font-semibold tabular-nums", value === null ? "text-fg-meta" : value < 0 ? "text-problem" : "text-coin", className)}>
+    {value === null ? "—" : formatCoins(value)}
+  </span>
+);
+
+const fraction = (row: FlowRow, top: number) => (top > 0 && row.profitPerDay !== null ? row.profitPerDay / top : 0);
+const headlineTitle = (row: FlowRow, board: Board, kit: boolean) =>
+  board === "ironman" && kit && row.altPerDay !== null ? `From nothing: ${formatCoins(row.altPerDay)}/day (making the starting items first)` : undefined;
+
+const RowLikeButton: React.FC<{ row: FlowRow; like: RowLike; sort: SortKey }> = ({ row, like, sort }) => {
+  const { entry } = row;
+  return (
+    <LikeButton
+      count={(sort === "liked30d" ? entry.likes30d : entry.likes) ?? 0}
+      liked={like.liked}
+      busy={like.busy}
+      onToggle={like.onToggle}
+      needsLogin={like.needsLogin}
+      title={sort === "liked30d" ? `${entry.likes30d ?? 0} likes in the last 30 days (${entry.likes ?? 0} all time)` : undefined}
+    />
+  );
+};
+
+/** The top earner by name (+ how many more): the row's answer to "which crop does it farm". */
+const TopEarner: React.FC<{ row: FlowRow; className?: string; chip?: boolean }> = ({ row, className, chip = true }) => {
+  const first = row.earning[0];
+  if (!first) return null;
+  const more = row.earning.length - 1;
+  return (
+    <span className={cn("flex min-w-0 items-center gap-1", className)}>
+      {chip ? <MutationChip id={first.id} earning={first.coinsPerDay} className="min-w-0" /> : <span className="truncate text-fg-body">{nameOf(first.id)}</span>}
+      {more > 0 && <span className="shrink-0 text-meta tabular-nums text-fg-meta">+{more}</span>}
+    </span>
+  );
+};
+
+/** The peek: the facts the one-line row leaves out. */
+export const RowPeek: React.FC<{ row: FlowRow; top: number; every: number; board: Board; kit: boolean; rankingSearch?: string; className?: string }> = ({ row, top, every, board, kit, rankingSearch, className }) => {
+  const { entry } = row;
+  const ex = excerptOf(row);
+  const supply = supplyText(row, board);
+  const ironman = board === "ironman";
+  const share = entry.thumb ? `Plot ${entry.thumb.plot}'s most-used layout, ${percent(entry.thumb.share)} of the time` : "Plot 1's start layout";
+  const upkeep = entry.cell ? upkeepText(entry.cell.upkeep) : null;
+  const shown = row.earning.slice(0, 8);
+  const rest = row.earning.slice(8);
+  return (
+    <div className={cn("grid gap-x-6 gap-y-3 kit-fade-in @min-[40rem]:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)]", className)} data-testid="row-peek">
+      <figure className="hidden space-y-1 @min-[40rem]:block">
+        <LayoutBoxes layout={thumbOf(row)} cell={8} />
+        <figcaption className="max-w-[90px] text-meta text-fg-meta">{share}</figcaption>
+      </figure>
+      <div className="min-w-0 space-y-2">
+        {ex && <p className="text-secondary text-fg-muted">{ex}</p>}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-secondary text-fg-meta">
+          <span className="inline-flex items-center gap-1">
+            <Avatar id={entry.author.id} avatar={entry.author.avatar} size={16} />
+            <span className="text-fg-body">{entry.author.name}</span>
+          </span>
+          <span>· {shapeText(row)}</span>
+          <RowBadges row={row} />
+        </div>
+        {shown.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            {shown.map((t) => (
+              <MutationChip key={t.id} id={t.id} earning={t.coinsPerDay} />
+            ))}
+          </div>
+        )}
+        {rest.length > 0 && <p className="text-meta text-fg-meta">Also: {rest.map((t) => nameOf(t.id)).join(", ")}</p>}
+        <div className="max-w-sm">
+          <SplitBar split={row.split} fraction={fraction(row, top)} />
+          <SplitLegend split={row.split} className="mt-1" />
+        </div>
+      </div>
+      <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] content-start gap-x-3 gap-y-1 text-secondary">
+        {ironman && row.prep && (
+          <>
+            <dt className="text-fg-meta">Starting items</dt>
+            <dd className="min-w-0">
+              <StartingItemsLine prep={row.prep} className="[&>span]:whitespace-normal" />
+              {Object.keys(row.prep.kit).length > 3 && <span className="text-meta text-fg-meta">All: {kitListText(row.prep.kit)}</span>}
+            </dd>
+          </>
+        )}
+        {ironman && entry.cell && (
+          <>
+            <dt className="text-fg-meta">Needs daily</dt>
+            <dd className={upkeep === "None" ? "text-fg-body" : "text-warn"} data-testid="row-upkeep">
+              {upkeep === "None" ? "Nothing: grows back everything it uses" : upkeep}
+            </dd>
+          </>
+        )}
+        {supply && (
+          <>
+            <dt className="text-fg-meta">Supplies</dt>
+            <dd className="text-fg-body">{supply}</dd>
+          </>
+        )}
+        {!ironman && row.buildCost !== null && row.buildCost > 0 && (
+          <>
+            <dt className="text-fg-meta">To build</dt>
+            <dd className="tabular-nums text-fg-body">{formatCoins(row.buildCost)} once</dd>
+          </>
+        )}
+        {ironman && kit && row.altPerDay !== null && (
+          <>
+            <dt className="text-fg-meta">From nothing</dt>
+            <dd>
+              <Coins value={row.altPerDay} />
+              <span className="text-fg-meta">/day (making the starting items first)</span>
+            </dd>
+          </>
+        )}
+        <dt className="text-fg-meta">Effort per login</dt>
+        <dd className="tabular-nums text-fg-body">
+          {row.effortAvg === null ? "unknown" : `${Math.round(row.effortAvg)} average · ${Math.round(row.effortPeak ?? 0)} at the heaviest`}
+        </dd>
+        {row.stall && (
+          <>
+            <dt className="text-fg-meta">Stall</dt>
+            <dd className="text-warn">{starvedText(row.stall.top)}</dd>
+          </>
+        )}
+        <dt className="text-fg-meta">By frequency</dt>
+        <dd className="flex flex-wrap gap-x-2 tabular-nums">
+          {row.curve.map((p) => (
+            <span key={p.every} className={p.every === every ? "text-fg" : "text-fg-meta"}>
+              {p.every}: {p.profitPerDay === null ? "—" : formatCoins(p.profitPerDay)}
+            </span>
+          ))}
+        </dd>
+        <dd className="col-span-2 mt-1.5 flex flex-wrap gap-2">
+          <Link
+            to={simHref(entry.id, board, kit)}
+            className="focus-ring hit-area inline-flex h-8 items-center gap-1.5 rounded-control border border-go bg-go px-3 text-body font-semibold text-on-go transition-colors duration-(--duration-hover) hover:bg-go-hover pointer-coarse:h-11"
+          >
+            <FlaskConical aria-hidden className="size-4" /> Open in simulator
+          </Link>
+          <Link
+            to={flowHref(entry.id, board, kit)}
+            state={{ rankingSearch: rankingSearch ?? "" } satisfies RankingLinkState}
+            className="focus-ring hit-area inline-flex h-8 items-center rounded-control border border-line-strong bg-surface-control px-3 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover pointer-coarse:h-11"
+          >
+            Details
+          </Link>
+        </dd>
+      </dl>
+    </div>
+  );
+};
+
+const OpenSimIcon: React.FC<{ row: FlowRow; board: Board; kit: boolean; className?: string }> = ({ row, board, kit, className }) => (
+  <Link
+    to={simHref(row.entry.id, board, kit)}
+    aria-label={`Open ${row.entry.title} in the simulator`}
+    title="Open in simulator"
+    className={cn("hit-area focus-ring relative inline-grid size-7 shrink-0 place-items-center rounded-control text-fg-meta transition-colors duration-(--duration-hover) hover:bg-surface-hover hover:text-fg", className)}
+  >
+    <FlaskConical aria-hidden className="size-3.5" />
+  </Link>
+);
+
+const PeekButton: React.FC<{ row: FlowRow; open: boolean; onPeek?: () => void; className?: string; size?: "sm" | "touch" }> = ({ row, open, onPeek, className, size = "sm" }) => (
+  <IconButton size={size} aria-label={open ? `Hide details of ${row.entry.title}` : `Show details of ${row.entry.title}`} aria-expanded={open} onClick={onPeek} className={cn("relative", className)}>
+    <ChevronDown className={cn("transition-transform duration-(--duration-ink)", open && "rotate-180")} />
+  </IconButton>
+);
+
+/** The desktop row (a grid row of the ranking table). */
+export const FlowRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = false, index, like, sort, open = false, onPeek, rankingSearch }) => {
+  const { entry } = row;
+  const ironman = board === "ironman";
+  const sub = ironman ? startShort(row) : supplyText(row, board);
+  return (
+    <li className={cn("flows-row-in border-b border-line", open && "bg-surface-card")} style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }} data-testid="flow-row">
+      <div className={cn("group relative grid min-h-12 items-center gap-x-2 px-2 py-1 transition-colors duration-(--duration-hover) hover:bg-surface-hover/50", ROW_COLS)}>
+        <span className="text-right text-secondary tabular-nums text-fg-meta">{row.rank}</span>
+        <span title={entry.thumb ? `Plot ${entry.thumb.plot}'s most-used layout (${percent(entry.thumb.share)} of the time)` : undefined}>
+          <LayoutBoxes layout={thumbOf(row)} cell={3} />
+        </span>
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Link
+              to={flowHref(entry.id, board, kit)}
+              state={{ rankingSearch: rankingSearch ?? "" } satisfies RankingLinkState}
+              className="focus-ring min-w-0 truncate rounded-inner text-body font-medium text-fg after:absolute after:inset-0 after:content-[''] group-hover:underline"
+            >
+              {entry.title}
+            </Link>
+            <span className="flex shrink-0 gap-1">
+              <RowBadges row={row} />
+            </span>
+          </div>
+          <div className="flex min-w-0 items-center gap-1 text-meta text-fg-meta">
+            <Avatar id={entry.author.id} avatar={entry.author.avatar} size={14} />
+            <span className="shrink-0">{entry.author.name}</span>
+            {sub && <span className="min-w-0 truncate">· {sub}</span>}
+          </div>
+        </div>
+        <TopEarner row={row} className="hidden @min-[52rem]:flex" />
+        <div className="min-w-0 text-right">
+          <Coins value={row.profitPerDay} className="text-body" title={headlineTitle(row, board, kit)} />
+          {row.scaled && <span className="text-meta text-fg-meta"> est.</span>}
+          <SplitBar split={row.split} fraction={fraction(row, top)} className="mt-1" />
+        </div>
+        <span className="min-w-0">
+          <span className="@min-[52rem]:hidden">
+            <EffortMeter avg={row.effortAvg} peak={row.effortPeak} compact />
+          </span>
+          <span className="hidden @min-[52rem]:inline">
+            <EffortMeter avg={row.effortAvg} peak={row.effortPeak} />
+          </span>
+        </span>
+        <div className="flex min-w-0 items-center gap-1.5" title={FORGIVING_HINT}>
+          <Sparkline points={row.curve} selected={every} />
+          <span className="text-secondary tabular-nums text-fg-body">{forgivingText(row.slack)}</span>
+        </div>
+        <span className="relative z-10 flex">
+          <RowLikeButton row={row} like={like} sort={sort} />
+        </span>
+        <OpenSimIcon row={row} board={board} kit={kit} className="z-10" />
+        <PeekButton row={row} open={open} onPeek={onPeek} className="z-10" />
+      </div>
+      {open && <RowPeek row={row} top={top} every={every} board={board} kit={kit} rankingSearch={rankingSearch} className="px-2 pt-1 pb-3 @min-[40rem]:pl-8" />}
+    </li>
+  );
+};
+
+/** The phone row: title (stretched link), top earner and author, coins and effort, open-in-simulator and peek at 44px. */
+export const PhoneRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = false, index, like, sort, open = false, onPeek, rankingSearch }) => {
+  const { entry } = row;
+  const badges = row.badges.new || row.badges.stale || row.badges.estimated || row.profitPerDay === null || row.stall || row.slowing || entry.summary?.scripted;
+  return (
+    <li className={cn("flows-row-in border-b border-line", open && "bg-surface-card")} style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }} data-testid="flow-row">
+      <div className="relative grid min-h-14 grid-cols-[1.25rem_minmax(0,1fr)_auto_auto] items-center gap-x-1.5 py-1">
+        <span className="self-start pt-1 text-right text-secondary tabular-nums text-fg-meta">{row.rank}</span>
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Link
+              to={flowHref(entry.id, board, kit)}
+              state={{ rankingSearch: rankingSearch ?? "" } satisfies RankingLinkState}
+              className="focus-ring min-w-0 truncate rounded-inner text-body font-medium text-fg after:absolute after:inset-0 after:content-['']"
+            >
+              {entry.title}
+            </Link>
+            {badges && (
+              <span className="flex shrink-0 gap-1">
+                <RowBadges row={row} />
+              </span>
+            )}
+          </div>
+          <div className="flex min-w-0 items-center gap-1 text-meta text-fg-meta">
+            <TopEarner row={row} chip={false} className="min-w-0 shrink" />
+            <span className="shrink-0 truncate">· {entry.author.name}</span>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="whitespace-nowrap">
+            <Coins value={row.profitPerDay} className="text-body" title={headlineTitle(row, board, kit)} />
+            {row.scaled && <span className="text-meta text-fg-meta"> est.</span>}
+          </span>
+          <EffortMeter avg={row.effortAvg} peak={row.effortPeak} compact />
+        </div>
+        <div className="relative z-10 flex items-center">
+          <OpenSimIcon row={row} board={board} kit={kit} className="size-11" />
+          <PeekButton row={row} open={open} onPeek={onPeek} size="touch" />
+        </div>
+      </div>
+      {open && (
+        <div className="space-y-3 pb-3 pl-7">
+          <div className="flex items-center gap-2">
+            <Sparkline points={row.curve} selected={every} />
+            <span className="text-meta text-fg-meta" title={FORGIVING_HINT}>
+              {forgivingText(row.slack)} forgiving
+            </span>
+            <span className="relative z-10 ml-auto">
+              <RowLikeButton row={row} like={like} sort={sort} />
+            </span>
+          </div>
+          <RowPeek row={row} top={top} every={every} board={board} kit={kit} rankingSearch={rankingSearch} />
+        </div>
+      )}
+    </li>
+  );
+};

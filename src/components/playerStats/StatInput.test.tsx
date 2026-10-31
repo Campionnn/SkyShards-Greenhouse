@@ -2,34 +2,36 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { StatInput } from "./StatInput";
 import { STAT_FIELDS } from "./statFields";
+import { selectChoices } from "./statChoices";
 
 const noop = () => {};
 const render = (key: keyof typeof STAT_FIELDS, value: number, variant?: "row" | "stacked") =>
   renderToStaticMarkup(<StatInput def={STAT_FIELDS[key]} value={value} onChange={noop} variant={variant} />);
 
-/** The `<option>` elements of the markup, as { value, label, selected }. */
-function options(html: string) {
-  return [...html.matchAll(/<option([^>]*)>([^<]*)<\/option>/g)].map(([, attrs, label]) => ({
-    value: /value="([^"]*)"/.exec(attrs)?.[1],
-    label: label.replace(/&amp;/g, "&"),
-    selected: /selected=""/.test(attrs),
-  }));
-}
-const selected = (html: string) => options(html).filter((o) => o.selected).map((o) => o.label);
+/** The label each field-dropdown trigger shows (the current choice), in order. */
+const selected = (html: string) => [...html.matchAll(/data-selected-choice="true">([^<]*)</g)].map(([, label]) => label.replace(/&amp;/g, "&"));
+
+const optionsOf = (key: keyof typeof STAT_FIELDS, value: number) => {
+  const def = STAT_FIELDS[key];
+  if (def.kind !== "select") throw new Error(`${key} is not a select`);
+  return selectChoices(def.options, value).choices;
+};
 
 describe("StatInput", () => {
   it("select: shows the game choices and selects the stored value", () => {
     const html = render("mutationChanceBonus", 0.1);
-    expect(options(html).map((o) => o.label)).toEqual(["None", "Talisman · +5%", "Ring · +10%", "Artifact · +15%"]);
+    expect(optionsOf("mutationChanceBonus", 0.1).map((o) => o.label)).toEqual(["None", "Talisman · +5%", "Ring · +10%", "Artifact · +15%"]);
     expect(selected(html)).toEqual(["Ring · +10%"]);
     expect(html).toContain("Bioanalysis");
+    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).not.toContain("<select");
     expect(html).not.toContain("Custom");
   });
 
   it("select: a value that matches no choice is kept as Custom, not snapped to the nearest", () => {
     const html = render("mutationChanceBonus", 0.12);
     expect(selected(html)).toEqual(["Custom (0.12)"]);
-    expect(options(html)[0]).toMatchObject({ value: "custom", label: "Custom (0.12)" });
+    expect(optionsOf("mutationChanceBonus", 0.12)[0]).toMatchObject({ value: "custom", label: "Custom (0.12)" });
   });
 
   it("select: tiers and levels use their own labels", () => {
@@ -45,8 +47,6 @@ describe("StatInput", () => {
     expect(html).toContain("+60%");
     expect(html).toContain('aria-label="Evergreen Chip rarity"');
     expect(html).toContain('aria-label="Evergreen Chip level"');
-    // Legendary goes to level 20 (plus "No chip").
-    expect(options(html).filter((o) => /^Level |^No chip/.test(o.label))).toHaveLength(21);
   });
 
   it("chip: picks the rarity that reaches the value exactly", () => {

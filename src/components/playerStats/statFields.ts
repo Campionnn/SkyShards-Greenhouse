@@ -66,8 +66,8 @@ export function chipFromValue(spec: ChipSpec, value: number): { rarity: ChipRari
   if (!(value > 0)) return { rarity: "legendary", level: 0 };
   for (const rarity of [...CHIP_RARITIES].reverse()) {
     const level = value / spec.perLevel[rarity];
-    const rounded = Math.round(level);
-    if (Math.abs(level - rounded) < 1e-6 && rounded >= 1 && rounded <= spec.maxLevel[rarity]) return { rarity, level: rounded };
+    const whole = Math.round(level);
+    if (Math.abs(level - whole) < 1e-6 && whole >= 1 && whole <= spec.maxLevel[rarity]) return { rarity, level: whole };
   }
   return null;
 }

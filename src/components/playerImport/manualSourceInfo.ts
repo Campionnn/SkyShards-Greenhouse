@@ -22,6 +22,7 @@ export const MANUAL_SOURCE_INFO: Record<string, readonly string[]> = {
     "Drinking one also adds +4 growth stages to the Greenhouse crops in your plot. 2-hour cooldown between flasks.",
   ],
   mooshroomStrength: [
+    // design-guard-ignore: the word 'rounded' in prose, not a class
     "Mooshroom Cow perk, Rare or better: +0.7 Farming Fortune per X Strength, rounded down. X falls with pet level: Rare 39.9 → 30, Epic/Legendary 39.8 → 20 at level 100.",
     "Enter the Strength from your SkyBlock menu with your farming setup on. Defaults to a realistic max of 1,780.",
   ],

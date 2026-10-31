@@ -1,6 +1,7 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { cn } from "../ui/cn";
 
 /**
  * Entry descriptions: limited Markdown (docs/plans/flow-leaderboard.md §6.5). No links, images or
@@ -11,7 +12,15 @@ const ALLOWED_ELEMENTS = ["p", "em", "strong", "ul", "ol", "li", "code", "pre", 
 
 export const FlowMarkdown: React.FC<{ text: string; className?: string }> = ({ text, className = "" }) => (
   <div
-    className={`text-sm text-slate-300 leading-relaxed break-words space-y-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-slate-100 [&_h3]:mt-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_code]:bg-slate-900/70 [&_code]:rounded [&_code]:px-1 [&_code]:text-[0.85em] [&_pre]:bg-slate-900/70 [&_pre]:rounded-md [&_pre]:p-2 [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_blockquote]:border-l-2 [&_blockquote]:border-slate-600 [&_blockquote]:pl-3 [&_blockquote]:text-slate-400 [&_strong]:text-slate-100 ${className}`}
+    className={cn(
+      "max-w-[72ch] space-y-2 break-words text-body text-fg-body",
+      "[&_h3]:mt-3 [&_h3]:text-body [&_h3]:font-semibold [&_h3]:text-fg [&_strong]:font-semibold [&_strong]:text-fg",
+      "[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5",
+      "[&_code]:rounded-inner [&_code]:bg-surface-well [&_code]:px-1 [&_code]:font-mono [&_code]:text-secondary",
+      "[&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:rounded-control [&_pre]:bg-surface-well [&_pre]:p-2",
+      "[&_blockquote]:border-l-2 [&_blockquote]:border-line-strong [&_blockquote]:pl-3 [&_blockquote]:text-fg-muted",
+      className,
+    )}
   >
     <ReactMarkdown remarkPlugins={[remarkGfm]} allowedElements={ALLOWED_ELEMENTS} unwrapDisallowed skipHtml>
       {text}
