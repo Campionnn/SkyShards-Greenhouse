@@ -25,7 +25,8 @@ export const MobileChips: React.FC<{ scenario: Scenario; onOpenSettings: (tab: D
   const online = s.playerActions === false ? "actions off" : a.kind === "everyN" ? (a.n === 1 ? "every cycle" : `every ${a.n} cycles`) : "times of day";
   const cycle = cycleSeconds(s.playerStats, effectiveUniqueCrops(0, s.playerStats.floraShard ?? 0));
   return (
-    <div className="-mx-2 flex gap-1.5 overflow-x-auto px-2 pb-1 scrollbar-none md:hidden">
+    // Bleed only as far as the page padding (px-1 on phones), or the row widens the page by 4px.
+    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 scrollbar-none md:hidden">
       <Chip icon={<Clock />} onClick={() => onOpenSettings("schedule")}>
         {online}
       </Chip>

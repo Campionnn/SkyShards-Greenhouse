@@ -259,6 +259,27 @@ body {
   }
 }
 
+/* The site header uses the same frame as the page (Layout.tsx: px-1 sm:px-2 lg:px-4, the
+   pn-page grid, max-w-screen-2xl), so the logo lines up with the content column's left edge and
+   the header's right side with its right edge, with or without the ad rails. */
+.pn-header {
+  display: block;
+}
+@media (min-width: 1280px) {
+  .pn-header {
+    display: grid;
+    grid-template-columns: 100px minmax(0, 1fr) 300px;
+    column-gap: 16px;
+  }
+  .pn-header > .pn-content {
+    grid-column: 2;
+    min-width: 0;
+  }
+}
+html.ads-blocked .pn-header {
+  display: block;
+}
+
 /* Ad blocker detected (set in index.html): collapse every reserved ad slot so there is
    no empty space. Pure CSS, so it applies on first paint and on every route. */
 html.ads-blocked .pn-left,
