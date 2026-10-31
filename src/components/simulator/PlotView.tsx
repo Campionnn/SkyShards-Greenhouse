@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, MoreHorizontal, Pencil } from "lucide-react";
+import { Eye, LayoutGrid, MoreHorizontal, Pencil } from "lucide-react";
 import { IconButton, KitButton } from "../ui/kit";
 import { Popover } from "../ui/Popover";
 import { useContextMenu, type ContextMenuEntry } from "../ui/contextMenuContext";
@@ -59,6 +59,8 @@ export interface PlotViewProps {
   def: ScenarioPlot | undefined;
   events: TimedEvent[];
   onEditFlow?: () => void;
+  /** Open the flow editor's layout designer on the given step (the one the plot is on now). */
+  onOpenDesigner?: (stepIndex: number) => void;
   /** Largest cell size in px. */
   maxCell?: number;
   /** Unresolved shortfalls ("plot:row,col:item"): layout plants the player could not afford to re-place. */
@@ -95,6 +97,7 @@ export const PlotView: React.FC<PlotViewProps> = ({
   def,
   events,
   onEditFlow,
+  onOpenDesigner,
   maxCell = 48,
   openDebts = [],
   cycleSeconds,
@@ -300,6 +303,17 @@ export const PlotView: React.FC<PlotViewProps> = ({
           </>
         )}
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
+          {onOpenDesigner && runner && step && (
+            <KitButton
+              variant="ghost"
+              onClick={() => onOpenDesigner(runner.stepIndex)}
+              title={`Edit the layout of the current step (${step.label || `step ${runner.stepIndex + 1}`}) in the flow editor's designer`}
+              className="!h-[26px] !px-2"
+            >
+              <LayoutGrid />
+              <span className="@max-[360px]:hidden">Designer</span>
+            </KitButton>
+          )}
           {onEditFlow && (
             <KitButton variant="ghost" onClick={onEditFlow} title="Edit this plot's flow" className="!h-[26px] !px-2">
               <Pencil />

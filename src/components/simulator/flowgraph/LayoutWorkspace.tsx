@@ -3,7 +3,7 @@ import { ArrowLeft, ChevronRight, Copy, ExternalLink, FolderInput } from "lucide
 import { DesignerProvider } from "../../../context";
 import { useFitCellSize } from "../../../hooks";
 import type { FlowStep, StepLayout } from "../../../simulator";
-import type { LayoutTransform } from "../../../utilities";
+import { getGridDimensions, type LayoutTransform } from "../../../utilities";
 import { CropSelectionPalette, DesignerGrid, LayoutClearControls, LayoutCropSummary, LayoutHistoryControls, LayoutTransformControls, MutationValidator } from "../../designer";
 import { useToast } from "../../ui";
 import { InfoHint } from "../../ui/InfoHint";
@@ -139,7 +139,7 @@ export const LayoutWorkspace: React.FC<{
         initialPlacements={initial}
         onChange={(inputs, targets, groundTiles, transform) => onChange({ code: placementsToCode(inputs, targets, groundTiles) }, transform)}
       >
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 scrollbar-dark lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[280px_minmax(0,1fr)_300px] xl:overflow-hidden">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 scrollbar-dark lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[260px_minmax(0,1fr)_400px] 2xl:grid-cols-[280px_minmax(0,1fr)_440px] xl:overflow-hidden">
           <div className={`order-2 space-y-4 p-3 xl:order-1 xl:overflow-y-auto scrollbar-dark ${surface.card}`}>
             <div className="space-y-2">
               <KitLabel>Transform</KitLabel>
@@ -158,7 +158,10 @@ export const LayoutWorkspace: React.FC<{
             <div ref={fitRef} className="flex w-full flex-col items-center">
               <DesignerGrid cellSize={cellSize} gap={gap} />
             </div>
-            <LayoutCropSummary className="mt-4" />
+            {/* As wide as the grid above it, not the whole card. */}
+            <div className="mx-auto mt-4 w-full" style={{ maxWidth: getGridDimensions(cellSize, gap).width }}>
+              <LayoutCropSummary />
+            </div>
           </div>
           <div className={`relative order-3 h-[520px] xl:h-auto ${surface.card}`}>
             <div className="absolute inset-3">

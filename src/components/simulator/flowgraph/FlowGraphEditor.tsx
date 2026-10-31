@@ -63,6 +63,8 @@ export const FlowGraphEditor: React.FC<{
   onSwitchPlot?: (plotId: number) => void;
   /** Step selected when the editor opens (e.g. one just added from another page). */
   initialStep?: number;
+  /** Open straight into the layout designer of `initialStep` (the plot's "Designer" button). */
+  initialLayout?: boolean;
   /** Open the script editor (this plot's script, or the controller). */
   onEditScript?: (target: number | "controller") => void;
   /** Open the layout picker (adds a plot from a layout). */
@@ -90,7 +92,7 @@ function loadPanels(): { rail: number; insp: number } {
 /** A copied step, shared across plots while the page is open. */
 let clipboard: FlowStep | null = null;
 
-const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>> = ({ scenario, plotId, onChange, onClose, onSwitchPlot, initialStep = 0, onEditScript, onLoadLayout }) => {
+const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>> = ({ scenario, plotId, onChange, onClose, onSwitchPlot, initialStep = 0, initialLayout = false, onEditScript, onLoadLayout }) => {
   const { toast } = useToast();
   const openMenu = useContextMenu();
   const raw = scenario.plots.find((p) => p.id === plotId) ?? null;
@@ -104,7 +106,7 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
   const [hotExit, setHotExit] = useState<[number, number] | null>(null);
   const [showAllWires, setShowAllWires] = useState(false);
   const [menu, setMenu] = useState<AddMenuRequest | null>(null);
-  const [layoutOf, setLayoutOf] = useState<number | null>(null);
+  const [layoutOf, setLayoutOf] = useState<number | null>(initialLayout ? initialStep : null);
   const [sheet, setSheet] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
   const canvasRef = useRef<CanvasHandle | null>(null);
@@ -130,9 +132,9 @@ const FlowGraphEditorBody: React.FC<React.ComponentProps<typeof FlowGraphEditor>
     setHotExit(null);
     setShowAllWires(false);
     setMenu(null);
-    setLayoutOf(null);
+    setLayoutOf(initialLayout ? initialStep : null);
     setIssuesOpen(false);
-  }, [plotId, initialStep]);
+  }, [plotId, initialStep, initialLayout]);
 
   // Latest values for callbacks handed to the canvas (which keeps them across renders).
   const live = useRef({ scenario, plot, onChange });

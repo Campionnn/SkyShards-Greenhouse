@@ -111,7 +111,15 @@ export const SimulatorPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [scenario, setScenario] = useState<Scenario>(() => initialScenario(params));
-  const [editing, setEditing] = useState<{ plotId: number; step: number } | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("player");
+  /** The flow editor overlay: which plot, which step, and whether it opens in that step's layout designer. */
+  const [editing, setEditingState] = useState<{ plotId: number; step: number; layout?: boolean } | null>(null);
+  // Opening the flow editor closes the settings drawer: the editor covers the page and the drawer would sit over it.
+  const setEditing = (next: { plotId: number; step: number; layout?: boolean } | null) => {
+    if (next) setDrawerOpen(false);
+    setEditingState(next);
+  };
   const editingPlot = editing?.plotId ?? null;
   const setEditingPlot = (plotId: number | null) => setEditing(plotId === null ? null : { plotId, step: 0 });
   // Results tab (remembered), settings drawer, and the plot whose layout "Replace" is picking for.
@@ -127,8 +135,6 @@ export const SimulatorPage: React.FC = () => {
       // Private mode: the tab just isn't remembered.
     }
   };
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>("player");
   const [replacing, setReplacing] = useState<number | null>(null);
   // The results tab bar sticks right under the command bar, whatever its height.
   const barRef = useRef<HTMLElement>(null);
@@ -213,7 +219,7 @@ export const SimulatorPage: React.FC = () => {
         before = sc;
         return next;
       });
-      setEditing(null);
+      setEditingState(null);
       toast({
         id: "simulator-scenario-loaded",
         title: `Loaded ${whole.name}`,
@@ -270,7 +276,7 @@ export const SimulatorPage: React.FC = () => {
         // The board's profile is site-wide: switch the simulator's mode to match it.
         if ((board === "normal") !== (profile === "normal")) setProfile(board === "normal" ? "normal" : "ironman");
         strip();
-        setEditing(null);
+        setEditingState(null);
         toast({
           id: "simulator-flow-loaded",
           title: `Loaded ${detail.title} by ${detail.author.name}`,
@@ -526,6 +532,7 @@ export const SimulatorPage: React.FC = () => {
                 def={state.scenario.plots.find((p) => p.id === plot.id)}
                 events={eventsFor(plot.id)}
                 onEditFlow={preview ? undefined : () => setEditingPlot(plot.id)}
+                onOpenDesigner={preview ? undefined : (stepIndex) => setEditing({ plotId: plot.id, step: stepIndex, layout: true })}
                 menu={preview ? undefined : plotMenu(plot.id)}
                 contextMenu={preview ? undefined : () => plotContextMenu(plot.id)}
                 maxCell={52}
@@ -636,6 +643,7 @@ export const SimulatorPage: React.FC = () => {
           scenario={scenario}
           plotId={editingPlot}
           initialStep={editing!.step}
+          initialLayout={editing!.layout}
           onChange={setScenario}
           onSwitchPlot={(plotId) => setEditing({ plotId, step: 0 })}
           onClose={() => setEditingPlot(null)}

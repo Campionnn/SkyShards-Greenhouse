@@ -76,12 +76,12 @@ const PropChip = React.forwardRef<HTMLButtonElement, { icon: React.ReactNode; la
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "focus-ring inline-flex h-[30px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control px-2 text-body transition-colors duration-(--duration-hover) disabled:cursor-default disabled:opacity-50 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-fg-meta",
+        "focus-ring inline-flex h-[30px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control border px-2 text-body transition-colors duration-(--duration-hover) disabled:cursor-default disabled:opacity-50 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-fg-meta",
         // 860–1100px bar (1366 with the ad rails): the word label says what the icon says, so the icon goes and the label stays.
         "@min-[860px]:@max-[1100px]:[&>svg]:hidden",
         shrinks ? "min-w-[64px] shrink" : "shrink-0",
-        // Open: the selection colour (this chip's popover is the thing you are in).
-        open ? "bg-select/10 [&>svg]:text-select-fg" : "hover:bg-surface-hover",
+        // Open: the selection colour (this chip's popover is the thing you are in). Closed: a control surface, so it reads as clickable.
+        open ? "border-select/60 bg-select/10 [&>svg]:text-select-fg" : "border-line-strong bg-surface-control hover:bg-surface-hover disabled:hover:bg-surface-control",
       )}
     >
       {icon}
@@ -193,7 +193,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
       <Sep />
 
       {/* Frequent settings */}
-      <div className="flex min-w-0 shrink items-center gap-0.5 max-md:hidden">
+      <div className="flex min-w-0 shrink items-center gap-1 max-md:hidden">
         <PropChip ref={reg("online")} icon={<Clock />} label="Online" shrinks open={pop === "online"} onClick={() => toggle("online")} disabled={preview} title={`When the player is online: ${everyLabel(scenario)}`}>
           {everyLabel(scenario)}
         </PropChip>
@@ -211,7 +211,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         onClick={() => onOpenSettings()}
         title="All settings"
         aria-label={changedSettings > 0 ? `Settings, ${changedSettings} changed` : "Settings"}
-        className="focus-ring inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control px-2 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover max-md:hidden"
+        className="focus-ring inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control border border-line-strong bg-surface-control px-2 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover max-md:hidden"
       >
         {/* Narrow bars: icon only, so the property chips keep their labels. */}
         <SlidersHorizontal className="size-3.5 text-fg-meta" /> <span className="@max-[1100px]:hidden">Settings</span>
@@ -435,7 +435,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         </ul>
       </Popover>
 
-      <Popover anchor={anchors.current.run ?? null} open={pop === "run"} onClose={close} label="Run options" width={250} align="end">
+      <Popover anchor={anchors.current.run ?? null} open={pop === "run"} onClose={close} label="Run options" width={360} align="end">
         <MenuLabel>Run length</MenuLabel>
         <div className="flex gap-1 px-1 pb-1.5">
           {RUN_PRESETS.map((k) => (
@@ -473,9 +473,10 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         <MenuLabel>Keyboard</MenuLabel>
         <ul className="space-y-1 px-2 pb-1.5">
           {RUN_SHORTCUTS.map((s) => (
-            <li key={s.keys} className="flex items-center gap-2 text-secondary text-fg-muted">
-              <Kbd className="min-w-[4.5rem] justify-center">{s.keys}</Kbd>
-              {s.action}
+            <li key={s.keys} className="flex items-start gap-2 text-secondary text-fg-muted">
+              {/* Fixed key column that never wraps ("Ctrl/⌘ + Z" broke over two lines); the action text wraps beside it. */}
+              <Kbd className="w-[5.5rem] shrink-0 justify-center whitespace-nowrap">{s.keys}</Kbd>
+              <span className="min-w-0">{s.action}</span>
             </li>
           ))}
         </ul>
