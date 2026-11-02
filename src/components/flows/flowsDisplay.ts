@@ -5,13 +5,13 @@ import { rarityOf } from "../simulator/format";
 /** Non-component helpers for the leaderboard components (kept apart for fast refresh). */
 
 /**
- * The revenue split's three parts as neutral steps (charts are neutral; colour is for roles):
- * mutation items brightest, crops in the middle, rare crops and drops darkest. The legend names them.
+ * The revenue split's three parts in the chart-series colours (index.css `--color-series-*`, data
+ * only): crops leaf green, mutation items orange, rare crops and drops magenta. The legend names them.
  */
 export const SPLIT_STYLE = {
-  crops: { label: "crops", bar: "bg-fg-meta", text: "text-fg-muted" },
-  mutations: { label: "mutations", bar: "bg-fg-body", text: "text-fg-muted" },
-  rare: { label: "rare", bar: "bg-line-control", text: "text-fg-muted" },
+  crops: { label: "crops", bar: "bg-series-crops", text: "text-fg-muted" },
+  mutations: { label: "mutations", bar: "bg-series-mutations", text: "text-fg-muted" },
+  rare: { label: "rare", bar: "bg-series-rare", text: "text-fg-muted" },
 } as const;
 
 export const EFFORT_LABEL: Record<string, string> = {

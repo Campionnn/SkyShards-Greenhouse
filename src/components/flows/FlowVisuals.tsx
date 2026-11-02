@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { resolveLayout } from "../../simulator/flow/layout";
 import type { StepLayout } from "../../simulator/flow/types";
 import { defaultGameData, EFFORT_WEIGHTS } from "../../simulator";
@@ -29,7 +29,7 @@ export const SplitBar: React.FC<{ split: RevenueSplit | null; fraction: number; 
   const total = split ? split.crops + split.mutations + split.rare : 0;
   const width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
   return (
-    <div className={cn("h-1.5 w-full overflow-hidden rounded-full bg-line", className)} aria-hidden>
+    <div className={cn("h-2 w-full overflow-hidden rounded-full bg-line", className)} aria-hidden>
       <div className="flex h-full gap-px" style={{ width }}>
         {total > 0 &&
           (["crops", "mutations", "rare"] as const).map((k) =>
@@ -59,27 +59,62 @@ export const SplitLegend: React.FC<{ split: RevenueSplit | null; className?: str
 
 // ---- Frequency sparkline ---------------------------------------------------------------------
 
+const fmtHours = (h: number) => (h < 1 ? `${Math.round(h * 60)}m` : h < 10 ? `${h.toFixed(1).replace(/\.0$/, "")}h` : `${Math.round(h)}h`);
+
 /**
  * Profit per day across the online frequencies, as tiny bars (1, 2, 3, 4, 6, 8, 12 cycles). Neutral
  * bars; the viewer's frequency is the `select` one, so it reads as "how much do I lose by logging in
- * less". The values are in the label (and the ranking's peek lists them).
+ * less". Hovering (or tapping) a bar shows its numbers in a small tooltip; the values are also in the
+ * label for screen readers. Sits above a stretched row link, so it lifts itself (`relative z-10`).
  */
-export const Sparkline: React.FC<{ points: FrequencyPoint[]; selected: number; className?: string }> = ({ points, selected, className = "" }) => {
+export const Sparkline: React.FC<{ points: FrequencyPoint[]; selected: number; className?: string; hoursPerCycle?: number }> = ({ points, selected, className = "", hoursPerCycle }) => {
+  const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...points.map((p) => p.profitPerDay ?? 0));
   if (!points.some((p) => p.profitPerDay !== null)) return null;
   const label = `Profit by login frequency: ${points.map((p) => `every ${p.every} ${p.profitPerDay === null ? "not verified" : formatCoins(Math.max(0, p.profitPerDay))}`).join(", ")}`;
+  const mine = points.find((p) => p.every === selected)?.profitPerDay ?? null;
+  const focus = hover === null ? null : (points.find((p) => p.every === hover) ?? null);
+  const delta = focus && focus.profitPerDay !== null && mine && mine > 0 && focus.every !== selected ? (focus.profitPerDay - mine) / mine : null;
   return (
-    <div className={cn("flex h-7 items-end gap-[3px]", className)} role="img" aria-label={label}>
+    <div className={cn("relative z-10 flex h-7 items-end", className)} role="img" aria-label={label} onPointerLeave={() => setHover(null)}>
       {points.map((p) => {
         const v = Math.max(0, p.profitPerDay ?? 0);
         const h = p.profitPerDay === null ? 0 : Math.max(8, (v / max) * 100);
         const active = p.every === selected;
+        const hovered = p.every === hover;
         return (
-          <div key={p.every} className="flex h-full w-1.5 items-end" title={`Every ${p.every}: ${p.profitPerDay === null ? "not verified" : `${formatCoins(v)}/day`}`}>
-            <div className={cn("w-full rounded-full", p.profitPerDay === null ? "bg-line" : active ? "bg-select" : "bg-line-control")} style={{ height: p.profitPerDay === null ? "15%" : `${h}%` }} />
+          <div key={p.every} className="flex h-full w-2.5 cursor-default items-end justify-center" onPointerEnter={() => setHover(p.every)} data-every={p.every}>
+            <div
+              className={cn("w-1.5 rounded-full transition-colors duration-(--duration-hover)", p.profitPerDay === null ? "bg-line" : active ? "bg-select" : hovered ? "bg-fg-muted" : "bg-line-control")}
+              style={{ height: p.profitPerDay === null ? "15%" : `${h}%` }}
+            />
           </div>
         );
       })}
+      {focus && (
+        <div
+          role="presentation"
+          className="pointer-events-none absolute bottom-full left-1/2 z-(--z-tooltip) mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-control border border-line-strong bg-surface-raised px-2 py-1 text-meta shadow-raised"
+          data-testid="sparkline-tip"
+        >
+          <span className="block text-fg-body">
+            Every {focus.every}
+            {hoursPerCycle ? ` · ≈${fmtHours(focus.every * hoursPerCycle)}` : ""}
+            {focus.every === selected && <span className="text-select-fg"> · yours</span>}
+          </span>
+          <span className="block tabular-nums">
+            {focus.profitPerDay === null ? (
+              <span className="text-fg-meta">not verified</span>
+            ) : (
+              <>
+                <span className="font-semibold text-coin">{formatCoins(focus.profitPerDay)}</span>
+                <span className="text-fg-meta">/day</span>
+                {delta !== null && <span className={delta >= 0 ? "text-go-fg" : "text-problem"}> {`${delta >= 0 ? "+" : ""}${Math.round(delta * 100)}%`}</span>}
+              </>
+            )}
+          </span>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import type { Board } from "../../../leaderboard/rules";
-import { kitCount, prepDays, suppliesText, type FlowRow, type RowFilters, type SortKey } from "../../../leaderboard/view";
-import { formatCoins } from "../../simulator/format";
+import { kitCount, prepDays, suppliesText, upkeepLines, type FlowRow, type RowFilters, type SortKey } from "../../../leaderboard/view";
+import { formatCoins, nameOf } from "../../simulator/format";
 
 /** Non-component helpers for the /flows ranking (kept apart for fast refresh). */
 
@@ -66,6 +66,24 @@ export function supplyText(row: FlowRow, board: Board): string | null {
   if (board === "normal") return row.boughtPerDay ? `${formatCoins(row.boughtPerDay)}/day bought` : null;
   const t = suppliesText(row.suppliesPerDay);
   return t === "none" ? null : `${t}/day to farm`;
+}
+
+/** A count rounded up ("you need at least this many"); fractions keep one significant digit. */
+const countUp = (n: number) => (n >= 1 ? Math.ceil(n - 1e-9).toLocaleString("en-US") : n > 0 ? String(Number(n.toPrecision(1))) : "0");
+
+/**
+ * Ironman upkeep, short enough for a table cell: "256 Turtlellini +2 more/day" (null when it
+ * grows back everything it uses, or on Normal, where shortfalls are bought). `full` lists every item.
+ */
+export function upkeepShort(row: FlowRow, board: Board): { short: string; full: string } | null {
+  if (board !== "ironman" || !row.entry.cell) return null;
+  const lines = upkeepLines(row.entry.cell.upkeep);
+  if (!lines.length) return null;
+  const first = `${countUp(lines[0].perDay)} ${nameOf(lines[0].item)}`;
+  return {
+    short: `${first}${lines.length > 1 ? ` +${lines.length - 1} more` : ""}/day`,
+    full: `Upkeep: it needs these every day, on top of the starting items: ${lines.map((l) => `${countUp(l.perDay)} ${nameOf(l.item)}`).join(", ")}`,
+  };
 }
 
 /** Forgiving as a percentage; above 100% (logging in later earns more) reads "100%+". */

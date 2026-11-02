@@ -19,6 +19,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
 import { useFlowViewer, type FlowViewer } from "../hooks/useFlowViewer";
 import type { FlowListResponse } from "../leaderboard/api";
+import { cycleHours } from "../leaderboard/tiers";
 import {
   CELL_KIND_LABEL,
   DEFAULT_FILTERS,
@@ -205,8 +206,9 @@ export const FlowsPage: React.FC = () => {
   });
 
   const Row = phone ? PhoneRowItem : FlowRowItem;
+  const hoursPerCycle = cycleHours(viewer.stats);
   const list = loading ? (
-    <ListSkeleton rowHeight={phone ? 56 : 48} />
+    <ListSkeleton rowHeight={phone ? 56 : 96} />
   ) : result?.error ? (
     <ListError error={result.error} onRetry={() => setReload((n) => n + 1)} />
   ) : ranked.length === 0 ? (
@@ -231,6 +233,8 @@ export const FlowsPage: React.FC = () => {
             open={peek === row.entry.id}
             onPeek={() => setPeek((p) => (p === row.entry.id ? null : row.entry.id))}
             rankingSearch={rankingSearch}
+            hoursPerCycle={hoursPerCycle}
+            onEvery={viewer.setEvery}
           />
         ))}
       </ol>
@@ -393,8 +397,8 @@ export const FlowsPage: React.FC = () => {
           <span role="columnheader" className="text-label uppercase text-fg-meta">
             Flow
           </span>
-          <span role="columnheader" className="hidden text-label uppercase text-fg-meta @min-[52rem]:block">
-            Earns most
+          <span role="columnheader" className="hidden text-label uppercase text-fg-meta @min-[60rem]:block">
+            {board === "ironman" ? "Earns most · upkeep" : "Earns most"}
           </span>
           <SortHead sort={sort} k="profit" onSort={setSort} label="profit" align="end">
             Coins/day

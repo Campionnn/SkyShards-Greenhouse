@@ -170,6 +170,9 @@ describe("leaderboard pages render", () => {
     expect(r.ranks).toContain("No starting items");
     // Upkeep, Stall (its reason visible in the peek), and no v2 Kit chip.
     expect(r.ranks).toContain('data-testid="row-upkeep"');
+    // Upkeep is in the row itself (not only the peek), in the warn colour.
+    expect(r.ranks).toContain('data-testid="row-upkeep-line"');
+    expect(r.ranks).toMatch(/Needs 0\.04 Cindershade[^<]*\/day/);
     expect(r.ranks).toContain("0.04 Cindershade /day");
     expect(r.ranks).toContain(">Stall<");
     expect(r.ranks).toContain("Plot 3, step-1: 5.6 Magic Jellybean cells empty on average: the stock ran out.");
@@ -224,7 +227,7 @@ describe("leaderboard pages render", () => {
     const { ranked } = splitRanked(rankEntries(DATA, list.entries, s, 4));
     const row = ranked[0];
     const html = text(wrap(<RowPeek row={row} top={maxProfit(ranked)} every={4} board="ironman" kit={false} />));
-    for (const sNeed of ['data-testid="row-peek"', "Effort per login", "at the heaviest", "By frequency", "Open in simulator", "Details", "most-used layout"]) expect(html).toContain(sNeed);
+    for (const sNeed of ['data-testid="row-peek"', "Effort per login", "at the heaviest", "Profit by how often you log in", "Open in simulator", "Details", "most-used layout"]) expect(html).toContain(sNeed);
     // Forgiving above 100% reads 100%+, never 107%.
     const over = text(wrap(<ol><FlowRowItem row={{ ...row, slack: 1.07 }} top={1} every={1} board="ironman" index={0} like={{ liked: false, busy: false }} sort="profit" /></ol>));
     expect(over).toContain("100%+");

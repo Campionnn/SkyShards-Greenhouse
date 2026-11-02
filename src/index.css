@@ -53,6 +53,12 @@
   --color-select: oklch(85% 0.13 205);
   --color-select-fg: oklch(89% 0.111 205);
 
+  /* Chart series (data only, never UI state or actions): where a flow's money comes from. Hues kept
+     clear of the roles above (go 163, select 205, coin 75, warn 105, problem 28, script 285, restart 355). */
+  --color-series-crops: oklch(72% 0.14 135);
+  --color-series-mutations: oklch(73% 0.14 50);
+  --color-series-rare: oklch(70% 0.13 320);
+
   /* ---- Legacy ramps, re-pointed (pages that still use raw classes follow the palette) ---- */
   /* slate → true grey. slate-500 is the passing meta grey, so legacy text-slate-500 becomes readable. */
   --color-slate-50: oklch(98.5% 0 0);
