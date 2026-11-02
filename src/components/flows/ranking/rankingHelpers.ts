@@ -4,6 +4,14 @@ import { formatCoins, nameOf } from "../../simulator/format";
 
 /** Non-component helpers for the /flows ranking (kept apart for fast refresh). */
 
+/**
+ * Desktop grid, shared by the header, the rows and the loading skeleton: # · layout · flow · earns +
+ * upkeep · coins/day · effort · forgiving · likes · simulator · peek. Narrow containers drop the earns
+ * column (earner and upkeep move under the title) and the effort word; wide ones widen the earns column.
+ */
+export const ROW_COLS =
+  "grid-cols-[1.5rem_77px_minmax(0,1fr)_6rem_2.5rem_7.5rem_3.5rem_1.75rem_1.75rem] @min-[60rem]:grid-cols-[1.5rem_77px_minmax(0,1fr)_minmax(0,10.5rem)_6rem_5.5rem_7.5rem_3.5rem_1.75rem_1.75rem] @min-[80rem]:grid-cols-[1.5rem_77px_minmax(0,1fr)_minmax(0,16rem)_8rem_5.5rem_7.5rem_3.5rem_1.75rem_1.75rem]";
+
 export const SORT_HINT: Record<SortKey, string> = {
   profit: "Coins per day at your stats and prices.",
   perEffort: "Coins per day for each point of work per login: the best return on your time.",

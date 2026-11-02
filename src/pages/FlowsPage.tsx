@@ -3,10 +3,10 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ArrowUpRight, MoreHorizontal, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import { AccountControl, BoardToggle, KitSwitch } from "../components/flows/FlowControls";
 import { FilterBar, PlotsField, type PlotsFilter } from "../components/flows/FlowFilters";
-import { FlowRowItem, PhoneRowItem, ROW_COLS } from "../components/flows/ranking/RankingRow";
+import { FlowRowItem, PhoneRowItem } from "../components/flows/ranking/RankingRow";
 import { KeyButton, ListEmpty, ListError, ListNoMatch, ListSkeleton, ReloadButton, SortHead, SortMenu } from "../components/flows/ranking/RankingParts";
 import { CantMakeSection } from "../components/flows/ranking/SetApart";
-import { BOARD_INTRO, facetCounts, filtersActive } from "../components/flows/ranking/rankingHelpers";
+import { BOARD_INTRO, facetCounts, filtersActive, ROW_COLS } from "../components/flows/ranking/rankingHelpers";
 import { PHONE_QUERY, useMedia } from "../components/flows/ranking/useMedia";
 import { FrequencyPicker, SnapNote } from "../components/flows/stats/FrequencyPicker";
 import { StatsDrawer } from "../components/flows/stats/StatsDrawer";
@@ -208,7 +208,7 @@ export const FlowsPage: React.FC = () => {
   const Row = phone ? PhoneRowItem : FlowRowItem;
   const hoursPerCycle = cycleHours(viewer.stats);
   const list = loading ? (
-    <ListSkeleton rowHeight={phone ? 56 : 96} />
+    <ListSkeleton phone={phone} />
   ) : result?.error ? (
     <ListError error={result.error} onRetry={() => setReload((n) => n + 1)} />
   ) : ranked.length === 0 ? (
@@ -387,7 +387,7 @@ export const FlowsPage: React.FC = () => {
       </div>
       {truncated}
       <div role="table" aria-label="Ranked flows" aria-busy={loading || undefined}>
-        <div role="row" className={cn("grid items-center gap-x-2 border-b border-line px-2 pb-1.5", ROW_COLS)}>
+        <div role="row" className={cn("grid items-center gap-x-3 border-b border-line px-2 pb-1.5", ROW_COLS)}>
           <span role="columnheader" className="text-right text-label text-fg-meta" title="Profit rank">
             #
           </span>

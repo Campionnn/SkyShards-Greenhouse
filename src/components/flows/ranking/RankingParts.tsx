@@ -9,7 +9,7 @@ import { cn } from "../../ui/cn";
 import { IconButton, KitButton, KitLabel } from "../../ui/kit";
 import { Dropdown, MenuItem, Popover } from "../../ui/Popover";
 import { SPLIT_STYLE } from "../flowsDisplay";
-import { FORGIVING_HINT, SORT_HINT } from "./rankingHelpers";
+import { FORGIVING_HINT, ROW_COLS, SORT_HINT } from "./rankingHelpers";
 
 /** The ranking's smaller parts: the prices-and-key popover, the sort heads and menu, the list states. */
 
@@ -168,19 +168,62 @@ export const SortMenu: React.FC<{ sort: SortKey; onSort: (k: SortKey) => void; a
 
 // ---- States (F22–F26) ---------------------------------------------------------------------------------
 
-export const ListSkeleton: React.FC<{ rowHeight: number }> = ({ rowHeight }) => (
-  <ul aria-busy className="divide-y divide-line">
-    {Array.from({ length: 6 }, (_, i) => (
-      <li key={i} className="flex animate-pulse items-center gap-3 px-2 motion-reduce:animate-none" style={{ height: rowHeight }}>
-        <span className="h-3 w-4 rounded-inner bg-surface-hover" />
-        <span className="size-9 rounded-inner bg-surface-hover" />
-        <span className="flex-1 space-y-2">
-          <span className="block h-3 w-1/3 rounded-inner bg-surface-hover" />
-          <span className="block h-2.5 w-1/2 rounded-inner bg-surface-hover/70" />
-        </span>
-        <span className="h-4 w-16 rounded-inner bg-surface-hover" />
-      </li>
-    ))}
+const Bone: React.FC<{ className?: string }> = ({ className }) => <span className={cn("block rounded-inner bg-surface-hover", className)} />;
+
+/**
+ * Loading rows shaped like the real ones, on the same grid (ROW_COLS) as the header and rows, so
+ * nothing jumps when the data lands. `phone` mirrors PhoneRowItem.
+ */
+export const ListSkeleton: React.FC<{ phone?: boolean }> = ({ phone = false }) => (
+  <ul aria-busy className="animate-pulse motion-reduce:animate-none">
+    {Array.from({ length: 6 }, (_, i) =>
+      phone ? (
+        <li key={i} className="grid min-h-14 grid-cols-[1.25rem_minmax(0,1fr)_auto_auto] items-center gap-x-1.5 border-b border-line py-2">
+          <Bone className="h-3 w-3 justify-self-end" />
+          <span className="space-y-1.5">
+            <Bone className="h-3.5 w-2/3" />
+            <Bone className="h-2.5 w-1/2 bg-surface-hover/70" />
+          </span>
+          <span className="flex flex-col items-end gap-1.5">
+            <Bone className="h-3.5 w-12" />
+            <Bone className="h-2.5 w-8 bg-surface-hover/70" />
+          </span>
+          <span className="flex gap-1 pl-1">
+            <Bone className="size-8" />
+            <Bone className="size-8" />
+          </span>
+        </li>
+      ) : (
+        <li key={i} className={cn("grid min-h-24 items-center gap-x-3 border-b border-line px-2 py-2", ROW_COLS)}>
+          <Bone className="h-3 w-3 justify-self-end" />
+          <Bone className="size-[77px] bg-surface-hover/70" />
+          <span className="min-w-0 space-y-2">
+            <Bone className="h-3.5 w-3/5" />
+            <Bone className="h-2.5 w-2/5 bg-surface-hover/70" />
+            <Bone className="h-2.5 w-1/2 bg-surface-hover/70" />
+            <Bone className="h-4 w-24 @min-[60rem]:hidden" />
+          </span>
+          <span className="hidden min-w-0 space-y-1.5 @min-[60rem]:block">
+            <Bone className="h-4 w-28" />
+            <Bone className="h-4 w-24 bg-surface-hover/70" />
+          </span>
+          <span className="flex flex-col items-end gap-1.5">
+            <Bone className="h-4 w-14" />
+            <Bone className="h-2.5 w-12 bg-surface-hover/70" />
+            <Bone className="h-2 w-full" />
+          </span>
+          <Bone className="h-3 w-10" />
+          <span className="flex items-end gap-[3px]">
+            {[28, 24, 22, 20, 16, 14, 10].map((h, j) => (
+              <span key={j} className="block w-1.5 rounded-full bg-surface-hover" style={{ height: h }} />
+            ))}
+          </span>
+          <Bone className="h-7 w-11" />
+          <Bone className="size-5 justify-self-center" />
+          <Bone className="size-5 justify-self-center" />
+        </li>
+      ),
+    )}
     <li className="sr-only">Loading the rankings...</li>
   </ul>
 );

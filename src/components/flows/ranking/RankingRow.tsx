@@ -12,7 +12,7 @@ import { EffortMeter, LayoutBoxes, MutationChip, Sparkline, SplitBar, SplitLegen
 import { FrequencyChart } from "../FrequencyChart";
 import { SPLIT_STYLE } from "../flowsDisplay";
 import { InfoHint } from "../../ui/InfoHint";
-import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, shapeText, simHref, startShort, supplyText, thumbOf, upkeepShort, type RankingLinkState } from "./rankingHelpers";
+import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, shapeText, simHref, startShort, supplyText, thumbOf, upkeepShort, ROW_COLS, type RankingLinkState } from "./rankingHelpers";
 
 /**
  * One ranked flow (F27–F42). The title is the row's real link, stretched over the whole row with
@@ -60,13 +60,6 @@ const splitTitle = (row: FlowRow) =>
         .join(" · ")
     : undefined;
 
-/**
- * Desktop grid: # · layout · flow · earns + upkeep · coins/day · effort · forgiving · likes · simulator · peek.
- * Narrow containers drop the earns column (upkeep moves under the title) and the effort word; wide
- * ones give the earns column the spare width (up to three earners).
- */
-export const ROW_COLS =
-  "grid-cols-[1.5rem_77px_minmax(0,1fr)_6rem_2.5rem_7.5rem_3.5rem_1.75rem_1.75rem] @min-[60rem]:grid-cols-[1.5rem_77px_minmax(0,1fr)_minmax(0,10.5rem)_6rem_5.5rem_7.5rem_3.5rem_1.75rem_1.75rem] @min-[80rem]:grid-cols-[1.5rem_77px_minmax(0,1fr)_minmax(0,16rem)_8rem_5.5rem_7.5rem_3.5rem_1.75rem_1.75rem]";
 
 /**
  * "Needs 256 Turtlellini +2 more/day" in the warn colour: upkeep is never hidden behind the peek.
