@@ -554,8 +554,10 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
             const cellsOfThisCrop = adjacentCropCounts.get(req.crop);
             return cellsOfThisCrop && cellsOfThisCrop.size >= req.count;
           });
+          // Lonelily: the spot also needs every cell around it empty.
+          const ringEmpty = mutation.special !== "requires_zero_adjacent" || adjacentCropCounts.size === 0;
           
-          if (requirementsMet) {
+          if (requirementsMet && ringEmpty) {
             validPositions.push([row, col]);
           }
         }
@@ -576,12 +578,12 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
   ): MutationValidationInfo => {
     const target = targetPlacements.find(t => t.id === targetId);
     if (!target) {
-      return { isValid: false, missingRequirements: [], satisfiedRequirements: [], effectRequirements: [] };
+      return { isValid: false, missingRequirements: [], satisfiedRequirements: [], effectRequirements: [], ringBlocked: false };
     }
 
     const mutationDef = mutations.find(m => m.id === target.cropId);
     if (!mutationDef) {
-      return { isValid: false, missingRequirements: [], satisfiedRequirements: [], effectRequirements: [] };
+      return { isValid: false, missingRequirements: [], satisfiedRequirements: [], effectRequirements: [], ringBlocked: false };
     }
 
     // Effect-based (godseed): checks held effects instead of crop counts.
@@ -599,6 +601,7 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
         missingRequirements: [],
         satisfiedRequirements: [],
         effectRequirements,
+        ringBlocked: false,
       };
     }
     
@@ -671,7 +674,12 @@ export const DesignerProvider: React.FC<DesignerProviderProps> = ({ children, in
       }
     }
     
-    return { isValid, missingRequirements, satisfiedRequirements, effectRequirements: [] };
+    // Lonelily: it spawns only with every surrounding cell empty, so any adjacent
+    // input crop blocks it. (Targets are empty slots, not plants.)
+    const ringBlocked = mutationDef.special === "requires_zero_adjacent" && adjacentCropCounts.size > 0;
+    if (ringBlocked) isValid = false;
+
+    return { isValid, missingRequirements, satisfiedRequirements, effectRequirements: [], ringBlocked };
   }, [inputPlacements, targetPlacements, effectSimulation]);
   
   const value: DesignerContextType = {

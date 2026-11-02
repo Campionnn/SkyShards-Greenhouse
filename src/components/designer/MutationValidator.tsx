@@ -144,6 +144,13 @@ export const MutationValidator: React.FC<MutationValidatorProps> = ({ className 
             </div>
           )}
 
+          {/* Lonelily: neighbours block it (no crop requirement to list). */}
+          {hoveredValidation.ringBlocked && (
+            <p className="text-xs text-red-400 ml-7">
+              Needs every surrounding cell empty: something is placed next to it.
+            </p>
+          )}
+
           {hoveredValidation.missingRequirements.length > 0 && (
             <>
               <p className="text-xs font-medium text-red-400 ml-7 mb-1">Missing</p>

@@ -44,6 +44,8 @@ export interface MutationValidationInfo {
   satisfiedRequirements: Array<RequirementInfo>;
   // Only for effect-based mutations (godseed).
   effectRequirements: Array<EffectRequirementInfo>;
+  // Lonelily: a neighbour stands in the ring, so it has no empty-ring requirement entry.
+  ringBlocked: boolean;
 }
 
 export interface DesignerContextType {
