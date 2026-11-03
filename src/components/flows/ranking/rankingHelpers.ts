@@ -1,5 +1,6 @@
 import type { Board } from "../../../leaderboard/rules";
-import { kitCount, prepDays, suppliesText, upkeepLines, type FlowRow, type RowFilters, type SortKey } from "../../../leaderboard/view";
+import { kitCount, percent, prepDays, suppliesText, upkeepLines, type FlowRow, type RowFilters, type SortKey } from "../../../leaderboard/view";
+import type { StepLayout } from "../../../simulator/flow/types";
 import { formatCoins, nameOf } from "../../simulator/format";
 
 /** Non-component helpers for the /flows ranking (kept apart for fast refresh). */
@@ -37,12 +38,58 @@ export interface RankingLinkState {
 }
 
 export const flowHref = (id: string, board: Board, kit: boolean) => `/flows/${encodeURIComponent(id)}${boardQuery(board, kit)}`;
-export const simHref = (id: string, board: Board, kit: boolean) => `/simulator?flow=${encodeURIComponent(id)}&board=${board}${board === "ironman" && kit ? "&kit=1" : ""}`;
+/**
+ * The simulator link for an entry; `at` also opens that plot's step in the layout editor once the
+ * flow is loaded (`plot` = plot id, `step` = 0-based step index; SimulatorPage reads both).
+ */
+export const simHref = (id: string, board: Board, kit: boolean, at?: { plot: number; step: number }) =>
+  `/simulator?flow=${encodeURIComponent(id)}&board=${board}${board === "ironman" && kit ? "&kit=1" : ""}${at ? `&plot=${at.plot}&step=${at.step}` : ""}`;
 
 /** The layout the flow spends the most time in (server-picked once verified), else plot 1's start. */
 export function thumbOf(row: FlowRow) {
   const code = row.entry.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
   return row.entry.thumb?.layout ?? (code ? { code } : null);
+}
+
+/** One picture in the peek: a layout and the plots that show it. */
+export interface PeekLayout {
+  layout: StepLayout;
+  plots: number[];
+  /** "most used, 72% of the time" for the server's thumb plot; "start layout" for the others. */
+  note: string;
+}
+
+/**
+ * Every plot's layout for the peek: the thumb plot's most-used layout, the other plots' start
+ * layouts (from the summary). Plots showing the same layout fold into one picture.
+ */
+export function peekLayouts(row: FlowRow): PeekLayout[] {
+  const { entry } = row;
+  const plots = entry.summary?.plots ?? [];
+  const out: (PeekLayout & { key: string })[] = [];
+  const add = (plot: number, layout: StepLayout, note: string) => {
+    const key = JSON.stringify(layout) + note;
+    const same = out.find((x) => x.key === key);
+    if (same) same.plots.push(plot);
+    else out.push({ key, layout, plots: [plot], note });
+  };
+  for (const p of plots) {
+    if (entry.thumb && entry.thumb.plot === p.id) add(p.id, entry.thumb.layout, `most used, ${percent(entry.thumb.share)} of the time`);
+    else if (p.thumb) add(p.id, { code: p.thumb }, "start layout");
+  }
+  if (!out.length) {
+    const t = thumbOf(row);
+    if (t) out.push({ key: "", layout: t, plots: [entry.thumb?.plot ?? 1], note: entry.thumb ? `most used, ${percent(entry.thumb.share)} of the time` : "start layout" });
+  }
+  return out.map(({ layout, plots: ids, note }) => ({ layout, plots: ids, note }));
+}
+
+/** "Plot 2", "Plots 1–3", "Plots 1, 3". */
+export function plotsLabel(ids: readonly number[]): string {
+  if (ids.length === 1) return `Plot ${ids[0]}`;
+  const sorted = [...ids].sort((a, b) => a - b);
+  const run = sorted.every((n, i) => i === 0 || n === sorted[i - 1] + 1);
+  return `Plots ${run ? `${sorted[0]}–${sorted[sorted.length - 1]}` : sorted.join(", ")}`;
 }
 
 /** A one-line plain-text taste of the description (Markdown marks stripped). */

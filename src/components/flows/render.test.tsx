@@ -227,7 +227,7 @@ describe("leaderboard pages render", () => {
     const { ranked } = splitRanked(rankEntries(DATA, list.entries, s, 4));
     const row = ranked[0];
     const html = text(wrap(<RowPeek row={row} top={maxProfit(ranked)} every={4} board="ironman" kit={false} />));
-    for (const sNeed of ['data-testid="row-peek"', "Effort per login", "at the heaviest", "Profit by how often you log in", "Open in simulator", "Details", "most-used layout"]) expect(html).toContain(sNeed);
+    for (const sNeed of ['data-testid="row-peek"', "Effort per login", "at the heaviest", "Profit by how often you log in", "Open in simulator", "Details", 'data-testid="peek-pictures"', "most used, 72% of the time"]) expect(html).toContain(sNeed);
     // Forgiving above 100% reads 100%+, never 107%.
     const over = text(wrap(<ol><FlowRowItem row={{ ...row, slack: 1.07 }} top={1} every={1} board="ironman" index={0} like={{ liked: false, busy: false }} sort="profit" /></ol>));
     expect(over).toContain("100%+");
@@ -305,6 +305,13 @@ describe("leaderboard pages render", () => {
     expect(flow).toContain("<strong>Chloronite</strong>");
     expect(flow).not.toContain('<a href="https://example.com');
     expect(flow).toContain("links are not rendered");
+    // Each step's layout opens in the simulator's layout editor or in the Designer (new tab).
+    expect(flow).toMatch(/href="\/simulator\?flow=mockChloro01&(amp;)?board=ironman&(amp;)?plot=\d&(amp;)?step=\d"/);
+    expect(flow).toContain("Edit in simulator");
+    expect(flow).toMatch(/<a [^>]*href="\/designer\?layout=[^"]+"[^>]*target="_blank"|<a [^>]*target="_blank"[^>]*href="\/designer\?layout=/);
+    // The header picture is a button that opens it larger; no typed login frequency anywhere.
+    expect(html).toContain('data-testid="hero-picture"');
+    expect(all).not.toContain("Every N cycles (1 to 48)");
     // Logged out: no owner or report actions.
     expect(all).not.toMatch(/Delete…|Report…|Edit title and description/);
   });

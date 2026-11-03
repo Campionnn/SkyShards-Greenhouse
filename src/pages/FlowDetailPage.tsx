@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Ellipsis, Eye, EyeOff, FlaskConical, Flag, Link2, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, Ellipsis, Eye, EyeOff, FlaskConical, Flag, Link2, Maximize2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { AccountControl, AuthorLabel, LikeButton, PriceNote } from "../components/flows/FlowControls";
 import { SLOWING_TITLE } from "../components/flows/FlowChips";
 import { FlowMarkdown } from "../components/flows/FlowMarkdown";
@@ -18,14 +18,15 @@ import { formatCoins } from "../components/simulator/format";
 import { useToast } from "../components/ui";
 import { LinkButton } from "../components/ui/Card";
 import { cn } from "../components/ui/cn";
-import { InfoHint } from "../components/ui/InfoHint";
-import { IconButton, KitButton, KitInput, KitTextarea, Pill } from "../components/ui/kit";
+import { Bone, IconButton, KitButton, KitInput, KitTextarea, Pill } from "../components/ui/kit";
 import { DialogFrame, ModalDialog } from "../components/ui/ModalDialog";
 import { MenuItem, MenuSeparator, Popover } from "../components/ui/Popover";
+import { surface } from "../components/ui/surface";
 import { useAuth } from "../hooks/useAuth";
 import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
 import { useFlowViewer, type FlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
+import type { StepLayout } from "../simulator/flow/types";
 import { boardFrom, kitFromBoard, type CellKind } from "../leaderboard/rules";
 import { BADGE_TITLE, BOARD_LABEL, CELL_KIND_LABEL, DESCRIPTION_MAX, formatDate, percent, starvedText, TIER_LABEL, TITLE_MAX } from "../leaderboard/view";
 import { adminDelete, adminHide, adminUnhide, getAdminKey, hiddenReasonLabel } from "../services/adminService";
@@ -255,6 +256,29 @@ const ImportDialog: React.FC<{ viewer: FlowViewer; onClose: () => void }> = ({ v
   </ModalDialog>
 );
 
+/** The header picture's cell size (px) on desktop: big enough that the crop images read. */
+const HERO_CELL = 18;
+/** Its outer size: 10 cells, 9 gaps of 2px, and the 4px padding each side. */
+const HERO_PX = HERO_CELL * 10 + 9 * 2 + 8;
+
+/** The header picture at full size, hover a cell for what it is. */
+const PictureDialog: React.FC<{ layout: StepLayout; caption: string; onClose: () => void; onSeeFlow: () => void }> = ({ layout, caption, onClose, onSeeFlow }) => (
+  <ModalDialog labelledBy="detail-picture-title" onClose={onClose} maxWidth="max-w-2xl">
+    <DialogFrame
+      id="detail-picture-title"
+      title={caption}
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end">
+          <LinkButton onClick={onSeeFlow}>Every step in How it works</LinkButton>
+        </div>
+      }
+    >
+      <LayoutThumb layout={layout} maxCell={52} tooltips />
+    </DialogFrame>
+  </ModalDialog>
+);
+
 /** The ranking's own query (sort, filters, frequency…) when the visitor came from it; else its board. */
 function useBackLink(viewer: FlowViewer): string {
   const location = useLocation();
@@ -304,6 +328,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [pictureOpen, setPictureOpen] = useState(false);
   // Read on every render: locking the admin key in another tab hides the moderation row on the next render.
   const admin = !!getAdminKey();
   const m = useDetailModel(detail, viewer);
@@ -378,14 +403,22 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
       onDelete={() => setDeleting(true)}
     />
   );
-  const picture = <LayoutThumb layout={m.heroLayout} cellSize={phone ? 8 : 11} />;
-  const hero = detail.thumb ? (
-    <InfoHint title="Main layout" width={240} label="About this picture" trigger={picture} className="shrink-0 rounded-control">
-      Plot {detail.thumb.plot}'s main layout · {percent(detail.thumb.share)} of the time.
-    </InfoHint>
-  ) : (
-    <span className="shrink-0">{picture}</span>
-  );
+  const heroCaption = detail.thumb ? `Plot ${detail.thumb.plot}'s main layout · ${percent(detail.thumb.share)} of the time` : "Plot 1's start layout";
+  const hero = m.heroLayout ? (
+    <button
+      type="button"
+      onClick={() => setPictureOpen(true)}
+      aria-label={`${heroCaption}. View larger`}
+      title={`${heroCaption} · click to view larger`}
+      className="focus-ring group relative shrink-0 cursor-zoom-in self-start rounded-inner"
+      data-testid="hero-picture"
+    >
+      <LayoutThumb layout={m.heroLayout} cellSize={phone ? 8 : HERO_CELL} className="group-hover:ring-line-strong" />
+      <span className="pointer-events-none absolute right-1.5 bottom-1.5 grid size-6 place-items-center rounded-inner bg-surface-raised/90 text-fg-muted opacity-0 transition-opacity duration-(--duration-hover) group-hover:opacity-100 group-focus-visible:opacity-100 pointer-coarse:opacity-100">
+        <Maximize2 aria-hidden className="size-3.5" />
+      </span>
+    </button>
+  ) : null;
 
   const titleBlock = editing ? (
     <EditForm
@@ -509,6 +542,9 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
         }
       />
       {importing && <ImportDialog viewer={viewer} onClose={() => setImporting(false)} />}
+      {pictureOpen && m.heroLayout && (
+        <PictureDialog layout={m.heroLayout} caption={heroCaption} onClose={() => setPictureOpen(false)} onSeeFlow={() => (setPictureOpen(false), setTab("flow"))} />
+      )}
       {reporting && <ReportDialog id={detail.id} onClose={() => setReporting(false)} />}
       {deleting && (
         <ConfirmDialog title="Delete this flow?" confirmLabel="Delete" tone="problem" busy={deleteBusy} onConfirm={() => void remove()} onClose={() => setDeleting(false)}>
@@ -519,22 +555,88 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   );
 };
 
-/** Loading (F50): the shape of the page. */
-const Skeleton: React.FC = () => (
-  <div className="mx-auto max-w-[1100px] space-y-4 py-4" aria-busy>
-    <div className="h-5 w-32 rounded-control bg-surface-card" />
-    <div className="flex gap-4">
-      <div className="hidden size-[118px] rounded-container bg-surface-card sm:block" />
-      <div className="flex-1 space-y-2 pt-2">
-        <div className="h-5 w-48 max-w-full rounded-control bg-surface-card" />
-        <div className="h-3 w-72 max-w-full rounded-control bg-surface-card" />
+/**
+ * Loading (F50): the same boxes as the page, at the same sizes: back link and account, the header
+ * (picture, title block, actions), the summary strip (stats row, three numbers, five facts, the
+ * frequency row) and the tab bar. Pulses like the ranking's ListSkeleton (still with reduced motion).
+ */
+const Skeleton: React.FC = () => {
+  const phone = useIsPhone();
+  return (
+    <div className="mx-auto max-w-[1100px] space-y-4 py-2 animate-pulse motion-reduce:animate-none sm:py-4" aria-busy>
+      <div className="flex items-center justify-between gap-2">
+        <Bone className="h-4 w-28" />
+        <Bone className="h-8 w-40 rounded-control" />
       </div>
+      <div className="flex items-start gap-4">
+        {!phone && <Bone className="shrink-0 rounded-inner" style={{ width: HERO_PX, height: HERO_PX }} />}
+        <div className="min-w-0 flex-1 space-y-2.5 pt-1">
+          <Bone className="h-6 w-3/5 max-w-full" />
+          <div className="flex flex-wrap gap-3">
+            <Bone className="h-3.5 w-28" />
+            <Bone className="h-3.5 w-24" />
+            <Bone className="h-3.5 w-32" />
+          </div>
+          <Bone className="h-3.5 w-4/5 max-w-full" />
+          <Bone className="h-3.5 w-2/5" />
+        </div>
+        {phone ? (
+          <Bone className="size-[98px] shrink-0" />
+        ) : (
+          <div className="flex shrink-0 gap-2">
+            <Bone className="h-8 w-40 rounded-control" />
+            <Bone className="h-8 w-16 rounded-control" />
+            <Bone className="size-8 rounded-control" />
+          </div>
+        )}
+      </div>
+      <div className={cn(surface.card, "overflow-hidden")}>
+        <div className={cn("flex items-center justify-between gap-3 border-b border-line", phone ? "p-2" : "px-4 py-2.5")}>
+          <Bone className="h-4 w-64 max-w-[60%]" />
+          {!phone && (
+            <div className="flex gap-2">
+              <Bone className="h-8 w-32 rounded-control" />
+              <Bone className="h-8 w-44 rounded-control" />
+            </div>
+          )}
+        </div>
+        <div className={"grid grid-cols-3"}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className={cn("space-y-2 px-4 py-4", i > 0 && "border-l border-line")}>
+              <Bone className="h-3 w-3/4" />
+              <Bone className={cn("h-6", i === 0 ? "w-24" : "w-16")} />
+              <Bone className="h-3 w-2/3" />
+            </div>
+          ))}
+        </div>
+        <div className={cn("grid gap-x-4 gap-y-3 border-t border-line", phone ? "grid-cols-2 p-3" : "grid-cols-5 px-4 py-3")}>
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="space-y-1.5">
+              <Bone className="h-3 w-20" />
+              <Bone className="h-5 w-16" />
+              <Bone className="h-3 w-24" />
+            </div>
+          ))}
+        </div>
+        <div className={cn("flex items-center gap-3 border-t border-line", phone ? "p-2.5" : "px-4 py-2")}>
+          <Bone className="h-3.5 w-20" />
+          <Bone className="h-8 w-56 rounded-control" />
+          <Bone className="h-3.5 w-28" />
+        </div>
+      </div>
+      <div className="flex gap-6 border-b border-line px-2.5 pb-2.5 pt-1">
+        {[24, 16, 24, 20, 26].map((w, i) => (
+          <Bone key={i} className="h-4" style={{ width: `${w * 4}px` }} />
+        ))}
+      </div>
+      <div className="space-y-2.5">
+        <Bone className="h-4 w-1/2" />
+        <Bone className="h-4 w-1/3" />
+      </div>
+      <span className="sr-only">Loading the flow...</span>
     </div>
-    <div className="h-52 rounded-container border border-line bg-surface-card" />
-    <div className="h-9 border-b border-line" />
-    <span className="sr-only">Loading the flow...</span>
-  </div>
-);
+  );
+};
 
 export const FlowDetailPage: React.FC = () => {
   const { id = "" } = useParams();

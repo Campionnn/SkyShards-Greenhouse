@@ -8,7 +8,7 @@ import { KeyButton, ListEmpty, ListError, ListNoMatch, ListSkeleton, ReloadButto
 import { CantMakeSection } from "../components/flows/ranking/SetApart";
 import { BOARD_INTRO, facetCounts, filtersActive, ROW_COLS } from "../components/flows/ranking/rankingHelpers";
 import { PHONE_QUERY, useMedia } from "../components/flows/ranking/useMedia";
-import { FrequencyPicker, SnapNote } from "../components/flows/stats/FrequencyPicker";
+import { FrequencyPicker } from "../components/flows/stats/FrequencyPicker";
 import { StatsDrawer } from "../components/flows/stats/StatsDrawer";
 import { isDefaultStats, statsSummary } from "../components/flows/stats/statsSummary";
 import { InfoHint, useToast } from "../components/ui";
@@ -313,7 +313,6 @@ export const FlowsPage: React.FC = () => {
           <StatsChip viewer={viewer} onOpen={() => setStatsOpen(true)} className="flex-1" />
         </div>
         <FrequencyPicker viewer={viewer} className="[&>[role=radiogroup]]:flex-1" />
-        <SnapNote viewer={viewer} />
         <SearchBox value={query} onChange={setQuery} />
         <FilterBar
           board={board}
@@ -366,7 +365,6 @@ export const FlowsPage: React.FC = () => {
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <FrequencyPicker viewer={viewer} />
-        <SnapNote viewer={viewer} />
       </div>
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
         <FilterBar

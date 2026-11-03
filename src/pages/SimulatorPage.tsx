@@ -250,8 +250,10 @@ export const SimulatorPage: React.FC = () => {
     if (!flowParam || handledFlow.current === flowParam) return;
     handledFlow.current = flowParam;
     const rest = new URLSearchParams(location.search);
-    rest.delete("flow");
-    rest.delete("board");
+    // `&plot=P&step=S` (the detail page's per-step "Edit in simulator"): open that step's layout once loaded.
+    const atPlot = Number(rest.get("plot"));
+    const atStep = Number(rest.get("step"));
+    for (const k of ["flow", "board", "kit", "plot", "step"]) rest.delete(k);
     const strip = () => navigate(`${location.pathname}${rest.size ? `?${rest}` : ""}`, { replace: true, state: location.state });
     const board: Board = boardParam ?? (profile === "normal" ? "normal" : "ironman");
     // Ironman entries open as they run with their starting items (the borrow set-up shows what they need); normal as normal.
@@ -276,7 +278,11 @@ export const SimulatorPage: React.FC = () => {
         // The board's profile is site-wide: switch the simulator's mode to match it.
         if ((board === "normal") !== (profile === "normal")) setProfile(board === "normal" ? "normal" : "ironman");
         strip();
-        setEditingState(null);
+        const target = next.plots.find((p) => p.id === atPlot);
+        if (target && Number.isInteger(atStep) && atStep >= 0 && atStep < target.flow.steps.length) {
+          setDrawerOpen(false);
+          setEditingState({ plotId: target.id, step: atStep, layout: true });
+        } else setEditingState(null);
         toast({
           id: "simulator-flow-loaded",
           title: `Loaded ${detail.title} by ${detail.author.name}`,

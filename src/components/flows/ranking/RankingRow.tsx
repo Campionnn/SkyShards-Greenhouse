@@ -5,14 +5,14 @@ import type { Board } from "../../../leaderboard/rules";
 import { BADGE_TITLE, kitListText, percent, starvedText, upkeepText, type FlowRow, type SortKey } from "../../../leaderboard/view";
 import { formatCoins, nameOf } from "../../simulator/format";
 import { cn } from "../../ui/cn";
-import { IconButton } from "../../ui/kit";
+import { ButtonLink, IconButton } from "../../ui/kit";
 import { SlowingBadge, StallChip, StartingItemsLine } from "../FlowChips";
 import { Avatar, Badge, LikeButton } from "../FlowControls";
-import { EffortMeter, LayoutBoxes, MutationChip, Sparkline, SplitBar, SplitLegend } from "../FlowVisuals";
+import { EffortMeter, LayoutBoxes, LayoutThumb, MutationChip, Sparkline, SplitBar, SplitLegend } from "../FlowVisuals";
 import { FrequencyChart } from "../FrequencyChart";
 import { SPLIT_STYLE } from "../flowsDisplay";
 import { InfoHint } from "../../ui/InfoHint";
-import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, shapeText, simHref, startShort, supplyText, thumbOf, upkeepShort, ROW_COLS, type RankingLinkState } from "./rankingHelpers";
+import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, peekLayouts, plotsLabel, shapeText, simHref, startShort, supplyText, thumbOf, upkeepShort, ROW_COLS, type RankingLinkState } from "./rankingHelpers";
 
 /**
  * One ranked flow (F27–F42). The title is the row's real link, stretched over the whole row with
@@ -160,6 +160,27 @@ const TopEarners: React.FC<{ row: FlowRow }> = ({ row }) => {
   );
 };
 
+/**
+ * The peek's layouts as real pictures (crop images, hover a cell for its name): every plot's,
+ * plots with the same layout folded into one. Scrolls sideways when they don't fit.
+ */
+const PeekPictures: React.FC<{ row: FlowRow; cellSize: number; className?: string }> = ({ row, cellSize, className }) => {
+  const pictures = peekLayouts(row);
+  if (!pictures.length) return null;
+  return (
+    <div className={cn("flex min-w-0 gap-4 overflow-x-auto pb-1 scrollbar-dark", className)} data-testid="peek-pictures">
+      {pictures.map((p) => (
+        <figure key={p.plots.join(",")} className="shrink-0 space-y-1">
+          <LayoutThumb layout={p.layout} cellSize={cellSize} tooltips />
+          <figcaption className="text-meta text-fg-meta">
+            <span className="text-fg-body">{plotsLabel(p.plots)}</span> · {p.note}
+          </figcaption>
+        </figure>
+      ))}
+    </div>
+  );
+};
+
 /** The peek: the facts the one-line row leaves out. */
 export const RowPeek: React.FC<{
   row: FlowRow;
@@ -171,21 +192,19 @@ export const RowPeek: React.FC<{
   hoursPerCycle?: number;
   onEvery?: (every: number) => void;
   className?: string;
-}> = ({ row, top, every, board, kit, rankingSearch, hoursPerCycle = 1.75, onEvery, className }) => {
+  /** Cell size of the layout pictures (px). */
+  pictureCell?: number;
+}> = ({ row, top, every, board, kit, rankingSearch, hoursPerCycle = 1.75, onEvery, className, pictureCell = 22 }) => {
   const { entry } = row;
   const ex = excerptOf(row);
   const supply = supplyText(row, board);
   const ironman = board === "ironman";
-  const share = entry.thumb ? `Plot ${entry.thumb.plot}'s most-used layout, ${percent(entry.thumb.share)} of the time` : "Plot 1's start layout";
   const upkeep = entry.cell ? upkeepText(entry.cell.upkeep) : null;
   const shown = row.earning.slice(0, 8);
   const rest = row.earning.slice(8);
   return (
-    <div className={cn("grid gap-x-6 gap-y-3 kit-fade-in @min-[40rem]:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)]", className)} data-testid="row-peek">
-      <figure className="hidden space-y-1 @min-[40rem]:block">
-        <LayoutBoxes layout={thumbOf(row)} cell={8} />
-        <figcaption className="max-w-[90px] text-meta text-fg-meta">{share}</figcaption>
-      </figure>
+    <div className={cn("grid gap-x-6 gap-y-4 kit-fade-in @min-[40rem]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]", className)} data-testid="row-peek">
+      <PeekPictures row={row} cellSize={pictureCell} className="@min-[40rem]:col-span-2" />
       <div className="min-w-0 space-y-2">
         {ex && <p className="text-secondary text-fg-muted">{ex}</p>}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-secondary text-fg-meta">
@@ -259,23 +278,16 @@ export const RowPeek: React.FC<{
           </>
         )}
         <dd className="col-span-2 mt-1.5 flex flex-wrap gap-2">
-          <Link
-            to={simHref(entry.id, board, kit)}
-            className="focus-ring hit-area inline-flex h-8 items-center gap-1.5 rounded-control border border-go bg-go px-3 text-body font-semibold text-on-go transition-colors duration-(--duration-hover) hover:bg-go-hover pointer-coarse:h-11"
-          >
-            <FlaskConical aria-hidden className="size-4" /> Open in simulator
-          </Link>
-          <Link
-            to={flowHref(entry.id, board, kit)}
-            state={{ rankingSearch: rankingSearch ?? "" } satisfies RankingLinkState}
-            className="focus-ring hit-area inline-flex h-8 items-center rounded-control border border-line-strong bg-surface-control px-3 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover pointer-coarse:h-11"
-          >
+          <ButtonLink variant="primary" size="md" to={simHref(entry.id, board, kit)}>
+            <FlaskConical aria-hidden /> Open in simulator
+          </ButtonLink>
+          <ButtonLink size="md" to={flowHref(entry.id, board, kit)} state={{ rankingSearch: rankingSearch ?? "" } satisfies RankingLinkState}>
             Details
-          </Link>
+          </ButtonLink>
         </dd>
       </dl>
       {row.curve.some((p) => p.profitPerDay !== null) && (
-        <section className="min-w-0 @min-[40rem]:col-span-3" aria-label="Profit by how often you log in">
+        <section className="min-w-0 @min-[40rem]:col-span-2" aria-label="Profit by how often you log in">
           <h4 className="mb-1 flex items-center gap-1.5 text-secondary font-medium text-fg-body">
             Profit by how often you log in
             <span className="font-normal text-fg-meta">· {forgivingText(row.slack)} forgiving</span>
@@ -432,7 +444,7 @@ export const PhoneRowItem: React.FC<RowProps> = ({ row, top, every, board, kit =
               <RowLikeButton row={row} like={like} sort={sort} />
             </span>
           </div>
-          <RowPeek row={row} top={top} every={every} board={board} kit={kit} rankingSearch={rankingSearch} hoursPerCycle={hoursPerCycle} onEvery={onEvery} />
+          <RowPeek row={row} top={top} every={every} board={board} kit={kit} rankingSearch={rankingSearch} hoursPerCycle={hoursPerCycle} onEvery={onEvery} pictureCell={26} />
         </div>
       )}
     </li>

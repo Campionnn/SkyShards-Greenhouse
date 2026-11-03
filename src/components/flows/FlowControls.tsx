@@ -18,7 +18,7 @@ import { InfoHint } from "../ui/InfoHint";
 import { IconButton, KitButton, KitInput, KitLabel, Pill, Segmented, Switch, type Tone } from "../ui/kit";
 import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 import { Dropdown, MenuItem, Popover } from "../ui/Popover";
-import { EveryNumberInput, EveryRadios, SnapNote } from "./stats/FrequencyPicker";
+import { EveryRadios } from "./stats/FrequencyPicker";
 import { everyTime, statsSummaryLong } from "./stats/statsSummary";
 
 /**
@@ -192,20 +192,16 @@ const Section: React.FC<{ title: string; hint?: React.ReactNode; className?: str
   </section>
 );
 
-/** The online frequency: any number, with the grid's frequencies as quick picks. */
+/** The online frequency: the frequencies the flows were simulated at. */
 const EveryInput: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => (
-  <div className="space-y-2">
-    <div className="flex flex-wrap items-center gap-2">
-      <EveryNumberInput viewer={viewer} id="stats-every" />
-      <label htmlFor="stats-every" className="text-secondary text-fg-muted">
-        cycles · about every <b className="font-semibold tabular-nums text-fg-body">{everyTime(viewer, viewer.stats.every)}</b>
-      </label>
-      <InfoHint title="Login frequency" width={260}>
-        How often you log in, in greenhouse cycles: any number from 1 to 48. It commits on Enter or when you leave the box.
-      </InfoHint>
-    </div>
-    <EveryRadios viewer={viewer} label="Online frequency presets" />
-    <SnapNote viewer={viewer} />
+  <div className="flex flex-wrap items-center gap-2">
+    <EveryRadios viewer={viewer} label="Online every N cycles" />
+    <span className="text-secondary text-fg-muted">
+      cycles · about every <b className="font-semibold tabular-nums text-fg-body">{everyTime(viewer)}</b>
+    </span>
+    <InfoHint title="Login frequency" width={260}>
+      How often you log in, in greenhouse cycles. The flows are simulated at these frequencies only.
+    </InfoHint>
   </div>
 );
 

@@ -1,5 +1,6 @@
 import React, { useId } from "react";
 import { LoaderCircle } from "lucide-react";
+import { Link } from "react-router-dom";
 import { cn } from "./cn";
 import { surface } from "./surface";
 import { useSlidingIndicator } from "./useSlidingIndicator";
@@ -104,6 +105,31 @@ export const KitButton = React.forwardRef<HTMLButtonElement, KitButtonProps>(
 );
 KitButton.displayName = "KitButton";
 
+export interface ButtonLinkProps extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href"> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** An in-app route (a router Link: middle-click, Cmd-click and the back button work). */
+  to?: string;
+  /** Router state handed to the route (`to` only). */
+  state?: unknown;
+  /** A plain URL (`to` wins when both are set). */
+  href?: string;
+  /** Open in a new tab (`target="_blank"`, `rel="noopener noreferrer"`). */
+  newTab?: boolean;
+}
+
+/**
+ * A link that looks like a KitButton: for actions that navigate ("Open in simulator", "Details",
+ * "Open in Designer ↗"), so they stay real links. Same variants and sizes as KitButton.
+ */
+export const ButtonLink = React.forwardRef<HTMLAnchorElement, ButtonLinkProps>(({ variant = "neutral", size = "sm", className, to, state, href, newTab, ...rest }, ref) => {
+  const cls = cn("hit-area inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium", press, VARIANT[variant], SIZE[size], className);
+  const tab = newTab ? { target: "_blank", rel: "noopener noreferrer" } : {};
+  if (to !== undefined) return <Link ref={ref} to={to} state={state} className={cls} {...tab} {...rest} />;
+  return <a ref={ref} href={href} className={cls} {...tab} {...rest} />;
+});
+ButtonLink.displayName = "ButtonLink";
+
 /** A square icon button. Always give it an aria-label (it is also its tooltip). */
 export const IconButton = React.forwardRef<HTMLButtonElement, KitButtonProps & { "aria-label": string }>(
   ({ variant = "ghost", size = "sm", loading, className, type = "button", title, onClick, children, ...rest }, ref) => (
@@ -122,6 +148,14 @@ export const IconButton = React.forwardRef<HTMLButtonElement, KitButtonProps & {
   ),
 );
 IconButton.displayName = "IconButton";
+
+/**
+ * A loading placeholder bar (patterns.md "States": a skeleton of the real layout). Size it with
+ * classes or `style`; put `animate-pulse motion-reduce:animate-none` on the skeleton's container.
+ */
+export const Bone: React.FC<{ className?: string; style?: React.CSSProperties }> = ({ className, style }) => (
+  <span aria-hidden className={cn("block rounded-inner bg-surface-hover", className)} style={style} />
+);
 
 /** A keyboard key hint. */
 export const Kbd: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (

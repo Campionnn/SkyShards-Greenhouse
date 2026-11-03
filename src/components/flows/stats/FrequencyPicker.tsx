@@ -1,57 +1,15 @@
-import React, { useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import React, { useRef } from "react";
 import type { FlowViewer } from "../../../hooks/useFlowViewer";
 import { EVERY } from "../../../leaderboard/tiers";
 import { cn } from "../../ui/cn";
-import { KitInput } from "../../ui/kit";
-import { Popover } from "../../ui/Popover";
 import { surface } from "../../ui/surface";
 import { everyTime } from "./statsSummary";
 
 /**
- * "Online every [1 2 3 4 6 8 12] ≈ 1h 45m ▾": the grid's login frequencies as a radio group (one
- * Tab stop, arrows move and pick), and a popover for any other number (1–48) with the note that
- * the list uses the nearest simulated frequency.
+ * The login frequency: the grid's frequencies as a radio group (one Tab stop, arrows move and
+ * pick). There is no free number: the flows are only simulated at these, so any other value would
+ * snap to the nearest one anyway.
  */
-
-const clampEvery = (n: number) => Math.max(1, Math.min(48, Math.round(n)));
-
-/** The note shown when the typed frequency isn't one the flows were simulated at (F112). */
-export const SnapNote: React.FC<{ viewer: FlowViewer; className?: string }> = ({ viewer, className }) =>
-  viewer.every !== viewer.stats.every ? (
-    <p className={cn("text-secondary text-warn", className)}>
-      Flows were simulated at every {EVERY.join(", ")} cycles: showing the nearest, every {viewer.every}.
-    </p>
-  ) : null;
-
-/** Any number from 1 to 48; commits on Enter or when the field loses focus. */
-export const EveryNumberInput: React.FC<{ viewer: FlowViewer; className?: string; id?: string }> = ({ viewer, className, id }) => {
-  const [draft, setDraft] = useState<string | null>(null);
-  const commit = () => {
-    if (draft === null) return;
-    const n = Number(draft);
-    if (draft.trim() !== "" && Number.isFinite(n)) viewer.setEvery(clampEvery(n));
-    setDraft(null);
-  };
-  return (
-    <KitInput
-      id={id}
-      type="number"
-      inputMode="numeric"
-      min={1}
-      max={48}
-      step={1}
-      value={draft ?? String(viewer.stats.every)}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") commit();
-      }}
-      aria-label="Every N cycles (1 to 48)"
-      className={cn("w-16 tabular-nums", className)}
-    />
-  );
-};
 
 /** The seven simulated frequencies as radios with a roving tabindex. */
 export const EveryRadios: React.FC<{ viewer: FlowViewer; className?: string; label?: string }> = ({ viewer, className, label = "Online every N cycles" }) => {
@@ -96,41 +54,16 @@ export const EveryRadios: React.FC<{ viewer: FlowViewer; className?: string; lab
   );
 };
 
-export const FrequencyPicker: React.FC<{ viewer: FlowViewer; className?: string }> = ({ viewer, className }) => {
-  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
-  const [open, setOpen] = useState(false);
-  const snapped = viewer.every !== viewer.stats.every;
-  return (
-    <div className={cn("flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1", className)} data-testid="frequency-picker">
-      <span className="text-secondary whitespace-nowrap text-fg-meta">Online every</span>
-      <EveryRadios viewer={viewer} />
-      <button
-        ref={setAnchor}
-        type="button"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label={`Login frequency: about every ${everyTime(viewer)}. Any number`}
-        onClick={() => setOpen((o) => !o)}
-        className="focus-ring inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-control px-1.5 text-secondary whitespace-nowrap text-fg-muted transition-colors duration-(--duration-hover) hover:bg-surface-hover pointer-coarse:h-11"
-      >
-        <span className={cn("tabular-nums", snapped && "text-warn")}>
-          {snapped ? `typed ${viewer.stats.every} · ` : ""}≈ {everyTime(viewer)}
-        </span>
-        <ChevronDown aria-hidden className={cn("size-3 shrink-0 text-fg-meta transition-transform duration-(--duration-ink)", open && "rotate-180")} />
-      </button>
-      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="Login frequency" width={280} align="end" initialFocus="first">
-        <div className="space-y-2 p-2">
-          <label className="flex items-center gap-2 text-secondary text-fg-muted">
-            Every
-            <EveryNumberInput viewer={viewer} />
-            cycles
-          </label>
-          <p className="text-secondary text-fg-muted">
-            One cycle ≈ <span className="tabular-nums text-fg-body">{everyTime(viewer, 1)}</span> at your growth speed.
-          </p>
-          <SnapNote viewer={viewer} />
-        </div>
-      </Popover>
-    </div>
-  );
-};
+/**
+ * "Online every [1 2 3 4 6 8 12] ≈ 1h 45m": only the frequencies the flows were simulated at (any
+ * other number would just snap to one of them), and the time between logins at the viewer's speed.
+ */
+export const FrequencyPicker: React.FC<{ viewer: FlowViewer; className?: string }> = ({ viewer, className }) => (
+  <div className={cn("flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1", className)} data-testid="frequency-picker">
+    <span className="text-secondary whitespace-nowrap text-fg-meta">Online every</span>
+    <EveryRadios viewer={viewer} />
+    <span className="shrink-0 px-1.5 text-secondary whitespace-nowrap tabular-nums text-fg-muted" title={`One cycle ≈ ${everyTime(viewer, 1)} at your growth speed`}>
+      ≈ {everyTime(viewer)}
+    </span>
+  </div>
+);

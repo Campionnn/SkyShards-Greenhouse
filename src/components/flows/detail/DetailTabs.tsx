@@ -15,6 +15,7 @@ import { FlowMarkdown } from "../FlowMarkdown";
 import { MutationChip, SplitBar, SplitLegend } from "../FlowVisuals";
 import { EFFORT_LABEL } from "../flowsDisplay";
 import { FrequencyChart } from "../FrequencyChart";
+import { simHref } from "../ranking/rankingHelpers";
 import type { DetailModel } from "./detailModel";
 import { DETAIL_TABS, forgivingText, SEEDS_MAX_TIER, SEEDS_OTHER_TIERS, type DetailTab } from "./detailText";
 
@@ -224,10 +225,10 @@ export const DetailTabs: React.FC<{
             </section>
           ) : null}
           <section className="space-y-2" aria-label="The flow">
-            <H2 small hint="Every plot, step by step, as the real layouts. Hover a cell to see what it is.">
+            <H2 small hint="Every plot, step by step, as the real layouts. Hover a cell to see what it is. Edit in simulator loads the flow and opens the chosen step's layout.">
               The flow
             </H2>
-            <FlowWalkthrough detail={detail} cellSize={phone ? 32 : 24} stacked={phone} />
+            <FlowWalkthrough detail={detail} stacked={phone} simAt={(plot, step) => simHref(detail.id, viewer.board, viewer.kit, { plot, step })} />
           </section>
         </div>
       )}

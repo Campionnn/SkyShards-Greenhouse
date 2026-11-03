@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Flag, LoaderCircle } from "lucide-react";
+import { ExternalLink, Flag, FlaskConical, LoaderCircle } from "lucide-react";
 import type { FlowDetail, FlowSeedResult, FlowStatusResponse } from "../../leaderboard/api";
 import type { Board, CellKind } from "../../leaderboard/rules";
 import { valueResult, type Quotes } from "../../leaderboard/pricing";
@@ -31,12 +31,13 @@ import { defaultGameData, describeConditions } from "../../simulator";
 import type { FlowStep } from "../../simulator/flow/types";
 import { getFlowStatus, reportFlow } from "../../services/flowsService";
 import { CropImage } from "../shared";
+import { layoutCode } from "../simulator/scenarioEdit";
 import { formatCoins, formatRate, formatUnitPrice, nameOf } from "../simulator/format";
 import { useToast } from "../ui";
 import { LinkButton } from "../ui/Card";
 import { cn } from "../ui/cn";
 import { InfoHint } from "../ui/InfoHint";
-import { KitButton, KitLabel, KitTextarea, Pill, Segmented } from "../ui/kit";
+import { ButtonLink, KitButton, KitLabel, KitTextarea, Pill, Segmented } from "../ui/kit";
 import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
 import { LayoutThumb, MutationChip } from "./FlowVisuals";
 import { KIND_BOARD, KIND_NAME, KIND_SHORT, LIST_ROWS, numberSub, SEEDS_MAX_TIER, SEEDS_OTHER_TIERS } from "./detail/detailText";
@@ -353,7 +354,15 @@ function exitText(step: FlowStep, steps: FlowStep[]): string {
  * that run the same flow fold into one; otherwise a plot switcher. Steps are a list beside the
  * picture, the current one with its exits.
  */
-export const FlowWalkthrough: React.FC<{ detail: FlowDetail; cellSize?: number; stacked?: boolean }> = ({ detail, cellSize = 24, stacked }) => {
+export const FlowWalkthrough: React.FC<{
+  detail: FlowDetail;
+  /** Fixed cell size; omitted, the picture fits its column (up to `maxCell`). */
+  cellSize?: number;
+  maxCell?: number;
+  stacked?: boolean;
+  /** The simulator link that opens a plot's step in the layout editor; shows "Edit in simulator". */
+  simAt?: (plot: number, step: number) => string;
+}> = ({ detail, cellSize, maxCell = 40, stacked, simAt }) => {
   const plots = detail.payload?.plots ?? [];
   const summaries = new Map((detail.summary?.plots ?? []).map((p) => [p.id, p]));
   const [plotIdx, setPlotIdx] = useState(0);
@@ -366,6 +375,12 @@ export const FlowWalkthrough: React.FC<{ detail: FlowDetail; cellSize?: number; 
   const idx = Math.min(active[p.id] ?? p.flow.startIndex ?? 0, steps.length - 1);
   const step = steps[idx];
   const targets = Object.entries(summaries.get(p.id)?.targets ?? {}).sort((a, b) => b[1] - a[1]);
+  let code: string | null = null;
+  try {
+    code = layoutCode(step.layout);
+  } catch {
+    code = null;
+  }
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -382,9 +397,23 @@ export const FlowWalkthrough: React.FC<{ detail: FlowDetail; cellSize?: number; 
         {p.flow.loop && steps.length > 1 && <Pill tone="restart">loops</Pill>}
         {p.script?.source.trim() && <Pill tone="script">script</Pill>}
       </div>
-      <div className={cn("flex gap-4", stacked ? "flex-col" : "items-start")}>
-        <LayoutThumb layout={step.layout} cellSize={cellSize} tooltips className="shrink-0 self-start" />
-        <ol className="min-w-0 flex-1 space-y-1" aria-label={`Plot ${p.id} steps`}>
+      <div className={cn("grid gap-x-6 gap-y-4", stacked ? "grid-cols-1" : "grid-cols-[minmax(0,26.5rem)_minmax(0,1fr)] items-start")}>
+        <figure className="min-w-0 space-y-2">
+          <LayoutThumb layout={step.layout} cellSize={cellSize} maxCell={maxCell} tooltips />
+          <figcaption className="flex flex-wrap items-center gap-2">
+            {simAt && (
+              <ButtonLink size={stacked ? "touch" : "md"} to={simAt(p.id, idx)} title={`Load this flow in the simulator and open step ${idx + 1}'s layout`}>
+                <FlaskConical aria-hidden /> Edit in simulator
+              </ButtonLink>
+            )}
+            {code && (
+              <ButtonLink variant="ghost" size={stacked ? "touch" : "md"} href={`/designer?layout=${encodeURIComponent(code)}`} newTab title="Open this layout in the Designer (new tab)">
+                Open in Designer <ExternalLink aria-hidden />
+              </ButtonLink>
+            )}
+          </figcaption>
+        </figure>
+        <ol className="min-w-0 space-y-1" aria-label={`Plot ${p.id} steps`}>
           {steps.map((s, i) => {
             const on = i === idx;
             return (

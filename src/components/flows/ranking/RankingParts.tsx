@@ -1,12 +1,11 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
 import { ArrowUpRight, ChevronDown, RefreshCw } from "lucide-react";
 import type { FlowViewer } from "../../../hooks/useFlowViewer";
 import { EVERY } from "../../../leaderboard/tiers";
 import { SORT_LABEL, type SortKey } from "../../../leaderboard/view";
 import { priceAge } from "../../simulator/bazaarFormat";
 import { cn } from "../../ui/cn";
-import { IconButton, KitButton, KitLabel } from "../../ui/kit";
+import { Bone, ButtonLink, IconButton, KitButton, KitLabel } from "../../ui/kit";
 import { Dropdown, MenuItem, Popover } from "../../ui/Popover";
 import { SPLIT_STYLE } from "../flowsDisplay";
 import { FORGIVING_HINT, ROW_COLS, SORT_HINT } from "./rankingHelpers";
@@ -168,8 +167,6 @@ export const SortMenu: React.FC<{ sort: SortKey; onSort: (k: SortKey) => void; a
 
 // ---- States (F22–F26) ---------------------------------------------------------------------------------
 
-const Bone: React.FC<{ className?: string }> = ({ className }) => <span className={cn("block rounded-inner bg-surface-hover", className)} />;
-
 /**
  * Loading rows shaped like the real ones, on the same grid (ROW_COLS) as the header and rows, so
  * nothing jumps when the data lands. `phone` mirrors PhoneRowItem.
@@ -243,12 +240,9 @@ export const ListEmpty: React.FC<{ plots: string }> = ({ plots }) => (
       No flows on this board{plots !== "any" ? ` with ${plots} plot${plots === "1" ? "" : "s"}` : ""} yet.
     </p>
     <p>
-      <Link
-        to="/simulator"
-        className="focus-ring hit-area inline-flex h-8 items-center gap-1.5 rounded-control border border-line-strong bg-surface-control px-3 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover"
-      >
-        Build one and press "Submit to leaderboard" in the simulator <ArrowUpRight aria-hidden className="size-3.5 text-fg-meta" />
-      </Link>
+      <ButtonLink size="md" to="/simulator">
+        Build one and press "Submit to leaderboard" in the simulator <ArrowUpRight aria-hidden className="text-fg-meta" />
+      </ButtonLink>
     </p>
   </div>
 );
