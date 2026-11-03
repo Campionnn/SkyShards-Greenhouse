@@ -9,8 +9,8 @@ import { BOARDS, CELL_KIND_RUN_KIND, cellKindFrom, type Board, type CellKind, ty
 import { boardOfCellKind, readPrep } from "../leaderboard/view";
 import type { TierId } from "../leaderboard/tiers";
 import { SHARE_BASE_URL } from "../utilities/shareLink";
-import { ApiError, apiFetch } from "./authService";
-import { flowsMockEnabled, mockAdminDetailExtras, mockDetail, mockList, mockMyLikes, mockSetLike, mockStatus, mockSubmit } from "./flowsMock";
+import { ApiError, apiFetch, getToken } from "./authService";
+import { flowsMockEnabled, mockAdminDetailExtras, mockDetail, mockList, mockMyLikes, mockSeeds, mockSetLike, mockStatus, mockSubmit } from "./flowsMock";
 
 const mock = () => import.meta.env.DEV && flowsMockEnabled();
 
@@ -49,24 +49,71 @@ export function listFlows(q: ListQuery, opts: { force?: boolean } = {}): Promise
   return guarded;
 }
 
-/** Drop the cached lists (after a submit, edit or delete). */
+/** Drop the cached lists and seed rows (after a submit, edit or delete). */
 export function clearFlowsCache(): void {
   listCache.clear();
+  seedsCache.clear();
 }
 
 /**
- * `adminKey` (from adminService's sessionStorage) is sent as `X-Admin-Key`: the API then also
- * returns hidden / rejected entries with their moderation fields.
+ * The query for a detail / seeds request: `private=1` when logged in or with the admin key, so the
+ * URL never matches a publicly cached anonymous response (those carry no `liked`, and a shared cache
+ * must never hand a viewer's own response to someone else).
+ */
+function readQuery(params: Record<string, string>, adminKey?: string | null): string {
+  const q = new URLSearchParams(params);
+  if (getToken() || adminKey) q.set("private", "1");
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+/**
+ * The flow without its per-seed rows (`seeds=0`, ~2 MB lighter; `getFlowSeeds` loads one cell's
+ * rows when the page shows them). `adminKey` (from adminService's sessionStorage) is sent as
+ * `X-Admin-Key`: the API then also returns hidden / rejected entries with their moderation fields.
  */
 export async function getFlow(id: string, opts: { adminKey?: string | null } = {}): Promise<FlowDetail> {
   if (mock()) {
     const d = await mockDetail(id);
     if (!d) throw new ApiError(404, "Not found (the flow may be hidden or deleted).");
     const extras = opts.adminKey ? mockAdminDetailExtras(id) : null;
-    return normalizeDetail(extras ? { ...d, ...extras } : d);
+    const { seeds: _seeds, ...slim } = extras ? { ...d, ...extras } : d;
+    void _seeds;
+    return normalizeDetail(slim);
   }
-  const r = await apiFetch(`/flows/${encodeURIComponent(id)}`, opts.adminKey ? { headers: { "X-Admin-Key": opts.adminKey } } : {});
+  const r = await apiFetch(`/flows/${encodeURIComponent(id)}${readQuery({ seeds: "0" }, opts.adminKey)}`, opts.adminKey ? { headers: { "X-Admin-Key": opts.adminKey } } : {});
   return normalizeDetail((await r.json()) as FlowDetail);
+}
+
+export interface SeedsQuery {
+  cellKind: CellKind;
+  tier: TierId;
+  every: number;
+}
+
+const seedsCache = new Map<string, Promise<FlowSeedResult[]>>();
+
+/**
+ * One cell's per-seed rows (`GET /flows/{id}/seeds`), normalised like the detail's; failed runs
+ * without counts are left out. Cached for the session per (flow, cell); a failed fetch isn't.
+ */
+export function getFlowSeeds(id: string, q: SeedsQuery, opts: { adminKey?: string | null } = {}): Promise<FlowSeedResult[]> {
+  const key = `${id}|${q.cellKind}|${q.tier}|${q.every}|${opts.adminKey ? 1 : 0}`;
+  const hit = seedsCache.get(key);
+  if (hit) return hit;
+  const p = mock()
+    ? mockSeeds(id, q).then((rows) => rows.map(normalizeSeed).filter((s): s is FlowSeedResult => s !== null))
+    : apiFetch(
+        `/flows/${encodeURIComponent(id)}/seeds${readQuery({ cellKind: q.cellKind, tier: q.tier, every: String(q.every) }, opts.adminKey)}`,
+        opts.adminKey ? { headers: { "X-Admin-Key": opts.adminKey } } : {},
+      )
+        .then((r) => r.json() as Promise<{ seeds?: unknown[] }>)
+        .then((body) => (Array.isArray(body?.seeds) ? body.seeds : []).map(normalizeSeed).filter((s): s is FlowSeedResult => s !== null));
+  seedsCache.set(key, p);
+  p.catch(() => {
+    if (seedsCache.get(key) === p) seedsCache.delete(key);
+  });
+  return p;
 }
 
 const EMPTY_EFFORT = { sessions: 0, avg: 0, peak: 0, byKind: {} };

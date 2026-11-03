@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FlowDetail, FlowStatusResponse } from "../leaderboard/api";
 import { mockDetail, mockList, mockStatus } from "./flowsMock";
-import { normalizeDetail, normalizeListEntries, normalizeResult, normalizeStatus } from "./flowsService";
+import { clearFlowsCache, getFlow, getFlowSeeds, normalizeDetail, normalizeListEntries, normalizeResult, normalizeStatus } from "./flowsService";
 
 describe("normalizeDetail", () => {
   it("accepts flat seed rows (API shape) and nested ones, dropping failed runs", () => {
@@ -171,5 +171,42 @@ describe("the mock matches the API's shapes", () => {
     expect(normalizeDetail(d).cells).toHaveLength(d.cells.length);
     const st = await mockStatus();
     expect(st.jobs.map((j) => j.runKind)).toEqual(["ironman", "normal"]);
+  });
+});
+
+describe("detail and seeds requests", () => {
+  // The mock's own parameters type `mock.calls[i][0]` as the URL.
+  const api = (body: unknown) => vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify(body), { status: 200 }));
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearFlowsCache();
+  });
+  const storage = (token: string | null) => {
+    const map = new Map<string, string>(token ? [["skyshards-auth-token", token]] : []);
+    vi.stubGlobal("localStorage", { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => map.set(k, v), removeItem: (k: string) => map.delete(k) });
+  };
+
+  it("the detail is fetched without its seed rows; logged in adds private=1", async () => {
+    storage(null);
+    const f = api({ id: "abc", cells: [] });
+    vi.stubGlobal("fetch", f);
+    await getFlow("abc");
+    expect(f.mock.calls[0][0]).toMatch(/\/flows\/abc\?seeds=0$/);
+    storage("tok");
+    await getFlow("abc");
+    expect(f.mock.calls[1][0]).toMatch(/\/flows\/abc\?seeds=0&private=1$/);
+  });
+
+  it("one cell's seeds: the cell's query, normalised rows, cached per cell", async () => {
+    storage(null);
+    const f = api({ seeds: [{ cellKind: "normal", tier: "max", every: 2, seedIndex: 0, ok: true, result: { produced: { wheat: 3 } } }, { cellKind: "normal", tier: "max", every: 2, seedIndex: 1, ok: false, result: null }] });
+    vi.stubGlobal("fetch", f);
+    const rows = await getFlowSeeds("abc", { cellKind: "normal", tier: "max", every: 2 });
+    expect(f.mock.calls[0][0]).toMatch(/\/flows\/abc\/seeds\?cellKind=normal&tier=max&every=2$/);
+    expect(rows.map((r) => [r.seedIndex, r.result.produced.wheat, r.board])).toEqual([[0, 3, "normal"]]); // the failed run has no counts
+    await getFlowSeeds("abc", { cellKind: "normal", tier: "max", every: 2 });
+    expect(f).toHaveBeenCalledTimes(1);
+    await getFlowSeeds("abc", { cellKind: "normal", tier: "max", every: 4 });
+    expect(f).toHaveBeenCalledTimes(2);
   });
 });

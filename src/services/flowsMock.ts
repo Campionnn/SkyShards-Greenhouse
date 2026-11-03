@@ -490,6 +490,12 @@ export function mockDetail(id: string): Promise<FlowDetail | null> {
   });
 }
 
+/** The seeds endpoint (`GET /flows/{id}/seeds?cellKind&tier&every`): one cell's rows, as the API sends them. */
+export async function mockSeeds(id: string, q: { cellKind: CellKind; tier: TierId; every: number }): Promise<FlowSeedResult[]> {
+  const d = await mockDetail(id);
+  return (d?.seeds ?? []).filter((s) => s.cellKind === q.cellKind && s.tier === q.tier && s.every === q.every);
+}
+
 /** The mock user's likes this session (the spec counts don't include them). */
 const mockLiked = new Set<string>(["mockVeil0008"]);
 

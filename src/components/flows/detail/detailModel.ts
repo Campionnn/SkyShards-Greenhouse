@@ -1,12 +1,10 @@
 import { useMemo } from "react";
 import type { FlowDetail } from "../../../leaderboard/api";
 import { valueResult } from "../../../leaderboard/pricing";
-import { spreadRatio } from "../../../leaderboard/result";
 import type { CellKind } from "../../../leaderboard/rules";
 import type { TierId } from "../../../leaderboard/tiers";
 import {
   boardNumbers,
-  cellKindOfRow,
   earningTargets,
   findCell,
   itemBreakdown,
@@ -68,10 +66,7 @@ export function detailModel(detail: FlowDetail, viewer: FlowViewer) {
     fromNothing && prep?.done && stopsAt(fromNothing.slowing, fromNothing.profitPerDay, kitN)
       ? `From nothing it stops once the starting items run out${need ? `: it uses ${need} that it doesn't grow` : ""}. Leftover placed items that never helped enough mutations don't decay, so the plots stay blocked (no room for Lonelily). With the items topped up: ${kitN !== null ? formatCoins(kitN) : "?"}/day.`
       : null;
-  const seedRows = (detail.seeds ?? [])
-    .filter((s) => cellKindOfRow(s) === kind && s.tier === tierShown && s.every === viewer.every)
-    .sort((a, b) => a.seedIndex - b.seedIndex)
-    .map((s) => ({ seed: s.seedIndex + 1, profit: valueResult(DATA, s.result, board, quotes, viewer.bazaar.pricing).profitPerDay, uptime: s.result.uptime }));
+
   const firstThumb = detail.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
   const median = cell?.median ?? null;
   return {
@@ -100,10 +95,7 @@ export function detailModel(detail: FlowDetail, viewer: FlowViewer) {
     starved: median ? starvedList(median.starved) : [],
     spread: cell ? spreadAt(cell.spread, viewer.every) : null,
     seedCount: cell?.seeds ?? 0,
-    seedRows,
-    /** The raw seed rows of this cell kind (any tier / frequency; the tab filters). */
-    cellSeeds: (detail.seeds ?? []).filter((s) => cellKindOfRow(s) === kind),
-    seedRatio: seedRows.length ? spreadRatio(seedRows.map((r) => r.profit)) : null,
+
     supplies: shown ? suppliesText(suppliesOf(shown.result)) : "none",
     mutationsPerDay: shown ? mutationsPerDay(DATA, shown.result) : 0,
     kitSummary: median ? kitSummaryText(median) : null,
@@ -117,13 +109,13 @@ export function detailModel(detail: FlowDetail, viewer: FlowViewer) {
 export type DetailModel = ReturnType<typeof detailModel>;
 
 export function useDetailModel(detail: FlowDetail, viewer: FlowViewer): DetailModel {
-  const { cells, seeds, summary, payload, thumb } = detail;
+  const { cells, summary, payload, thumb } = detail;
   const { cellKind, board, tier, every, quotes, viewerStats } = viewer;
   const pricing = viewer.bazaar.pricing;
   return useMemo(
-    () => detailModel({ ...detail, cells, seeds, summary, payload, thumb }, viewer),
+    () => detailModel({ ...detail, cells, summary, payload, thumb }, viewer),
     // The model depends on these inputs only (the viewer object is new every render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cells, seeds, summary, payload, thumb, cellKind, board, tier, every, quotes, viewerStats, pricing],
+    [cells, summary, payload, thumb, cellKind, board, tier, every, quotes, viewerStats, pricing],
   );
 }

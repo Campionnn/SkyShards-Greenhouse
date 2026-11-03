@@ -9,13 +9,14 @@ import { formatCoins, formatRate, nameOf } from "../../simulator/format";
 import { Fact } from "../../ui/Card";
 import { cn } from "../../ui/cn";
 import { InfoHint } from "../../ui/InfoHint";
-import { KitLabel, Pill, TabPanel, Tabs } from "../../ui/kit";
+import { Bone, KitLabel, Pill, TabPanel, Tabs } from "../../ui/kit";
 import { EmptyCells, FlowWalkthrough, ItemBreakdown, SeedTable, SourceBreakdown, WhatYouNeed } from "../FlowDetailSections";
 import { FlowMarkdown } from "../FlowMarkdown";
 import { MutationChip, SplitBar, SplitLegend } from "../FlowVisuals";
 import { EFFORT_LABEL } from "../flowsDisplay";
 import { FrequencyChart } from "../FrequencyChart";
 import { simHref } from "../ranking/rankingHelpers";
+import { useCellSeeds } from "./useCellSeeds";
 import type { DetailModel } from "./detailModel";
 import { DETAIL_TABS, forgivingText, SEEDS_MAX_TIER, SEEDS_OTHER_TIERS, type DetailTab } from "./detailText";
 
@@ -161,37 +162,59 @@ const EarnPanel: React.FC<{ m: DetailModel; phone: boolean }> = ({ m, phone }) =
   </div>
 );
 
-const ProofPanel: React.FC<{ m: DetailModel; viewer: FlowViewer; phone: boolean }> = ({ m, viewer, phone }) => {
+const ProofPanel: React.FC<{ detail: FlowDetail; m: DetailModel; viewer: FlowViewer; phone: boolean }> = ({ detail, m, viewer, phone }) => {
   const r = m.shown?.result;
-  const seeds = (m.cell ? viewerSeeds(m, viewer) : []) as Parameters<typeof SeedTable>[0]["seeds"];
+  const loaded = useCellSeeds(detail, m.cell ? { cellKind: m.kind, tier: m.tierShown, every: viewer.every } : null);
+  const loading = loaded === null;
+  const seeds = loaded ?? [];
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
         <Fact label="Target uptime" value={r ? percent(r.uptime) : "—"} suffix={r ? (r.sustainable ? "· sustainable" : "· has downtime") : undefined} />
         <Fact label="Seed spread" value={ratioText(m.spread)} suffix={`· ${m.seedCount || (m.tierShown === "max" ? SEEDS_MAX_TIER : SEEDS_OTHER_TIERS)} secret seeds`} title="Best seed / median seed. Lower is more consistent." />
       </div>
-      <div className={cn("grid items-start gap-8", !phone && seeds.length ? "grid-cols-2" : "grid-cols-1")}>
+      <div className={cn("grid items-start gap-8", !phone && (seeds.length || loading) ? "grid-cols-2" : "grid-cols-1")}>
         <section className="space-y-2" aria-label="Work per login">
           <H2 small hint="Weighted by how much work each action is." meta={r ? `avg ${Math.round(r.effort.avg)} · heaviest ${Math.round(r.effort.peak)}` : null}>
             Work per login
           </H2>
           <EffortList m={m} />
         </section>
-        {seeds.length > 0 && (
-          <section className="space-y-2" aria-label="Consistency across seeds">
+        {loading ? (
+          <section className="space-y-2" aria-label="Consistency across seeds" aria-busy>
             <H2 small>Consistency across seeds</H2>
-            <SeedTable seeds={seeds} board={viewer.board} quotes={viewer.quotes} pricing={viewer.bazaar.pricing} />
+            <SeedTableSkeleton rows={m.seedCount || (m.tierShown === "max" ? SEEDS_MAX_TIER : SEEDS_OTHER_TIERS)} />
           </section>
+        ) : (
+          seeds.length > 0 && (
+            <section className="space-y-2" aria-label="Consistency across seeds">
+              <H2 small>Consistency across seeds</H2>
+              <SeedTable seeds={seeds} board={viewer.board} quotes={viewer.quotes} pricing={viewer.bazaar.pricing} />
+            </section>
+          )
         )}
       </div>
     </div>
   );
 };
 
-/** The seed rows of the shown cell (its kind, tier and frequency). */
-function viewerSeeds(m: DetailModel, viewer: FlowViewer) {
-  return m.cell ? (m.cellSeeds ?? []).filter((s) => s.tier === m.tierShown && s.every === viewer.every) : [];
-}
+/** Loading rows shaped like SeedTable's (#n · bar · coins · uptime). */
+const SeedTableSkeleton: React.FC<{ rows: number }> = ({ rows }) => (
+  <div className="animate-pulse space-y-2 motion-reduce:animate-none">
+    <ul className="space-y-1.5">
+      {Array.from({ length: rows }, (_, i) => (
+        <li key={i} className="grid grid-cols-[2rem_1fr_auto_auto] items-center gap-3">
+          <Bone className="h-3 w-5" />
+          <Bone className="h-1.5" />
+          <Bone className="h-3.5 w-14" />
+          <Bone className="h-3.5 w-16" />
+        </li>
+      ))}
+    </ul>
+    <Bone className="h-3.5 w-40" />
+    <span className="sr-only">Loading the seeds…</span>
+  </div>
+);
 
 export const DetailTabs: React.FC<{
   detail: FlowDetail;
@@ -232,7 +255,7 @@ export const DetailTabs: React.FC<{
           </section>
         </div>
       )}
-      {tab === "proof" && <ProofPanel m={m} viewer={viewer} phone={phone} />}
+      {tab === "proof" && <ProofPanel detail={detail} m={m} viewer={viewer} phone={phone} />}
     </TabPanel>
   </div>
 );
