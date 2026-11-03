@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Navigation } from "./Navigation";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { useBottomAdInset } from "../../hooks/useBottomAdInset";
+import { DISCORD_PATH } from "../../seo/routes";
 
 export const Layout: React.FC = () => {
   const location = useLocation();
@@ -42,6 +43,7 @@ export const Layout: React.FC = () => {
           <span className="mr-auto">Made by Campion · a SkyShards project · thanks to MegaMew14</span>
           {[
             { href: "https://skyshards.com", label: "SkyShards", external: true },
+            { href: DISCORD_PATH, label: "Discord", external: true },
             { href: "/about", label: "About" },
             { href: "/contact", label: "Contact" },
             { href: "/privacy-policy", label: "Privacy policy" },

@@ -19,6 +19,7 @@ const ContactPage = lazy(() => import("./pages/ContactPage").then((module) => ({
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const WikiPage = lazy(() => import("./pages/WikiPage").then((module) => ({ default: module.WikiPage })));
 const ShortLinkRedirect = lazy(() => import("./pages/ShortLinkRedirect").then((module) => ({ default: module.ShortLinkRedirect })));
+const DiscordRedirect = lazy(() => import("./pages/DiscordRedirect").then((module) => ({ default: module.DiscordRedirect })));
 
 // Local-only dev pages (e.g. the /design gallery): files in src/dev-local/ (not in git) that
 // export `path` and a default component. Dev builds only; production never bundles them.
@@ -173,6 +174,16 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<LoadingSpinner />}>
             <PrivacyPolicy />
+          </Suspense>
+        ),
+      },
+      {
+        // The header/footer Discord link. Production 301s at the edge (src/seo/routes.ts); this
+        // route is what hosts that serve the SPA use (dev, preview, GitHub Pages).
+        path: "discord",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <DiscordRedirect />
           </Suspense>
         ),
       },

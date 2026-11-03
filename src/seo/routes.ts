@@ -20,6 +20,10 @@ export interface SiteRoute {
 /** Matches the <title> in index.html (a test keeps them equal). */
 export const HOME_TITLE = "SkyShards Greenhouse - Hypixel SkyBlock Greenhouse Calculator & Layout Designer";
 
+/** The short link the header and footer use; the invite itself is the one below. */
+export const DISCORD_PATH = "/discord";
+export const DISCORD_INVITE_URL = "https://discord.gg/NtbtdJRUMJ";
+
 export const SITE_ROUTES: SiteRoute[] = [
   {
     path: "/",
@@ -90,6 +94,8 @@ export function buildRedirects(wikiSlugs: { id: string; slug: string }[]): strin
     "/calculator / 301",
     "/recipes https://skyshards.com/recipes 301",
     "/shards https://skyshards.com/shards 301",
+    // Header/footer link and shareable short link: a real 301 to the Discord invite.
+    `${DISCORD_PATH} ${DISCORD_INVITE_URL} 301`,
   ];
   // Short links: /gloomgourd and /all_in_aloe -> /wiki/<slug>. Other spellings
   // still resolve in the app (ShortLinkRedirect).

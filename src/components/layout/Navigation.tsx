@@ -3,6 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 import { ExternalLink, Menu, X } from "lucide-react";
 import { cn } from "../ui/cn";
 import { useSlidingIndicator } from "../ui/useSlidingIndicator";
+import { DiscordIcon } from "../ui/DiscordIcon";
+import { DISCORD_PATH } from "../../seo/routes";
 
 // Site header (docs/design-system/foundations.md "Site chrome"). Neutral links; the current page has
 // the select-colour underline, like the kit's Tabs. One brand mark: the aqua All-in Aloe frame.
@@ -84,6 +86,21 @@ export const Navigation: React.FC = () => {
 
         <span className="flex-1" />
 
+        {/* The Discord invite: the short link (/discord) resolves to the invite in production.
+            Phones get it inside the menu sheet, like the SkyShards link, so the header keeps one
+            right-hand control (the menu button). */}
+        <a
+          href={DISCORD_PATH}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Join the SkyShards Discord (opens in a new tab)"
+          title="Join the SkyShards Discord"
+          className="focus-ring hidden h-[30px] shrink-0 items-center gap-1.5 rounded-control border border-line px-2.5 text-body font-medium text-fg-muted transition-colors duration-(--duration-hover) hover:bg-surface-hover hover:text-fg lg:inline-flex"
+        >
+          <DiscordIcon className="size-3.5" />
+          Discord
+        </a>
+
         <a
           href={SKYSHARDS_URL}
           target="_blank"
@@ -135,6 +152,9 @@ export const Navigation: React.FC = () => {
           <div className="flex flex-col">
             <a href={SKYSHARDS_URL} target="_blank" rel="noopener noreferrer" className="focus-ring-inset flex h-11 items-center gap-1.5 rounded-control px-3 text-body text-fg-muted">
               SkyShards calculator <ExternalLink aria-hidden className="size-3.5" />
+            </a>
+            <a href={DISCORD_PATH} target="_blank" rel="noopener noreferrer" className="focus-ring-inset flex h-11 items-center gap-1.5 rounded-control px-3 text-body text-fg-muted">
+              <DiscordIcon className="size-3.5" /> Discord <span className="sr-only">(opens in a new tab)</span>
             </a>
             {SECONDARY.map(({ href, label }) => (
               <Link key={href} to={href} className="focus-ring-inset flex h-11 items-center rounded-control px-3 text-body text-fg-muted">

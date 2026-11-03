@@ -12,7 +12,7 @@ import {
 } from "./slugs";
 import { buildUsedInMap, collectBaseIngredients, collectExpandablePaths, getRecipeSource, isLeaf } from "./recipes";
 import { addToSitemap, buildNotFoundPage, buildRoutePages, buildSitemap, buildWikiStaticPages } from "./staticPages";
-import { HOME_TITLE, SITE_ROUTES, buildRedirects, titleForPath } from "../seo/routes";
+import { DISCORD_INVITE_URL, HOME_TITLE, SITE_ROUTES, buildRedirects, titleForPath } from "../seo/routes";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
@@ -203,6 +203,8 @@ describe("wiki static pages", () => {
     expect(lines).toContain("/gloomgourd /wiki/gloomgourd 301");
     expect(lines).toContain("/all_in_aloe /wiki/all-in-aloe 301");
     expect(lines).toContain("/calculator / 301");
+    // The header/footer short link leaves for the Discord invite with a real 301.
+    expect(lines).toContain(`/discord ${DISCORD_INVITE_URL} 301`);
     expect(lines[lines.length - 1]).toBe("/flows/* /flows 200");
     expect(lines.length).toBeLessThanOrEqual(2000);
     const sources = lines.map((line) => line.split(" ")[0]);
