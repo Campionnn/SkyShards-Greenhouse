@@ -148,6 +148,9 @@ describe("leaderboard pages render", () => {
     expect(normal).not.toContain("I have the starting items");
     expect(normal).not.toContain("Upkeep");
     expect(normal).toContain("Bazaar prices");
+    // Normal: the price editor button; Ironman (NPC prices) has none.
+    expect(normal).toContain('data-testid="prices-chip"');
+    expect(text(wrap(<FlowsPage />))).not.toContain('data-testid="prices-chip"');
     // A sort and the 30-day likes come from the URL.
     expect(text(wrap(<FlowsPage />, "/flows?sort=liked30d"))).toMatch(/aria-pressed="true"[^>]*aria-label="Sort by most liked"/);
   });
@@ -334,7 +337,7 @@ describe("leaderboard pages render", () => {
     // The header picture is a button that opens it larger; no typed login frequency anywhere.
     expect(html).toContain('data-testid="hero-picture"');
     expect(all).not.toContain("Every N cycles (1 to 48)");
-    // Logged out: no owner or report actions.
+    // Logged out: no owner actions on the page (Report sits in the closed More menu and asks to log in first).
     expect(all).not.toMatch(/Delete…|Report…|Edit title and description/);
   });
 

@@ -4,7 +4,8 @@ import { ArrowUpRight, MoreHorizontal, RefreshCw, Search, SlidersHorizontal } fr
 import { AccountControl, BoardToggle, KitSwitch } from "../components/flows/FlowControls";
 import { FilterBar, PlotsField, type PlotsFilter } from "../components/flows/FlowFilters";
 import { FlowRowItem, PhoneRowItem } from "../components/flows/ranking/RankingRow";
-import { KeyButton, ListEmpty, ListError, ListNoMatch, ListSkeleton, ReloadButton, SortHead, SortMenu } from "../components/flows/ranking/RankingParts";
+import { KeyButton, ListEmpty, ListError, ListNoMatch, ListSkeleton, PricesChip, ReloadButton, SortHead, SortMenu } from "../components/flows/ranking/RankingParts";
+import { BazaarPriceDialog } from "../components/simulator/BazaarPanels";
 import { CantMakeSection } from "../components/flows/ranking/SetApart";
 import { BOARD_INTRO, facetCounts, filtersActive, ROW_COLS } from "../components/flows/ranking/rankingHelpers";
 import { PHONE_QUERY, useMedia } from "../components/flows/ranking/useMedia";
@@ -30,6 +31,7 @@ import {
   readListParams,
   sortRows,
   splitRanked,
+  tradedItems,
   withLikeCounts,
   writeListParams,
   type FlowRow,
@@ -145,6 +147,7 @@ export const FlowsPage: React.FC = () => {
   const setSort = (k: SortKey) => setParams({ sort: k });
   const setPlots = (p: PlotsFilter) => setParams({ plots: p });
   const [statsOpen, setStatsOpen] = useState(false);
+  const [pricesOpen, setPricesOpen] = useState(false);
   const [peek, setPeek] = useState<string | null>(null);
 
   const [result, setResult] = useState<{ key: string; data?: FlowListResponse; error?: string } | null>(null);
@@ -262,6 +265,14 @@ export const FlowsPage: React.FC = () => {
     </InfoHint>
   );
 
+  const normal = board === "normal";
+  const editPrices = normal ? () => setPricesOpen(true) : undefined;
+  // The editor lists what the loaded flows trade first; "All items" adds the rest.
+  const traded = useMemo(() => tradedItems(all.map((e) => e.cell)), [all]);
+  const pricesDialog = normal && pricesOpen && (
+    <BazaarPriceDialog bazaar={viewer.bazaar} focusItem={null} itemIds={traded} scope="These flows" withSides onClose={() => setPricesOpen(false)} />
+  );
+
   const drawer = (
     <StatsDrawer
       viewer={viewer}
@@ -333,11 +344,15 @@ export const FlowsPage: React.FC = () => {
         />
         <div className="flex items-center justify-between gap-2 border-b border-line pb-1">
           {counted || <span />}
-          <KeyButton viewer={viewer} now={now} />
+          <span className="flex items-center gap-1">
+            {editPrices && <PricesChip viewer={viewer} onOpen={editPrices} compact />}
+            <KeyButton viewer={viewer} now={now} onEditPrices={editPrices} />
+          </span>
         </div>
         {truncated}
         {list}
         {drawer}
+        {pricesDialog}
       </div>
     );
 
@@ -361,6 +376,7 @@ export const FlowsPage: React.FC = () => {
         {boardHint}
         <KitSwitch viewer={viewer} className="mr-1" />
         <StatsChip viewer={viewer} onOpen={() => setStatsOpen(true)} className="max-w-[17rem]" />
+        {editPrices && <PricesChip viewer={viewer} onOpen={editPrices} />}
         <SearchBox value={query} onChange={setQuery} className="ml-auto max-w-[15rem] min-w-[10rem] flex-1" />
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -379,7 +395,7 @@ export const FlowsPage: React.FC = () => {
         <span className="ml-auto flex items-center gap-1.5">
           <SortMenu sort={sort} onSort={setSort} />
           <span aria-hidden className="h-4 w-px bg-line" />
-          <KeyButton viewer={viewer} now={now} />
+          <KeyButton viewer={viewer} now={now} onEditPrices={editPrices} />
           <ReloadButton loading={loading} onReload={() => setReload((n) => n + 1)} />
         </span>
       </div>
@@ -420,6 +436,7 @@ export const FlowsPage: React.FC = () => {
         {list}
       </div>
       {drawer}
+      {pricesDialog}
     </div>
   );
 };

@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Ellipsis, Eye, EyeOff, FlaskConical, Flag, Link2, Maximize2, Pencil, RefreshCw, Trash2 } from "lucide-react";
-import { AccountControl, AuthorLabel, LikeButton, PriceNote } from "../components/flows/FlowControls";
+import { AccountControl, AuthorLabel, LikeButton, LoginPromptPopover, PriceNote } from "../components/flows/FlowControls";
 import { SLOWING_TITLE } from "../components/flows/FlowChips";
 import { FlowMarkdown } from "../components/flows/FlowMarkdown";
 import { LayoutThumb } from "../components/flows/FlowVisuals";
@@ -14,6 +14,7 @@ import { tabFrom, type DetailTab } from "../components/flows/detail/detailText";
 import { SummaryStrip } from "../components/flows/detail/SummaryStrip";
 import { StatsDrawer } from "../components/flows/stats/StatsDrawer";
 import { PlayerImportPanel } from "../components/playerImport/PlayerImportBox";
+import { BazaarPriceDialog } from "../components/simulator/BazaarPanels";
 import { formatCoins } from "../components/simulator/format";
 import { useToast } from "../components/ui";
 import { LinkButton } from "../components/ui/Card";
@@ -28,7 +29,7 @@ import { useFlowViewer, type FlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
 import type { StepLayout } from "../simulator/flow/types";
 import { boardFrom, kitFromBoard, type CellKind } from "../leaderboard/rules";
-import { BADGE_TITLE, BOARD_LABEL, CELL_KIND_LABEL, DESCRIPTION_MAX, formatDate, percent, starvedText, TIER_LABEL, TITLE_MAX } from "../leaderboard/view";
+import { BADGE_TITLE, BOARD_LABEL, CELL_KIND_LABEL, DESCRIPTION_MAX, formatDate, percent, starvedText, TIER_LABEL, TITLE_MAX, tradedItems } from "../leaderboard/view";
 import { adminDelete, adminHide, adminUnhide, getAdminKey, hiddenReasonLabel } from "../services/adminService";
 import { ApiError } from "../services/authService";
 import { deleteFlow, flowShareLink, getFlow, updateFlow } from "../services/flowsService";
@@ -192,19 +193,28 @@ function useCopyLink(id: string) {
   };
 }
 
-/** Secondary actions: Copy link (phone), Report (logged in, not the owner), Edit and Delete (owner). */
-const MoreMenu: React.FC<{ size: "md" | "touch"; withCopy: boolean; canReport: boolean; owner: boolean; onCopy: () => void; onReport: () => void; onEdit: () => void; onDelete: () => void }> = ({
-  size,
-  withCopy,
-  canReport,
-  owner,
-  onCopy,
-  onReport,
-  onEdit,
-  onDelete,
-}) => {
+/**
+ * Secondary actions: Copy link (phone), Report (anyone but the owner), Edit and Delete (owner).
+ * Logged out, Report opens a "log in to report" prompt under the button (like the heart's); its
+ * login comes back with the report dialog open (`onLoginToReport`).
+ */
+const MoreMenu: React.FC<{
+  size: "md" | "touch";
+  withCopy: boolean;
+  canReport: boolean;
+  /** Logged out: Report asks to log in first. */
+  reportNeedsLogin: boolean;
+  owner: boolean;
+  onCopy: () => void;
+  onReport: () => void;
+  onLoginToReport: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}> = ({ size, withCopy, canReport, reportNeedsLogin, owner, onCopy, onReport, onLoginToReport, onEdit, onDelete }) => {
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const closeAsk = useCallback(() => setAsking(false), []);
   if (!withCopy && !canReport && !owner) return null;
   const pick = (f: () => void) => () => {
     setOpen(false);
@@ -212,9 +222,25 @@ const MoreMenu: React.FC<{ size: "md" | "touch"; withCopy: boolean; canReport: b
   };
   return (
     <>
-      <IconButton ref={setAnchor} variant="neutral" size={size} aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <IconButton
+        ref={setAnchor}
+        variant="neutral"
+        size={size}
+        aria-label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open || asking}
+        onClick={() => {
+          setAsking(false);
+          setOpen((o) => !o);
+        }}
+      >
         <Ellipsis />
       </IconButton>
+      {reportNeedsLogin && (
+        <LoginPromptPopover anchor={anchor} open={asking} onClose={closeAsk} onLogin={onLoginToReport} title="Log in to report flows" icon={<Flag aria-hidden className="size-3.5 text-problem" />} testId="report-login-popover">
+          Reports are tied to your Discord account so moderators can tell them apart (only your name and avatar are used). The report form opens once you're back.
+        </LoginPromptPopover>
+      )}
       <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="More actions" role="menu" width={240} align="end" className="p-1">
         {withCopy && (
           <MenuItem icon={<Link2 />} hint="Discord embed with the flow's stats" onSelect={pick(onCopy)}>
@@ -222,7 +248,7 @@ const MoreMenu: React.FC<{ size: "md" | "touch"; withCopy: boolean; canReport: b
           </MenuItem>
         )}
         {canReport && (
-          <MenuItem icon={<Flag />} onSelect={pick(onReport)}>
+          <MenuItem icon={<Flag />} hint={reportNeedsLogin ? "Log in with Discord first" : undefined} onSelect={pick(reportNeedsLogin ? () => setAsking(true) : onReport)}>
             Report…
           </MenuItem>
         )}
@@ -317,7 +343,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   });
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, loading: authLoading, login } = useAuth();
   const phone = useIsPhone();
   const now = useMinuteClock();
   // Focused controls scroll clear of the sticky tabs and the phone's bottom bar.
@@ -329,9 +355,13 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const [statsOpen, setStatsOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [pictureOpen, setPictureOpen] = useState(false);
+  /** The price editor: false = closed, null = the list, an id = opened on that item. */
+  const [pricing, setPricing] = useState<string | null | false>(false);
   // Read on every render: locking the admin key in another tab hides the moderation row on the next render.
   const admin = !!getAdminKey();
   const m = useDetailModel(detail, viewer);
+  // The price editor lists what this flow trades (any cell) first; "All items" adds the rest.
+  const pricedItems = useMemo(() => tradedItems(detail.cells.map((c) => c.median)), [detail.cells]);
   const owner = !!user && user.id === detail.author.id;
   const boardListed = detail.boards.includes(viewer.board);
   const tab = tabFrom(search.get("tab"));
@@ -364,6 +394,26 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
     likes.toggle(detail.id, !liked).catch((e: unknown) => toast({ title: "Could not save your like", description: e instanceof Error ? e.message : String(e), variant: "error" }));
   };
   const copyLink = useCopyLink(detail.id);
+  // Report while logged out: log in and come back here with `report=1`, which opens the dialog once.
+  const loginToReport = () => {
+    const q = new URLSearchParams(location.search);
+    q.set("report", "1");
+    login(`${location.pathname}?${q}`);
+  };
+  const reportAsked = search.get("report") === "1";
+  const canReportNow = !!user && !owner;
+  useEffect(() => {
+    if (!reportAsked || authLoading) return;
+    if (canReportNow) setReporting(true);
+    setSearch(
+      (cur) => {
+        const next = new URLSearchParams(cur);
+        next.delete("report");
+        return next;
+      },
+      { replace: true, state: location.state },
+    );
+  }, [reportAsked, authLoading, canReportNow, setSearch, location.state]);
   const remove = async () => {
     if (deleteBusy) return;
     setDeleteBusy(true);
@@ -395,10 +445,12 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
     <MoreMenu
       size={phone ? "touch" : "md"}
       withCopy={phone}
-      canReport={!!user && !owner}
+      canReport={!owner && !authLoading}
+      reportNeedsLogin={!user}
       owner={owner}
       onCopy={() => void copyLink()}
       onReport={() => setReporting(true)}
+      onLoginToReport={loginToReport}
       onEdit={() => setEditing(true)}
       onDelete={() => setDeleting(true)}
     />
@@ -507,10 +559,10 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
         </div>
       )}
 
-      <DetailTabs detail={detail} viewer={viewer} m={m} tab={tab} onTab={setTab} phone={phone} />
+      <DetailTabs detail={detail} viewer={viewer} m={m} tab={tab} onTab={setTab} phone={phone} onEditPrice={setPricing} />
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-meta text-fg-meta">
-        <PriceNote viewer={viewer} now={now} />
+        <PriceNote viewer={viewer} now={now} onEditPrices={() => setPricing(null)} />
         <span>
           Updated {formatDate(detail.updatedAt)} · engine {detail.engineVersion?.slice(0, 8) || "?"}
         </span>
@@ -542,6 +594,9 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
         }
       />
       {importing && <ImportDialog viewer={viewer} onClose={() => setImporting(false)} />}
+      {pricing !== false && viewer.board === "normal" && (
+        <BazaarPriceDialog bazaar={viewer.bazaar} focusItem={pricing} itemIds={pricedItems} scope="This flow" withSides onClose={() => setPricing(false)} />
+      )}
       {pictureOpen && m.heroLayout && (
         <PictureDialog layout={m.heroLayout} caption={heroCaption} onClose={() => setPictureOpen(false)} onSeeFlow={() => (setPictureOpen(false), setTab("flow"))} />
       )}

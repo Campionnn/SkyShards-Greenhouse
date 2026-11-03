@@ -77,7 +77,7 @@ const StepInspector: React.FC<{ index: number }> = ({ index: i }) => {
     {
       value: "actions",
       label: (
-        <span className="whitespace-nowrap">While on this step</span>
+        <span className="whitespace-nowrap">Step actions</span>
       ),
       count: overrides,
     },

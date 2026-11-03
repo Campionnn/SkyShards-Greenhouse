@@ -527,6 +527,13 @@ describe("simulator panels render", () => {
     expect(editor).toContain('value="50"');
     expect(editor).toContain("live 1.0k");
     expect(editor).toContain("Clear all (1)");
+    expect(editor).toContain("This scenario");
+    expect(editor).not.toContain('data-testid="bazaar-price-sides"');
+    // The flow pages' editor: its own scope label, and buy / sell side and tax inside (no price bar there).
+    const flows = wrap(<BazaarPricePanel bazaar={bazaar} focusItem={null} itemIds={["chloronite"]} scope="These flows" withSides onClose={() => {}} />).replace(/<!-- -->/g, "");
+    expect(flows).toContain("These flows");
+    expect(flows).toContain('data-testid="bazaar-price-sides"');
+    for (const s of ["Instant buy", "Sell order", "Bazaar sales tax in percent"]) expect(flows).toContain(s);
     // Without prices yet: no crash, a waiting line.
     expect(wrap(<BazaarMoneyPanel summary={r.summary} previous={null} quotes={null} pricing={pricing} />)).toContain("Waiting for Bazaar prices");
     // Ironman: no Bazaar panel content and no Bazaar mark in the legend.

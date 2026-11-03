@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { ChevronDown, Copy, Heart, LogOut, RefreshCw, RotateCcw, X } from "lucide-react";
+import { ChevronDown, Copy, Heart, LogOut, Pencil, RefreshCw, RotateCcw, X } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import type { FlowViewer, ViewerStats } from "../../hooks/useFlowViewer";
 import type { FlowAuthor } from "../../leaderboard/api";
@@ -461,10 +461,11 @@ export const StatsPanel: React.FC<{ viewer: FlowViewer; defaultOpen?: boolean }>
   );
 };
 
-/** Ironman: NPC prices. Normal: where the Bazaar prices come from, with a refresh link. */
-export const PriceNote: React.FC<{ viewer: FlowViewer; now: number }> = ({ viewer, now }) => {
+/** Ironman: NPC prices. Normal: where the Bazaar prices come from, with Refresh and (given `onEditPrices`) Edit prices. */
+export const PriceNote: React.FC<{ viewer: FlowViewer; now: number; onEditPrices?: () => void }> = ({ viewer, now, onEditPrices }) => {
   if (viewer.board !== "normal") return <span className="text-meta text-fg-meta">NPC prices; mutation items are kept, not sold</span>;
-  const { prices, loading, error, refresh } = viewer.bazaar;
+  const { prices, loading, error, refresh, overrides } = viewer.bazaar;
+  const own = Object.keys(overrides).length;
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2 text-meta text-fg-meta">
       <span>
@@ -474,6 +475,11 @@ export const PriceNote: React.FC<{ viewer: FlowViewer; now: number }> = ({ viewe
       <LinkButton className="inline-flex items-center gap-1" onClick={refresh} disabled={loading}>
         <RefreshCw aria-hidden className={cn("size-3", loading && "animate-spin motion-reduce:animate-pulse")} /> Refresh
       </LinkButton>
+      {onEditPrices && (
+        <LinkButton className="inline-flex items-center gap-1" onClick={onEditPrices} aria-haspopup="dialog">
+          <Pencil aria-hidden className="size-3" /> Edit prices{own > 0 ? ` (${own} set)` : ""}
+        </LinkButton>
+      )}
     </span>
   );
 };
@@ -532,18 +538,29 @@ export const AccountControl: React.FC<{ className?: string }> = ({ className }) 
 };
 
 /**
- * The "log in to like" prompt a logged-out heart click opens, anchored under the heart. A kit
- * dialog popover: it takes focus (the login button), Tab stays inside, Escape or an outside press
- * closes it and returns focus to the heart. Confirming runs `onLogin` (the caller's toggle: it
- * remembers the like and redirects to Discord). Clicks inside never reach the ranking row behind.
+ * A "log in to …" prompt for an action that needs the Discord login, anchored under the control that
+ * asked (the heart, the More menu). A kit dialog popover: it takes focus (the login button), Tab
+ * stays inside, Escape or an outside press closes it and returns focus to the anchor. Confirming
+ * runs `onLogin` (the caller remembers the action and redirects to Discord). Clicks inside never
+ * reach the ranking row behind.
  */
-const LikeLoginPopover: React.FC<{ anchor: HTMLButtonElement | null; open: boolean; onLogin: () => void; onClose: () => void }> = ({ anchor, open, onLogin, onClose }) => (
-  <Popover anchor={anchor} open={open} onClose={onClose} label="Log in to like flows" width={256} align="end" initialFocus="last" className="p-3">
-    <div data-testid="like-login-popover">
+export const LoginPromptPopover: React.FC<{
+  anchor: HTMLElement | null;
+  open: boolean;
+  onLogin: () => void;
+  onClose: () => void;
+  title: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  testId?: string;
+}> = ({ anchor, open, onLogin, onClose, title, icon, children, testId }) => (
+  <Popover anchor={anchor} open={open} onClose={onClose} label={title} width={256} align="end" initialFocus="last" className="p-3">
+    <div data-testid={testId}>
       <p className="flex items-center gap-1.5 text-body font-semibold text-fg">
-        <Heart aria-hidden className="size-3.5 fill-restart text-restart" /> Log in to like flows
+        {icon}
+        {title}
       </p>
-      <p className="mt-1 text-secondary text-fg-muted">Likes are tied to your Discord account (only your name and avatar are used). This flow is liked once you're back.</p>
+      <p className="mt-1 text-secondary text-fg-muted">{children}</p>
       <div className="mt-3 flex justify-end gap-2">
         <KitButton variant="ghost" onClick={onClose}>
           Not now
@@ -552,6 +569,13 @@ const LikeLoginPopover: React.FC<{ anchor: HTMLButtonElement | null; open: boole
       </div>
     </div>
   </Popover>
+);
+
+/** The "log in to like" prompt a logged-out heart click opens. */
+const LikeLoginPopover: React.FC<{ anchor: HTMLButtonElement | null; open: boolean; onLogin: () => void; onClose: () => void }> = (props) => (
+  <LoginPromptPopover {...props} title="Log in to like flows" icon={<Heart aria-hidden className="size-3.5 fill-restart text-restart" />} testId="like-login-popover">
+    Likes are tied to your Discord account (only your name and avatar are used). This flow is liked once you're back.
+  </LoginPromptPopover>
 );
 
 /**

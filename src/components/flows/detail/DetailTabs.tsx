@@ -1,4 +1,5 @@
 import React from "react";
+import { Pencil } from "lucide-react";
 import type { FlowDetail } from "../../../leaderboard/api";
 import type { FlowViewer } from "../../../hooks/useFlowViewer";
 import { builderText, percent, prepText, ratioText, TIER_LABEL } from "../../../leaderboard/view";
@@ -9,7 +10,7 @@ import { formatCoins, formatRate, nameOf } from "../../simulator/format";
 import { Fact } from "../../ui/Card";
 import { cn } from "../../ui/cn";
 import { InfoHint } from "../../ui/InfoHint";
-import { Bone, KitLabel, Pill, TabPanel, Tabs } from "../../ui/kit";
+import { Bone, KitButton, KitLabel, Pill, TabPanel, Tabs } from "../../ui/kit";
 import { EmptyCells, FlowWalkthrough, ItemBreakdown, SeedTable, SourceBreakdown, WhatYouNeed } from "../FlowDetailSections";
 import { FlowMarkdown } from "../FlowMarkdown";
 import { MutationChip, SplitBar, SplitLegend } from "../FlowVisuals";
@@ -118,7 +119,7 @@ const NeedPanel: React.FC<{ m: DetailModel; phone: boolean }> = ({ m, phone }) =
   );
 };
 
-const EarnPanel: React.FC<{ m: DetailModel; phone: boolean }> = ({ m, phone }) => (
+const EarnPanel: React.FC<{ m: DetailModel; viewer: FlowViewer; phone: boolean; onEditPrice?: (item: string | null) => void }> = ({ m, viewer, phone, onEditPrice }) => (
   <div className="space-y-5">
     <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
       <Fact label="Revenue / day" value={m.value ? formatCoins(m.value.revenuePerDay) : "—"} />
@@ -146,11 +147,20 @@ const EarnPanel: React.FC<{ m: DetailModel; phone: boolean }> = ({ m, phone }) =
     )}
     <div className={cn("grid items-start gap-8", phone ? "grid-cols-1" : "grid-cols-2")}>
       <section className="space-y-1" aria-label="What you earn">
-        <H2 small hint="Each item the flow produces, per day, at your prices.">
-          What you earn
-        </H2>
-        <ItemBreakdown lines={m.items} />
-        {m.value && m.value.unpriced.length > 0 && <p className="text-meta text-warn">No price for some items; they count as 0.</p>}
+        <div className="flex items-center justify-between gap-2">
+          <H2 small hint={m.board === "normal" ? "Each item the flow produces, per day, at your prices. Click a price to set your own." : "Each item the flow produces, per day, at NPC prices."}>
+            What you earn
+          </H2>
+          {m.board === "normal" && onEditPrice && (
+            <KitButton size="sm" variant="ghost" onClick={() => onEditPrice(null)} aria-haspopup="dialog">
+              <Pencil /> Edit prices
+            </KitButton>
+          )}
+        </div>
+        <ItemBreakdown lines={m.items} onEditPrice={m.board === "normal" ? onEditPrice : undefined} overridden={viewer.bazaar.overrides} />
+        {m.value && m.value.unpriced.length > 0 && (
+          <p className="text-meta text-warn">No price for some items; they count as 0.{m.board === "normal" && onEditPrice ? " Set one with Edit prices." : ""}</p>
+        )}
       </section>
       <section className="space-y-1" aria-label="Where it comes from">
         <H2 small hint="Which plants' harvests the money comes from, with what each drops.">
@@ -223,14 +233,16 @@ export const DetailTabs: React.FC<{
   tab: DetailTab;
   onTab: (t: DetailTab) => void;
   phone: boolean;
-}> = ({ detail, viewer, m, tab, onTab, phone }) => (
+  /** Normal board: open the price editor (on one item, or the list for null). */
+  onEditPrice?: (item: string | null) => void;
+}> = ({ detail, viewer, m, tab, onTab, phone, onEditPrice }) => (
   <div>
     <div className={cn("sticky top-0 z-(--z-sticky) bg-surface-page", phone && "-mx-3 px-3")}>
       <Tabs value={tab} onChange={onTab} items={DETAIL_TABS.map((t) => ({ value: t.value, label: phone ? t.short : t.label }))} idPrefix="flow-detail" label="Sections" scroll={phone} />
     </div>
     <TabPanel idPrefix="flow-detail" value={tab} className="kit-fade-in pt-4" key={tab}>
       {tab === "need" && <NeedPanel m={m} phone={phone} />}
-      {tab === "earn" && <EarnPanel m={m} phone={phone} />}
+      {tab === "earn" && <EarnPanel m={m} viewer={viewer} phone={phone} onEditPrice={onEditPrice} />}
       {tab === "freq" && (
         <section className="space-y-2" aria-label="Profit by online frequency">
           <H2 hint={FORGIVING_HINT} meta={`${forgivingText(m.forgiving)} forgiving · ${TIER_LABEL[m.tierShown]} tier`}>

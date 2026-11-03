@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ArrowUpRight, ChevronDown, RefreshCw } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Coins, Pencil, RefreshCw } from "lucide-react";
 import type { FlowViewer } from "../../../hooks/useFlowViewer";
 import { EVERY } from "../../../leaderboard/tiers";
 import { SORT_LABEL, type SortKey } from "../../../leaderboard/view";
@@ -14,8 +14,34 @@ import { FORGIVING_HINT, ROW_COLS, SORT_HINT } from "./rankingHelpers";
 
 // ---- Prices and key (F16, F17, F20) --------------------------------------------------------------
 
+/**
+ * Normal board: "Bazaar prices" with the count of your own prices; opens the shared price editor
+ * (the page owns the dialog). `compact` is the phone's shorter label.
+ */
+export const PricesChip: React.FC<{ viewer: FlowViewer; onOpen: () => void; compact?: boolean; className?: string }> = ({ viewer, onOpen, compact, className }) => {
+  const own = Object.keys(viewer.bazaar.overrides).length;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-haspopup="dialog"
+      title="Buy and sell side, tax, and your own price for any item (e.g. one whose Bazaar price is being manipulated)"
+      className={cn(
+        "focus-ring inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-control border border-line-control bg-surface-well px-2.5 text-body font-medium whitespace-nowrap text-fg transition-colors duration-(--duration-hover) hover:bg-surface-panel pointer-coarse:h-11",
+        compact && "h-7 px-2 text-secondary",
+        className,
+      )}
+      data-testid="prices-chip"
+    >
+      <Coins aria-hidden className="size-3.5 shrink-0 text-fg-meta" />
+      {compact ? "Prices" : "Bazaar prices"}
+      {own > 0 && <span className="rounded-inner bg-select/10 px-1 text-meta tabular-nums text-select-fg">{own} set</span>}
+    </button>
+  );
+};
+
 /** The legend and price notes in one popover behind a visible "NPC prices · Key" button (it takes focus). */
-export const KeyButton: React.FC<{ viewer: FlowViewer; now: number; className?: string }> = ({ viewer, now, className }) => {
+export const KeyButton: React.FC<{ viewer: FlowViewer; now: number; onEditPrices?: () => void; className?: string }> = ({ viewer, now, onEditPrices, className }) => {
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
   const normal = viewer.board === "normal";
@@ -52,6 +78,18 @@ export const KeyButton: React.FC<{ viewer: FlowViewer; now: number; className?: 
                 <KitButton size="sm" variant="ghost" onClick={refresh} loading={loading}>
                   <RefreshCw /> Refresh
                 </KitButton>
+                {onEditPrices && (
+                  <KitButton
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setOpen(false);
+                      onEditPrices();
+                    }}
+                  >
+                    <Pencil /> Edit prices
+                  </KitButton>
+                )}
               </div>
             ) : (
               <p className="text-fg-body">NPC prices; mutation items are kept, not sold.</p>

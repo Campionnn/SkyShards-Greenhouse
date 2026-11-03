@@ -1156,6 +1156,19 @@ export function earningTargets(data: GameData, targets: readonly ItemId[], bySou
     .map(({ id, coinsPerDay }) => ({ id, coinsPerDay }));
 }
 
+/**
+ * Every item some of these results produce, buy or build with: what the price editor lists by
+ * default on the flow pages (the rest is one "All items" click away).
+ */
+export function tradedItems(results: readonly (RunResult | null | undefined)[]): ItemId[] {
+  const ids = new Set<ItemId>();
+  for (const r of results) {
+    if (!r) continue;
+    for (const rec of [r.produced, r.bought, r.built]) for (const id of Object.keys(rec ?? {})) ids.add(id);
+  }
+  return [...ids];
+}
+
 /** "45 / 290". */
 export function effortText(avg: number | null, peak: number | null): string {
   if (avg === null || peak === null) return "—";

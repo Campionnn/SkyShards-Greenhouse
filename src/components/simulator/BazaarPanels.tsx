@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Coins, Pencil, RefreshCw, RotateCcw, Search, X } from "lucide-react";
 import { BAZAAR_PRODUCTS, COMPACTED_CROPS, defaultGameData, type BazaarOverride, type BazaarPricing, type MarketValuation, type RunSummary } from "../../simulator";
 import type { BazaarPricesView } from "../../hooks/useBazaarPrices";
-import { BodyPortal, PortalHost } from "../ui/Portal";
 import { cn } from "../ui/cn";
+import { InfoHint } from "../ui/InfoHint";
+import { ModalDialog } from "../ui/ModalDialog";
 import { surface } from "../ui/surface";
 import { IconButton, KitButton, KitInput, Segmented } from "../ui/kit";
 import { CropImage } from "../shared";
@@ -21,6 +22,51 @@ import { MoneyTable, type MoneyRow } from "./ReportPanels";
 // re-runs the simulation. The inventory table (both profiles) is in InventoryTable.tsx.
 
 const data = defaultGameData();
+
+/** Buy side, sell side and sales tax (the price bar, and the price editor when `withSides`). */
+const PricingSides: React.FC<{ pricing: BazaarPricing; setPricing: (p: BazaarPricing) => void }> = ({ pricing, setPricing }) => (
+  <>
+    <span className="flex items-center gap-2" title="What buying costs: an instant buy pays the cheapest sell offer now; a buy order matches the highest buy order and you wait.">
+      Buy
+      <Segmented
+        label="Buy side"
+        value={pricing.buy}
+        onChange={(buy) => setPricing({ ...pricing, buy })}
+        options={[
+          { value: "instant", label: "Instant buy" },
+          { value: "order", label: "Buy order" },
+        ]}
+      />
+    </span>
+    <span className="flex items-center gap-2" title="What selling brings: a sell order matches the cheapest sell offer and you wait; an instant sell takes the highest buy order now.">
+      Sell
+      <Segmented
+        label="Sell side"
+        value={pricing.sell}
+        onChange={(sell) => setPricing({ ...pricing, sell })}
+        options={[
+          { value: "order", label: "Sell order" },
+          { value: "instant", label: "Instant sell" },
+        ]}
+      />
+    </span>
+    <label className="flex items-center gap-1.5" title="Bazaar sales tax, taken from every sale. Buying is untaxed.">
+      Tax
+      <span className="relative">
+        <NumberInput
+          min={0}
+          max={100}
+          step={0.125}
+          className={cn(surface.well, "focus-ring h-7 w-[4.5rem] pr-6 pl-2 text-right text-body font-medium tabular-nums text-fg transition-colors duration-(--duration-hover) enabled:hover:border-fg-meta")}
+          value={pricing.taxPercent}
+          onChange={(taxPercent) => setPricing({ ...pricing, taxPercent })}
+          aria-label="Bazaar sales tax in percent"
+        />
+        <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-fg-meta">%</span>
+      </span>
+    </label>
+  </>
+);
 
 /**
  * Buy / sell side, tax, price age, Refresh and the price editor, as one compact bar (the
@@ -46,45 +92,7 @@ export const BazaarPriceControls: React.FC<{ bazaar: BazaarPricesView; now: numb
               ? <span>Prices <b className="font-medium text-fg-body">{priceAge(prices.fetchedAt, now)}</b></span>
               : "No prices yet"}
       </span>
-      <span className="flex items-center gap-2" title="What buying costs: an instant buy pays the cheapest sell offer now; a buy order matches the highest buy order and you wait.">
-        Buy
-        <Segmented
-          label="Buy side"
-          value={pricing.buy}
-          onChange={(buy) => setPricing({ ...pricing, buy })}
-          options={[
-            { value: "instant", label: "Instant buy" },
-            { value: "order", label: "Buy order" },
-          ]}
-        />
-      </span>
-      <span className="flex items-center gap-2" title="What selling brings: a sell order matches the cheapest sell offer and you wait; an instant sell takes the highest buy order now.">
-        Sell
-        <Segmented
-          label="Sell side"
-          value={pricing.sell}
-          onChange={(sell) => setPricing({ ...pricing, sell })}
-          options={[
-            { value: "order", label: "Sell order" },
-            { value: "instant", label: "Instant sell" },
-          ]}
-        />
-      </span>
-      <label className="flex items-center gap-1.5" title="Bazaar sales tax, taken from every sale. Buying is untaxed.">
-        Tax
-        <span className="relative">
-          <NumberInput
-            min={0}
-            max={100}
-            step={0.125}
-            className={cn(surface.well, "focus-ring h-7 w-[4.5rem] pr-6 pl-2 text-right text-body font-medium tabular-nums text-fg transition-colors duration-(--duration-hover) enabled:hover:border-fg-meta")}
-            value={pricing.taxPercent}
-            onChange={(taxPercent) => setPricing({ ...pricing, taxPercent })}
-            aria-label="Bazaar sales tax in percent"
-          />
-          <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-fg-meta">%</span>
-        </span>
-      </label>
+      <PricingSides pricing={pricing} setPricing={setPricing} />
       <span className="ml-auto flex items-center gap-1.5">
         <KitButton variant="ghost" onClick={refresh} disabled={loading} title="Fetch the latest Bazaar prices (does not restart the simulation; your own prices stay)">
           <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
@@ -191,54 +199,34 @@ export const BazaarMoneyPanel: React.FC<{
 };
 // ---- Price editor -------------------------------------------------------------
 
-type PriceEditorProps = { bazaar: BazaarPricesView; focusItem: string | null; itemIds: string[]; onClose: () => void };
-
-/** Native modal dialog (Escape, inert background) around the price editor. */
-export const BazaarPriceDialog: React.FC<PriceEditorProps> = (props) => {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [host, setHost] = useState<HTMLDialogElement | null>(null);
-  const { onClose } = props;
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    setHost(element);
-    const previousFocus = document.activeElement;
-    const previousOverflow = document.body.style.overflow;
-    element.showModal();
-    document.body.style.overflow = "hidden";
-    return () => {
-      element.close();
-      document.body.style.overflow = previousOverflow;
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
-    };
-  }, []);
-  return (
-    <BodyPortal>
-      <dialog
-        ref={dialog}
-        aria-labelledby="bazaar-prices-title"
-        className="kit-fade-in fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-3xl rounded-container border border-line-strong bg-surface-panel p-0 text-body text-fg-body shadow-raised backdrop:bg-surface-page/70"
-        onCancel={(e) => {
-          e.preventDefault();
-          onClose();
-        }}
-        onClick={(e) => {
-          if (e.target !== e.currentTarget) return;
-          const b = e.currentTarget.getBoundingClientRect();
-          if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) onClose();
-        }}
-      >
-        <PortalHost container={host}>
-          <BazaarPricePanel {...props} />
-        </PortalHost>
-      </dialog>
-    </BodyPortal>
-  );
+type PriceEditorProps = {
+  bazaar: BazaarPricesView;
+  /** Opens filtered to this item (a clicked price), or null for the list. */
+  focusItem: string | null;
+  /** The items the caller cares about (listed first; "All items" adds the rest). */
+  itemIds: string[];
+  onClose: () => void;
+  /** Label of the `itemIds` view in the toggle: "This scenario" (simulator), "These flows" (ranking), "This flow". */
+  scope?: string;
+  /** Also show buy side, sell side and tax (pages without the BazaarPriceControls bar). */
+  withSides?: boolean;
 };
 
+/**
+ * The price editor in the kit's modal dialog (Escape, inert background, backdrop click). Shared by
+ * the simulator's Inventory & Bazaar card and the flow rankings / detail pages: the overrides live
+ * in one place (`useBazaarPrices`, localStorage), so a price set on one page applies on the others.
+ */
+export const BazaarPriceDialog: React.FC<PriceEditorProps> = (props) => (
+  <ModalDialog labelledBy="bazaar-prices-title" onClose={props.onClose} maxWidth="max-w-3xl">
+    <BazaarPricePanel {...props} />
+  </ModalDialog>
+);
+
 /** The price editor body (separate from the dialog for server-render tests). */
-export const BazaarPricePanel: React.FC<PriceEditorProps> = ({ bazaar, focusItem, itemIds, onClose }) => {
-  const { overrides, setOverrides, prices } = bazaar;
+export const BazaarPricePanel: React.FC<PriceEditorProps> = ({ bazaar, focusItem, itemIds, onClose, scope = "This scenario", withSides = false }) => {
+  const { overrides, setOverrides, prices, pricing, setPricing, loading, refresh, error } = bazaar;
+  const [now] = useState(() => Date.now());
   const live = prices?.quotes ?? {};
   const [query, setQuery] = useState(focusItem ? nameOf(focusItem) : "");
   const [all, setAll] = useState(false);
@@ -263,45 +251,61 @@ export const BazaarPricePanel: React.FC<PriceEditorProps> = ({ bazaar, focusItem
   const count = Object.keys(overrides).length;
 
   return (
-    <div className="flex flex-col max-h-[calc(100dvh-2rem)]">
+    // Same frame as DialogFrame, but only the list scrolls: the search and the toggle stay put.
+    <div className="flex max-h-[calc(100dvh-1rem)] flex-col sm:max-h-[calc(100dvh-2rem)]" data-testid="bazaar-price-editor">
       <div className="flex items-center justify-between gap-3 border-b border-line py-3 pr-3 pl-4 sm:pl-5">
-        <h2 id="bazaar-prices-title" className="text-title text-fg">
-          Bazaar prices
-        </h2>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 id="bazaar-prices-title" className="text-title text-fg">
+            Bazaar prices
+          </h2>
+          <InfoHint title="Your own prices" width={300} label="About your own prices">
+            <p>Replace a live price with your own, for example when an item's Bazaar price is being manipulated. Leave a box empty to use the live price.</p>
+            <p className="mt-2">
+              Your prices are kept in this browser, survive Refresh, and apply everywhere: the simulator and the flow rankings. Nothing is simulated again; only the
+              coin figures change.
+            </p>
+          </InfoHint>
+        </div>
         <IconButton size="md" onClick={onClose} aria-label="Close price editor" title="Close (Esc)">
           <X />
         </IconButton>
       </div>
-      <div className="px-4 pt-3 sm:px-5 space-y-2">
-        <p className="text-secondary text-fg-muted">
-          Replace a live price with your own, for example when an item's Bazaar price is being manipulated. Leave a box empty to use the live price.
-          Your prices are kept in this browser and survive Refresh. The run never restarts: only the money figures change.
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="relative flex-1 min-w-48">
-            <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-fg-meta" />
-            <KitInput className="w-full pl-7" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search items" aria-label="Search items" />
-          </label>
-          {/* Only when the caller passes a subset: with every product already listed, both views are the same. */}
-          {!everyProduct && (
-            <Segmented
-              label="Items shown"
-              value={all ? "all" : "used"}
-              onChange={(v) => setAll(v === "all")}
-              options={[
-                { value: "used", label: "This scenario" },
-                { value: "all", label: "All items" },
-              ]}
-            />
-          )}
-          <KitButton disabled={count === 0} onClick={() => setOverrides({})} title="Remove every price you set">
-            <RotateCcw /> Clear all ({count})
-          </KitButton>
+      {withSides && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-4 py-2.5 text-secondary text-fg-muted sm:px-5" data-testid="bazaar-price-sides">
+          <PricingSides pricing={pricing} setPricing={setPricing} />
+          <span className={cn("ml-auto flex items-center gap-1", error && "text-warn")}>
+            {loading ? "Fetching prices..." : prices ? `Live prices ${priceAge(prices.fetchedAt, now)}` : "No live prices yet"}
+            <IconButton onClick={refresh} disabled={loading} aria-label="Refresh live prices" title="Fetch the latest Bazaar prices (your own prices stay)">
+              <RefreshCw className={cn(loading && "animate-spin motion-reduce:animate-none")} />
+            </IconButton>
+          </span>
         </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2 px-4 pt-3 sm:px-5">
+        <label className="relative min-w-40 flex-1">
+          <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-fg-meta" />
+          <KitInput className="w-full pl-7" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search items" aria-label="Search items" />
+        </label>
+        {/* Only when the caller passes a subset: with every product already listed, both views are the same. */}
+        {!everyProduct && (
+          <Segmented
+            label="Items shown"
+            value={all ? "all" : "used"}
+            onChange={(v) => setAll(v === "all")}
+            options={[
+              { value: "used", label: scope },
+              { value: "all", label: "All items" },
+            ]}
+          />
+        )}
+        <KitButton disabled={count === 0} onClick={() => setOverrides({})} title="Remove every price you set">
+          <RotateCcw /> Clear all ({count})
+        </KitButton>
       </div>
-      <div className="min-h-0 overflow-y-auto scrollbar-dark px-4 py-3 sm:px-5">
-        <div className="grid grid-cols-[minmax(9rem,1fr)_auto_auto_1.75rem] items-center gap-x-3 gap-y-1.5 text-body">
-          <span className="text-meta text-fg-meta">item</span>
+      {/* Wide: one row per item. Narrow (phones): the name on its own line, the two boxes under it. */}
+      <div className="@container min-h-0 overflow-y-auto scrollbar-dark px-4 py-3 sm:px-5">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_1.75rem] items-center gap-x-2 gap-y-1.5 text-body @lg:grid-cols-[minmax(9rem,1fr)_auto_auto_1.75rem] @lg:gap-x-3">
+          <span className="hidden text-meta text-fg-meta @lg:block">item</span>
           <span className="text-right text-meta text-fg-meta" title="The cheapest sell offer: what an instant buy pays, and where a sell order sits">
             instant buy price
             <span className="block text-fg-meta">lowest sell offer</span>
@@ -322,7 +326,7 @@ export const BazaarPricePanel: React.FC<PriceEditorProps> = ({ bazaar, focusItem
             const label = compacted ? compacted.name : nameOf(id);
             return (
               <React.Fragment key={id}>
-                <span className="flex items-center gap-1.5 min-w-0">
+                <span className="col-span-full flex min-w-0 items-center gap-1.5 pt-1.5 @lg:col-span-1 @lg:pt-0">
                   <CropImage cropId={id} cropName={nameOf(id)} size="xs" showFallback />
                   <span className="min-w-0">
                     <span className={cn(data.mutations[id] ? getRarityTextColor(rarityOf(id) ?? "common") : "text-fg-body", "break-words")}>{nameOf(id)}</span>
@@ -332,9 +336,9 @@ export const BazaarPricePanel: React.FC<PriceEditorProps> = ({ bazaar, focusItem
                       </span>
                     )}
                   </span>
-                  <Leader className="-mr-3" />
+                  <Leader className="-mr-3 hidden @lg:block" />
                 </span>
-                <PriceInput value={shown(o?.lowestSellOffer) ?? undefined} live={shown(q?.lowestSellOffer) ?? null} onChange={(v) => set(id, "lowestSellOffer", stored(v))} label={`Instant buy price of ${label}`} />
+                <PriceInput value={shown(o?.lowestSellOffer) ?? undefined} live={shown(q?.lowestSellOffer) ?? null} onChange={(v) => set(id, "lowestSellOffer", stored(v))} label={`Instant buy price of ${label}`} autoFocus={id === focusItem} />
                 <PriceInput value={shown(o?.highestBuyOrder) ?? undefined} live={shown(q?.highestBuyOrder) ?? null} onChange={(v) => set(id, "highestBuyOrder", stored(v))} label={`Instant sell price of ${label}`} />
                 {o ? (
                   <IconButton
@@ -363,9 +367,22 @@ export const BazaarPricePanel: React.FC<PriceEditorProps> = ({ bazaar, focusItem
 };
 
 /** A price box: empty = the live price (shown as the placeholder). Commits on blur / Enter; accepts 650k, 1.2m, 1,234. */
-const PriceInput: React.FC<{ value: number | undefined; live: number | null; onChange: (v: number | null) => void; label: string }> = ({ value, live, onChange, label }) => {
+const PriceInput: React.FC<{ value: number | undefined; live: number | null; onChange: (v: number | null) => void; label: string; autoFocus?: boolean }> = ({
+  value,
+  live,
+  onChange,
+  label,
+  autoFocus,
+}) => {
   const [draft, setDraft] = useState(value === undefined ? "" : String(value));
   const [last, setLast] = useState(value);
+  const input = useRef<HTMLInputElement>(null);
+  // The dialog's showModal() (a parent effect, after this one) focuses its first control; take focus after it.
+  useEffect(() => {
+    if (!autoFocus) return;
+    const frame = requestAnimationFrame(() => input.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [autoFocus]);
   if (last !== value) {
     setLast(value);
     setDraft(value === undefined ? "" : String(value));
@@ -377,7 +394,8 @@ const PriceInput: React.FC<{ value: number | undefined; live: number | null; onC
   };
   return (
     <KitInput
-      className={cn("w-32 text-right tabular-nums", value !== undefined && "border-select/60 text-select-fg")}
+      ref={input}
+      className={cn("w-full text-right tabular-nums @lg:w-32", value !== undefined && "border-select/60 text-select-fg")}
       value={draft}
       placeholder={live === null ? "no live price" : `live ${formatCoins(live)}`}
       onChange={(e) => setDraft(e.target.value)}

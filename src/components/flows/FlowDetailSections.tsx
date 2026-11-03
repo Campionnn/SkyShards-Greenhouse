@@ -301,8 +301,12 @@ export const SourceBreakdown: React.FC<{ lines: SourceLine[] }> = ({ lines }) =>
   );
 };
 
-/** Per-item value (F78): a ranked list with shares; purchases negative in `problem`. */
-export const ItemBreakdown: React.FC<{ lines: ItemLine[] }> = ({ lines }) => {
+/**
+ * Per-item value (F78): a ranked list with shares; purchases negative in `problem`. With
+ * `onEditPrice` (Normal board) each unit price is a button that opens the price editor on that item;
+ * `overridden` marks the items priced with your own price.
+ */
+export const ItemBreakdown: React.FC<{ lines: ItemLine[]; onEditPrice?: (item: string) => void; overridden?: Readonly<Record<string, unknown>> }> = ({ lines, onEditPrice, overridden }) => {
   if (!lines.length) return <p className="text-secondary text-fg-meta">Nothing produced in this cell.</p>;
   const positive = lines.filter((l) => l.coinsPerDay > 0).reduce((s, l) => s + l.coinsPerDay, 0);
   return (
@@ -323,7 +327,26 @@ export const ItemBreakdown: React.FC<{ lines: ItemLine[] }> = ({ lines }) => {
                   {l.kind === "bought" && <span className="text-fg-meta"> bought</span>}
                 </span>
                 <span className="whitespace-nowrap text-meta tabular-nums text-fg-meta">
-                  {formatRate(l.perDay)}/day × {l.unitPrice === null ? "no price" : formatUnitPrice(l.unitPrice)}
+                  {formatRate(l.perDay)}/day ×{" "}
+                  {onEditPrice ? (
+                    <button
+                      type="button"
+                      onClick={() => onEditPrice(l.item)}
+                      aria-haspopup="dialog"
+                      aria-label={`${nameOf(l.item)}: ${l.unitPrice === null ? "no price" : formatUnitPrice(l.unitPrice)}. Set your own price`}
+                      title={overridden && l.item in overridden ? "Your own price (click to change)" : "Click to set your own price"}
+                      className={cn(
+                        "focus-ring hit-area cursor-pointer rounded-inner underline decoration-dotted underline-offset-[3px] transition-colors duration-(--duration-hover) hover:text-fg-body",
+                        overridden && l.item in overridden && "text-select-fg hover:text-select-fg",
+                      )}
+                    >
+                      {l.unitPrice === null ? "no price" : formatUnitPrice(l.unitPrice)}
+                    </button>
+                  ) : l.unitPrice === null ? (
+                    "no price"
+                  ) : (
+                    formatUnitPrice(l.unitPrice)
+                  )}
                 </span>
               </span>
               <span className="mt-1 block h-1 overflow-hidden rounded-full bg-surface-hover">

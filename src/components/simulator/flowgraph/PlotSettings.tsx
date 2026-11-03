@@ -97,7 +97,7 @@ export const PlotSettings: React.FC = () => {
           }
           inherited={scenario.settings.policies}
           inheritsFrom="the scenario defaults"
-          hint="What the player does on this plot while online. Steps can override these again (While on this step); everything not overridden follows the scenario defaults."
+          hint="What the player does on this plot while online. Steps can override these again (Step actions); everything not overridden follows the scenario defaults."
         />
       </div>
     </div>

@@ -48,6 +48,7 @@ import {
   findCell,
   flowRow,
   itemBreakdown,
+  tradedItems,
   maxProfit,
   NEW_FOR_MS,
   sortRows,
@@ -342,6 +343,13 @@ describe("leaderboard view: detail page", () => {
     expect(lines[lines.length - 1]).toBe(bought);
     const iron = itemBreakdown(data, result({ wheat: 1000, chloronite: 4 }), "ironman", {}, DEFAULT_BAZAAR_PRICING);
     expect(iron.find((l) => l.item === "chloronite")!.unitPrice).toBe(0);
+  });
+
+  it("traded items: produced, bought and built across results, each once; missing results skipped", () => {
+    const a = result({ wheat: 1000, chloronite: 4 }, { bought: { dead_plant: 2 }, built: { cactus: 1 } });
+    const b = result({ wheat: 5, magic_jellybean: 1 });
+    expect(tradedItems([a, null, b, undefined]).sort()).toEqual(["cactus", "chloronite", "dead_plant", "magic_jellybean", "wheat"]);
+    expect(tradedItems([])).toEqual([]);
   });
 
   it("the three numbers: from nothing, with the starting items, normal; the max tier standing in, null where none", () => {
