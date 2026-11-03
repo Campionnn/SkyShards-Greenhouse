@@ -4,7 +4,7 @@
  * checks `flowsMockEnabled()`, which is a constant `false` in production builds, so the data below
  * is tree-shaken out of the bundle.
  */
-import type { AuthUser, CurvePoint, FlowCell, FlowDetail, FlowListEntry, FlowListResponse, FlowSeedResult, FlowStatusResponse } from "../leaderboard/api";
+import type { AuthUser, CurvePoint, FlowCell, FlowDetail, FlowListEntry, FlowListResponse, FlowSeedResult, FlowStatusResponse, FlowThumb } from "../leaderboard/api";
 import type { PrepInfo, RunResult } from "../leaderboard/result";
 import { boardFrom, BOARDS, CELL_KIND_RUN_KIND, CELL_KINDS, cellKindOf, kitFromBoard, parseSubmission, type Board, type CellKind, type SubmissionFile } from "../leaderboard/rules";
 import { summarizeSubmission, type FlowSummary } from "../leaderboard/summary";
@@ -398,6 +398,17 @@ const summaryOf = (s: Spec): FlowSummary => {
   return mutations.length ? { ...out, targets: mutations, inputs } : out;
 };
 
+/**
+ * The entry's thumbnail as the API stores it (stats.pick_thumb): the most-used step overall (plot 1's
+ * second layout here, at 72%), and `plots`, each plot's most-used step (pick_plot_thumbs). The mock
+ * splits each plot's time over its steps evenly, so a plot's first step wins its tie.
+ */
+const thumbOf = (s: Spec): FlowThumb => {
+  const payload = payloadOf(s);
+  const plots = payload.plots.map((p) => ({ plot: p.id, step: p.flow.steps[0].id, layout: p.flow.steps[0].layout, share: 1 / p.flow.steps.length }));
+  return { plot: 1, step: "step-1", layout: payload.plots[s.plots > 1 ? 1 : 0].flow.steps[0].layout, share: 0.72, plots };
+};
+
 const curvePoint = (r: RunResult): CurvePoint => ({ produced: r.produced, bought: r.bought, consumed: r.consumed, effort: { avg: r.effort.avg, peak: r.effort.peak }, ...(r.slowing ? { slowing: true as const } : {}) });
 
 /**
@@ -432,7 +443,7 @@ export function mockList(rawBoard: string, tier: TierId, every: number, plots?: 
       seeds: used === "max" ? 5 : 3,
       effort: cell.effort,
       summary: summaryOf(s),
-      thumb: { plot: 1, step: "step-1", layout: payloadOf(s).plots[s.plots > 1 ? 1 : 0].flow.steps[0].layout, share: 0.72 },
+      thumb: thumbOf(s),
       curve,
       cellKind,
       ...(board === "ironman" ? { altPoint: alt, prep: prepFor(s, used, every), ...(kit ? {} : { borrowPoint: alt }) } : {}),
@@ -471,7 +482,7 @@ export function mockDetail(id: string): Promise<FlowDetail | null> {
     stale: !!s.stale,
     payload: payloadOf(s),
     summary: summaryOf(s),
-    thumb: { plot: 1, step: "step-1", layout: payloadOf(s).plots[s.plots > 1 ? 1 : 0].flow.steps[0].layout, share: 0.72 },
+    thumb: thumbOf(s),
     cells,
     seeds,
     ...likesOf(s),

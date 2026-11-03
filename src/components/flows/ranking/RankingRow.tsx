@@ -12,7 +12,7 @@ import { EffortMeter, LayoutBoxes, LayoutThumb, MutationChip, Sparkline, SplitBa
 import { FrequencyChart } from "../FrequencyChart";
 import { SPLIT_STYLE } from "../flowsDisplay";
 import { InfoHint } from "../../ui/InfoHint";
-import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, peekLayouts, plotsLabel, shapeText, simHref, startShort, supplyText, thumbOf, upkeepShort, ROW_COLS, type RankingLinkState } from "./rankingHelpers";
+import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, peekLayouts, shapeText, simHref, startShort, supplyText, thumbOf, upkeepShort, ROW_COLS, type RankingLinkState } from "./rankingHelpers";
 
 /**
  * One ranked flow (F27–F42). The title is the row's real link, stretched over the whole row with
@@ -160,20 +160,26 @@ const TopEarners: React.FC<{ row: FlowRow }> = ({ row }) => {
   );
 };
 
+/** The largest cell (px) of a peek picture on desktop; the pictures shrink to share the row. */
+const PEEK_MAX_CELL = 32;
+/** A picture's widest box: 10 cells, 9 gaps of 2px, the well's 4px padding each side. */
+const PEEK_MAX_PX = PEEK_MAX_CELL * 10 + 9 * 2 + 8;
+
 /**
- * The peek's layouts as real pictures (crop images, hover a cell for its name): every plot's,
- * plots with the same layout folded into one. Scrolls sideways when they don't fit.
+ * The peek's layouts as real pictures (crop images, hover a cell for its name): each plot's
+ * most-used layout, side by side. On desktop they share the row's width (up to PEEK_MAX_CELL);
+ * on phones (`cellSize` set) they keep that size and scroll sideways.
  */
-const PeekPictures: React.FC<{ row: FlowRow; cellSize: number; className?: string }> = ({ row, cellSize, className }) => {
+const PeekPictures: React.FC<{ row: FlowRow; cellSize?: number; className?: string }> = ({ row, cellSize, className }) => {
   const pictures = peekLayouts(row);
   if (!pictures.length) return null;
   return (
-    <div className={cn("flex min-w-0 gap-4 overflow-x-auto pb-1 scrollbar-dark", className)} data-testid="peek-pictures">
+    <div className={cn("flex min-w-0 gap-4", cellSize !== undefined && "overflow-x-auto pb-1 scrollbar-dark", className)} data-testid="peek-pictures">
       {pictures.map((p) => (
-        <figure key={p.plots.join(",")} className="shrink-0 space-y-1">
-          <LayoutThumb layout={p.layout} cellSize={cellSize} tooltips />
-          <figcaption className="text-meta text-fg-meta">
-            <span className="text-fg-body">{plotsLabel(p.plots)}</span> · {p.note}
+        <figure key={p.plot} className={cn("min-w-0 space-y-1", cellSize !== undefined ? "shrink-0" : "flex-1")} style={cellSize === undefined ? { maxWidth: PEEK_MAX_PX } : undefined}>
+          <LayoutThumb layout={p.layout} cellSize={cellSize} maxCell={PEEK_MAX_CELL} tooltips />
+          <figcaption className="truncate text-meta text-fg-meta" title={`Plot ${p.plot}: ${p.note === "start layout" ? "its start layout" : `its most-used layout, ${p.note}`}`}>
+            <span className="text-fg-body">Plot {p.plot}</span> · {p.note}
           </figcaption>
         </figure>
       ))}
@@ -192,9 +198,9 @@ export const RowPeek: React.FC<{
   hoursPerCycle?: number;
   onEvery?: (every: number) => void;
   className?: string;
-  /** Cell size of the layout pictures (px). */
+  /** A fixed cell size for the layout pictures (px; phones). Omitted, they share the row's width. */
   pictureCell?: number;
-}> = ({ row, top, every, board, kit, rankingSearch, hoursPerCycle = 1.75, onEvery, className, pictureCell = 22 }) => {
+}> = ({ row, top, every, board, kit, rankingSearch, hoursPerCycle = 1.75, onEvery, className, pictureCell }) => {
   const { entry } = row;
   const ex = excerptOf(row);
   const supply = supplyText(row, board);

@@ -28,7 +28,7 @@ import { ReportPanel } from "./FlowDetailSections";
 import { FilterBar } from "./FlowFilters";
 import { StatsForm } from "./FlowControls";
 import { FlowRowItem, PhoneRowItem, RowPeek } from "./ranking/RankingRow";
-import { facetCounts } from "./ranking/rankingHelpers";
+import { facetCounts, peekLayouts } from "./ranking/rankingHelpers";
 import { CantMakeSection } from "./ranking/SetApart";
 import { FlowMarkdown } from "./FlowMarkdown";
 
@@ -227,11 +227,33 @@ describe("leaderboard pages render", () => {
     const { ranked } = splitRanked(rankEntries(DATA, list.entries, s, 4));
     const row = ranked[0];
     const html = text(wrap(<RowPeek row={row} top={maxProfit(ranked)} every={4} board="ironman" kit={false} />));
-    for (const sNeed of ['data-testid="row-peek"', "Effort per login", "at the heaviest", "Profit by how often you log in", "Open in simulator", "Details", 'data-testid="peek-pictures"', "most used, 72% of the time"]) expect(html).toContain(sNeed);
+    for (const sNeed of ['data-testid="row-peek"', "Effort per login", "at the heaviest", "Profit by how often you log in", "Open in simulator", "Details", 'data-testid="peek-pictures"', "of the time"]) expect(html).toContain(sNeed);
     // Forgiving above 100% reads 100%+, never 107%.
     const over = text(wrap(<ol><FlowRowItem row={{ ...row, slack: 1.07 }} top={1} every={1} board="ironman" index={0} like={{ liked: false, busy: false }} sort="profit" /></ol>));
     expect(over).toContain("100%+");
     expect(over).not.toContain("107%");
+  });
+
+  it("the peek's pictures: one per plot, its most-used layout; older APIs fall back to start layouts", async () => {
+    const list = await mockList("ironman", "max", 1);
+    const s: ViewSettings = { board: "ironman", quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false, now: Date.now() };
+    const rows = splitRanked(rankEntries(DATA, list.entries, s, 1)).ranked;
+    const row = rows.find((r) => r.entry.id === "mockAloe0002")!;
+    // Plot 1 has two steps (the first wins the mock's even split), plot 2 one.
+    expect(peekLayouts(row).map((p) => [p.plot, p.note])).toEqual([
+      [1, "50% of the time"],
+      [2, "100% of the time"],
+    ]);
+    // Three plots on the same layout: still one picture each.
+    const same = { ...row.entry.thumb!, plots: [1, 2, 3].map((plot) => ({ plot, step: "a", layout: { code: LAYOUT_A_CODE }, share: 1 })) };
+    expect(peekLayouts({ ...row, entry: { ...row.entry, thumb: same } }).map((p) => p.plot)).toEqual([1, 2, 3]);
+    // No per-plot timing (an older API): the overall most-used layout for its plot, start layouts for the others.
+    const { plots: _drop, ...old } = row.entry.thumb!;
+    void _drop;
+    expect(peekLayouts({ ...row, entry: { ...row.entry, thumb: old } }).map((p) => [p.plot, p.note])).toEqual([
+      [1, "72% of the time"],
+      [2, "start layout"],
+    ]);
   });
 
   it("the filter bar on each board, with counts", async () => {

@@ -36,13 +36,19 @@ export interface SpreadInfo {
 /** Spread as the API sends it: one cell's info, a map per `every`, or a bare ratio. */
 export type Spread = SpreadInfo | Record<string, SpreadInfo | number> | number;
 
-/** The step layout a flow spends the most time in (the ranking thumbnail). */
-export interface FlowThumb {
+/** One plot's step layout and the share of the run that plot spent in it. */
+export interface PlotThumb {
   plot: number;
   step: string;
   layout: StepLayout;
   /** Share of the run spent in it. */
   share: number;
+}
+
+/** The step layout a flow spends the most time in (the ranking thumbnail). */
+export interface FlowThumb extends PlotThumb {
+  /** Every plot's most-used step (the ranking row's expanded pictures); absent on older APIs. */
+  plots?: PlotThumb[];
 }
 
 /** One point of a list row's frequency curve: the parts of a RunResult the page prices. */
