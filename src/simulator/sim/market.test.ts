@@ -162,13 +162,14 @@ describe("Bazaar prices", () => {
       expect(COMPACTED_CROPS[id], id).toMatchObject({ per: 25_600 });
     }
     expect(COMPACTED_CROPS.seeds.product).toBe("BOX_OF_SEEDS");
-    // Both sell sides use the compacted price, after tax; the NPC (3 per Sunflower) still wins when it pays more.
+    // Both sell sides use the compacted price, after tax; the NPC (2 per Sunflower) still wins when it pays more.
     const pricing = (sell: "order" | "instant"): BazaarPricing => ({ buy: "instant", sell, taxPercent: 1 });
     const rich = { sunflower: { lowestSellOffer: 120_000 / 25_600, highestBuyOrder: 110_000 / 25_600 } };
     expect(unitPrices(engine.data, "sunflower", rich, pricing("instant"))).toMatchObject({ sellFrom: "bazaar" });
     expect(unitPrices(engine.data, "sunflower", rich, pricing("instant")).sell).toBeCloseTo((110_000 / 25_600) * 0.99, 9);
     expect(unitPrices(engine.data, "sunflower", rich, pricing("order")).sell).toBeCloseTo((120_000 / 25_600) * 0.99, 9);
-    expect(unitPrices(engine.data, "sunflower", snap.quotes, pricing("instant"))).toEqual({ sell: 3, sellFrom: "npc", buy: 77_600 / 25_600 });
+    const poor = { sunflower: { lowestSellOffer: 77_600 / 25_600, highestBuyOrder: 40_000 / 25_600 } };
+    expect(unitPrices(engine.data, "sunflower", poor, pricing("instant"))).toEqual({ sell: 2, sellFrom: "npc", buy: 77_600 / 25_600 });
   });
 
   it("maps every greenhouse mutation to a product", () => {

@@ -99,7 +99,7 @@ describe("vertical slice: one plot, one mutation, spawned and harvested", () => 
     expect([1, 2]).toContain(next.state.inventory.gloomgourd);
     expect(next.state.inventory.pumpkin).toBe(pumpkin);
     expect(next.state.inventory.melon).toBe(melon);
-    expect(next.summary.revenue.crops).toBe(pumpkin * 4.5 + melon * 1);
+    expect(next.summary.revenue.crops).toBe(pumpkin * 3 + melon * 0.5);
     expect(next.summary.harvested.gloomgourd).toBe(1);
   });
 
