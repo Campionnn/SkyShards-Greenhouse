@@ -14,7 +14,7 @@ import { StatusBox } from "../../flows/FlowDetailSections";
 import { FlowMarkdown } from "../../flows/FlowMarkdown";
 import { DiscordIcon, useToast } from "../../ui";
 import { Card, LinkButton } from "../../ui/Card";
-import { KitButton, KitInput, KitLabel, KitTextarea, Pill } from "../../ui/kit";
+import { KitButton, KitInput, KitLabel, KitTextarea, Pill, Switch } from "../../ui/kit";
 import { Dropdown, MenuItem } from "../../ui/Popover";
 import { surface } from "../../ui/surface";
 import { NumberInput } from "../controls";
@@ -345,6 +345,11 @@ export const LeaderboardTab: React.FC<{
                 ))
               }
             </Option>
+            {opts.boards !== "ironman" && (
+              <span title="Value the Normal test's base crops at their NPC price, even when the Bazaar pays more">
+                <Switch checked={bazaar.npcCrops} onChange={bazaar.setNpcCrops} label="Crops at NPC price" showLabel />
+              </span>
+            )}
             <span className="text-secondary tabular-nums text-fg-meta">{clampCycles(cycles).toLocaleString("en-US")} cycles (from Submit)</span>
             {!serverLike && (
               <LinkButton onClick={() => (setOpts(DEFAULT_TEST), localStorage.removeItem(TEST_OPTIONS_KEY))} className="ml-auto">

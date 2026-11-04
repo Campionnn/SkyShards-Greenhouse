@@ -5,7 +5,7 @@ import { EVERY } from "../../../leaderboard/tiers";
 import { SORT_LABEL, type SortKey } from "../../../leaderboard/view";
 import { priceAge } from "../../simulator/bazaarFormat";
 import { cn } from "../../ui/cn";
-import { Bone, ButtonLink, IconButton, KitButton, KitLabel } from "../../ui/kit";
+import { Bone, ButtonLink, IconButton, KitButton, KitLabel, Switch } from "../../ui/kit";
 import { Dropdown, MenuItem, Popover } from "../../ui/Popover";
 import { SPLIT_STYLE } from "../flowsDisplay";
 import { FORGIVING_HINT, ROW_COLS, SORT_HINT } from "./rankingHelpers";
@@ -46,7 +46,7 @@ export const KeyButton: React.FC<{ viewer: FlowViewer; now: number; onEditPrices
   const [open, setOpen] = useState(false);
   const normal = viewer.board === "normal";
   const { prices, loading, error, refresh } = viewer.bazaar;
-  const priceText = normal ? (loading ? "Fetching Bazaar prices" : prices ? `Bazaar · ${priceAge(prices.fetchedAt, now)}` : "No Bazaar prices yet") : "NPC prices";
+  const priceText = normal ? (loading ? "Fetching Bazaar prices" : prices ? `Bazaar${viewer.bazaar.npcCrops ? ", crops NPC" : ""} · ${priceAge(prices.fetchedAt, now)}` : "No Bazaar prices yet") : "NPC prices";
   return (
     <>
       <button
@@ -90,6 +90,7 @@ export const KeyButton: React.FC<{ viewer: FlowViewer; now: number; onEditPrices
                     <Pencil /> Edit prices
                   </KitButton>
                 )}
+                <Switch checked={viewer.bazaar.npcCrops} onChange={viewer.bazaar.setNpcCrops} label="Crops at NPC price" showLabel />
               </div>
             ) : (
               <p className="text-fg-body">NPC prices; mutation items are kept, not sold.</p>

@@ -32,6 +32,7 @@ const STORAGE_KEYS = {
   BAZAAR_PRICES: "skyshards-bazaar-prices",
   BAZAAR_PRICING: "skyshards-bazaar-pricing",
   BAZAAR_OVERRIDES: "skyshards-bazaar-overrides",
+  BAZAAR_NPC_CROPS: "skyshards-bazaar-npc-crops",
   AUTH_TOKEN: "skyshards-auth-token",
 } as const;
 
@@ -429,6 +430,15 @@ export class LocalStorageManager {
       sell: data?.sell === "instant" ? "instant" : DEFAULT_BAZAAR_PRICING.sell,
       taxPercent: Number.isFinite(tax) && tax >= 0 && tax <= 100 ? tax : DEFAULT_BAZAAR_PRICING.taxPercent,
     };
+  }
+
+  /** Normal profile: sell base crops at their NPC price even when the Bazaar pays more. */
+  static saveBazaarNpcCrops(on: boolean): boolean {
+    return this.save(STORAGE_KEYS.BAZAAR_NPC_CROPS, on);
+  }
+
+  static loadBazaarNpcCrops(): boolean {
+    return this.load<boolean>(STORAGE_KEYS.BAZAAR_NPC_CROPS) === true;
   }
 
   /** Manual Bazaar prices per item (`skyshards-bazaar-overrides`), replacing a manipulated live price. */

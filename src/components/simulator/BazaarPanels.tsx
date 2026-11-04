@@ -6,7 +6,7 @@ import { cn } from "../ui/cn";
 import { InfoHint } from "../ui/InfoHint";
 import { ModalDialog } from "../ui/ModalDialog";
 import { surface } from "../ui/surface";
-import { IconButton, KitButton, KitInput, Segmented } from "../ui/kit";
+import { IconButton, KitButton, KitInput, Segmented, Switch } from "../ui/kit";
 import { CropImage } from "../shared";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { priceAge, priceRun, type Quotes } from "./bazaarFormat";
@@ -68,6 +68,17 @@ const PricingSides: React.FC<{ pricing: BazaarPricing; setPricing: (p: BazaarPri
   </>
 );
 
+/** Normal profile: sell base crops at their NPC price even when the Bazaar pays more. */
+const NpcCropsSwitch: React.FC<{ bazaar: BazaarPricesView }> = ({ bazaar }) => (
+  <span className="flex items-center gap-1.5">
+    <Switch checked={bazaar.npcCrops} onChange={bazaar.setNpcCrops} label="Crops at NPC price" showLabel />
+    <InfoHint title="Crops at NPC price" width={280} label="About crops at NPC price">
+      Sells every base crop to the NPC, even when the Bazaar pays more. Mutation items, rare crops and drops keep their Bazaar price. Nothing is simulated again;
+      only the coin figures change, here and on the flow rankings.
+    </InfoHint>
+  </span>
+);
+
 /**
  * Buy / sell side, tax, price age, Refresh and the price editor, as one compact bar (the
  * Inventory & Bazaar card puts it under its header; the leaderboard's controls reuse it).
@@ -93,6 +104,7 @@ export const BazaarPriceControls: React.FC<{ bazaar: BazaarPricesView; now: numb
               : "No prices yet"}
       </span>
       <PricingSides pricing={pricing} setPricing={setPricing} />
+      <NpcCropsSwitch bazaar={bazaar} />
       <span className="ml-auto flex items-center gap-1.5">
         <KitButton variant="ghost" onClick={refresh} disabled={loading} title="Fetch the latest Bazaar prices (does not restart the simulation; your own prices stay)">
           <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
@@ -273,6 +285,7 @@ export const BazaarPricePanel: React.FC<PriceEditorProps> = ({ bazaar, focusItem
       {withSides && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-4 py-2.5 text-secondary text-fg-muted sm:px-5" data-testid="bazaar-price-sides">
           <PricingSides pricing={pricing} setPricing={setPricing} />
+          <NpcCropsSwitch bazaar={bazaar} />
           <span className={cn("ml-auto flex items-center gap-1", error && "text-warn")}>
             {loading ? "Fetching prices..." : prices ? `Live prices ${priceAge(prices.fetchedAt, now)}` : "No live prices yet"}
             <IconButton onClick={refresh} disabled={loading} aria-label="Refresh live prices" title="Fetch the latest Bazaar prices (your own prices stay)">

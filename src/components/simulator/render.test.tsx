@@ -476,6 +476,8 @@ describe("simulator panels render", () => {
       setPricing: () => {},
       overrides,
       setOverrides: () => {},
+      npcCrops: false,
+      setNpcCrops: () => {},
     };
     const html = wrap(
       <>

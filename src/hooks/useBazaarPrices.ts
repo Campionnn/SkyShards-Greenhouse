@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { withOverrides, type BazaarOverride, type BazaarPricing, type BazaarQuote } from "../simulator";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { COMPACTED_CROPS, withOverrides, type BazaarOverride, type BazaarPricing, type BazaarQuote } from "../simulator";
 import { fetchBazaar } from "../services/bazaarService";
 import { BAZAAR_PRICES_VERSION, LocalStorageManager, type StoredBazaarPrices } from "../utilities/localStorageManager";
 
@@ -17,6 +17,35 @@ export interface BazaarPricesView {
   /** Manual prices per item, kept until cleared (they survive refreshes). */
   overrides: Record<string, BazaarOverride>;
   setOverrides: (overrides: Record<string, BazaarOverride>) => void;
+  /** Sell base crops at their NPC price even when the Bazaar pays more (their quotes are left out of `quotes`). */
+  npcCrops: boolean;
+  setNpcCrops: (on: boolean) => void;
+}
+
+/** The quotes without base crops, so every pricing path falls back to their NPC price. */
+export function withoutCropQuotes(quotes: Record<string, BazaarQuote> | null): Record<string, BazaarQuote> | null {
+  if (!quotes) return quotes;
+  const out = { ...quotes };
+  for (const id of Object.keys(COMPACTED_CROPS)) delete out[id];
+  return out;
+}
+
+// "Crops at NPC price" is one setting for the whole page: every hook instance (the simulator's
+// inventory bar, its Leaderboard tab, the flow rankings) reads and writes the same value.
+let npcCropsValue: boolean | null = null;
+const npcCropsListeners = new Set<() => void>();
+function getNpcCrops(): boolean {
+  if (npcCropsValue === null) npcCropsValue = LocalStorageManager.loadBazaarNpcCrops();
+  return npcCropsValue;
+}
+function subscribeNpcCrops(cb: () => void): () => void {
+  npcCropsListeners.add(cb);
+  return () => npcCropsListeners.delete(cb);
+}
+function setNpcCrops(on: boolean): void {
+  LocalStorageManager.saveBazaarNpcCrops(on);
+  npcCropsValue = on;
+  for (const cb of npcCropsListeners) cb();
 }
 
 /**
@@ -31,6 +60,7 @@ export function useBazaarPrices(enabled: boolean): BazaarPricesView {
   const [error, setError] = useState<string | null>(null);
   const [pricing, setPricingState] = useState<BazaarPricing>(() => LocalStorageManager.loadBazaarPricing());
   const [overrides, setOverridesState] = useState<Record<string, BazaarOverride>>(() => LocalStorageManager.loadBazaarOverrides());
+  const npcCrops = useSyncExternalStore(subscribeNpcCrops, getNpcCrops, () => false);
   const abortRef = useRef<AbortController | null>(null);
   const fetchedRef = useRef(false);
 
@@ -82,7 +112,10 @@ export function useBazaarPrices(enabled: boolean): BazaarPricesView {
     setOverridesState(next);
   }, []);
 
-  const quotes = useMemo(() => withOverrides(prices?.quotes ?? null, overrides), [prices, overrides]);
+  const quotes = useMemo(() => {
+    const q = withOverrides(prices?.quotes ?? null, overrides);
+    return npcCrops ? withoutCropQuotes(q) : q;
+  }, [prices, overrides, npcCrops]);
 
-  return { prices, quotes, loading, error, refresh, pricing, setPricing, overrides, setOverrides };
+  return { prices, quotes, loading, error, refresh, pricing, setPricing, overrides, setOverrides, npcCrops, setNpcCrops };
 }
