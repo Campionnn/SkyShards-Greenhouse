@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { CodeXml, Copy, Download, FolderInput, Pencil, Trash2, Trophy, Upload } from "lucide-react";
+import { CodeXml, Copy, Download, Eraser, FolderInput, Pencil, Trash2, Trophy, Upload } from "lucide-react";
 import { useToast } from "../components/ui";
 import { ContextMenuProvider } from "../components/ui/ContextMenu";
 import type { ContextMenuEntry } from "../components/ui/contextMenuContext";
@@ -22,7 +22,7 @@ import { previewScenarioOf, useFromNothingPreview, withPreviewSeed } from "../co
 import { addPlot, duplicatePlot, importFlows, isBlankScenario, nextPlotId, placeLayout, removePlot, type LayoutDestination } from "../components/simulator/scenarioEdit";
 import { spotFailureText } from "../components/simulator/format";
 import { CommandBar, ShareMenuItems, type PageProblem } from "../components/simulator/page/CommandBar";
-import { KpiCompact, KpiStrip } from "../components/simulator/page/KpiStrip";
+import { KpiCompact, KpiCompactDetail, KpiStrip } from "../components/simulator/page/KpiStrip";
 import { MobileChips, MobileRunBar } from "../components/simulator/page/Mobile";
 import { PlotsRow } from "../components/simulator/page/PlotsRow";
 import { plotUptime } from "../components/simulator/page/plotUptime";
@@ -65,12 +65,17 @@ function withDefaults(saved: Scenario): Scenario {
   };
 }
 
+/** What a first visit starts with: one empty plot, no inventory, no scripts, every setting at its default. */
+function freshScenario(): Scenario {
+  return addPlot({ plots: [], startingInventory: {}, settings: defaultSettings() });
+}
+
 function initialScenario(params: URLSearchParams): Scenario {
   const fromUrl = ["p1", "p2", "p3"].map((k) => params.get(k)).filter((c): c is string => !!c).map(extractLayoutCode);
   if (fromUrl.length) return scenarioFromShareCodes(fromUrl);
   const saved = LocalStorageManager.loadSimulatorScenario();
   if (saved) return withDefaults(saved);
-  return addPlot({ plots: [], startingInventory: {}, settings: defaultSettings() });
+  return freshScenario();
 }
 
 /** Debounces scenario edits so typing doesn't restart the simulation on every keystroke. */
@@ -406,6 +411,32 @@ export const SimulatorPage: React.FC = () => {
 
   const share = useShare(scenario, setScenario);
 
+  /**
+   * Start over: every plot, flow, script, the starting inventory and all settings (player stats,
+   * online schedule, actions, advanced, seed) back to a first visit. The new scenario restarts the
+   * run at cycle 0, which also drops inventory changes made during the run. Undo brings it all back.
+   */
+  const startOver = () => {
+    const before = scenario;
+    fromNothing.exit();
+    setEditingState(null);
+    setScripting(null);
+    setPicking(false);
+    setReplacing(null);
+    setIncoming(null);
+    setDrawerOpen(false);
+    setSanityCheckOn(false);
+    setScenario(freshScenario());
+    toast({
+      id: "simulator-start-over",
+      title: "Started over",
+      description: "Plots, flows, scripts, inventory and every setting are back to their defaults.",
+      variant: "success",
+      duration: 8000,
+      action: { label: "Undo", onClick: () => setScenario(before) },
+    });
+  };
+
   // ---- Problems: scenario errors/warnings and the sustainability verdict --------------------------
   /** Open a results tab and scroll so its bar sits right under the sticky header. */
   const goTab = (t: ResultTab) => {
@@ -470,6 +501,23 @@ export const SimulatorPage: React.FC = () => {
     onStop: stop,
     onReset: reset,
   };
+  // Shared by the desktop bar and the phone's chips / run bar.
+  const seed = previewScenario ? previewScenario.settings.seed : scenario.settings.seed;
+  const onSeedChange = (seed: number) => (preview ? fromNothing.setPreview(withPreviewSeed(preview, seed)) : setScenario((sc) => ({ ...sc, settings: { ...sc.settings, seed } })));
+  const openDrawer = (t?: DrawerTab) => {
+    if (t) setDrawerTab(t);
+    setDrawerOpen(true);
+  };
+  const shareMenu = (close: () => void) => (
+    <ShareMenuItems
+      close={close}
+      onExport={share.openExport}
+      onImport={share.openImport}
+      onSubmit={openSubmit}
+      onStartOver={startOver}
+      icons={{ dl: <Download />, ul: <Upload />, trophy: <Trophy />, startOver: <Eraser /> }}
+    />
+  );
 
   return (
     <ContextMenuProvider>
@@ -484,17 +532,12 @@ export const SimulatorPage: React.FC = () => {
           profile={profile}
           onProfileChange={setProfile}
           {...runProps}
-          seed={previewScenario ? previewScenario.settings.seed : scenario.settings.seed}
-          onSeedChange={(seed) => (preview ? fromNothing.setPreview(withPreviewSeed(preview, seed)) : setScenario((sc) => ({ ...sc, settings: { ...sc.settings, seed } })))}
+          seed={seed}
+          onSeedChange={onSeedChange}
           changedSettings={changedSettings}
-          onOpenSettings={(t) => {
-            if (t) setDrawerTab(t as DrawerTab);
-            setDrawerOpen(true);
-          }}
+          onOpenSettings={(t) => openDrawer(t as DrawerTab | undefined)}
           problems={problems}
-          shareMenu={(close) => (
-            <ShareMenuItems close={close} onExport={share.openExport} onImport={share.openImport} onSubmit={openSubmit} icons={{ dl: <Download />, ul: <Upload />, trophy: <Trophy /> }} />
-          )}
+          shareMenu={shareMenu}
           onWatchFromNothing={(every) => void fromNothing.start(every)}
           watching={fromNothing.preparing !== null || !!preview}
           preview={!!preview}
@@ -504,6 +547,7 @@ export const SimulatorPage: React.FC = () => {
           <span className="text-body font-semibold text-fg">Simulator</span>
           <KpiCompact view={view} plotCount={plotCount} priceSummary={priceSummary} />
         </div>
+        <KpiCompactDetail view={view} plotCount={plotCount} priceSummary={priceSummary} />
         <KpiStrip view={view} plotCount={plotCount} priceSummary={priceSummary} />
         {view.status === "running" && view.progress && (
           <div className="absolute inset-x-0 -bottom-px h-0.5 overflow-hidden" aria-hidden>
@@ -514,7 +558,17 @@ export const SimulatorPage: React.FC = () => {
 
       <div className="space-y-3 pt-4">
         {/* Phone: the frequent settings as a scroller */}
-        <MobileChips scenario={scenario} onOpenSettings={(t) => (setDrawerTab(t), setDrawerOpen(true))} onOpenLeaderboard={preview ? undefined : openSubmit} />
+        <MobileChips
+          scenario={scenario}
+          profile={profile}
+          onProfileChange={setProfile}
+          onOpenSettings={openDrawer}
+          onOpenLeaderboard={preview ? undefined : openSubmit}
+          changedSettings={changedSettings}
+          problems={problems}
+          shareMenu={shareMenu}
+          preview={!!preview}
+        />
 
         {fromNothing.preparing !== null && <FromNothingPreparing progress={fromNothing.preparing} onCancel={fromNothing.exit} />}
         {preview && <FromNothingBanner preview={preview} inventory={state?.inventory ?? null} onPart={(part) => fromNothing.setPreview({ ...preview, part })} onExit={fromNothing.exit} />}
@@ -614,7 +668,7 @@ export const SimulatorPage: React.FC = () => {
       </div>
 
       {/* Phone: run controls at the thumb */}
-      <MobileRunBar view={view} {...runProps} />
+      <MobileRunBar view={view} {...runProps} seed={seed} onSeedChange={onSeedChange} />
 
       <SettingsDrawer
         open={drawerOpen}
@@ -639,6 +693,7 @@ export const SimulatorPage: React.FC = () => {
             onExport={share.openExport}
             onImport={share.openImport}
             onSubmit={openSubmit}
+            onStartOver={startOver}
           />
         }
       />

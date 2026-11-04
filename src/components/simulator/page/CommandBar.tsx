@@ -274,7 +274,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         <span className="@max-[1280px]:hidden">Reset</span>
       </KitButton>
       <Sep />
-      <KitButton ref={reg("share")} variant="ghost" onClick={() => toggle("share")} aria-expanded={pop === "share"} title="Export or import flows, or submit to the leaderboard" className="max-md:hidden">
+      <KitButton ref={reg("share")} variant="ghost" onClick={() => toggle("share")} aria-expanded={pop === "share"} title="Export or import flows, submit to the leaderboard, or start over" className="max-md:hidden">
         <Share2 />
         <span className="@max-[1280px]:hidden">Share</span>
       </KitButton>
@@ -410,65 +410,11 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
       </Popover>
 
       <Popover anchor={anchors.current.problems ?? null} open={pop === "problems"} onClose={close} label="Problems" width={420} align="end">
-        <ul className="max-h-[420px] space-y-0.5 overflow-y-auto scrollbar-dark">
-          {problems.map((p, i) => (
-            <li key={i} className="flex gap-2.5 rounded-control px-2.5 py-2">
-              <AlertTriangle className={cn("mt-0.5 size-3.5 shrink-0", p.level === "warning" ? "text-warn" : "text-problem")} />
-              <div className="min-w-0 flex-1">
-                <div className="text-secondary text-fg-meta">{p.where}</div>
-                <div className="text-body text-fg-body">{p.message}</div>
-              </div>
-              {p.action && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    close();
-                    p.action!.run();
-                  }}
-                  className={cn("shrink-0 self-center whitespace-nowrap", LINK)}
-                >
-                  {p.action.label} →
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <ProblemList problems={problems} close={close} />
       </Popover>
 
       <Popover anchor={anchors.current.run ?? null} open={pop === "run"} onClose={close} label="Run options" width={360} align="end">
-        <MenuLabel>Run length</MenuLabel>
-        <div className="flex gap-1 px-1 pb-1.5">
-          {RUN_PRESETS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => {
-                setN(k);
-                close();
-              }}
-              aria-pressed={n === k}
-              className={cn(
-                "focus-ring h-7 flex-1 cursor-pointer rounded-inner border text-secondary tabular-nums transition-colors duration-(--duration-hover)",
-                n === k ? "border-select/60 bg-select/10 text-select-fg" : "border-line-strong bg-surface-well text-fg-body hover:border-line-control",
-              )}
-            >
-              {k}
-            </button>
-          ))}
-        </div>
-        <MenuSeparator />
-        <label className="flex items-center justify-between gap-2 px-2 py-1.5 text-body text-fg-body" title="Changing the seed restarts the simulation">
-          <span className="flex items-center gap-2">
-            <Dices className="size-3.5 text-fg-muted" /> Seed
-          </span>
-          <NumberInput
-            integer
-            value={seed}
-            onChange={onSeedChange}
-            disabled={running}
-            className="focus-ring h-7 w-28 rounded-control border border-line-control bg-surface-well px-2 text-right text-body tabular-nums text-fg hover:border-fg-meta"
-          />
-        </label>
+        <RunOptions n={n} setN={setN} seed={seed} onSeedChange={onSeedChange} running={running} close={close} />
         <MenuSeparator />
         <MenuLabel>Keyboard</MenuLabel>
         <ul className="space-y-1 px-2 pb-1.5">
@@ -488,6 +434,96 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
     </div>
   );
 };
+
+/** The Problems popover's list (the bar's pill and the phone's chip). */
+export const ProblemList: React.FC<{ problems: PageProblem[]; close: () => void }> = ({ problems, close }) => (
+  <ul className="max-h-[420px] space-y-0.5 overflow-y-auto scrollbar-dark">
+    {problems.map((p, i) => (
+      <li key={i} className="flex gap-2.5 rounded-control px-2.5 py-2">
+        <AlertTriangle className={cn("mt-0.5 size-3.5 shrink-0", p.level === "warning" ? "text-warn" : "text-problem")} />
+        <div className="min-w-0 flex-1">
+          <div className="text-secondary text-fg-meta">{p.where}</div>
+          <div className="text-body text-fg-body">{p.message}</div>
+        </div>
+        {p.action && (
+          <button
+            type="button"
+            onClick={() => {
+              close();
+              p.action!.run();
+            }}
+            className={cn("shrink-0 self-center whitespace-nowrap", LINK)}
+          >
+            {p.action.label} →
+          </button>
+        )}
+      </li>
+    ))}
+  </ul>
+);
+
+/** The Run menu's length presets and seed (the bar's ▾ and the phone's ▾). */
+export const RunOptions: React.FC<{ n: number; setN: (n: number) => void; seed: number; onSeedChange: (seed: number) => void; running: boolean; close: () => void; custom?: boolean }> = ({
+  n,
+  setN,
+  seed,
+  onSeedChange,
+  running,
+  close,
+  custom,
+}) => (
+  <>
+    <MenuLabel>Run length</MenuLabel>
+    <div className="flex gap-1 px-1 pb-1.5">
+      {RUN_PRESETS.map((k) => (
+        <button
+          key={k}
+          type="button"
+          onClick={() => {
+            setN(k);
+            close();
+          }}
+          aria-pressed={n === k}
+          className={cn(
+            "focus-ring flex-1 cursor-pointer rounded-inner border text-secondary tabular-nums transition-colors duration-(--duration-hover)",
+            // Phones: 44px targets.
+            custom ? "h-11" : "h-7",
+            n === k ? "border-select/60 bg-select/10 text-select-fg" : "border-line-strong bg-surface-well text-fg-body hover:border-line-control",
+          )}
+        >
+          {k}
+        </button>
+      ))}
+    </div>
+    {custom && (
+      <label className="flex items-center justify-between gap-2 px-2 py-1.5 text-body text-fg-body">
+        Cycles
+        <NumberInput
+          integer
+          min={1}
+          max={MAX_CYCLES}
+          value={n}
+          onChange={(v) => setN(Math.max(1, Math.min(MAX_CYCLES, Math.floor(v) || 1)))}
+          aria-label="Cycles to run"
+          className="focus-ring h-11 w-28 rounded-control border border-line-control bg-surface-well px-2 text-right text-body tabular-nums text-fg"
+        />
+      </label>
+    )}
+    <MenuSeparator />
+    <label className="flex items-center justify-between gap-2 px-2 py-1.5 text-body text-fg-body" title="Changing the seed restarts the simulation">
+      <span className="flex items-center gap-2">
+        <Dices className="size-3.5 text-fg-muted" /> Seed
+      </span>
+      <NumberInput
+        integer
+        value={seed}
+        onChange={onSeedChange}
+        disabled={running}
+        className={cn("focus-ring w-28 rounded-control border border-line-control bg-surface-well px-2 text-right text-body tabular-nums text-fg hover:border-fg-meta", custom ? "h-11" : "h-7")}
+      />
+    </label>
+  </>
+);
 
 /** Run with an inline cycle count (Enter runs it) and the options menu; Stop while running. */
 const RunButton = React.forwardRef<
@@ -551,7 +587,15 @@ const RunButton = React.forwardRef<
 RunButton.displayName = "RunButton";
 
 /** Share menu items (the page passes its handlers). */
-export const ShareMenuItems: React.FC<{ onExport: () => void; onImport: () => void; onSubmit: () => void; close: () => void; icons: { dl: React.ReactNode; ul: React.ReactNode; trophy: React.ReactNode } }> = ({ onExport, onImport, onSubmit, close, icons }) => (
+export const ShareMenuItems: React.FC<{
+  onExport: () => void;
+  onImport: () => void;
+  onSubmit: () => void;
+  /** Wipe everything back to a fresh simulator (with an Undo toast). */
+  onStartOver?: () => void;
+  close: () => void;
+  icons: { dl: React.ReactNode; ul: React.ReactNode; trophy: React.ReactNode; startOver?: React.ReactNode };
+}> = ({ onExport, onImport, onSubmit, onStartOver, close, icons }) => (
   <>
     <MenuLabel>Scenario</MenuLabel>
     <MenuItem icon={icons.dl} onSelect={() => (close(), onExport())} hint="Download and copy your flows as JSON">
@@ -564,6 +608,14 @@ export const ShareMenuItems: React.FC<{ onExport: () => void; onImport: () => vo
     <MenuItem icon={icons.trophy} onSelect={() => (close(), onSubmit())} hint="Put these flows on the public leaderboard">
       Submit to leaderboard…
     </MenuItem>
+    {onStartOver && (
+      <>
+        <MenuSeparator />
+        <MenuItem icon={icons.startOver} tone="danger" onSelect={() => (close(), onStartOver())} hint="Remove every plot and restore all settings to their defaults">
+          Start over
+        </MenuItem>
+      </>
+    )}
   </>
 );
 

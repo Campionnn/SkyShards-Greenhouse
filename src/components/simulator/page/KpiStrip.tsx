@@ -69,6 +69,26 @@ export const KpiStrip: React.FC<KpiStripProps> = ({ view, plotCount, priceSummar
   );
 };
 
+/** The phone's second header line: profit, simulated time and the status (the desktop strip's other numbers). */
+export const KpiCompactDetail: React.FC<KpiStripProps> = ({ view, plotCount, priceSummary }) => {
+  const { summary, profit } = kpiValues(view, priceSummary);
+  const status = statusText(view, plotCount);
+  return (
+    <div className="flex min-w-0 items-baseline gap-x-3 px-3 pb-2 text-secondary text-fg-meta md:hidden">
+      <span className="shrink-0 whitespace-nowrap">
+        <b className={cn("font-semibold tabular-nums", profit < 0 ? "text-problem" : "text-coin")}>{formatCoins(profit)}</b> profit
+      </span>
+      <span className="shrink-0 whitespace-nowrap tabular-nums">
+        {(summary?.cyclesRun ?? 0).toLocaleString("en-US")} cycles · {formatDuration(summary?.elapsedSeconds ?? 0)}
+      </span>
+      {/* The live region for run progress on phones (the desktop strip's is display: none here). */}
+      <span className="min-w-0 truncate" title={status} aria-live="polite">
+        {view.error && view.status !== "error" ? <span className="text-problem">{view.error}</span> : status}
+      </span>
+    </div>
+  );
+};
+
 /** The phone header's compact numbers. */
 export const KpiCompact: React.FC<KpiStripProps> = ({ view, priceSummary }) => {
   const { summary, perDay } = kpiValues(view, priceSummary);

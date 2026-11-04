@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ExternalLink, Menu, X } from "lucide-react";
 import { cn } from "../ui/cn";
@@ -47,9 +47,26 @@ export const Navigation: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  // The header is not sticky: if it is partly scrolled away, opening the menu brings it (and its
+  // close button) back into view, so the sheet sits right under it. The page behind the sheet
+  // doesn't scroll while it is open.
+  const headerRef = useRef<HTMLElement>(null);
+  const [sheetTop, setSheetTop] = useState(52);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const header = headerRef.current;
+    if (header && header.getBoundingClientRect().top < 0) window.scrollTo({ top: window.scrollY + header.getBoundingClientRect().top, behavior: "instant" });
+    setSheetTop(Math.max(0, header?.getBoundingClientRect().bottom ?? 52));
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => void (document.body.style.overflow = prev);
+  }, [open]);
+
   return (
     // Not sticky: tool pages (simulator, flow editor) have their own sticky command bars at top 0.
-    <header className="relative z-(--z-bar) border-b border-line bg-surface-page">
+    // Open, the header (and its menu sheet) rises to the drawer layer: above those sticky bars and
+    // the phone's fixed bottom bars, which share --z-bar with it and come later in the page.
+    <header ref={headerRef} className={cn("relative border-b border-line bg-surface-page", open ? "z-(--z-drawer)" : "z-(--z-bar)")}>
       {/* Same frame as the page (Layout.tsx <main> + .pn-page grid + max-w-screen-2xl), so the logo
           sits on the content's left edge at every width, with or without the ad rails. */}
       <div className="px-1 sm:px-2 lg:px-4">
@@ -128,7 +145,7 @@ export const Navigation: React.FC = () => {
       </div>
 
       {open && (
-        <div id="site-menu" className="kit-fade-in fixed inset-x-0 top-[52px] bottom-0 z-(--z-bar) overflow-y-auto bg-surface-page px-3 py-2 lg:hidden">
+        <div id="site-menu" style={{ top: sheetTop }} className="kit-fade-in fixed inset-x-0 bottom-0 overflow-y-auto overscroll-contain bg-surface-page px-3 py-2 lg:hidden">
           <nav aria-label="Main" className="flex flex-col">
             {NAV_ITEMS.map(({ path, label }) => {
               const current = isCurrent(path);

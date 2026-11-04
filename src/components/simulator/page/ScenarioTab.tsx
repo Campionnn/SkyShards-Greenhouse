@@ -1,5 +1,5 @@
 import React from "react";
-import { Copy, Download, FolderInput, Pencil, Plus, Trash2, Trophy, Upload } from "lucide-react";
+import { Copy, Download, Eraser, FolderInput, Pencil, Plus, Trash2, Trophy, Upload } from "lucide-react";
 import { MAX_PLOTS, type Scenario, type ScenarioIssue } from "../../../simulator";
 import { useContextMenu, type ContextMenuEntry } from "../../ui/contextMenuContext";
 import { IconButton, KitButton, KitLabel } from "../../ui/kit";
@@ -25,7 +25,9 @@ export const ScenarioTab: React.FC<{
   onExport: () => void;
   onImport: () => void;
   onSubmit: () => void;
-}> = ({ scenario, onChange, onEditFlow, onDuplicate, onRemove, plotMenu, onLoadLayout, issues, warnings, error, onExport, onImport, onSubmit }) => {
+  /** Wipe everything back to a fresh simulator (the page shows an Undo toast). */
+  onStartOver?: () => void;
+}> = ({ scenario, onChange, onEditFlow, onDuplicate, onRemove, plotMenu, onLoadLayout, issues, warnings, error, onExport, onImport, onSubmit, onStartOver }) => {
   const openMenu = useContextMenu();
   const errors = issues.filter((i) => i.level === "error");
   const full = scenario.plots.length >= MAX_PLOTS;
@@ -101,6 +103,15 @@ export const ScenarioTab: React.FC<{
           </KitButton>
         </div>
       </section>
+
+      {onStartOver && (
+        <section>
+          <KitLabel className="mb-2">Start over</KitLabel>
+          <KitButton variant="danger" onClick={onStartOver} title="Remove every plot, flow and script, empty the starting inventory and restore every setting to its default (you can undo it)">
+            <Eraser /> Start over
+          </KitButton>
+        </section>
+      )}
     </div>
   );
 };

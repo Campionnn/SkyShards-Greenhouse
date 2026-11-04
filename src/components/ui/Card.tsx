@@ -39,7 +39,8 @@ export const Card: React.FC<CardProps> = ({ title, hint, hintTitle, hintWidth = 
         </InfoHint>
       )}
       {hasMeta(meta) && <span className="min-w-0 text-secondary tabular-nums text-fg-meta">{meta}</span>}
-      {actions && <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">{actions}</div>}
+      {/* max-w-full: on a narrow card the actions wrap onto their own line(s) instead of running past the card's edge. */}
+      {actions && <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1.5">{actions}</div>}
     </header>
     {children !== undefined && <div className={cn("min-w-0", bodyClassName)}>{children}</div>}
   </section>
