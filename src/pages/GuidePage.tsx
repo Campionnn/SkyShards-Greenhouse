@@ -10,20 +10,23 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Backpack, Compass, FlaskConical, Loader2, PartyPopper, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
-import { InfoHint } from "../components/ui/InfoHint";
+import { Backpack, Check, Compass, Download, FlaskConical, Loader2, PartyPopper, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
 import { SegmentedControl } from "../components/ui/Panel";
 import { LocalStorageManager, type StoredGuideState } from "../utilities/localStorageManager";
 import type { SimulatorScenarioHandoff } from "../utilities/layoutHandoff";
 import {
   STORAGE_VERSION,
   allActed,
+  applyImportedItems,
   buildCatalog,
   buildPlan,
   confirmPlot,
   createGuideEnv,
   decideLogin,
+  baselineTotals,
   farmOf,
+  flowFingerprint,
+  flowNeeds,
   goalOwned,
   goalProgress,
   guideDefaultSettings,
@@ -35,6 +38,7 @@ import {
   FLOW_VARIANT_ORDER,
   restoreState,
   scriptKnobs,
+  scriptMarks,
   setFacts,
   setFarm,
   setItem,
@@ -55,18 +59,23 @@ import {
   type GuideState,
   type Plan,
   type PlotOutcome,
+  type RunTimeline,
 } from "../guide";
-import { ForecastCancelled, GuidePool } from "../guide/worker/pool";
+import { ForecastCancelled, GuidePool, poolSize } from "../guide/worker/pool";
 import { PlotCard } from "../components/guide/PlotCard";
 import { FarmGallery } from "../components/guide/FarmGallery";
 import { InventoryDialog, type InventoryMode } from "../components/guide/InventoryDialog";
+import { ImportDialog } from "../components/guide/ImportDialog";
 import { ForecastStrip } from "../components/guide/ForecastStrip";
 import { SettingsDialog } from "../components/guide/SettingsDialog";
-import { ItemChip } from "../components/guide/primitives";
-import { buttonClass, scheduleText, type Precision } from "../components/guide/format";
+import { FlowNeedsPanel } from "../components/guide/FlowNeeds";
+import { HowTo } from "../components/guide/HowTo";
+import { buttonClass, scheduleText, timeAgo, type Precision } from "../components/guide/format";
 import "../components/guide/guide.css";
 
 const guideEnv = createGuideEnv();
+/** Runs from an empty start behind the whole-flow totals (the median of these). */
+const TOTALS_SEEDS = Array.from({ length: 16 }, (_, i) => 1001 + i);
 const data = guideEnv.engine.data;
 
 /** Typing must not re-run the projection and a forecast on every keystroke. */
@@ -79,7 +88,7 @@ function useDebounced<T>(value: T, ms: number): T {
   return settled;
 }
 
-type Open = { kind: "inventory"; mode: InventoryMode } | { kind: "settings" } | { kind: "farm"; plotId: number } | null;
+type Open = { kind: "inventory"; mode: InventoryMode } | { kind: "import" } | { kind: "settings" } | { kind: "farm"; plotId: number } | null;
 
 interface Loaded {
   flow: FlowsFile;
@@ -184,6 +193,53 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
 
   const done = !!catalog && !!state && goalOwned(catalog, state.inventory) === catalog.goal.length;
 
+  // Whole-flow totals: simulated runs of the flow from an empty start, with the player's schedule
+  // and stats. Remembered per flow version and settings; a separate small pool, so they never cancel
+  // (or wait behind) the check-in's own forecast.
+  const marks = useMemo(() => (flow ? scriptMarks(flow) : {}), [flow]);
+  const totalsKey = useMemo(
+    () => (flow && settled ? JSON.stringify([flowFingerprint(flow), settled.settings.activity, settled.settings.playerStats, TOTALS_SEEDS.length]) : null),
+    [flow, settled]
+  );
+  const [baseline, setBaseline] = useState<{ key: string; runs: number; totals: Record<string, number> } | null>(() => LocalStorageManager.loadGuideFlowTotals(variant));
+  const [forecastRuns, setForecastRuns] = useState<{ runs: RunTimeline[]; inventory: Record<string, number> } | null>(null);
+  useEffect(() => {
+    if (!flow || !catalog || !settled || !totalsKey || baseline?.key === totalsKey) return;
+    const pool = new GuidePool(Math.min(2, poolSize()));
+    let live = true;
+    const empty = toInput(initialState(flow, settled.settings));
+    pool
+      .forecast({ flow, input: empty, seeds: TOTALS_SEEDS })
+      .then((runs) => {
+        if (!live) return;
+        const next = { key: totalsKey, runs: runs.length, totals: baselineTotals(runs, catalog) };
+        LocalStorageManager.saveGuideFlowTotals(next, variant);
+        setBaseline(next);
+      })
+      .catch(() => {})
+      .finally(() => pool.dispose());
+    return () => {
+      live = false;
+      pool.dispose();
+    };
+    // `settled` only matters through totalsKey (its schedule and stats).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow, catalog, totalsKey, variant]);
+  const needs = useMemo(
+    () =>
+      catalog
+        ? flowNeeds(baseline?.key === totalsKey ? baseline.totals : null, forecastRuns?.runs ?? null, catalog, forecastRuns?.inventory ?? {}, marks, baseline?.runs ?? 0)
+        : null,
+    [catalog, baseline, totalsKey, forecastRuns, marks]
+  );
+
+  // Re-render "updated 4 min ago" now and then.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Forecast: from the start of this login (plots already done this visit stay done).
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -215,6 +271,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
           if (n >= Math.min(3, total)) {
             setForecast(summarise(timelines, forecastInput.inventory));
             setPlan(buildPlan(timelines));
+            setForecastRuns({ runs: timelines, inventory: forecastInput.inventory });
           }
         },
       })
@@ -222,6 +279,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         if (!live) return;
         setForecast(summarise(runs, forecastInput.inventory));
         setPlan(buildPlan(runs));
+        setForecastRuns({ runs, inventory: forecastInput.inventory });
         setProgress(null);
       })
       .catch((error: unknown) => {
@@ -273,33 +331,31 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
   const nextPlot = catalog.plots.find((id) => !state.plots[id]?.acted);
   const stale = settled !== state;
   const goalState = goalProgress(catalog, state.inventory);
-  const supplies = ["dead_plant", "fermento"];
   const tracked = Object.values(state.inventory).filter((n) => n > 0).length;
+  const lastImport = state.lastImport?.appliedAt !== undefined ? state.lastImport : undefined;
+  const confirmedSinceImport = lastImport ? Object.keys(state.confirmations).filter((id) => Object.keys(state.confirmations[Number(id)].delta).length > 0).length : 0;
+  const checked = catalog.plots.filter((id) => state.plots[id]?.acted);
+  // What the plots grew since last visit: the farms they stood on before this visit's confirmations
+  // (empty farmland grows Lonelilies), then the farms they're on now.
+  const harvestable = catalog.plots.flatMap((id) => {
+    const before = state.confirmations[id]?.before.farm;
+    const farms = before && before !== state.plots[id].farm ? [before, state.plots[id].farm] : [state.plots[id].farm];
+    return farms.flatMap((farm) => {
+      try {
+        return farmOf(catalog, id, farm).products.map((p) => p.item);
+      } catch {
+        return [];
+      }
+    });
+  });
 
   return (
-    <div className="guide-root container mx-auto max-w-screen-2xl space-y-4 overflow-x-clip px-2 py-4 sm:px-4 sm:py-6">
+    <div className="guide-root w-full space-y-4 overflow-x-clip py-3 sm:py-4">
       {/* Same header row as the Simulator: icon, small title, info hint, one action on the right. */}
       <header className="flex flex-wrap items-center gap-2">
         <Compass className="h-4 w-4 text-emerald-400" aria-hidden />
         <h1 className="text-sm font-medium text-slate-200">Rose Dragon Guide</h1>
-        <InfoHint title="How to use this page" width={320}>
-          <ol className="list-decimal space-y-1 pl-4">
-            <li>Harvest, then update what you own.</li>
-            <li>Do the plots left to right. Each card's button is what you do on that plot this visit.</li>
-            <li>Open the plan to see what comes next.</li>
-          </ol>
-          <p>
-            The cards are the shipped Rose Dragon flow's own decisions for exactly what you entered, worked out in login order ({loginOrder(catalog.plots)}) so they never
-            spend the same stock twice. Confirming a plot takes off what it placed; harvests are random, so you add those. Hover or tap any cell of a farm to see what it
-            is.
-          </p>
-          <p>
-            Only have Plots 1 and 2? Switch to <strong>2 plots</strong>: the same farms, with Plot 3's work done on Plot 1. Each version keeps its own inventory and
-            progress.
-          </p>
-        </InfoHint>
         <VariantSwitch value={variant} onChange={onVariant} />
-        <span className="hidden text-xs text-slate-500 md:inline">Harvest, update what you own, then do the plots left to right.</span>
         <button
           type="button"
           className={`${buttonClass.neutral} ml-auto`}
@@ -325,6 +381,8 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         </button>
       </header>
 
+      <HowTo plotCount={plotCount} loginOrder={loginOrder(catalog.plots)} />
+
       {/* What you own: one panel. Empty, it asks for a first entry; afterwards its main action is
           the thing you do every visit (add a harvest), with editing the totals as the alternative. */}
       {tracked === 0 ? (
@@ -337,18 +395,20 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
               farms that cost nothing.
             </p>
           </div>
-          <button type="button" className={buttonClass.primary} onClick={() => setOpen({ kind: "inventory", mode: "set" })}>
-            <Backpack className="h-4 w-4" /> Enter what I own
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
+            <button type="button" className={buttonClass.secondary} onClick={() => setOpen({ kind: "import" })} title="Count what's in your sacks, ender chest and backpacks">
+              <Download className="h-4 w-4" /> Import from Hypixel
+            </button>
+            <button type="button" className={buttonClass.primary} onClick={() => setOpen({ kind: "inventory", mode: "set" })}>
+              <Backpack className="h-4 w-4" /> Enter what I own
+            </button>
+          </div>
         </section>
       ) : (
         <section className="flex flex-col gap-3 rounded-lg border border-slate-600/30 bg-slate-800/40 px-4 py-3 sm:flex-row sm:items-center" aria-label="What you own">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <Backpack className="h-4 w-4 text-emerald-400" aria-hidden />
             <h2 className="text-sm font-medium text-slate-200">What you own</h2>
-            {supplies.map((id) => (
-              <ItemChip key={id} id={id} name={itemName(data, id)} count={state.inventory[id] ?? 0} tone={(state.inventory[id] ?? 0) > 0 ? "default" : "muted"} />
-            ))}
             <span className="text-xs text-slate-400">
               <span className={goalState.legendaries.owned === goalState.legendaries.total ? "text-emerald-300" : "text-slate-300"}>
                 {goalState.legendaries.owned}/{goalState.legendaries.total}
@@ -372,8 +432,29 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
               )}{" "}
               · {tracked} item{tracked === 1 ? "" : "s"} tracked
             </span>
+            {lastImport && (
+              <span
+                className="basis-full text-[11px] text-slate-500 sm:basis-auto"
+                title={`Last Hypixel import: ${new Date(lastImport.appliedAt ?? lastImport.fetchedAt).toLocaleString()}${lastImport.profileName ? ` (${lastImport.username}, ${lastImport.profileName})` : ""}`}
+              >
+                Imported from Hypixel {timeAgo(lastImport.appliedAt ?? lastImport.fetchedAt)}
+                {confirmedSinceImport > 0 && ` · ${confirmedSinceImport} plot${confirmedSinceImport === 1 ? "" : "s"} confirmed since`}
+              </span>
+            )}
           </div>
-          <div className="flex shrink-0 items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
+            <button
+              type="button"
+              className={buttonClass.secondary}
+              onClick={() => setOpen({ kind: "import" })}
+              title={
+                lastImport
+                  ? `Look ${lastImport.username} up again and see what changed since ${timeAgo(lastImport.appliedAt ?? lastImport.fetchedAt)}`
+                  : "Set your totals from your sacks, ender chest and backpacks"
+              }
+            >
+              {lastImport ? <RefreshCw className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />} {lastImport ? "Import again" : "Import"}
+            </button>
             <button
               type="button"
               className={buttonClass.secondary}
@@ -419,6 +500,8 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         />
       )}
 
+      {!done && needs && <FlowNeedsPanel needs={needs} catalog={catalog} data={data} />}
+
       {(problems.length > 0 || decideError) && (
         <div className="rounded-lg border border-red-700/70 bg-red-950/30 p-3 text-sm text-red-200" role="alert">
           {problems.map((p) => (
@@ -445,6 +528,35 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
             <RefreshCw className="h-4 w-4" /> I'm back: next check-in
           </button>
         </section>
+      )}
+
+      {!done && !allActed(state) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1 text-xs text-slate-400" aria-label="This visit">
+          <span className="font-medium text-slate-300">This visit</span>
+          {catalog.plots.map((id, i) => {
+            const isDone = checked.includes(id);
+            return (
+              <React.Fragment key={id}>
+                {i > 0 && <span className="text-slate-600">→</span>}
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${
+                    isDone
+                      ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                      : id === nextPlot
+                        ? "border-emerald-500/50 text-emerald-200"
+                        : "border-slate-600/40 text-slate-400"
+                  }`}
+                >
+                  {isDone && <Check className="h-3 w-3" />}Plot {id}
+                </span>
+              </React.Fragment>
+            );
+          })}
+          <span>
+            {checked.length} of {plotCount} done.{" "}
+            {nextPlot !== undefined && (checked.length === 0 ? `Start with Plot ${nextPlot}, then press its button.` : `Next: Plot ${nextPlot}. Press each plot's button once you've done it.`)}
+          </span>
+        </div>
       )}
 
       {!done && (
@@ -482,6 +594,10 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
                   commit((s) => setFacts(s, plotId, { ...(s.plots[plotId].facts ?? emptyFacts()), devourerRefresh: on }))
                 }
                 onOpenInventory={() => setOpen({ kind: "inventory", mode: "add" })}
+                needs={needs}
+                inventory={state.inventory}
+                visitPlots={catalog.plots}
+                checked={checked}
               />
             );
           })}
@@ -494,12 +610,22 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         inventory={state.inventory}
         catalog={catalog}
         data={data}
-        harvestable={catalog.plots.flatMap((id) => farmOf(catalog, id, state.plots[id].farm).products.map((p) => p.item))}
+        harvestable={harvestable}
         onChange={(item, amount) => update((s) => setItem(s, item, amount))}
         onClose={() => {
           commit((s) => s);
           setOpen(null);
         }}
+      />
+      <ImportDialog
+        open={open?.kind === "import"}
+        inventory={state.inventory}
+        catalog={catalog}
+        data={data}
+        lastImport={state.lastImport}
+        onApply={(changes, record) => commit((s) => ({ ...applyImportedItems(s, changes), lastImport: record }))}
+        onLookup={(record) => commit((s) => ({ ...s, lastImport: record }))}
+        onClose={() => setOpen(null)}
       />
       <SettingsDialog
         open={open?.kind === "settings"}

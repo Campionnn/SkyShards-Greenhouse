@@ -28,6 +28,7 @@ export {
   itemGroup,
   itemName,
   legendaryGoal,
+  lonelilyCells,
   loadShippedFlow,
   parseFlows,
   simulatorScenario,
@@ -64,7 +65,10 @@ export {
   validate,
   type Confirmation,
   type GuideState,
+  type LastImport,
 } from "./checkin";
+export { applyImportedItems, inventoryChanges, sinceLastImport, trackedFound, trackedItems, type InventoryChange } from "./importInventory";
+export { baselineTotals, flowFingerprint, flowNeeds, needsTotals, scriptMarks, type FlowNeed, type FlowNeeds } from "./needs";
 export { DEFAULT_CHECK_EVERY, GUIDE_DEFAULT_STATS, activityFor, guideDefaultSettings, hoursPerCycle, hoursToCycles } from "./schedule";
 export type * from "./types";
 

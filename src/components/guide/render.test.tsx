@@ -8,19 +8,25 @@ import {
   createGuideEnv,
   decideLogin,
   farmOf,
+  flowNeeds,
   initialState,
   parseFlows,
   runForecast,
   scriptKnobs,
+  scriptMarks,
   setFarm,
   summarise,
   toInput,
   type FlowsFile,
+  type RunTimeline,
 } from "../../guide";
 import { FarmPicture } from "./FarmPicture";
 import { PlotCard } from "./PlotCard";
 import { ForecastStrip } from "./ForecastStrip";
-import { formatDuration, scheduleText } from "./format";
+import { ImportDialog } from "./ImportDialog";
+import { FlowNeedsPanel } from "./FlowNeeds";
+import { HowTo } from "./HowTo";
+import { formatDuration, scheduleText, timeAgo } from "./format";
 
 // Server-render the Guide's panels against real decisions (no browser, no workers).
 
@@ -33,6 +39,8 @@ const knobs = scriptKnobs(flow);
 const state = initialState(flow, defaultSettings(), { dead_plant: 250, fermento: 50, ashwreath: 60, choconut: 120 });
 const outcomes = decideLogin(flow, toInput(state), guideEnv);
 const noop = () => {};
+/** A finished forecast run that placed these items. */
+const needsRun = (placed: Record<string, number>): RunTimeline => ({ seed: 1, visits: [], farms: {}, cycles: 1, elapsedSeconds: 1, logins: 1, done: true, debtEvents: 0, supplyNeed: {}, supplyShortAt: {}, placed });
 /** SSR text without React's <!-- --> separators and with entities decoded. */
 const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 const card = (plotId: number, overrides: Partial<Parameters<typeof PlotCard>[0]> = {}) =>
@@ -110,6 +118,55 @@ describe("PlotCard", () => {
     expect(html).toContain("Done this visit");
     expect(html).toContain("Undo");
   });
+
+  it("says a done plot is set up and which plots are still to do", () => {
+    const waiting = card(1, { outcome: null, plot: { farm: "commons", acted: true }, visitPlots: [1, 2, 3], checked: [1] });
+    expect(waiting).toContain("Plot 1 is set up on Commons farm");
+    expect(waiting).toContain("Waiting on Plots 2 and 3");
+    const last = card(3, { outcome: null, plot: { farm: "commons", acted: true }, visitPlots: [1, 2, 3], checked: [1, 2, 3] });
+    expect(last).toContain("Every plot is done for this visit");
+  });
+
+  it("tells you to press every plot's button", () => {
+    const html = card(1, { visitPlots: [1, 2, 3] });
+    expect(html).toContain("press all 3 to finish this visit");
+    expect(html).toContain("Pressing takes the 8 Dead Plant off");
+  });
+
+  it("shows what a farm is working towards, with whole-flow totals, even on a switch", () => {
+    const needs = flowNeeds({ gloomgourd: 60, choconut: 150 }, [needsRun({ gloomgourd: 59, choconut: 150 })], catalog, {}, scriptMarks(flow));
+    const html = card(1, { needs });
+    expect(html).toContain("Switch to Commons farm");
+    expect(html).toContain("Working towards");
+    expect(html).toMatch(/Gloomgourd/);
+    expect(html).toContain("Whole flow: 0 of ~60 covered");
+    // A done card shows the farm it stands on too.
+    expect(card(1, { needs, outcome: null, plot: { farm: "commons", acted: true } })).toContain("Working towards");
+    // While the totals are still simulating, the card still shows its bars (from the script's marks).
+    const pending = card(1, { needs: flowNeeds(null, null, catalog, {}, scriptMarks(flow)) });
+    expect(pending).toContain("Working towards");
+    expect(pending).not.toContain("Whole flow:");
+  });
+});
+
+describe("FlowNeedsPanel", () => {
+  it("sums the whole flow, and says so while it is still simulating", () => {
+    const ready = flowNeeds({ gloomgourd: 60, choconut: 150 }, [needsRun({ gloomgourd: 30, choconut: 100 })], catalog, { gloomgourd: 10 }, {}, 16);
+    const html = text(renderToString(<FlowNeedsPanel needs={ready} catalog={catalog} data={data} />));
+    expect(html).toMatch(/of ~210 mutations covered/);
+    expect(html).toContain("items done");
+    const pending = text(renderToString(<FlowNeedsPanel needs={flowNeeds(null, null, catalog, {}, {})} catalog={catalog} data={data} />));
+    expect(pending).toContain("Simulating the whole flow");
+  });
+});
+
+describe("HowTo", () => {
+  it("explains the three steps near the top, including pressing every plot's button", () => {
+    const html = text(renderToString(<HowTo plotCount={3} loginOrder="Plot 1, then 2, then 3" />));
+    expect(html).toContain("How to use this guide");
+    expect(html).toContain("Press the button on all 3 cards");
+    expect(html).not.toMatch(/\b(buy|bought|bazaar|shopping)\b/i);
+  });
 });
 
 describe("ForecastStrip", () => {
@@ -144,6 +201,24 @@ describe("ForecastStrip", () => {
   });
 });
 
+describe("ImportDialog", () => {
+  it("asks for a username and names where it looks, never shopping words", () => {
+    const html = text(renderToString(<ImportDialog open inventory={state.inventory} catalog={catalog} data={data} onApply={noop} onClose={noop} />));
+    expect(html).toContain("Import from Hypixel");
+    expect(html).toContain("Minecraft username");
+    expect(html).toMatch(/sacks, ender chest, backpacks/);
+    expect(html).not.toMatch(/\b(buy|bought|bazaar|shopping)\b/i);
+    expect(renderToString(<ImportDialog open={false} inventory={state.inventory} catalog={catalog} data={data} onApply={noop} onClose={noop} />)).toBe("");
+  });
+
+  it("opens as Import again for the same player after a first import", () => {
+    const lastImport = { username: "Ke5o", profileId: "p1", profileName: "Apple", fetchedAt: Date.now() - 600_000, appliedAt: Date.now() - 600_000, items: {} };
+    const html = text(renderToString(<ImportDialog open inventory={state.inventory} catalog={catalog} data={data} lastImport={lastImport} onApply={noop} onClose={noop} />));
+    expect(html).toContain("Import again from Hypixel");
+    expect(html).toContain('value="Ke5o"');
+  });
+});
+
 describe("format", () => {
   it("formats durations and schedules", () => {
     expect(formatDuration(1392735)).toBe("16d 2h");
@@ -151,5 +226,9 @@ describe("format", () => {
     expect(formatDuration(0)).toBe("0m");
     expect(scheduleText(12, { kind: "everyN", n: 3, offset: 0 })).toBe("every 12 hours");
     expect(scheduleText(null, { kind: "windows", windows: [{ from: 18, to: 23 }] })).toBe("1 daily window");
+    expect(timeAgo(1_000, 20_000)).toBe("just now");
+    expect(timeAgo(0, 4 * 60_000)).toBe("4 min ago");
+    expect(timeAgo(0, 3 * 3_600_000)).toBe("3 h ago");
+    expect(timeAgo(0, 2 * 86_400_000)).toBe("2 days ago");
   });
 });

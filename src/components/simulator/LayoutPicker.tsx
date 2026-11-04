@@ -1,77 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Layers, X } from "lucide-react";
 import type { Scenario } from "../../simulator";
-import {
-  decodeDesign,
-  encodeDesign,
-  extractLayoutCode,
-  loadLayouts,
-  LocalStorageManager,
-  summarizeTargets,
-  type HandoffSource,
-  type IncomingLayout,
-} from "../../utilities";
+import { decodeDesign, extractLayoutCode, type IncomingLayout } from "../../utilities";
+import { gatherLayoutSources, previewCounts, sourceFromCode, type LayoutSource } from "./layoutSources";
 import { LayoutPreview, LayoutSourceBadge } from "../designer";
 import { Portal } from "../ui";
-import { nameOf } from "./format";
 import { layoutDestinations, type LayoutDestination } from "./scenarioEdit";
 import { buttonClass, inputClass } from "./styles";
 
 // Picks a layout (Calculator, Designer, saved layouts or a pasted share link) and where it goes.
 
-type Preview = { inputs: { cropId: string; position: [number, number] }[]; targets: { cropId: string; position: [number, number] }[] };
-
-interface LayoutSource extends IncomingLayout {
-  key: string;
-  /** Card heading; `name` is what the step gets called. */
-  title: string;
-  detail: string;
-  preview: Preview;
-}
-
-const counts = (p: Preview) => `${p.targets.length} target${p.targets.length === 1 ? "" : "s"} · ${p.inputs.length} plant${p.inputs.length === 1 ? "" : "s"}`;
-
-function sourceFromCode(key: string, from: HandoffSource, code: string, title: string, name?: string, detail?: string): LayoutSource | null {
-  try {
-    const preview = decodeDesign(code);
-    const summary = summarizeTargets(preview.targets, nameOf);
-    return { key, from, code, title, name: name ?? summary ?? title, detail: detail ?? summary ?? counts(preview), preview };
-  } catch {
-    return null;
-  }
-}
-
-/** Layouts stored on this device: last Calculator result, current Designer layout, saved layouts. */
-function gatherLayoutSources(): LayoutSource[] {
-  const out: LayoutSource[] = [];
-  const last = LocalStorageManager.loadLastSolverLayout();
-  if (last) {
-    const s = sourceFromCode("calculator", "calculator", last.code, "Last Calculator result", last.name);
-    if (s) out.push(s);
-  }
-  const di = LocalStorageManager.loadDesignerInputs() ?? [];
-  const dt = LocalStorageManager.loadDesignerTargets() ?? [];
-  const dg = LocalStorageManager.loadDesignerGroundTiles() ?? [];
-  if (di.length || dt.length || dg.length) {
-    try {
-      const code = encodeDesign(di, dt, dg);
-      const s = sourceFromCode("designer", "designer", code, "Current Designer layout", summarizeTargets(dt, nameOf) ?? "Designer layout");
-      if (s) out.push(s);
-    } catch {
-      // A corrupt saved design is not offered.
-    }
-  }
-  for (const l of [...loadLayouts()].sort((a, b) => b.modifiedAt - a.modifiedAt)) {
-    try {
-      const code = encodeDesign(l.inputs, l.targets, l.groundTiles ?? []);
-      const s = sourceFromCode(`saved:${l.id}`, "saved", code, l.name, l.name);
-      if (s) out.push(s);
-    } catch {
-      // A corrupt saved layout is not offered.
-    }
-  }
-  return out;
-}
+const counts = previewCounts;
 
 const SourceCard: React.FC<{ source: LayoutSource; selected: boolean; onSelect: () => void; large?: boolean }> = ({ source, selected, onSelect, large }) => (
   <button

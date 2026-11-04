@@ -1,6 +1,7 @@
 import type { SimConfig } from "../config";
 import type { EffectId, ItemId, KindId, MutationId, Size } from "../data/types";
 import type { Flow, Policies, PolicyOverrides } from "../flow/types";
+import type { CropFortune, FarmingToolStats } from "../economy/fortune";
 import type { ArmorSet } from "../economy/rareCrops";
 import type { RngState } from "../rng";
 import type { ScriptDef, ScriptsState } from "../script/types";
@@ -62,6 +63,12 @@ export interface PlantState {
     primed?: boolean;
     /** Turtlellini: times caught in a Blastberry explosion (2 = Shellfruit). */
     exploded?: number;
+    /**
+     * A mutation item placed from inventory with no greenhouse tick since: breaking it now picks
+     * it back up (item returned, sim/placement.ts `removeByPlayer`). "replacement" when the spend was
+     * booked as a replacement (undone too). Cleared by the next tick's growth phase.
+     */
+    pickup?: "placed" | "replacement";
     /**
      * All-in Aloe under `aloeAutoHarvest` (spawned only): the harvest stage the player picked at
      * their last session, for `gapCycles` until the next one and a `respawnChance` per cycle.
@@ -163,7 +170,19 @@ export interface PlayerStats {
   speedAttribute: number;
   /** Greenhouse Growth Speed Upgrade tier 0..9 (tier 9 jumps to +50%). */
   growthUpgradeTier: number;
+  /** General Farming Fortune: applies to every base-crop drop (not to mutation items). */
   farmingFortune: number;
+  /**
+   * Crop-specific fortune per crop (economy/fortune.ts), added on top of `farmingFortune` for that
+   * crop's drops. Optional; missing (old saves) or a missing crop = 0.
+   */
+  cropFortune?: CropFortune;
+  /**
+   * Farming tools. Each harvest uses the one that makes its crop bundle worth the most coins (ties:
+   * first listed); its per-crop fortune adds to that harvest's drops. Optional; missing/empty = no
+   * tool term (enter tool fortune in `cropFortune` instead).
+   */
+  tools?: FarmingToolStats[];
   /** Plant Yield Greenhouse Upgrade, 0 .. 0.20. */
   plantYieldUpgrade: number;
   /** Evergreen Chip, 0 .. 0.60; multiplies all crop-bundle drops (base crops and mutations). */
@@ -240,6 +259,13 @@ export interface LedgerRow {
   /** Lowest stock seen; below 0 when `allowMutationDebt` borrowed the item. */
   minStock: number;
   firstStockoutCycle: number | null;
+  /**
+   * `config.bootstrapDebt`: the starting layouts borrowed this item and its stock hasn't been
+   * back at 0 since. Present only while open; may be missing in old states.
+   */
+  loanOpen?: true;
+  /** `config.bootstrapDebt`: the cycle this item's bootstrap loan was paid back (stock back at 0 or above). */
+  repaidCycle?: number;
 }
 
 export interface DebtEvent {
@@ -307,6 +333,43 @@ export interface RunSummary {
   perPlot: Record<string, PerPlotSummary>;
   /** Normal profile only (missing in ironman): Bazaar quantities the page prices (economy/market.ts `valueRun`). */
   market?: MarketSummary;
+  /**
+   * How much work the player did: weighted action counts (`EFFORT_WEIGHTS` in config.ts), always
+   * present in new states; old saved states may lack it (read as zero, created on first use).
+   */
+  effort?: EffortSummary;
+  /**
+   * Harvest drops by the plant kind that dropped them: kind -> item -> count (fragments that became
+   * an All-in Aloe in the same harvest count as `all_in_aloe`). Created on the first harvest.
+   */
+  bySource?: Record<KindId, Record<ItemId, number>>;
+}
+
+/** The player's action kinds the effort score counts (weights in `EFFORT_WEIGHTS`). */
+export type EffortKind =
+  | "water"
+  | "harvest"
+  | "minigame"
+  | "replant"
+  | "place"
+  | "remove"
+  | "replace"
+  | "roots"
+  | "ground"
+  | "gate"
+  | "noctilume"
+  | "stepChange"
+  | "bazaar";
+
+export interface EffortSummary {
+  /** Online sessions so far (cycles the player acted in). */
+  sessions: number;
+  /** Weighted total of every action. */
+  total: number;
+  /** The most weighted effort any one session took. */
+  peak: number;
+  /** Raw action counts by kind (unweighted). */
+  counts: Partial<Record<EffortKind, number>>;
 }
 
 /**
@@ -408,6 +471,13 @@ export interface RunOptions {
   signal?: AbortSignal;
   /** Don't stop at a script's pause() (replays). Script errors always stop. */
   ignorePauses?: boolean;
+  /**
+   * Called after every completed cycle with the run's working state, to read it (never change it;
+   * the scripts' encoded variables may not be written yet). Returning true ends the call after
+   * that cycle (`truncated` if cycles were left). Lets a caller that looks at every cycle run many
+   * per call instead of one: run(s, n) equals n calls of run(s, 1).
+   */
+  onCycle?: (state: SimulationState) => boolean | void;
 }
 
 export interface BatchResult {

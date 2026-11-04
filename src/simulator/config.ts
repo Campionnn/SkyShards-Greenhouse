@@ -5,6 +5,8 @@
  * verified, unpublished (reasoned defaults), model switches.
  */
 
+import type { EffortKind } from "./sim/state";
+
 // ---- Fixed values (no longer settings) ----
 
 /** Spawn pool denominator floor: max(SPAWN_POOL_FLOOR, Σweights); the remainder is the blank. */
@@ -57,7 +59,43 @@ export const JELLYBEAN_MULTIPLIER_CAP = 10;
  * never harvested).
  */
 export const FREE_PLACED_ITEMS: readonly string[] = ["fire"];
-export const isFreePlacedItem = (kindId: string): boolean => FREE_PLACED_ITEMS.includes(kindId);
+/**
+ * Is this placed item free? Always `FREE_PLACED_ITEMS`; a scenario may add more through
+ * `config.freePlacedItems` (the leaderboard's ironman rules make Dead Plants and Fermento free).
+ */
+export const isFreePlacedItem = (kindId: string, config?: Pick<SimConfig, "freePlacedItems">): boolean =>
+  FREE_PLACED_ITEMS.includes(kindId) || (config?.freePlacedItems?.includes(kindId) ?? false);
+
+/**
+ * Effort weights: how much work each player action is (`RunSummary.effort`, sim/effort.ts), so
+ * effort reads as the work a player has to do to run the flow. Per online session the engine
+ * counts: watering once per plot however it is watered (if anything needed water), each harvest
+ * (minigame kinds count `minigame` instead), each base crop replanted, each item placed outside
+ * setup, each plant the player breaks or clears (one click, like a harvest), each placed item
+ * swapped before decay, root clearing once per plot, each ground block fixed, each gate
+ * interaction, a Noctilume time change once per plot, each step change (on top of the places and
+ * breaks it causes; the new step's ground comes with it), and a Bazaar visit once per session
+ * anything was bought or sold. Work a step change undoes in the same session (a crop replanted or
+ * an item placed earlier that session, broken by the step change) counts for neither.
+ */
+export const EFFORT_WEIGHTS: Readonly<Record<EffortKind, number>> = {
+  water: 1,
+  harvest: 1,
+  minigame: 2,
+  replant: 1,
+  place: 3,
+  remove: 1,
+  // A swap: break the old item and place a new one.
+  replace: 4,
+  roots: 2,
+  ground: 1,
+  gate: 1,
+  noctilume: 1,
+  stepChange: 2,
+  bazaar: 2,
+};
+/** Harvests that are a minigame in game (PlantBoy Advance, Stoplight Petal, Phantomleaf). */
+export const MINIGAME_HARVEST_KINDS: readonly string[] = ["plantboy_advance", "stoplight_petal", "phantomleaf"];
 
 export type ChorusTeleport = "emptyOnly" | "anyCell";
 /**
@@ -150,7 +188,42 @@ export interface SimConfig {
    * Absent or empty = off. Optional so scenarios without it are unchanged.
    */
   forcedEffects?: Record<string, string[]>;
+  /**
+   * Extra placed items with an unlimited supply, on top of `FREE_PLACED_ITEMS` (fire): placing
+   * them never spends inventory or records debt. The leaderboard's ironman rules set
+   * `["dead_plant", "fermento"]`. Absent or empty = off; scenarios without it are unchanged.
+   */
+  freePlacedItems?: string[];
+  /**
+   * Bootstrap debt (the leaderboard's ironman rules): the starting layouts are paid for on
+   * credit instead of placed free. Every paid placed item setup puts down is spent from the
+   * inventory, borrowing what it doesn't hold (stock below 0); that opens a loan on the item.
+   * While a loan is open the player may keep borrowing that item (re-placing, later steps,
+   * scripts); the first time its stock is back at 0 or above the loan closes for good
+   * (`LedgerRow.repaidCycle`) and shortfalls behave as usual again. Absent or false = setup is
+   * free. Read as `=== true`, so saved scenarios without the key are unchanged.
+   */
+  bootstrapDebt: boolean;
+  /**
+   * The starting layouts are paid from the starting inventory (the leaderboard's "from nothing"
+   * rules): setup spends like a later step does, without opening a loan, and an item the stock
+   * doesn't cover leaves its cell empty (a shortfall, re-placed once the stock has it). Ignored
+   * when `bootstrapDebt` is on (that buys the setup on credit). Absent or false = setup is free.
+   * Optional, so scenarios without it are unchanged.
+   */
+  setupFromStock?: boolean;
+  /**
+   * Set by the leaderboard rules (`ruleConfig`). Scripts can't use the debug APIs
+   * (`forceEffects`, `unforceEffects`, `resetForcedEffects`: they throw), and the scripts' `config`
+   * copy leaves out the credit settings (`allowMutationDebt`, `bootstrapDebt`, `setupFromStock`,
+   * this flag), so a script can't branch on the board it is measured for. Absent = the simulator's
+   * normal behaviour.
+   */
+  leaderboardRules?: boolean;
 }
+
+/** Config keys a script doesn't see under `leaderboardRules`. */
+export const RULES_HIDDEN_CONFIG_KEYS: readonly (keyof SimConfig)[] = ["allowMutationDebt", "bootstrapDebt", "setupFromStock", "leaderboardRules"];
 
 /** A copy of `config` with `forcedEffects` set, or the key removed when nothing is forced. */
 export function withForcedEffects(config: SimConfig, forced: Record<string, readonly string[]> | undefined): SimConfig {
@@ -192,6 +265,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   keepIdenticalOnStepChange: true,
   spawnsFillLayoutInputs: true,
   allowMutationDebt: false,
+  bootstrapDebt: false,
   legacyMutationYield: false,
   plotOrder: [1, 2, 3],
 };
@@ -230,6 +304,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "keepIdenticalOnStepChange", label: "Keep identical plants on step change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a step change untouched." },
   { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid flows work: grow Magic Jellybeans in one step, then use them as inputs in the next while they finish growing." },
   { key: "allowMutationDebt", label: "Allow mutation debt", group: "model", input: { type: "boolean" }, description: "The player places mutation items even when the inventory has none: the stock goes negative (shown in red in the Inventory) and later harvests pay it back. Useful to see what a flow produces before you have the items. Fermento and dead plants still need stock. Off: a missing item leaves the cell empty and is recorded as a shortfall." },
+  { key: "bootstrapDebt", label: "Starting layouts on credit", group: "model", input: { type: "boolean" }, description: "The leaderboard's ironman rule. The starting layouts are not free: every mutation item they place is spent from the inventory, borrowing what it doesn't hold (the stock goes negative). Until an item's stock is back at 0 the player may keep borrowing it; after that, a missing item leaves the cell empty as usual. Off: the starting layouts are placed free (or paid from stock, under the leaderboard's \"from nothing\" rules)." },
   { key: "legacyMutationYield", label: "Legacy: yield scales mutation items", group: "model", input: { type: "boolean" }, description: "The behaviour before the game update that \"Fixed Plant Yield bonuses incorrectly applying to mutation items and Ethereal Vine drops\". On: the greenhouse yield sum (Plant Yield upgrade, Unique Crop Bonus, Harvest Boost/Loss) also scales a harvested mutation's own item count and its Ethereal Vine count (e.g. a Duskbloom at +30% yield drops 1, with a 30% chance of a 2nd). Off (current game): mutations drop their base count (1, or Chloronite's Mining Fortune ladder, the Jellybean / All-in Aloe stage multiplier) and Ethereal Vine drops as rolled. Crop bundles are yield-scaled either way." },
 ];
 

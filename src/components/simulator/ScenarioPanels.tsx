@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from "react";
-import { Copy, Download, FileJson, FolderInput, Layers, Pencil, Plus, Settings2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Plus, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
 import {
   aloeHarvestSchedule,
   aloeHarvestStageFor,
@@ -10,7 +10,6 @@ import {
   DEFAULT_CONFIG,
   defaultGameData,
   effectiveUniqueCrops,
-  MAX_PLOTS,
   normalizeForcedEffects,
   SPAWN_POOL_FLOOR,
   withForcedEffects,
@@ -19,260 +18,41 @@ import {
   type AloeSession,
   type ArmorSet,
   type ConfigGroup,
-  type PlayerStats,
   type Scenario,
-  type ScenarioIssue,
   type SimConfig,
 } from "../../simulator";
-import { InfoHint, Panel, SectionLabel, SegmentedControl, useToast } from "../ui";
+import { InfoHint, Panel, SectionLabel, SegmentedControl } from "../ui";
+import { PlayerImportBox } from "../playerImport/PlayerImportBox";
+import { StatInput } from "../playerStats/StatInput";
+import { STAT_FIELDS, type NumericStatKey } from "../playerStats/statFields";
 import { CheckboxField, IdSelect, NumberField, NumberInput, SelectField } from "./controls";
+import { CropFortuneSummary } from "./CropFortuneEditor";
 import { formatDuration, nameOf } from "./format";
-import { PolicyDefaultsEditor } from "./FlowEditor";
-import { FlowExportDialog } from "./FlowExportDialog";
-import { addPlot, duplicatePlot, exportFlows, importFlows, layoutSummary, nextPlotId, removePlot, type FlowExportOptions } from "./scenarioEdit";
+import { PolicyDefaultsEditor } from "./policyFields";
 import { buttonClass, inputClass } from "./styles";
-
-// ---- Scenario: share links, plots, import/export ---------------------------
-
-/** One validation issue: where it is (e.g. "Plot 1 › Step 3 › Leave when") above what's wrong. */
-const IssueLine: React.FC<{ issue: ScenarioIssue }> = ({ issue }) => (
-  <div>
-    <div className="font-medium">{issue.path}</div>
-    <div className="opacity-90">{issue.message}</div>
-  </div>
-);
-
-export const ScenarioPanel: React.FC<{
-  scenario: Scenario;
-  onChange: (sc: Scenario) => void;
-  onEditFlow: (plotId: number) => void;
-  /** Open the layout picker (Calculator result, Designer layout, saved layouts, share links). */
-  onLoadLayout?: () => void;
-  issues: ScenarioIssue[];
-  warnings: ScenarioIssue[];
-  error: string | null;
-}> = ({ scenario, onChange, onEditFlow, onLoadLayout, issues, warnings, error }) => {
-  const { toast } = useToast();
-  const [json, setJson] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [readingFile, setReadingFile] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const fileReadId = useRef(0);
-
-  const toggleImport = () => {
-    fileReadId.current += 1; // Ignore a pending read if the import panel is closed.
-    setReadingFile(false);
-    setFileName(null);
-    setJson(json === null ? "" : null);
-  };
-
-  const selectJsonFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = ""; // Allow choosing the same file again, including after a failed read.
-    if (!file) return;
-    const readId = ++fileReadId.current;
-    setReadingFile(true);
-    setFileName(null);
-    try {
-      const text = await file.text();
-      if (readId !== fileReadId.current) return;
-      setJson(text.replace(/^\uFEFF/, ""));
-      setFileName(file.name);
-    } catch {
-      if (readId !== fileReadId.current) return;
-      toast({ title: "Could not read file", description: "Try selecting the JSON file again, or paste its contents below.", variant: "error" });
-    } finally {
-      if (readId === fileReadId.current) setReadingFile(false);
-    }
-  };
-
-  const exportJson = async (options: FlowExportOptions) => {
-    const text = JSON.stringify(exportFlows(scenario, options), null, 2);
-    const blob = new Blob([text], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "greenhouse-flows.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    setExporting(false);
-    let copied = false;
-    try {
-      await navigator.clipboard.writeText(text);
-      copied = true;
-    } catch {
-      // Download still works when clipboard access is unavailable or denied.
-    }
-    toast({
-      title: "Flows exported",
-      description: `${copied ? "Downloaded and copied." : "Downloaded."} ${Object.values(options).some(Boolean) ? "Includes your selected setup sections." : "Only flows are included; settings and starting inventory are left out."}`,
-      variant: "success",
-    });
-  };
-
-  const importJson = () => {
-    try {
-      const next = importFlows(scenario, json ?? "");
-      const before = scenario;
-      onChange(next);
-      setJson(null);
-      setFileName(null);
-      toast({
-        id: "simulator-flows-imported",
-        title: `Imported ${next.plots.length} plot${next.plots.length > 1 ? "s" : ""}`,
-        description: next.settings !== before.settings || next.startingInventory !== before.startingInventory
-          ? "Replaced your plots and applied the included setup. Omitted settings are unchanged."
-          : "Replaced your plots; your player settings and inventory are unchanged.",
-        variant: "success",
-        duration: 6000,
-        action: { label: "Undo", onClick: () => onChange(before) },
-      });
-    } catch (err) {
-      toast({ title: "Import failed", description: err instanceof Error ? err.message : String(err), variant: "error" });
-    }
-  };
-
-  const duplicate = (plotId: number) => {
-    const id = nextPlotId(scenario);
-    if (id === null) return;
-    const before = scenario;
-    onChange(duplicatePlot(scenario, plotId));
-    toast({
-      id: "simulator-plot-duplicated",
-      title: `Duplicated Plot ${plotId} as Plot ${id}`,
-      description: "Same steps, layouts, exits, checked targets and policy overrides.",
-      variant: "success",
-      duration: 6000,
-      action: { label: "Undo", onClick: () => onChange(before) },
-    });
-  };
-
-  const errors = issues.filter((i) => i.level === "error");
-  return (
-    <Panel title="Scenario" icon={<Layers />} description="Up to 3 plots, each with its own flow, sharing one inventory and one clock.">
-      <SectionLabel>Plots</SectionLabel>
-      <div className="space-y-1.5">
-        {scenario.plots.map((p) => (
-          <div key={p.id} className="flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1.5">
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-slate-200">Plot {p.id}</div>
-              <div className="text-[11px] text-slate-500 truncate">
-                {p.flow.steps.length} step{p.flow.steps.length > 1 ? "s" : ""}
-                {p.flow.loop ? ", looping" : ""}
-                {p.script?.source.trim() ? (p.script.enabled === false ? ", script off" : ", scripted") : ""} ·{" "}
-                {layoutSummary(p.flow.steps[p.flow.startIndex]?.layout ?? { code: "" })}
-              </div>
-            </div>
-            <button className={buttonClass.icon} onClick={() => onEditFlow(p.id)} title="Edit flow">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button
-              className={buttonClass.icon}
-              onClick={() => duplicate(p.id)}
-              disabled={scenario.plots.length >= MAX_PLOTS}
-              title={scenario.plots.length >= MAX_PLOTS ? "All three plots are in use" : "Duplicate this plot with its whole flow"}
-            >
-              <Copy className="w-3.5 h-3.5" />
-            </button>
-            <button className={buttonClass.icon} onClick={() => onChange(removePlot(scenario, p.id))} disabled={scenario.plots.length <= 1} title="Remove plot">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ))}
-        <div className="flex flex-wrap gap-2">
-          {onLoadLayout && (
-            <button className={buttonClass.primary} onClick={onLoadLayout} title="From the Calculator, the Designer, your saved layouts or a share link">
-              <FolderInput className="w-3.5 h-3.5" /> Load layout...
-            </button>
-          )}
-          <button className={buttonClass.neutral} onClick={() => onChange(addPlot(scenario))} disabled={scenario.plots.length >= MAX_PLOTS}>
-            <Plus className="w-3.5 h-3.5" /> Empty plot
-          </button>
-        </div>
-      </div>
-
-      {(errors.length > 0 || error) && (
-        <div className="mt-3 rounded-md bg-red-500/10 border border-red-500/30 px-2 py-1.5 text-xs text-red-200 space-y-1.5">
-          {errors.length ? errors.map((i, k) => <IssueLine key={k} issue={i} />) : <div>{error}</div>}
-        </div>
-      )}
-      {warnings.length > 0 && (
-        <div className="mt-3 rounded-md bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-200 space-y-1.5">
-          {warnings.map((i, k) => (
-            <IssueLine key={k} issue={i} />
-          ))}
-        </div>
-      )}
-
-      <div className="flex gap-2 mt-4">
-        <button
-          className={buttonClass.neutral}
-          onClick={() => setExporting(true)}
-          aria-haspopup="dialog"
-          title="Choose what to include, then download and copy your flows as JSON."
-        >
-          <Download className="w-3.5 h-3.5" /> Export flows
-        </button>
-        <button className={buttonClass.neutral} onClick={toggleImport} aria-expanded={json !== null} title="Replace your plots and apply any setup sections included in an exported flows file">
-          <Upload className="w-3.5 h-3.5" /> Import flows
-        </button>
-      </div>
-      {exporting && <FlowExportDialog onClose={() => setExporting(false)} onExport={exportJson} />}
-      {json !== null && (
-        <div className="mt-2 space-y-1.5">
-          <p className="text-[11px] text-slate-500">Replaces your plots and any setup sections included in the export. Settings and starting inventory left out of the file stay as they are.</p>
-          <label className="block space-y-1 text-xs text-slate-300">
-            <span>Select a JSON file</span>
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={selectJsonFile}
-              disabled={readingFile}
-              className={`${inputClass} w-full file:mr-3 file:rounded file:border-0 file:bg-slate-600 file:px-2 file:py-1 file:text-xs file:text-slate-100 file:cursor-pointer`}
-            />
-          </label>
-          <p className="text-[11px] text-slate-400 break-words" role="status">
-            {readingFile ? "Reading file..." : fileName ? `Loaded ${fileName}. Click Load JSON to import.` : "Or paste exported flows JSON below."}
-          </p>
-          <textarea
-            className={`${inputClass} w-full h-24 font-mono`}
-            aria-label="Flows JSON"
-            placeholder="Paste exported flows JSON"
-            value={json}
-            disabled={readingFile}
-            onChange={(e) => { setJson(e.target.value); setFileName(null); }}
-          />
-          <button className={buttonClass.primary} onClick={importJson} disabled={readingFile || !json.trim()}>
-            <FileJson className="w-3.5 h-3.5" /> Load JSON
-          </button>
-        </div>
-      )}
-    </Panel>
-  );
-};
 
 // ---- Settings: player, schedule, policies, inventory, advanced -------------
 
 type SettingsTab = "player" | "schedule" | "policies" | "advanced";
 
-type NumericStat = { [K in keyof PlayerStats]: PlayerStats[K] extends number ? K : never }[keyof PlayerStats];
+const GROUP_LABEL: Record<ConfigGroup, string> = {
+  verified: "Verified",
+  unpublished: "Unpublished - reasoned defaults",
+  model: "Model switches",
+};
 
-const STAT_FIELDS: { key: NumericStat; label: string; min: number; max: number; step?: number; hint?: string }[] = [
-  { key: "cropGrowth", label: "Crop Growth", min: 0, max: 210 },
-  { key: "speedAttribute", label: "Greenhouse Speed attribute", min: 0, max: 10 },
-  { key: "growthUpgradeTier", label: "Growth Speed upgrade tier", min: 0, max: 9, hint: "Tier 9 jumps to +50%." },
-  { key: "farmingFortune", label: "Farming Fortune", min: 0, max: 4000, hint: "Wiki theoretical max: 3059.2." },
-  { key: "plantYieldUpgrade", label: "Plant Yield upgrade", min: 0, max: 0.2, step: 0.02, hint: "0 to 0.20 (+20%)." },
-  { key: "evergreenChip", label: "Evergreen Chip", min: 0, max: 0.6, step: 0.02, hint: "0 to 0.60. Applies to all crop-bundle drops, base crops and mutation bundles alike." },
-  { key: "mutationChanceBonus", label: "Bioanalysis accessory", min: 0, max: 0.15, step: 0.05, hint: "0 / 0.05 Talisman / 0.10 Ring / 0.15 Artifact. Multiplies the chance for a crop to mutate." },
-  { key: "floraShard", label: "Flora attribute", min: 0, max: 10, hint: "Grants 1-10 Unique Crop Bonus; adds to the unique crops standing (10 max in total)." },
-  { key: "miningFortune", label: "Mining Fortune", min: 0, max: 3000, hint: "Chloronite item count (caps at 4 from 2000)." },
-  {
-    key: "overbloom",
-    label: "Overbloom",
-    min: 0,
-    max: 1000,
-    hint: "Uncapped. Rare Crop chance x (1 + Overbloom/100): armor drops and mutation Ethereal Vine, not Harvest Bounty. Wiki maxima: 186 with a tool (201 with Crop Fever), 338 with Sun's Grasp (368).",
-  },
+/** Player tab stats, in display order (definitions shared with the Guide and leaderboard: playerStats/statFields.ts). */
+const PLAYER_STAT_KEYS: NumericStatKey[] = [
+  "cropGrowth",
+  "speedAttribute",
+  "growthUpgradeTier",
+  "farmingFortune",
+  "plantYieldUpgrade",
+  "evergreenChip",
+  "mutationChanceBonus",
+  "floraShard",
+  "miningFortune",
+  "overbloom",
 ];
 
 // ---- Debug: forced effects ---------------------------------------------------
@@ -333,27 +113,30 @@ const ForcedEffectsEditor: React.FC<{
   );
 };
 
-const GROUP_LABEL: Record<ConfigGroup, string> = {
-  verified: "Verified",
-  unpublished: "Unpublished - reasoned defaults",
-  model: "Model switches",
-};
 
 export const SettingsPanel: React.FC<{
   scenario: Scenario;
   onChange: (sc: Scenario) => void;
   /** Cycle length of the current run, for the All-in Aloe preview; from the stats when absent. */
   cycleSecondsNow?: number;
-}> = ({ scenario, onChange, cycleSecondsNow }) => {
-  const [tab, setTab] = useState<SettingsTab>("player");
+  /** Drawer mode: no panel chrome and no tab strip (the drawer owns the tabs); the page passes the tab. */
+  bare?: boolean;
+  tab?: SettingsTab;
+}> = ({ scenario, onChange, cycleSecondsNow, bare = false, tab: controlledTab }) => {
+  const [ownTab, setTab] = useState<SettingsTab>("player");
+  const tab = controlledTab ?? ownTab;
   const { settings } = scenario;
   const setSettings = (patch: Partial<Scenario["settings"]>) => onChange({ ...scenario, settings: { ...settings, ...patch } });
   const setConfig = (patch: Partial<SimConfig>) => setSettings({ config: { ...settings.config, ...patch } });
-  const nonDefault = CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length + (settings.config.forcedEffects ? 1 : 0);
-
-  return (
-    <Panel title="Settings" icon={<Settings2 />}>
-      <div className="mb-3">
+  const nonDefault =
+    CONFIG_META.filter((m) => settings.config[m.key] !== DEFAULT_CONFIG[m.key]).length +
+    (settings.config.forcedEffects ? 1 : 0) +
+    (settings.config.freePlacedItems?.length ? 1 : 0) +
+    (settings.config.setupFromStock === true ? 1 : 0) +
+    (settings.config.leaderboardRules === true ? 1 : 0);
+  const body = (
+    <>
+      <div className={bare && tab !== "schedule" ? "hidden" : "mb-3"}>
         <CheckboxField
           label={
             <span className="flex items-center gap-1">
@@ -368,31 +151,30 @@ export const SettingsPanel: React.FC<{
           onChange={(playerActions) => setSettings({ playerActions })}
         />
       </div>
-      <SegmentedControl
-        size="xs"
-        className="mb-3"
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: "player", label: "Player" },
-          { value: "schedule", label: "Online" },
-          { value: "policies", label: "Actions" },
-          { value: "advanced", label: nonDefault ? `Advanced (${nonDefault})` : "Advanced" },
-        ]}
-      />
+      {!bare && (
+        <SegmentedControl
+          size="xs"
+          className="mb-3"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "player", label: "Player" },
+            { value: "schedule", label: "Online" },
+            { value: "policies", label: "Actions" },
+            { value: "advanced", label: nonDefault ? `Advanced (${nonDefault})` : "Advanced" },
+          ]}
+        />
+      )}
 
       {tab === "player" && (
         <div className="space-y-1.5">
-          {STAT_FIELDS.map((f) => (
-            <NumberField
-              key={f.key}
-              label={f.label}
-              title={f.hint}
-              value={settings.playerStats[f.key]}
-              min={f.min}
-              max={f.max}
-              step={f.step}
-              onChange={(v) => setSettings({ playerStats: { ...settings.playerStats, [f.key]: v } })}
+          <PlayerImportBox compact className="mb-2" onImport={(patch) => setSettings({ playerStats: { ...settings.playerStats, ...patch } })} />
+          {PLAYER_STAT_KEYS.map((key) => (
+            <StatInput
+              key={key}
+              def={STAT_FIELDS[key]}
+              value={settings.playerStats[key]}
+              onChange={(v) => setSettings({ playerStats: { ...settings.playerStats, [key]: v } })}
             />
           ))}
           <SelectField<ArmorSet>
@@ -409,6 +191,7 @@ export const SettingsPanel: React.FC<{
             options={ARMOR_SETS.map((s) => ({ value: s, label: ARMOR_SET_LABEL[s] }))}
             onChange={(armorSet) => setSettings({ playerStats: { ...settings.playerStats, armorSet } })}
           />
+          <CropFortuneSummary stats={settings.playerStats} onChange={(playerStats) => setSettings({ playerStats })} />
         </div>
       )}
 
@@ -469,6 +252,53 @@ export const SettingsPanel: React.FC<{
             value={settings.config.forcedEffects}
             onChange={(forcedEffects) => setSettings({ config: withForcedEffects(settings.config, forcedEffects) })}
           />
+          {!!settings.config.freePlacedItems?.length && (
+            <div className="rounded border border-amber-500/30 p-2 text-[11px] text-amber-200/90">
+              <span className="font-medium">Unlimited supplies (leaderboard ironman rules):</span> {settings.config.freePlacedItems.map(nameOf).join(", ")} are placed
+              without using inventory, like fire.{" "}
+              <button
+                className="underline hover:text-amber-100"
+                onClick={() => {
+                  const config = { ...settings.config };
+                  delete config.freePlacedItems;
+                  setSettings({ config });
+                }}
+              >
+                Turn off
+              </button>
+            </div>
+          )}
+          {settings.config.setupFromStock === true && (
+            <div className="rounded border border-amber-500/30 p-2 text-[11px] text-amber-200/90" data-testid="setup-from-stock-note">
+              <span className="font-medium">Starting layouts paid from stock (leaderboard "from nothing" rules):</span> the first layouts spend the starting inventory; an item it
+              doesn't hold leaves its cell empty until the flow grows one.{" "}
+              <button
+                className="underline hover:text-amber-100"
+                onClick={() => {
+                  const config = { ...settings.config };
+                  delete config.setupFromStock;
+                  setSettings({ config });
+                }}
+              >
+                Turn off
+              </button>
+            </div>
+          )}
+          {settings.config.leaderboardRules === true && (
+            <div className="rounded border border-amber-500/30 p-2 text-[11px] text-amber-200/90" data-testid="leaderboard-rules-note">
+              <span className="font-medium">Leaderboard rules:</span> the debug script APIs (forceEffects and friends) are off, and the credit settings are hidden from scripts.{" "}
+              <button
+                className="underline hover:text-amber-100"
+                onClick={() => {
+                  const config = { ...settings.config };
+                  delete config.leaderboardRules;
+                  setSettings({ config });
+                }}
+              >
+                Turn off
+              </button>
+            </div>
+          )}
           <div>
             <SectionLabel>Not modelled</SectionLabel>
             <ul className="text-[11px] text-slate-500 space-y-0.5">
@@ -485,9 +315,12 @@ export const SettingsPanel: React.FC<{
           </button>
         </div>
       )}
-    </Panel>
+    </>
   );
+  return bare ? <div className="space-y-3">{body}</div> : <Panel title="Settings" icon={<Settings2 />}>{body}</Panel>;
 };
+
+export type { SettingsTab };
 
 const gapText = (gap: number) => (Number.isFinite(gap) ? `${gap} cycle${gap === 1 ? "" : "s"}` : "never");
 
@@ -615,7 +448,7 @@ export const AloeHarvestPreview: React.FC<{ settings: Scenario["settings"]; live
   );
 };
 
-const ScheduleEditor: React.FC<{
+export const ScheduleEditor: React.FC<{
   value: ActivitySchedule;
   startTime: number;
   onChange: (schedule: ActivitySchedule, startTimeOfDay: number) => void;

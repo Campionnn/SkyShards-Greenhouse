@@ -1,6 +1,7 @@
 import type { PriceSource } from "../economy/prices";
 import type { ItemId } from "../data/types";
 import { ALOE_FRAGMENT, FRAGMENTS_PER_ALOE } from "../growth/aloe";
+import { cloneState } from "./clone";
 import { canBuy, countProduced } from "./market";
 import { bump } from "./summary";
 import type { LedgerRow, PlotId, SimulationState, TickEvent } from "./state";
@@ -39,6 +40,14 @@ export function credit(state: SimulationState, item: ItemId, qty: number): void 
   state.inventory[item] = (state.inventory[item] ?? 0) + qty;
   row.produced += qty;
   countProduced(state, item, qty);
+  closeLoanIfRepaid(state, item, row);
+}
+
+/** `config.bootstrapDebt`: an open loan closes for good once the item's stock is back at 0 or above. */
+function closeLoanIfRepaid(state: SimulationState, item: ItemId, row: LedgerRow): void {
+  if (!row.loanOpen || (state.inventory[item] ?? 0) < 0) return;
+  delete row.loanOpen;
+  row.repaidCycle = state.cycle;
 }
 
 export interface SpendRequest {
@@ -54,6 +63,11 @@ export interface SpendRequest {
    * succeeds, taking the stock below 0 (booked in `summary.borrowed`).
    */
   allowDebt?: boolean;
+  /**
+   * `config.bootstrapDebt` setup: borrow what the stock doesn't cover and open a loan on the
+   * item (`LedgerRow.loanOpen`). Any spend of an item with an open loan may also borrow.
+   */
+  openLoan?: boolean;
 }
 
 /**
@@ -83,11 +97,12 @@ export function spend(
     emit(req.plotId, { kind: "bought", item, row: req.row, col: req.col, qty: buy });
   }
 
-  if (available >= qty || req.allowDebt) {
+  if (available >= qty || req.allowDebt || req.openLoan || row.loanOpen) {
     const borrowed = Math.min(qty, qty - available);
     if (borrowed > 0) {
       bump((state.summary.borrowed ??= {}), item, borrowed);
       emit(req.plotId, { kind: "borrowed", item, row: req.row, col: req.col, qty: borrowed, stock: available - qty });
+      if (req.openLoan) row.loanOpen = true;
     }
     state.inventory[item] = available - qty;
     row.consumed += qty;
@@ -129,12 +144,31 @@ export function spend(
 }
 
 /**
+ * Undo one placement spend: the player picked a placed item back up before any tick ran
+ * (`PlantState.gate.pickup`). The unit returns to the stock and is no longer counted as consumed
+ * or placed, so the ledger reads as if it was never spent (anything bought or borrowed for it stays booked).
+ */
+export function refundPlacement(state: SimulationState, item: ItemId, replacement: boolean, prices: PriceSource): void {
+  const row = ledgerRow(state, item);
+  state.inventory[item] = (state.inventory[item] ?? 0) + 1;
+  row.consumed -= 1;
+  const placed = state.summary.placedItems;
+  if ((placed[item] ?? 0) > 1) placed[item] -= 1;
+  else delete placed[item];
+  if (replacement) {
+    state.summary.replacements -= 1;
+    state.summary.costs.replacements -= prices.price(item);
+  }
+  closeLoanIfRepaid(state, item, row);
+}
+
+/**
  * Manually add (or remove, if negative) inventory items. Pure. Tracked in
  * summary.injected, not as revenue or ledger production. Removing stops at 0
  * (a stock already below 0 from mutation debt is never pushed further down).
  */
 export function injectItems(input: SimulationState, items: Record<ItemId, number>): SimulationState {
-  const state = structuredClone(input);
+  const state = cloneState(input);
   for (const [item, raw] of Object.entries(items)) {
     const qty = Math.trunc(raw);
     if (!Number.isFinite(qty) || qty === 0) continue;
@@ -144,6 +178,7 @@ export function injectItems(input: SimulationState, items: Record<ItemId, number
     state.inventory[item] = next;
     bump(state.summary.injected, item, next - have);
     if (next < row.minStock) row.minStock = next;
+    closeLoanIfRepaid(state, item, row);
   }
   convertAloeFragments(state);
   return state;

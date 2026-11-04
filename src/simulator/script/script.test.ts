@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { validateScenario } from "../flow/validate";
 import type { Scenario, SimulationState } from "../sim/state";
 import { engine, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, start, step } from "../testHelpers";
-import { diagnoseScript } from "./check";
+import { derivedSeed, seedRng } from "../rng";
+import { diagnoseScript, identifierUses } from "./check";
 import { SCRIPT_EXAMPLES } from "./examples";
 import { inspectScriptVariables } from "./inspect";
 
@@ -85,6 +86,32 @@ describe("scripts: variables and determinism", () => {
     expect(json(a.plots)).toBe(json(b.plots));
   });
 
+  it("the script stream is seeded one way from the seed: it is neither the game's stream nor the old seed ^ constant", () => {
+    const seed = 123456789;
+    const s = start({ ...withScripts("function onTick() {}"), settings: { ...withScripts(null).settings, seed } });
+    expect(s.scripts!.rng).toEqual(seedRng(derivedSeed(seed, "script")));
+    expect(s.scripts!.rng).not.toEqual(seedRng(seed));
+    expect(s.scripts!.rng).not.toEqual(seedRng((seed ^ 0x5c41b7) >>> 0));
+    // Neighbouring seeds give unrelated streams (no simple offset to undo).
+    expect(derivedSeed(seed + 1, "script") - derivedSeed(seed, "script")).not.toBe(1);
+    expect(derivedSeed(seed, "script")).toBe(derivedSeed(seed, "script"));
+  });
+
+  it("under the leaderboard rules the script's config copy hides the credit settings", () => {
+    const sc = withScripts("let seen = []; let debt = 1; let listed = []; function onTick() { debt = config.allowMutationDebt; seen = [config.bootstrapDebt, config.setupFromStock, config.leaderboardRules, config.waterLossMin]; listed = keys(config).filter((k) => k.includes('Debt') || k === 'leaderboardRules') }");
+    sc.settings.config = { ...sc.settings.config, allowMutationDebt: true, bootstrapDebt: true, leaderboardRules: true };
+    const r = engine.run(start(sc), 2).state;
+    expect(r.scripts?.halt).toBeNull();
+    const v = vars(r);
+    expect(v["plot:1.debt"]).toBeUndefined();
+    expect(v["plot:1.seen"]).toEqual([undefined, undefined, undefined, sc.settings.config.waterLossMin]);
+    expect(v["plot:1.listed"]).toEqual([]);
+    // Outside the rules the simulator shows the whole config.
+    const free = withScripts("let debt = 0; function onTick() { debt = config.allowMutationDebt }");
+    free.settings.config = { ...free.settings.config, allowMutationDebt: true };
+    expect(vars(engine.run(start(free), 1).state)["plot:1.debt"]).toBe(true);
+  });
+
   it("shared references and cycles survive saving", () => {
     const s = start(withScripts("let a = { list: [] }; let b = a; a.self = a; function onTick() { b.list.push(cycle) }"));
     const r = engine.run(engine.run(s, 3).state, 2).state;
@@ -144,6 +171,20 @@ describe("scripts: actions", () => {
       const dry = aloeHarvest(`plot.disable("water"); function onSession() { plot.at(5, 5).break() }`, dryWart);
       const watered = aloeHarvest(`plot.disable("water"); function onSession() { plot.at(5, 6).waterIt(); plot.at(5, 5).break() }`, dryWart);
       expect(watered.drops.wheat).toBeGreaterThan(dry.drops.wheat);
+    });
+
+    it("a Blastberry placed, used for the aloe harvest and broken before a tick is picked back up", () => {
+      const plain = aloeHarvest(`function onSession() { plot.at(5, 5).break() }`);
+      const src = `let could = null;
+        function onSession() { plot.place("blastberry", 5, 6); plot.at(5, 5).break(); could = plot.at(5, 6).canPickUp; plot.breakAt(5, 6) }`;
+      const buffed = aloeHarvest(src, (s) => void (s.inventory.blastberry = 1));
+      expect(buffed.drops.wheat).toBeGreaterThan(plain.drops.wheat); // improved harvest boost reached it
+      expect(vars(buffed.state)["plot:1.could"]).toBe(true);
+      expect(plantAt(buffed.state, 1, 5, 6)).toBeUndefined();
+      expect(buffed.state.inventory.blastberry).toBe(1); // item back
+      expect(buffed.state.summary.destroyed.blastberry).toBeUndefined();
+      expect(buffed.state.summary.placedItems.blastberry).toBeUndefined();
+      expect(buffed.state.ledger.blastberry.consumed).toBe(0);
     });
 
     it("plant.effects reads the plot as the player left it", () => {
@@ -211,6 +252,51 @@ describe("scripts: actions", () => {
     expect(plantAt(s, 1, 0, 4)).toBeUndefined(); // out of stock
     expect(plantAt(s, 1, 9, 9)?.origin).toBe("planted");
     expect(s.inventory.chloronite).toBe(0);
+  });
+
+  describe("picking a placed mutation back up", () => {
+    const EVERY = { kind: "everyN", n: 1, offset: 0 } as const;
+
+    it("after a tick it is no longer free: breaking a placed item loses it", () => {
+      const src = `function onSession() { if (cycle === 0) plot.place("chloronite", 0, 0); if (cycle === 1) plot.breakAt(0, 0) }`;
+      const r = engine.run(start(withScripts(src, { activity: EVERY, inventory: { chloronite: 1 } })), 2);
+      expect(r.state.inventory.chloronite).toBe(0);
+      expect(r.summary.destroyed.chloronite).toBe(1);
+    });
+
+    it("a placed Blastberry picked up before the tick never primes or explodes; after the tick it does", () => {
+      const at = (when: number) => `function onSession() { if (cycle === 0) plot.place("blastberry", 4, 5); if (cycle === ${when}) plot.breakAt(4, 5) }`;
+      const quick = engine.run(start(withScripts(at(0), { activity: EVERY, inventory: { blastberry: 1 } })), 1);
+      expect(quick.events.some((e) => e.kind === "exploded")).toBe(false);
+      expect(plantAt(quick.state, 1, 4, 4)?.kindId).toBe("wheat");
+      expect(quick.state.inventory.blastberry).toBe(1);
+      const late = engine.run(start(withScripts(at(1), { activity: EVERY, inventory: { blastberry: 1 } })), 2);
+      expect(late.events.some((e) => e.kind === "exploded")).toBe(true);
+      expect(late.state.inventory.blastberry).toBe(0);
+    });
+
+    it("works for an early Magic Jellybean harvest too: buffed drops, Blastberry back", () => {
+      const jelly = (source: string) => {
+        const sc = scenario([flow([step("a", layout())])], { inventory: { blastberry: 1 } });
+        sc.plots[0].script = { source };
+        const s = start(sc);
+        inject(s, 1, "magic_jellybean", 5, 5, "spawned", { stage: 59, water: 100 });
+        const r = engine.run(s, 1);
+        const h = r.events.find((e) => e.kind === "harvested" && e.kindId === "magic_jellybean");
+        return { drops: h?.kind === "harvested" ? h.drops : {}, state: r.state };
+      };
+      const plain = jelly(`function onSession() { plot.at(5, 5).harvest() }`);
+      const buffed = jelly(`function onSession() { plot.place("blastberry", 5, 6); plot.at(5, 5).harvest(); plot.breakAt(5, 6) }`);
+      expect(buffed.drops.sugar_cane).toBeGreaterThan(plain.drops.sugar_cane);
+      expect(buffed.state.inventory.blastberry).toBe(1);
+    });
+
+    it("canPickUp is false for the starting layout and for free items", () => {
+      const s = start(withScripts(`let a = null; let f = null; function onStart() { plot.place("fire", 0, 0) } function onTick() { f = plot.at(0, 0).canPickUp; a = plot.at(4, 4).canPickUp }`));
+      const v = vars(engine.run(s, 1).state);
+      expect(v["plot:1.f"]).toBe(false);
+      expect(v["plot:1.a"]).toBe(false);
+    });
   });
 
   it("goto changes step now; offline it waits for the session", () => {
@@ -352,6 +438,15 @@ describe("scripts: errors, pause, conditions", () => {
     const cond = withScripts(null);
     cond.plots[0].flow.steps[0].exits = [{ when: [{ kind: "script", expr: "a b" }] }];
     expect(validateScenario(cond, engine.data).some((i) => i.level === "error")).toBe(true);
+  });
+
+  it("identifierUses finds a built-in however it is reached, but not property names", () => {
+    const names = ["forceEffects", "unforceEffects"];
+    expect(identifierUses("forceEffects('a', [])", names)).toEqual([{ name: "forceEffects", line: 1, col: 1 }]);
+    expect(identifierUses("const f = forceEffects;\nfunction onTick() { f() }", names).map((u) => u.line)).toEqual([1]);
+    expect(identifierUses("function onTick() { if (x) { [1].map(() => unforceEffects()) } }", names).map((u) => u.name)).toEqual(["unforceEffects"]);
+    expect(identifierUses("let o = { forceEffects: 1 }; o.forceEffects; o['x']", names)).toEqual([]);
+    expect(identifierUses("let x = ;", names)).toEqual([]);
   });
 
   it("storing a function made inside a function is reported", () => {

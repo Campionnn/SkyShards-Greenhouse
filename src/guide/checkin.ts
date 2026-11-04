@@ -33,6 +33,22 @@ export interface GuideState {
   checkEvery: number | null;
   /** This visit's confirmations, by plot. Cleared when the next check-in starts. */
   confirmations: Record<PlotId, Confirmation>;
+  /** The last "Import from Hypixel" lookup, for one-click "Import again" and "what changed since". */
+  lastImport?: LastImport;
+}
+
+/** What the last Hypixel lookup found (tracked items only) and when. */
+export interface LastImport {
+  username: string;
+  profileId: string;
+  /** "Apple (Ironman)": shown next to the import time. */
+  profileName: string;
+  /** When the lookup ran (ms since epoch). */
+  fetchedAt: number;
+  /** When its counts were last applied as the Guide's totals (or already matched them). */
+  appliedAt?: number;
+  /** Tracked item -> count found (zero counts left out). */
+  items: Record<string, number>;
 }
 
 export const STORAGE_VERSION = 3;
@@ -277,5 +293,22 @@ export function restoreState(raw: unknown, flow: FlowsFile, catalog: Catalog, de
   for (const [id, c] of Object.entries(r.confirmations ?? {})) {
     if (c && plots[Number(id)]?.acted && c.before && typeof c.before.farm === "string" && c.delta && typeof c.delta === "object") confirmations[Number(id)] = c;
   }
-  return withSettings({ inventory, plots, settings, memory: { builtOnce }, checkEvery, confirmations }, settings, checkEvery);
+  const lastImport = cleanLastImport(r.lastImport);
+  return withSettings({ inventory, plots, settings, memory: { builtOnce }, checkEvery, confirmations, ...(lastImport ? { lastImport } : {}) }, settings, checkEvery);
+}
+
+function cleanLastImport(raw: unknown): LastImport | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Partial<LastImport>;
+  if (typeof r.username !== "string" || typeof r.profileId !== "string" || typeof r.fetchedAt !== "number" || !Number.isFinite(r.fetchedAt)) return undefined;
+  const items: Record<string, number> = {};
+  for (const [item, n] of Object.entries(r.items ?? {})) if (typeof n === "number" && Number.isFinite(n) && n > 0) items[item] = Math.floor(n);
+  return {
+    username: r.username,
+    profileId: r.profileId,
+    profileName: typeof r.profileName === "string" ? r.profileName : "",
+    fetchedAt: r.fetchedAt,
+    ...(typeof r.appliedAt === "number" && Number.isFinite(r.appliedAt) ? { appliedAt: r.appliedAt } : {}),
+    items,
+  };
 }

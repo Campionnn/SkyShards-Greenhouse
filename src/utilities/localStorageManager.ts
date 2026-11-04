@@ -22,11 +22,17 @@ const STORAGE_KEYS = {
   GUIDE_STATE: "skyshards-guide-state",
   GUIDE_STATE_2PLOTS: "skyshards-guide-state-2plots",
   GUIDE_VARIANT: "skyshards-guide-variant",
+  GUIDE_HOWTO: "skyshards-guide-howto",
+  GUIDE_FLOW_TOTALS: "skyshards-guide-flow-totals",
+  GUIDE_FLOW_TOTALS_2PLOTS: "skyshards-guide-flow-totals-2plots",
   LAST_SOLVER_LAYOUT: "skyshards-last-solver-layout",
   PROFILE_MODE: "skyshards-profile-mode",
+  TARGETS_HIDDEN: "skyshards-targets-hidden",
+  INPUTS_HIDDEN: "skyshards-inputs-hidden",
   BAZAAR_PRICES: "skyshards-bazaar-prices",
   BAZAAR_PRICING: "skyshards-bazaar-pricing",
   BAZAAR_OVERRIDES: "skyshards-bazaar-overrides",
+  AUTH_TOKEN: "skyshards-auth-token",
 } as const;
 
 /**
@@ -46,6 +52,16 @@ export interface StoredGuideState {
   confirmations?: Record<number, { plotId: number; before: { farm: string }; delta: Record<string, number>; memory: { builtOnce: Record<string, number> } }>;
   /** Forecast precision the player last chose. */
   precision?: "quick" | "normal" | "thorough";
+  /** The last Hypixel import (src/guide/checkin.ts `LastImport`), for "Import again". */
+  lastImport?: { username: string; profileId: string; profileName: string; fetchedAt: number; appliedAt?: number; items: Record<string, number> };
+}
+
+/** The Guide's whole-flow totals: per mutation, the typical amount the flow uses from an empty start. */
+export interface StoredFlowTotals {
+  /** Flow fingerprint + the schedule and stats the runs used. */
+  key: string;
+  runs: number;
+  totals: Record<string, number>;
 }
 
 /** Cached Bazaar prices: when they were fetched (ms), the API's own timestamp, and quotes by simulator item id. */
@@ -316,6 +332,32 @@ export class LocalStorageManager {
     return this.load<string>(STORAGE_KEYS.GUIDE_VARIANT) === "two" ? "two" : "three";
   }
 
+  /**
+   * The Guide's whole-flow totals (`skyshards-guide-flow-totals[-2plots]`): simulated runs of the
+   * flow from an empty start are slow, so they are remembered for the flow file and settings they
+   * were measured with (`key`).
+   */
+  static saveGuideFlowTotals(value: StoredFlowTotals, variant: GuideVariant = "three"): boolean {
+    return this.save(variant === "two" ? STORAGE_KEYS.GUIDE_FLOW_TOTALS_2PLOTS : STORAGE_KEYS.GUIDE_FLOW_TOTALS, value);
+  }
+
+  static loadGuideFlowTotals(variant: GuideVariant = "three"): StoredFlowTotals | null {
+    const data = this.load<StoredFlowTotals>(variant === "two" ? STORAGE_KEYS.GUIDE_FLOW_TOTALS_2PLOTS : STORAGE_KEYS.GUIDE_FLOW_TOTALS);
+    if (!data || typeof data !== "object" || typeof data.key !== "string" || !data.totals || typeof data.totals !== "object") return null;
+    const totals: Record<string, number> = {};
+    for (const [item, n] of Object.entries(data.totals)) if (typeof n === "number" && Number.isFinite(n) && n > 0) totals[item] = Math.round(n);
+    return { key: data.key, runs: typeof data.runs === "number" ? data.runs : 0, totals };
+  }
+
+  /** Whether the Guide's "How to use this guide" panel is folded away (`skyshards-guide-howto`). */
+  static saveGuideHowToHidden(hidden: boolean): boolean {
+    return this.save(STORAGE_KEYS.GUIDE_HOWTO, hidden);
+  }
+
+  static loadGuideHowToHidden(): boolean {
+    return this.load<boolean>(STORAGE_KEYS.GUIDE_HOWTO) === true;
+  }
+
   /** Last finished Calculator result, offered by the Simulator's layout picker. */
   static saveLastSolverLayout(layout: StoredSolverLayout): boolean {
     return this.save(STORAGE_KEYS.LAST_SOLVER_LAYOUT, layout);
@@ -341,6 +383,24 @@ export class LocalStorageManager {
 
   static loadProfileMode(): ProfileMode {
     return this.load<string>(STORAGE_KEYS.PROFILE_MODE) === "normal" ? "normal" : "ironman";
+  }
+
+  /** Whether the Calculator and Designer grids hide target mutations (`skyshards-targets-hidden`), shared by both. */
+  static saveTargetsHidden(hidden: boolean): boolean {
+    return this.save(STORAGE_KEYS.TARGETS_HIDDEN, hidden);
+  }
+
+  static loadTargetsHidden(): boolean {
+    return this.load<boolean>(STORAGE_KEYS.TARGETS_HIDDEN) === true;
+  }
+
+  /** Whether the Calculator and Designer grids hide input crops (`skyshards-inputs-hidden`), shared by both. */
+  static saveInputsHidden(hidden: boolean): boolean {
+    return this.save(STORAGE_KEYS.INPUTS_HIDDEN, hidden);
+  }
+
+  static loadInputsHidden(): boolean {
+    return this.load<boolean>(STORAGE_KEYS.INPUTS_HIDDEN) === true;
   }
 
   /** The last Bazaar prices fetched (greenhouse items only), shown while a fresh fetch runs or fails. */
@@ -390,6 +450,30 @@ export class LocalStorageManager {
       if (Object.keys(o).length) out[id] = o;
     }
     return out;
+  }
+
+  /** Leaderboard login (`skyshards-auth-token`): the API's JWT, stored raw (not JSON). */
+  static saveAuthToken(token: string): boolean {
+    try {
+      localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+      return true;
+    } catch (error) {
+      console.error("Failed to save the auth token:", error);
+      return false;
+    }
+  }
+
+  static loadAuthToken(): string | null {
+    try {
+      const t = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+      return t && t.trim() ? t : null;
+    } catch {
+      return null;
+    }
+  }
+
+  static clearAuthToken(): void {
+    this.remove(STORAGE_KEYS.AUTH_TOKEN);
   }
 
   /** Clears every key except the simulator scenario. */

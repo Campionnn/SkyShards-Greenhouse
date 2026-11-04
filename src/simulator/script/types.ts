@@ -80,6 +80,11 @@ export interface ScriptMetric {
 
 /** Everything the scripts keep between cycles. Plain data (lives in SimulationState). */
 export interface ScriptsState {
+  /**
+   * `heap`, `scopes` and `shared` are immutable once written: `ScriptRuntime.save` replaces all
+   * three and nothing may change them in place, because `run` shares them between its input and
+   * output states instead of copying them (sim/clone.ts `cloneState`).
+   */
   heap: HeapEntry[];
   /** Script key -> top-level variable -> [kind, value]. */
   scopes: Record<ScriptKey, Record<string, [ScriptVarKind, EncodedValue]>>;
@@ -94,6 +99,12 @@ export interface ScriptsState {
   metrics: Record<string, ScriptMetric>;
   /** Set when a script errored or called pause(); the run stops after that cycle. Cleared by the next run. */
   halt: ScriptHalt | null;
+  /**
+   * Interpreter steps every script used so far in the run (hooks, top level, exit conditions).
+   * A deterministic measure of script work: the leaderboard caps it per run instead of timing it.
+   * Absent until a script has run.
+   */
+  steps?: number;
   /**
    * Debug: forced effects a script set (`forceEffects`), replacing the scenario's
    * `config.forcedEffects` for every plot while present ({} = all off). Absent = the scenario setting.

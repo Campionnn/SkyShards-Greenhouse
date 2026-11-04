@@ -34,6 +34,12 @@ function callback(v: unknown, info: CallInfo, what: string): (...a: unknown[]) =
   return (...a) => info.call(v, a);
 }
 
+/** `callback` for the (item, index, array) iteration methods, without rest/spread per call. */
+function callback3(v: unknown, info: CallInfo, what: string): (x: unknown, i: number, arr: unknown[]) => unknown {
+  if (!isCallable(v)) info.fail(`${what} needs a function, like x => x.stage`);
+  return (x, i, arr) => info.call(v, [x, i, arr]);
+}
+
 const int = (v: unknown, fallback: number) => {
   const n = toNum(v);
   return Number.isNaN(n) ? fallback : Math.trunc(n);
@@ -77,7 +83,7 @@ export function arrayMethod(arr: unknown[], name: string): HostFn | undefined {
 type ArrayImpl = (arr: unknown[], args: unknown[], info: CallInfo) => unknown;
 
 const iterate = (arr: unknown[], args: unknown[], info: CallInfo, what: string) => {
-  const f = callback(args[0], info, what);
+  const f = callback3(args[0], info, what);
   info.charge(arr.length);
   return f;
 };
@@ -188,7 +194,8 @@ const ARRAY_METHODS: Record<string, ArrayImpl> = table<ArrayImpl>({
     return arr.every((x, i) => !!f(x, i, arr));
   },
   reduce: (arr, args, info) => {
-    const f = iterate(arr, args, info, "reduce");
+    const f = callback(args[0], info, "reduce");
+    info.charge(arr.length);
     if (args.length < 2) {
       if (arr.length === 0) info.fail("reduce of an empty array needs a starting value: arr.reduce(f, 0)");
       return arr.reduce((acc, x, i) => f(acc, x, i, arr));

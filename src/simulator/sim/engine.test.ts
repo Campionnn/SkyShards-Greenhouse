@@ -99,7 +99,7 @@ describe("vertical slice: one plot, one mutation, spawned and harvested", () => 
     expect([1, 2]).toContain(next.state.inventory.gloomgourd);
     expect(next.state.inventory.pumpkin).toBe(pumpkin);
     expect(next.state.inventory.melon).toBe(melon);
-    expect(next.summary.revenue.crops).toBe(pumpkin * 10 + melon * 2);
+    expect(next.summary.revenue.crops).toBe(pumpkin * 3 + melon * 0.5);
     expect(next.summary.harvested.gloomgourd).toBe(1);
   });
 
@@ -496,6 +496,26 @@ describe("debt: would it ever need something it does not have?", () => {
     expect(r.summary.placedItems.fire).toBeUndefined();
   });
 
+  it("config.freePlacedItems: listed items are free like fire; unlisted ones still need stock", () => {
+    const steps = [
+      step("bare", layout([["wheat", 1, 1]]), [{ kind: "cycles", n: 1 }]),
+      step("paid", layout([["dead_plant", 0, 0], ["fermento", 0, 2], ["chloronite", 5, 5], ["wheat", 1, 1]])),
+    ];
+    const free = scenario([flow(steps, false)], { config: { freePlacedItems: ["dead_plant", "fermento"] } });
+    const r = engine.run(start(free), 3);
+    expect(plantAt(r.state, 1, 0, 0)).toMatchObject({ kindId: "dead_plant", origin: "placed" });
+    expect(plantAt(r.state, 1, 0, 2)?.kindId).toBe("fermento");
+    expect(r.summary.placedItems.dead_plant).toBeUndefined();
+    expect(r.summary.placedItems.fermento).toBeUndefined();
+    // Chloronite is not free: still a shortfall.
+    expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
+    expect(r.state.debts.map((d) => d.item)).toEqual(["chloronite"]);
+
+    // Without the setting, dead plants and fermento go short too.
+    const paid = engine.run(start(scenario([flow(steps, false)])), 3);
+    expect(new Set(paid.state.debts.map((d) => d.item))).toEqual(new Set(["dead_plant", "fermento", "chloronite"]));
+  });
+
   it("allowMutationDebt: a mutation item is re-placed without stock, borrowed below 0, no debt", () => {
     const sc = singlePlot(layout([["chloronite", 5, 5]]), { config: { allowMutationDebt: true } });
     const r = TIMER_ONLY.run(start(sc, TIMER_ONLY), 18); // decays at cycle 17, re-placed that session
@@ -530,6 +550,74 @@ describe("debt: would it ever need something it does not have?", () => {
     expect(paid.inventory.chloronite).toBe(2);
     const owed = engine.addItems(r.state, { chloronite: -5 });
     expect(owed.inventory.chloronite).toBe(-1);
+  });
+
+  it("bootstrapDebt: the starting layout is bought on credit, a loan per item, closed for good once paid back", () => {
+    const sc = singlePlot(layout([["chloronite", 5, 5], ["chloronite", 5, 7], ["fire", 0, 0]]), { config: { bootstrapDebt: true } });
+    const s = TIMER_ONLY.initState(sc).state;
+    expect(plantAt(s, 1, 5, 5)?.kindId).toBe("chloronite");
+    expect(s.inventory.chloronite).toBe(-2);
+    expect(s.summary.borrowed).toEqual({ chloronite: 2 });
+    expect(s.ledger.chloronite).toMatchObject({ consumed: 2, minStock: -2, loanOpen: true });
+    expect(s.inventory.fire ?? 0).toBe(0); // fire stays free
+    expect(s.debts).toEqual([]);
+
+    // While the loan is open, re-placing what decayed borrows too (no shortfall).
+    const r = TIMER_ONLY.run(s, 18);
+    expect(r.state.inventory.chloronite).toBe(-4);
+    expect(r.state.debts).toEqual([]);
+    expect(r.state.ledger.chloronite.loanOpen).toBe(true);
+
+    // Stock back at 0: the loan closes at that cycle, and later shortfalls are shortfalls again.
+    const repaid = TIMER_ONLY.addItems(r.state, { chloronite: 4 });
+    expect(repaid.ledger.chloronite.loanOpen).toBeUndefined();
+    expect(repaid.ledger.chloronite.repaidCycle).toBe(18);
+    const later = TIMER_ONLY.run(repaid, 20);
+    expect(later.state.inventory.chloronite).toBe(0);
+    expect(later.state.debts.map((d) => d.item)).toContain("chloronite");
+  });
+
+  it("bootstrapDebt off (the default): setup stays free and no ledger row gets loan fields", () => {
+    const s = start(singlePlot(layout([["chloronite", 5, 5]])));
+    expect(s.inventory.chloronite ?? 0).toBe(0);
+    expect(JSON.stringify(s)).not.toContain("loanOpen");
+  });
+
+  it("setupFromStock: with no stock the setup cell stays empty (a shortfall), base crops and fire are still placed", () => {
+    const sc = singlePlot(layout([["chloronite", 5, 5], ["wheat", 1, 1], ["fire", 0, 0]]), { config: { setupFromStock: true } });
+    const s = TIMER_ONLY.initState(sc).state;
+    expect(plantAt(s, 1, 5, 5)).toBeUndefined();
+    expect(plantAt(s, 1, 1, 1)?.kindId).toBe("wheat");
+    expect(plantAt(s, 1, 0, 0)?.kindId).toBe("fire");
+    expect(s.inventory.chloronite ?? 0).toBe(0);
+    expect(s.ledger.chloronite).toMatchObject({ consumed: 0, shortfall: 1, minStock: 0 });
+    expect(s.debts.map((d) => d.item)).toEqual(["chloronite"]);
+    expect(s.summary.borrowed ?? {}).toEqual({});
+    expect(JSON.stringify(s)).not.toContain("loanOpen");
+    // Once the stock has it, the next session's upkeep places it (paid, like a later step).
+    const stocked = TIMER_ONLY.run(TIMER_ONLY.addItems(s, { chloronite: 1 }), 1).state;
+    expect(plantAt(stocked, 1, 5, 5)?.kindId).toBe("chloronite");
+    expect(stocked.inventory.chloronite).toBe(0);
+  });
+
+  it("setupFromStock: the setup consumes stock when present, never borrows and never opens a loan", () => {
+    const sc = singlePlot(layout([["chloronite", 5, 5], ["chloronite", 5, 7]]), { config: { setupFromStock: true }, inventory: { chloronite: 1 } });
+    const s = TIMER_ONLY.initState(sc).state;
+    expect([plantAt(s, 1, 5, 5)?.kindId, plantAt(s, 1, 5, 7)?.kindId].filter(Boolean)).toEqual(["chloronite"]);
+    expect(s.inventory.chloronite).toBe(0);
+    expect(s.ledger.chloronite).toMatchObject({ consumed: 1, shortfall: 1, minStock: 0 });
+    expect(s.ledger.chloronite.loanOpen).toBeUndefined();
+    // The setup is built before the run: no effort, and the placed item is not pick-up-able.
+    expect(s.summary.effort?.total ?? 0).toBe(0);
+    expect(s.plots[0].plants.find((p) => p.kindId === "chloronite")?.gate.pickup).toBeUndefined();
+  });
+
+  it("setupFromStock is ignored when bootstrapDebt buys the setup on credit", () => {
+    const sc = singlePlot(layout([["chloronite", 5, 5]]), { config: { setupFromStock: true, bootstrapDebt: true } });
+    const s = TIMER_ONLY.initState(sc).state;
+    expect(plantAt(s, 1, 5, 5)?.kindId).toBe("chloronite");
+    expect(s.inventory.chloronite).toBe(-1);
+    expect(s.ledger.chloronite.loanOpen).toBe(true);
   });
 
   it("inventory never goes negative", () => {

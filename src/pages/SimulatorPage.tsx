@@ -1,15 +1,38 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { FlaskConical, ScanSearch } from "lucide-react";
-import { InfoHint, SegmentedControl, useToast } from "../components/ui";
+import { CodeXml, Copy, Download, FolderInput, Pencil, Trash2, Trophy, Upload } from "lucide-react";
+import { useToast } from "../components/ui";
+import { ContextMenuProvider } from "../components/ui/ContextMenu";
+import type { ContextMenuEntry } from "../components/ui/contextMenuContext";
+import { Tabs } from "../components/ui/kit";
+import { MenuItem, MenuSeparator } from "../components/ui/Popover";
+import { surface } from "../components/ui/surface";
 import { LayoutPickerDialog } from "../components/simulator/LayoutPicker";
 import { MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
-import { EventLog, RunControls, FlowTimeline } from "../components/simulator/RunPanels";
-import { PlotMarkLegend, PlotView } from "../components/simulator/PlotView";
-import { buttonClass } from "../components/simulator/styles";
-import { FlowEditor } from "../components/simulator/FlowEditor";
-import { ScenarioPanel, SettingsPanel } from "../components/simulator/ScenarioPanels";
-import { addPlot, isBlankScenario, placeLayout, type LayoutDestination } from "../components/simulator/scenarioEdit";
+import { EarningsPanel } from "../components/simulator/EarningsPanel";
+import { EffortPanel } from "../components/simulator/EffortPanel";
+import { FrequencyPanel } from "../components/simulator/frequency/FrequencyPanel";
+import { EventLog, FlowTimeline } from "../components/simulator/RunPanels";
+import { PlotView } from "../components/simulator/PlotView";
+import { FlowGraphEditor } from "../components/simulator/flowgraph/FlowGraphEditor";
+import { engineKey, withoutEditorUi } from "../components/simulator/flowgraph/model";
+import { changedAdvancedSettings } from "../components/simulator/page/pageHelpers";
+import { FromNothingBanner, FromNothingPreparing } from "../components/simulator/FromNothingBanner";
+import { previewScenarioOf, useFromNothingPreview, withPreviewSeed } from "../components/simulator/fromNothingPreview";
+import { addPlot, duplicatePlot, importFlows, isBlankScenario, nextPlotId, placeLayout, removePlot, type LayoutDestination } from "../components/simulator/scenarioEdit";
+import { spotFailureText } from "../components/simulator/format";
+import { CommandBar, ShareMenuItems, type PageProblem } from "../components/simulator/page/CommandBar";
+import { KpiCompact, KpiStrip } from "../components/simulator/page/KpiStrip";
+import { MobileChips, MobileRunBar } from "../components/simulator/page/Mobile";
+import { PlotsRow } from "../components/simulator/page/PlotsRow";
+import { plotUptime } from "../components/simulator/page/plotUptime";
+import { ScenarioTab } from "../components/simulator/page/ScenarioTab";
+import { SettingsDrawer, type DrawerTab } from "../components/simulator/page/SettingsDrawer";
+import { useShare } from "../components/simulator/page/useShare";
+import { consumeSubmitReopen } from "../components/simulator/submitDraft";
+import { LeaderboardTab } from "../components/simulator/page/LeaderboardTab";
+import { applyRules, boardFrom, type Board, type RuleKind } from "../leaderboard/rules";
+import { getFlow } from "../services/flowsService";
 import { ScriptEditor } from "../components/simulator/script/ScriptEditor";
 import { ScriptHaltBanner, ScriptPanel } from "../components/simulator/script/ScriptPanel";
 import type { ScriptTarget } from "../components/simulator/script/scriptEdit";
@@ -19,9 +42,12 @@ import { bazaarProfit } from "../components/simulator/bazaarFormat";
 import { useSimulation } from "../hooks/useSimulation";
 import { useBazaarPrices } from "../hooks/useBazaarPrices";
 import { useProfileMode } from "../hooks/useProfileMode";
-import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, migrateScenario, scenarioFromShareCodes, type ProfileMode, type RunSummary, type Scenario } from "../simulator";
+import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, MAX_PLOTS, migrateScenario, scenarioFromShareCodes, type ProfileMode, type RunSummary, type Scenario } from "../simulator";
 import { extractLayoutCode, LocalStorageManager, readIncomingLayout, readIncomingScenario, SOURCE_LABEL, type IncomingLayout } from "../utilities";
 
+type ResultTab = "overview" | "inventory" | "sustain" | "timeline" | "events" | "scripts" | "leaderboard";
+const TAB_KEY = "skyshards-simulator-tab";
+const RESULT_TABS: readonly ResultTab[] = ["overview", "inventory", "sustain", "timeline", "events", "scripts", "leaderboard"];
 /** Migrates a saved scenario and fills missing settings from the defaults. */
 function withDefaults(saved: Scenario): Scenario {
   const sc = migrateScenario(saved);
@@ -57,8 +83,6 @@ function useDebounced<T>(value: T, ms: number): T {
   return debounced;
 }
 
-const ALL = "all";
-
 /**
  * The scenario the engine runs: the profile mode is a site-wide setting, not part of the saved
  * scenario, so it is applied here. Ironman drops the key, keeping old runs byte-identical.
@@ -87,10 +111,42 @@ export const SimulatorPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [scenario, setScenario] = useState<Scenario>(() => initialScenario(params));
-  const [editing, setEditing] = useState<{ plotId: number; step: number } | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("player");
+  /** The flow editor overlay: which plot, which step, and whether it opens in that step's layout designer. */
+  const [editing, setEditingState] = useState<{ plotId: number; step: number; layout?: boolean } | null>(null);
+  // Opening the flow editor closes the settings drawer: the editor covers the page and the drawer would sit over it.
+  const setEditing = (next: { plotId: number; step: number; layout?: boolean } | null) => {
+    if (next) setDrawerOpen(false);
+    setEditingState(next);
+  };
   const editingPlot = editing?.plotId ?? null;
   const setEditingPlot = (plotId: number | null) => setEditing(plotId === null ? null : { plotId, step: 0 });
-  const [focus, setFocus] = useState<string>(ALL);
+  // Results tab (remembered), settings drawer, and the plot whose layout "Replace" is picking for.
+  const [tab, setTabState] = useState<ResultTab>(() => {
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem(TAB_KEY) : null;
+    return RESULT_TABS.includes(saved as ResultTab) ? (saved as ResultTab) : "overview";
+  });
+  const setTab = (t: ResultTab) => {
+    setTabState(t);
+    try {
+      localStorage.setItem(TAB_KEY, t);
+    } catch {
+      // Private mode: the tab just isn't remembered.
+    }
+  };
+  const [replacing, setReplacing] = useState<number | null>(null);
+  // The results tab bar sticks right under the command bar, whatever its height.
+  const barRef = useRef<HTMLElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [barHeight, setBarHeight] = useState(96);
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setBarHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // A layout handed over by a Simulate button on another page.
   const [incoming, setIncoming] = useState<IncomingLayout | null>(() => readIncomingLayout(location.state));
   const [picking, setPicking] = useState(false);
@@ -113,8 +169,21 @@ export const SimulatorPage: React.FC = () => {
   const bazaar = useBazaarPrices(profile === "normal");
   /** Re-renders the price age once a minute. */
   const now = useNow(profile === "normal" ? 60_000 : null);
-  const settled = useDebounced(scenario, 300);
-  const engineScenario = useMemo(() => withProfile(settled, profile), [settled, profile]);
+  const debounced = useDebounced(scenario, 300);
+  // What the engine runs: editor-only data (flow editor positions, notes, frames) stripped, and
+  // the same object while nothing the engine reads changed, so moving a node never restarts a run.
+  const engineCache = useRef<{ key: string; scenario: Scenario } | null>(null);
+  const settled = useMemo(() => {
+    const key = engineKey(debounced);
+    if (engineCache.current?.key !== key) engineCache.current = { key, scenario: withoutEditorUi(debounced) };
+    return engineCache.current.scenario;
+  }, [debounced]);
+  // "Watch from nothing": runs the builder / the flow from its starting items instead of the user's
+  // scenario, which stays as it is (and saved) underneath.
+  const fromNothing = useFromNothingPreview(scenario);
+  const preview = fromNothing.preview;
+  const previewScenario = useMemo(() => (preview ? previewScenarioOf(preview) : null), [preview]);
+  const engineScenario = useMemo(() => withProfile(previewScenario ?? settled, previewScenario ? "ironman" : profile), [previewScenario, settled, profile]);
   const { view, run, step, stepBack, undo, stop, reset, addItems } = useSimulation(engineScenario);
   /** Live Bazaar quotes with the user's manual prices on top. */
   const quotes = bazaar.quotes;
@@ -124,9 +193,10 @@ export const SimulatorPage: React.FC = () => {
     [profile, quotes, bazaar.pricing]
   );
 
+  // Saved with the editor data (node positions, notes, frames).
   useEffect(() => {
-    LocalStorageManager.saveSimulatorScenario(settled);
-  }, [settled]);
+    LocalStorageManager.saveSimulatorScenario(debounced);
+  }, [debounced]);
 
   /** The router state already loaded, so a re-run effect (StrictMode) doesn't load it twice. */
   const handledState = useRef<unknown>(null);
@@ -149,8 +219,7 @@ export const SimulatorPage: React.FC = () => {
         before = sc;
         return next;
       });
-      setEditing(null);
-      setFocus(ALL);
+      setEditingState(null);
       toast({
         id: "simulator-scenario-loaded",
         title: `Loaded ${whole.name}`,
@@ -167,6 +236,68 @@ export const SimulatorPage: React.FC = () => {
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [location.state, location.pathname, location.search, navigate, toast]);
 
+  // `?flow=ID[&board=B]`: open a leaderboard entry under that board's rules (without a board, the
+  // site profile's: ironman = from nothing), online every cycle, a random seed; then strip the
+  // parameters so a reload doesn't load it again.
+  const flowParam = params.get("flow");
+  const boardParam = boardFrom(params.get("board"));
+  const handledFlow = useRef<string | null>(null);
+  const scenarioRef = useRef(scenario);
+  useEffect(() => {
+    scenarioRef.current = scenario;
+  }, [scenario]);
+  useEffect(() => {
+    if (!flowParam || handledFlow.current === flowParam) return;
+    handledFlow.current = flowParam;
+    const rest = new URLSearchParams(location.search);
+    // `&plot=P&step=S` (the detail page's per-step "Edit in simulator"): open that step's layout once loaded.
+    const atPlot = Number(rest.get("plot"));
+    const atStep = Number(rest.get("step"));
+    for (const k of ["flow", "board", "kit", "plot", "step"]) rest.delete(k);
+    const strip = () => navigate(`${location.pathname}${rest.size ? `?${rest}` : ""}`, { replace: true, state: location.state });
+    const board: Board = boardParam ?? (profile === "normal" ? "normal" : "ironman");
+    // Ironman entries open as they run with their starting items (the borrow set-up shows what they need); normal as normal.
+    const rules: RuleKind = board === "normal" ? "normal" : "borrow";
+    getFlow(flowParam)
+      .then((detail) => {
+        const before = scenarioRef.current;
+        let next: Scenario;
+        try {
+          const imported = importFlows(before, JSON.stringify(detail.payload));
+          const ruled = applyRules(imported, rules, 1, Math.floor(Math.random() * 2 ** 31));
+          // The profile is site-wide; keep the scenario's own value.
+          next = { ...ruled, settings: { ...ruled.settings } };
+          if (before.settings.profile) next.settings.profile = before.settings.profile;
+          else delete next.settings.profile;
+        } catch (e) {
+          strip();
+          toast({ title: "Could not load the flow", description: e instanceof Error ? e.message : String(e), variant: "error" });
+          return;
+        }
+        setScenario(next);
+        // The board's profile is site-wide: switch the simulator's mode to match it.
+        if ((board === "normal") !== (profile === "normal")) setProfile(board === "normal" ? "normal" : "ironman");
+        strip();
+        const target = next.plots.find((p) => p.id === atPlot);
+        if (target && Number.isInteger(atStep) && atStep >= 0 && atStep < target.flow.steps.length) {
+          setDrawerOpen(false);
+          setEditingState({ plotId: target.id, step: atStep, layout: true });
+        } else setEditingState(null);
+        toast({
+          id: "simulator-flow-loaded",
+          title: `Loaded ${detail.title} by ${detail.author.name}`,
+          description: `Under the ${board === "normal" ? "Normal" : "Ironman, with the starting items"} rules: max stats, empty inventory, online every cycle, a random seed.`,
+          variant: "success",
+          duration: 8000,
+          action: { label: "Undo", onClick: () => setScenario(before) },
+        });
+      })
+      .catch((e: unknown) => {
+        strip();
+        toast({ title: "Could not load the flow", description: e instanceof Error ? e.message : String(e), variant: "error" });
+      });
+  }, [flowParam, boardParam, location.pathname, location.search, location.state, navigate, profile, setProfile, toast]);
+
   const place = (layout: IncomingLayout, dest: LayoutDestination) => {
     const before = scenario;
     const r = placeLayout(before, dest, { code: layout.code }, layout.name);
@@ -177,7 +308,6 @@ export const SimulatorPage: React.FC = () => {
       return;
     }
     setScenario(r.scenario);
-    setFocus(ALL);
     const where =
       dest.kind === "appendStep" && !isBlankScenario(before) ? `Step ${r.stepIndex + 1} of Plot ${r.plotId}` : `Plot ${r.plotId}`;
     toast({
@@ -189,6 +319,8 @@ export const SimulatorPage: React.FC = () => {
       action: { label: "Undo", onClick: () => setScenario(before) },
     });
     if (dest.kind === "appendStep" && !isBlankScenario(before)) setEditing({ plotId: r.plotId, step: r.stepIndex });
+    // Picked from inside the flow editor: it stays open on the plot that got the layout.
+    else if (editing) setEditing({ plotId: r.plotId, step: 0 });
   };
 
   const loadMany = (codes: string[]) => {
@@ -219,193 +351,323 @@ export const SimulatorPage: React.FC = () => {
   const state = snapshot?.state;
   const plotIds = useMemo(() => state?.plots.map((p) => p.id) ?? [], [state]);
   const eventsFor = (plotId: number) => view.lastCycleEvents.filter((e) => e.plotId === plotId);
-  const focused = focus !== ALL && plotIds.includes(Number(focus)) ? Number(focus) : null;
-  const shownPlots = state?.plots.filter((p) => focused === null || p.id === focused) ?? [];
-  const cols = focused !== null ? "grid-cols-1" : shownPlots.length >= 3 ? "grid-cols-1 lg:grid-cols-3" : shownPlots.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1";
+  const plotCount = (previewScenario ?? scenario).plots.length;
+
+  // ---- Plot actions (⋯ menus, Add-plot tile, drawer Scenario tab) -------------------------------
+  const duplicate = (plotId: number) => {
+    const id = nextPlotId(scenario);
+    if (id === null) return;
+    const before = scenario;
+    setScenario(duplicatePlot(scenario, plotId));
+    toast({ id: "simulator-plot-duplicated", title: `Duplicated Plot ${plotId} as Plot ${id}`, description: "Same steps, layouts, exits, checked targets and policy overrides.", variant: "success", duration: 6000, action: { label: "Undo", onClick: () => setScenario(before) } });
+  };
+  const remove = (plotId: number) => {
+    if (scenario.plots.length <= 1) return;
+    const before = scenario;
+    setScenario(removePlot(scenario, plotId));
+    toast({ id: "simulator-plot-removed", title: `Removed Plot ${plotId}`, variant: "success", duration: 6000, action: { label: "Undo", onClick: () => setScenario(before) } });
+  };
+  const replaceLayout = (plotId: number) => {
+    setReplacing(plotId);
+    setPicking(true);
+  };
+  const plotMenu = (plotId: number) => (close: () => void) => (
+    <>
+      <MenuItem icon={<Pencil />} onSelect={() => (close(), setEditingPlot(plotId))}>
+        Edit flow
+      </MenuItem>
+      <MenuItem icon={<FolderInput />} onSelect={() => (close(), replaceLayout(plotId))} hint="Its flow becomes this one layout">
+        Replace with a layout…
+      </MenuItem>
+      <MenuItem icon={<Copy />} disabled={scenario.plots.length >= MAX_PLOTS} onSelect={() => (close(), duplicate(plotId))}>
+        Duplicate plot
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 />} tone="danger" disabled={scenario.plots.length <= 1} onSelect={() => (close(), remove(plotId))}>
+        Remove plot
+      </MenuItem>
+    </>
+  );
+
+  /** The same actions as the ⋯ menu, for right-clicking a plot (grid, header, drawer row). */
+  const plotContextMenu = (plotId: number): ContextMenuEntry[] => {
+    const full = scenario.plots.length >= MAX_PLOTS;
+    const p = scenario.plots.find((x) => x.id === plotId);
+    return [
+      { heading: `Plot ${plotId}` },
+      { label: "Edit flow", icon: <Pencil />, onSelect: () => setEditingPlot(plotId) },
+      { label: p?.script?.source.trim() ? "Edit plot script" : "Write a plot script", icon: <CodeXml />, onSelect: () => setScripting(plotId) },
+      { label: "Replace with a layout…", icon: <FolderInput />, title: "Its flow becomes this one layout", onSelect: () => replaceLayout(plotId) },
+      { label: "Duplicate plot", icon: <Copy />, disabled: full, title: full ? "All three plots are in use" : undefined, onSelect: () => duplicate(plotId) },
+      { separator: true },
+      { label: "Remove plot", icon: <Trash2 />, tone: "danger", disabled: scenario.plots.length <= 1, onSelect: () => remove(plotId) },
+    ];
+  };
+
+  const share = useShare(scenario, setScenario);
+
+  // ---- Problems: scenario errors/warnings and the sustainability verdict --------------------------
+  /** Open a results tab and scroll so its bar sits right under the sticky header. */
+  const goTab = (t: ResultTab) => {
+    setTab(t);
+    requestAnimationFrame(() => {
+      const el = tabsRef.current;
+      if (!el) return;
+      const y = el.getBoundingClientRect().top + window.scrollY - barHeight;
+      window.scrollTo({ top: Math.max(0, y), behavior: "instant" as ScrollBehavior });
+    });
+  };
+  /** Submitting lives in the Leaderboard tab (the Share menu, the bar's Submit button and the drawer lead there). */
+  const openSubmit = () => {
+    setDrawerOpen(false);
+    goTab("leaderboard");
+  };
+  // Back from the Discord login the submit form started: show the Leaderboard tab again.
+  const reopened = useRef(false);
+  useEffect(() => {
+    if (reopened.current) return;
+    reopened.current = true;
+    if (consumeSubmitReopen()) goTab("leaderboard");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const problems: PageProblem[] = [];
+  const firstFailure = snapshot?.report.firstFailure;
+  if (view.status === "error" && view.error && !view.issues.length) problems.push({ level: "error", where: "Scenario", message: view.error });
+  for (const i of [...view.issues.filter((x) => x.level === "error"), ...view.warnings]) {
+    const plot = /^Plot (\d+)/.exec(i.path);
+    const stepM = /Step (\d+)/.exec(i.path);
+    problems.push({
+      level: i.level === "error" ? "error" : "warning",
+      where: i.path,
+      message: i.message,
+      action: plot ? { label: stepM ? "Open step" : "Open flow", run: () => setEditing({ plotId: Number(plot[1]), step: stepM ? Number(stepM[1]) - 1 : 0 }) } : undefined,
+    });
+  }
+  if (state?.summary.uptime && state.summary.uptime.requirements > 0) {
+    problems.unshift({
+      level: "unsustainable",
+      where: "Not sustainable",
+      message: firstFailure ? spotFailureText(firstFailure) : "A checked target sat empty without the requirements for its mutation.",
+      action: { label: "Sustainability", run: () => goTab("sustain") },
+    });
+  }
+
+  const changedSettings = changedAdvancedSettings(scenario.settings);
+  const resultTabs: { value: ResultTab; label: string; count?: number | null }[] = [
+    { value: "overview", label: "Overview" },
+    { value: "inventory", label: state?.summary.market ? "Inventory & Bazaar" : "Inventory" },
+    { value: "sustain", label: "Sustainability", count: state?.summary.uptime && state.summary.uptime.requirements > 0 ? 1 : null },
+    { value: "timeline", label: "Timeline" },
+    { value: "events", label: "Events" },
+    ...(!preview ? [{ value: "scripts" as const, label: "Scripts" }, { value: "leaderboard" as const, label: "Leaderboard" }] : []),
+  ];
+
+  const runProps = {
+    onRun: run,
+    onStep: step,
+    onStepBack: stepBack,
+    onUndo: undo,
+    onStop: stop,
+    onReset: reset,
+  };
 
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl space-y-4">
-      <div className="flex items-center gap-2">
-        <FlaskConical className="w-4 h-4 text-emerald-400" />
-        <h1 className="text-sm font-medium text-slate-200">Greenhouse Simulator</h1>
-        <InfoHint title="What this tool does" width={320}>
-          It runs the scenario you enter forward in time, cycle by cycle, and reports what it earns and whether it ever needs an item it does not have. It
-          never generates, ranks or fixes layouts. Mutations like Chorus Fruit wander and every spawn is a dice roll, so there is no closed form: the
-          answer has to be simulated.
-        </InfoHint>
-        <span className="text-xs text-slate-500 hidden md:inline">Evaluates one scenario. Step and Run use the same engine.</span>
-        <div className="flex items-center gap-2 ml-auto">
-          <SegmentedControl
-            size="xs"
-            nowrap
-            value={profile}
-            onChange={setProfile}
-            options={[
-              { value: "ironman", label: "Ironman", title: "No Bazaar: every item comes from your own harvests" },
-              { value: "normal", label: "Normal", tone: "blue", title: "Buys what a layout is short of and sells surplus mutations on the Bazaar" },
-            ]}
-          />
-          <InfoHint title="Profile mode" width={300}>
-            Ironman (the default) has no Bazaar: placements come from your own harvests, and a missing item leaves its cell empty. Normal profile buys
-            whatever a placement is short of and sells surplus mutation items after every online session, priced live from the Hypixel Bazaar. Your
-            choice is remembered in this browser for the whole site.
-          </InfoHint>
-        </div>
-      </div>
-
-      <RunControls
-        view={view}
-        plotCount={scenario.plots.length}
-        onRun={run}
-        onStep={step}
-        onStepBack={stepBack}
-        onUndo={undo}
-        onStop={stop}
-        onReset={reset}
-        seed={scenario.settings.seed}
-        onSeedChange={(seed) => setScenario((sc) => ({ ...sc, settings: { ...sc.settings, seed } }))}
-        priceSummary={priceSummary}
-      />
-      {state?.scripts?.halt && (
-        <ScriptHaltBanner
-          halt={state.scripts.halt}
-          onEdit={() => {
-            const key = state.scripts!.halt!.script;
-            setScripting(key === "global" ? "controller" : Number(key.replace("plot:", "")));
+    <ContextMenuProvider>
+    {/* overflow-x: clip (not hidden): keeps the touch hit areas of edge buttons from widening the page, without making a scroll container that would break the sticky bars. */}
+    <div className="w-full overflow-x-clip" style={{ ["--sim-sticky" as string]: `${barHeight + 46}px` }}>
+      {/* Sticky command bar + KPIs */}
+      <header className="@container sticky top-0 z-(--z-bar) rounded-b-container border-b border-line bg-surface-page/85 backdrop-blur-xl backdrop-saturate-150" ref={barRef}>
+        <CommandBar
+          scenario={scenario}
+          onChange={setScenario}
+          view={view}
+          profile={profile}
+          onProfileChange={setProfile}
+          {...runProps}
+          seed={previewScenario ? previewScenario.settings.seed : scenario.settings.seed}
+          onSeedChange={(seed) => (preview ? fromNothing.setPreview(withPreviewSeed(preview, seed)) : setScenario((sc) => ({ ...sc, settings: { ...sc.settings, seed } })))}
+          changedSettings={changedSettings}
+          onOpenSettings={(t) => {
+            if (t) setDrawerTab(t as DrawerTab);
+            setDrawerOpen(true);
           }}
-        />
-      )}
-
-      <div className="space-y-4 min-w-0">
-          {state ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {plotIds.length > 1 && (
-                  <SegmentedControl
-                    size="xs"
-                    className="max-w-md flex-1 min-w-[16rem]"
-                    value={focused === null ? ALL : String(focused)}
-                    onChange={setFocus}
-                    options={[{ value: ALL, label: "All plots" }, ...plotIds.map((id) => ({ value: String(id), label: `Plot ${id}` }))]}
-                  />
-                )}
-                <div className="flex items-center gap-2 ml-auto">
-                  {sanityCheckOn && <span className="text-xs text-slate-500 hidden sm:inline">Hover an empty cell or target slot.</span>}
-                  <button
-                    type="button"
-                    className={`${sanityCheckOn ? buttonClass.primary : buttonClass.neutral} flex-shrink-0`}
-                    aria-pressed={sanityCheckOn}
-                    onClick={() => setSanityCheckOn((on) => !on)}
-                    title="Hover an empty cell or target slot to see which mutations could spawn there now, and why the others can't"
-                  >
-                    <ScanSearch className="w-3 h-3" />
-                    Sanity Check
-                  </button>
-                </div>
-              </div>
-              <div className={`grid gap-3 ${cols}`}>
-                {shownPlots.map((plot) => (
-                  <div key={plot.id} className={focused !== null ? "max-w-[720px] w-full mx-auto" : ""}>
-                    <PlotView
-                      plot={plot}
-                      runner={state.flows.find((f) => f.plotId === plot.id)}
-                      def={state.scenario.plots.find((p) => p.id === plot.id)}
-                      events={eventsFor(plot.id)}
-                      onEditFlow={() => setEditingPlot(plot.id)}
-                      maxCell={focused !== null ? 72 : 52}
-                      openDebts={Object.keys(state.openDebts)}
-                      cycleSeconds={state.lastCycleSeconds}
-                      config={state.scenario.settings.config}
-                      sanityState={sanityCheckOn ? state : undefined}
-                      onHoverMarkers={onHoverMarkers}
-                    />
-                  </div>
-                ))}
-              </div>
-              <PlotMarkLegend normalProfile={!!state.summary.market} highlight={legendHighlight} />
-            </div>
-          ) : (
-            <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-6 text-xs text-slate-400">
-              {view.status === "error" ? "The scenario has errors - see the Scenario panel below." : "Setting up..."}
-            </div>
+          problems={problems}
+          shareMenu={(close) => (
+            <ShareMenuItems close={close} onExport={share.openExport} onImport={share.openImport} onSubmit={openSubmit} icons={{ dl: <Download />, ul: <Upload />, trophy: <Trophy /> }} />
           )}
+          onWatchFromNothing={(every) => void fromNothing.start(every)}
+          watching={fromNothing.preparing !== null || !!preview}
+          preview={!!preview}
+          onOpenLeaderboard={openSubmit}
+        />
+        <div className="flex h-12 items-center gap-3 px-3 md:hidden">
+          <span className="text-body font-semibold text-fg">Simulator</span>
+          <KpiCompact view={view} plotCount={plotCount} priceSummary={priceSummary} />
+        </div>
+        <KpiStrip view={view} plotCount={plotCount} priceSummary={priceSummary} />
+        {view.status === "running" && view.progress && (
+          <div className="absolute inset-x-0 -bottom-px h-0.5 overflow-hidden" aria-hidden>
+            <div className="h-full bg-go" style={{ width: `${(view.progress.done / Math.max(1, view.progress.total)) * 100}%` }} />
+          </div>
+        )}
+      </header>
 
-          {snapshot && state && (
-            <>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      <div className="space-y-3 pt-4">
+        {/* Phone: the frequent settings as a scroller */}
+        <MobileChips scenario={scenario} onOpenSettings={(t) => (setDrawerTab(t), setDrawerOpen(true))} onOpenLeaderboard={preview ? undefined : openSubmit} />
+
+        {fromNothing.preparing !== null && <FromNothingPreparing progress={fromNothing.preparing} onCancel={fromNothing.exit} />}
+        {preview && <FromNothingBanner preview={preview} inventory={state?.inventory ?? null} onPart={(part) => fromNothing.setPreview({ ...preview, part })} onExit={fromNothing.exit} />}
+        {state?.scripts?.halt && (
+          <ScriptHaltBanner
+            halt={state.scripts.halt}
+            onEdit={() => {
+              const key = state.scripts!.halt!.script;
+              setScripting(key === "global" ? "controller" : Number(key.replace("plot:", "")));
+            }}
+          />
+        )}
+
+        {state ? (
+          <PlotsRow
+            plots={state.plots}
+            render={(plot) => (
+              <PlotView
+                plot={plot}
+                runner={state.flows.find((f) => f.plotId === plot.id)}
+                def={state.scenario.plots.find((p) => p.id === plot.id)}
+                events={eventsFor(plot.id)}
+                onEditFlow={preview ? undefined : () => setEditingPlot(plot.id)}
+                onOpenDesigner={preview ? undefined : (stepIndex) => setEditing({ plotId: plot.id, step: stepIndex, layout: true })}
+                menu={preview ? undefined : plotMenu(plot.id)}
+                contextMenu={preview ? undefined : () => plotContextMenu(plot.id)}
+                maxCell={52}
+                fitHeight
+                uptime={plotUptime(state, plot.id)}
+                openDebts={Object.keys(state.openDebts)}
+                cycleSeconds={state.lastCycleSeconds}
+                config={state.scenario.settings.config}
+                sanityState={sanityCheckOn ? state : undefined}
+                onHoverMarkers={onHoverMarkers}
+              />
+            )}
+            canAdd={!preview && scenario.plots.length < MAX_PLOTS}
+            nextPlotNumber={nextPlotId(scenario) ?? scenario.plots.length + 1}
+            onLoadLayout={() => setPicking(true)}
+            onEmptyPlot={() => setScenario(addPlot(scenario))}
+            normalProfile={!!state.summary.market}
+            legendHighlight={legendHighlight}
+            sanityOn={sanityCheckOn}
+            onSanityToggle={() => setSanityCheckOn((on) => !on)}
+          />
+        ) : (
+          <div className={`p-6 text-body text-fg-muted ${surface.card}`}>
+            {view.status === "error" ? "The scenario has errors: open Problems at the top." : "Setting up…"}
+          </div>
+        )}
+
+        {/* Results */}
+        <div ref={tabsRef} className="sticky z-(--z-sticky) border-b border-line bg-surface-page/90 px-1 backdrop-blur-xl" style={{ top: barHeight }}>
+          <Tabs<ResultTab> value={tab} onChange={(t) => setTab(t)} items={resultTabs} scroll className="!border-b-0" />
+        </div>
+        <div className="pb-[calc(6rem+var(--ad-bottom,0px))] pt-2 md:pb-10">
+          {snapshot && state && tab === "overview" && (
+            <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+              <div className="min-w-0 space-y-5">
+                <FrequencyPanel
+                  scenario={engineScenario}
+                  priceSummary={priceSummary}
+                  onUseEvery={preview ? undefined : (n: number) => setScenario((sc) => ({ ...sc, settings: { ...sc.settings, activity: { kind: "everyN", n, offset: 0 } } }))}
+                />
+                <EarningsPanel summary={state.summary} quotes={state.summary.market ? quotes : null} pricing={state.summary.market ? bazaar.pricing : null} />
+              </div>
+              <div className="min-w-0 space-y-5">
                 {state.summary.market ? (
-                  <BazaarMoneyPanel
-                    summary={state.summary}
-                    previous={view.previousSummary}
-                    quotes={quotes}
-                    pricing={bazaar.pricing}
-                    cycleSeconds={state.lastCycleSeconds}
-                  />
+                  <BazaarMoneyPanel summary={state.summary} previous={view.previousSummary} quotes={quotes} pricing={bazaar.pricing} cycleSeconds={state.lastCycleSeconds} />
                 ) : (
                   <MoneyPanel summary={state.summary} previous={view.previousSummary} cycleSeconds={state.lastCycleSeconds} />
                 )}
-                <SustainabilityPanel report={snapshot.report} summary={state.summary} />
+                <EffortPanel summary={state.summary} />
               </div>
-              {/* One inventory table for both profiles; normal adds the Bazaar to it. */}
-              <InventoryTable
-                state={state}
-                bazaar={
-                  state.summary.market
-                    ? { scenario, view: bazaar, now, onReserveChange: (reserve) => setScenario((sc) => ({ ...sc, settings: { ...sc.settings, reserve } })) }
-                    : undefined
-                }
-                onAddItems={addItems}
-                busy={view.status === "running"}
-                startingInventory={scenario.startingInventory}
-                onStartingInventoryChange={(startingInventory) => setScenario((sc) => ({ ...sc, startingInventory }))}
-              />
-            </>
-          )}
-
-          <ScriptPanel scenario={scenario} state={state ?? null} onEdit={setScripting} />
-
-          {state && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-              <EventLog log={view.log} plotIds={plotIds} />
-              <FlowTimeline key={`${state.scenario.settings.seed}-${state.cycle === 0 ? "setup" : "run"}`} flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} elapsedSeconds={state.elapsedSeconds} />
             </div>
           )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-            <ScenarioPanel
-              scenario={scenario}
-              onChange={setScenario}
-              onEditFlow={setEditingPlot}
-              onLoadLayout={() => setPicking(true)}
-              issues={view.issues}
-              warnings={view.warnings}
-              error={view.status === "error" ? view.error : null}
+          {snapshot && state && tab === "inventory" && (
+            <InventoryTable
+              state={state}
+              bazaar={state.summary.market ? { scenario, view: bazaar, now, onReserveChange: (reserve) => setScenario((sc) => ({ ...sc, settings: { ...sc.settings, reserve } })) } : undefined}
+              onAddItems={addItems}
+              busy={view.status === "running"}
+              startingInventory={preview ? undefined : scenario.startingInventory}
+              onStartingInventoryChange={preview ? undefined : (startingInventory) => setScenario((sc) => ({ ...sc, startingInventory }))}
             />
-            <SettingsPanel scenario={scenario} onChange={setScenario} cycleSecondsNow={state?.lastCycleSeconds} />
-          </div>
+          )}
+          {snapshot && state && tab === "sustain" && <SustainabilityPanel report={snapshot.report} summary={state.summary} />}
+          {state && tab === "timeline" && (
+            <FlowTimeline key={`${state.scenario.settings.seed}-${state.cycle === 0 ? "setup" : "run"}`} flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} elapsedSeconds={state.elapsedSeconds} />
+          )}
+          {state && tab === "events" && <EventLog log={view.log} plotIds={plotIds} />}
+          {!preview && tab === "scripts" && <ScriptPanel scenario={scenario} state={state ?? null} onEdit={setScripting} />}
+          {!preview && tab === "leaderboard" && (
+            <LeaderboardTab scenario={scenario} onChange={setScenario} profile={profile} onWatchFromNothing={(every) => void fromNothing.start(every)} watching={fromNothing.preparing !== null || !!preview} />
+          )}
+        </div>
       </div>
 
+      {/* Phone: run controls at the thumb */}
+      <MobileRunBar view={view} {...runProps} />
+
+      <SettingsDrawer
+        open={drawerOpen}
+        tab={drawerTab}
+        onTab={setDrawerTab}
+        onClose={() => setDrawerOpen(false)}
+        scenario={scenario}
+        onChange={setScenario}
+        cycleSecondsNow={state?.lastCycleSeconds}
+        scenarioTab={
+          <ScenarioTab
+            scenario={scenario}
+            onChange={setScenario}
+            onEditFlow={setEditingPlot}
+            onDuplicate={duplicate}
+            onRemove={remove}
+            plotMenu={plotContextMenu}
+            onLoadLayout={() => setPicking(true)}
+            issues={view.issues}
+            warnings={view.warnings}
+            error={view.status === "error" ? view.error : null}
+            onExport={share.openExport}
+            onImport={share.openImport}
+            onSubmit={openSubmit}
+          />
+        }
+      />
+      {share.dialogs}
+
       {editingPlot !== null && scenario.plots.some((p) => p.id === editingPlot) && (
-        <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true">
-          <div className="container mx-auto max-w-screen-2xl px-2 sm:px-4 py-6">
-            <div className="bg-slate-900 rounded-lg shadow-2xl">
-              <FlowEditor
-                key={`${editing!.plotId}-${editing!.step}`}
-                scenario={scenario}
-                plotId={editingPlot}
-                initialStep={editing!.step}
-                onChange={setScenario}
-                onClose={() => setEditingPlot(null)}
-              />
-            </div>
-          </div>
-        </div>
+        <FlowGraphEditor
+          scenario={scenario}
+          plotId={editingPlot}
+          initialStep={editing!.step}
+          initialLayout={editing!.layout}
+          onChange={setScenario}
+          onSwitchPlot={(plotId) => setEditing({ plotId, step: 0 })}
+          onClose={() => setEditingPlot(null)}
+          onEditScript={(target) => setScripting(target)}
+          onLoadLayout={() => setPicking(true)}
+        />
       )}
 
       {scripting !== null && (scripting === "controller" || scenario.plots.some((p) => p.id === scripting)) && (
-        <div className="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" role="dialog" aria-modal="true" aria-label="Script editor">
-          <div className="container mx-auto max-w-screen-2xl px-2 sm:px-4 py-6">
-            <div className="bg-slate-900 rounded-lg shadow-2xl">
+        <div
+          className="fixed inset-0 z-[45] bg-surface-page/85 backdrop-blur-sm overflow-y-auto scrollbar-dark" // design-guard-ignore: the script editor opens over the flow editor (z-40) and under its pickers; the z ladder has no step there yet
+          style={{ bottom: "var(--ad-bottom, 0px)" }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Script editor"
+        >
+          <div className="w-full max-w-screen-2xl mx-auto px-2 sm:px-4 py-6">
+            <div className="rounded-container border border-line-strong bg-surface-panel shadow-raised">
               <ScriptEditor
                 scenario={scenario}
                 target={scripting}
@@ -419,19 +681,34 @@ export const SimulatorPage: React.FC = () => {
         </div>
       )}
 
-      {(incoming || picking) && (
-        <LayoutPickerDialog
-          title={incoming ? `${SOURCE_LABEL[incoming.from]}: add it to the simulation` : "Load a layout"}
-          incoming={incoming}
-          scenario={scenario}
-          onPlace={place}
-          onLoadMany={loadMany}
-          onClose={() => {
-            setIncoming(null);
-            setPicking(false);
-          }}
-        />
-      )}
+      {(incoming || picking) &&
+        (replacing !== null && !incoming ? (
+          <LayoutPickerDialog
+            title={`Replace Plot ${replacing}'s flow with a layout`}
+            useLabel={`Replace Plot ${replacing}`}
+            onUse={(picked) => {
+              place(picked, { kind: "replacePlot", plotId: replacing });
+              setReplacing(null);
+            }}
+            onClose={() => {
+              setPicking(false);
+              setReplacing(null);
+            }}
+          />
+        ) : (
+          <LayoutPickerDialog
+            title={incoming ? `${SOURCE_LABEL[incoming.from]}: add it to the simulation` : "Load a layout"}
+            incoming={incoming}
+            scenario={scenario}
+            onPlace={place}
+            onLoadMany={loadMany}
+            onClose={() => {
+              setIncoming(null);
+              setPicking(false);
+            }}
+          />
+        ))}
     </div>
+    </ContextMenuProvider>
   );
 };

@@ -67,6 +67,12 @@ export function formatCoins(n: number): string {
   return `${sign}${Math.round(abs).toLocaleString()}`;
 }
 
+/** One item's price: like formatCoins, but small prices keep their fraction (2.5, 4.5, not 3, 5). */
+export function formatUnitPrice(n: number): string {
+  if (Math.abs(n) >= 1000 || Number.isInteger(n)) return formatCoins(n);
+  return String(Math.round(n * 100) / 100);
+}
+
 export function formatCount(n: number): string {
   return Math.round(n).toLocaleString();
 }
@@ -78,6 +84,20 @@ export function formatRate(n: number): string {
   if (n >= 1) return n.toFixed(2);
   if (n <= 0) return "0";
   return n.toPrecision(2);
+}
+
+/**
+ * A ratio (0–1) as a percent with one decimal: the one formatter for uptime everywhere (KPI strip,
+ * phone header, plot footers, Sustainability card). It floors, so a figure never reads better than
+ * the run was: "100%" only when the ratio is exactly 1, "0%" only when it is exactly 0, and
+ * 0.99996 reads "99.9%", never "100.0%"; a sliver above 0 reads "<0.1%". Non-finite input reads "0%".
+ */
+export function formatPercent(ratio: number): string {
+  if (!Number.isFinite(ratio) || ratio <= 0) return "0%";
+  if (ratio >= 1) return "100%";
+  // Floor in integer tenths (the epsilon absorbs float noise like 0.945 * 1000 = 944.9999…).
+  const tenths = Math.min(999, Math.floor(ratio * 1000 + 1e-9));
+  return tenths < 1 ? "<0.1%" : `${(tenths / 10).toFixed(1)}%`;
 }
 
 /** Simulated seconds as "3d 4h" / "5h 12m". */

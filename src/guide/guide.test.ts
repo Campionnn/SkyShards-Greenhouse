@@ -104,6 +104,16 @@ describe("the farm catalog", () => {
     expect(() => farmOf(catalog, 1, "nope")).toThrow(/no farm called/);
   });
 
+  it("knows empty farmland grows Lonelilies (no target cells, but cells with nothing around them)", () => {
+    expect(farmOf(catalog, 1, "hub").products).toEqual([{ item: "lonelily", count: 100 }]);
+    expect(farmOf(catalog, 2, "lonelily").products).toEqual([{ item: "lonelily", count: 80 }]);
+    expect(farmOf(catalog, 2, "hub").products).toEqual([{ item: "lonelily", count: 80 }]);
+    // A real farm keeps its target cells; Done is not a farm.
+    expect(farmOf(catalog, 1, "commons").products.some((p) => p.item === "lonelily")).toBe(false);
+    expect(farmOf(catalog, 1, "done").products).toEqual([]);
+    expect(catalog.items).toContain("lonelily");
+  });
+
   it("lets the player report fragments and groups supplies and the goal first", () => {
     expect(catalog.items).toContain(ALOE_FRAGMENT);
     const groups = groupedItems(data, catalog);
@@ -251,6 +261,14 @@ describe("trust-and-correct check-ins", () => {
     expect(restoreState({ checkIn: { inventory: {} } }, flow, catalog, defaultSettings())).toBeNull();
     const gone = restoreState({ ...saved, plots: { 1: { farm: "retired-farm" } } }, flow, catalog, defaultSettings());
     expect(gone?.plots[1].farm).toBe("hub");
+  });
+
+  it("keeps the last Hypixel import across a reload and drops a malformed one", () => {
+    const lastImport = { username: "Ke5o", profileId: "abc", profileName: "Apple", fetchedAt: 1000, appliedAt: 1200, items: { dead_plant: 210, junk: -1 } };
+    const restored = restoreState(JSON.parse(JSON.stringify({ version: 3, ...start(), lastImport })), flow, catalog, defaultSettings())!;
+    expect(restored.lastImport).toEqual({ ...lastImport, items: { dead_plant: 210 } });
+    const bad = restoreState({ version: 3, ...start(), lastImport: { username: 4 } }, flow, catalog, defaultSettings())!;
+    expect(bad.lastImport).toBeUndefined();
   });
 });
 

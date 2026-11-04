@@ -2,15 +2,20 @@ import { MAX_WATER } from "../config";
 import { ensureEffects } from "../effects/adapter";
 import { endStepOrHold } from "../flow/runner";
 import { aloeHarvestStageFor } from "../growth/aloe";
+import { groundGrid } from "../spawn/eligibility";
 import { respawnChance } from "../spawn/respawn";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import type { CycleCtx, Phase, TickScratch } from "./context";
 import { wouldDecayWithin } from "./decay";
+import { effort, effortPut, effortWater } from "./effort";
 import { harvestPlant } from "./harvest";
 import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
 import { layoutInputAt, maintainLayout, neededLayout, removeByPlayer, replacePlacedBeforeDecay } from "./placement";
 import type { PlantState, PlotState } from "./state";
 import { isProtected, phaseDisabled } from "../script/overrides";
+
+/** Reused buffer of `fixGround` (synchronous). */
+const groundNow: (string | undefined)[] = [];
 
 /** A script protected this plant from the built-in phases (`plant.protect()`). No scripts: never. */
 const guarded = (plot: PlotState, p: PlantState, ctx: CycleCtx): boolean => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
@@ -21,32 +26,65 @@ function decaysBeforeNextSession(plot: PlotState, p: PlantState, ctx: CycleCtx):
   return wouldDecayWithin(plot, p, Number.isFinite(k) ? k * ctx.cycleSeconds : Infinity);
 }
 
-function water(plot: PlotState, ctx: CycleCtx): void {
+/**
+ * Water every plant to max. Effort: once per plot per session, only if some plant actually needed
+ * water (`waterNew` topping up what the session planted is the same visit with the watering can).
+ */
+function water(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   if (ctx.policiesFor(plot.id).watering !== "toMax") return;
-  for (const p of plot.plants) if (p.kindId !== "soggybud") p.water = MAX_WATER; // Soggybud can't be watered
+  if (waterToMax(plot)) effortWater(ctx.state, scratch);
+}
+
+/** Water every plant on the plot to `MAX_WATER` (Soggybud can't be watered). True if any plant needed water. */
+export function waterToMax(plot: PlotState): boolean {
+  let watered = false;
+  for (const p of plot.plants) {
+    if (p.kindId === "soggybud") continue;
+    if (p.water < MAX_WATER) watered = true;
+    p.water = MAX_WATER;
+  }
+  return watered;
 }
 
 /** Wake Snoozling, vacuum the Cheesebite rat, discharge Thunderling, feed Fleshtrap. */
 function tendGates(plot: PlotState, ctx: CycleCtx): void {
   const g = ctx.policiesFor(plot.id).gateInteractions;
+  let noctilume = false;
   for (const p of plot.plants) {
-    if (g.wakeSnoozling && p.gate.asleep) p.gate.asleep = false;
-    if (g.vacuumRat && p.gate.ratAlive) p.gate.ratAlive = false;
-    if (g.dischargeThunderling && p.gate.charge) p.gate.charge = 0;
+    if (g.wakeSnoozling && p.gate.asleep) {
+      p.gate.asleep = false;
+      effort(ctx.state, "gate");
+    }
+    if (g.vacuumRat && p.gate.ratAlive) {
+      p.gate.ratAlive = false;
+      effort(ctx.state, "gate");
+    }
+    if (g.dischargeThunderling && p.gate.charge) {
+      p.gate.charge = 0;
+      effort(ctx.state, "gate");
+    }
     if (g.feedFleshtrap && p.kindId === "fleshtrap" && p.origin === "spawned") {
       p.gate.hunger = (p.gate.hunger ?? 0) + ctx.config.fleshtrapFeedHunger;
+      effort(ctx.state, "gate");
     }
+    // Noctilume: the growth gate reads `noctilumeTime` on active cycles; the player changes the
+    // time once per visit, however many Noctilumes stand there.
+    if (g.noctilumeTime && p.kindId === "noctilume" && p.origin === "spawned" && !isFullyGrown(p)) noctilume = true;
   }
+  if (noctilume) effort(ctx.state, "noctilume");
 }
 
-/** Break Devourer roots (no drops). */
+/** Break Devourer roots (no drops). Effort: once per plot per session with roots. */
 function clearRoots(plot: PlotState, ctx: CycleCtx): void {
   if (!ctx.policiesFor(plot.id).gateInteractions.clearRoots) return;
+  let cleared = false;
   for (const p of [...plot.plants]) {
     if (!isRoot(p)) continue;
     removePlant(plot, p);
+    cleared = true;
     ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "cleared root" });
   }
+  if (cleared) effort(ctx.state, "roots");
 }
 
 /**
@@ -102,6 +140,7 @@ function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
     harvestPlant(plot, p, ctx, scratch);
     const replant = newPlant(ctx.state, ctx.env.data, ctx.config, kindId, row, col, "planted", ctx.cycle);
     insertPlant(plot, replant);
+    effortPut(ctx.state, scratch, replant.id, "replant");
     ctx.emit(plot.id, { kind: "placed", plantId: replant.id, kindId, row, col, origin: "planted", replacement: false });
   }
 }
@@ -126,12 +165,12 @@ function maintain(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
  * the current step's layout (also right after a step change, for plants kept with their timers).
  * With `onlyReplaceForEmptyTargets`, requirement inputs whose targets are all full are left to decay.
  */
-function tendPlacedItems(plot: PlotState, ctx: CycleCtx): void {
+function tendPlacedItems(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const policies = ctx.policiesFor(plot.id);
   if (policies.placedUpkeep !== "replaceBeforeDecay") return;
   let layout = ctx.layoutFor(plot.id);
-  if (policies.onlyReplaceForEmptyTargets === true) layout = neededLayout(plot, layout, ctx.env.data);
-  replacePlacedBeforeDecay(plot, layout, ctx, (p) => decaysBeforeNextSession(plot, p, ctx));
+  if (policies.onlyReplaceForEmptyTargets === true) layout = neededLayout(plot, layout, ctx.env.data, ctx.config);
+  replacePlacedBeforeDecay(plot, layout, ctx, scratch, (p) => decaysBeforeNextSession(plot, p, ctx));
 }
 
 /**
@@ -163,11 +202,13 @@ function fixGround(plot: PlotState, ctx: CycleCtx): void {
   if (ctx.policiesFor(plot.id).fixGround === false) return;
   const { data } = ctx.env;
   const occ = buildOccupancy(plot);
+  // Ground under every cell (override, else painted tile), kept up to date as cells are fixed.
+  const ground = groundGrid(plot, groundNow);
   for (const slot of plot.slots) {
     const m = data.mutations[slot.mutationId];
     if (!m || !footprintFits(slot.row, slot.col, slot.size)) continue;
     for (const idx of footprint(slot.row, slot.col, slot.size)) {
-      if (occ[idx]) continue;
+      if (occ[idx] || ground[idx] === m.ground) continue;
       const row = Math.floor(idx / GRID_SIZE);
       const col = idx % GRID_SIZE;
       const key = cellKey(row, col);
@@ -175,6 +216,8 @@ function fixGround(plot: PlotState, ctx: CycleCtx): void {
       if (current === m.ground) continue;
       if (plot.groundTiles[key] === m.ground) delete plot.groundOverrides[key];
       else plot.groundOverrides[key] = m.ground;
+      ground[idx] = m.ground;
+      effort(ctx.state, "ground");
       ctx.emit(plot.id, { kind: "groundFixed", row, col, from: current, to: m.ground, mutationId: m.id });
     }
   }
@@ -220,9 +263,9 @@ export const PLAYER_PHASES: readonly Phase[] = [
   {
     id: "waterNew",
     summary: "Water what this session planted or placed (a new step's layout, replanted base crops, re-placed plants) to max. Off when a script disabled `water`.",
-    run: (plot, ctx) => {
+    run: (plot, ctx, scratch) => {
       if (ctx.state.scripts && phaseDisabled(ctx.state, plot.id, "water")) return;
-      water(plot, ctx);
+      water(plot, ctx, scratch);
     },
   },
 ];

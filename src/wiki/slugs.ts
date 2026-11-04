@@ -38,6 +38,7 @@ export const RESERVED_TOP_LEVEL_PATHS = new Set([
   "designer",
   "simulator",
   "calculator",
+  "discord",
   "about",
   "contact",
   "privacy-policy",

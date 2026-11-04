@@ -10,11 +10,22 @@ const CalculatorPage = lazy(() => import("./pages/CalculatorPage").then((module)
 const DesignerPage = lazy(() => import("./pages/DesignerPage").then((module) => ({ default: module.DesignerPage })));
 const SimulatorPage = lazy(() => import("./pages/SimulatorPage").then((module) => ({ default: module.SimulatorPage })));
 const GuidePage = lazy(() => import("./pages/GuidePage").then((module) => ({ default: module.GuidePage })));
+const FlowsPage = lazy(() => import("./pages/FlowsPage").then((module) => ({ default: module.FlowsPage })));
+const FlowDetailPage = lazy(() => import("./pages/FlowDetailPage").then((module) => ({ default: module.FlowDetailPage })));
+const FlowsAdminPage = lazy(() => import("./pages/FlowsAdminPage").then((module) => ({ default: module.FlowsAdminPage })));
+const AuthCallbackPage = lazy(() => import("./pages/AuthCallbackPage").then((module) => ({ default: module.AuthCallbackPage })));
 const AboutPage = lazy(() => import("./pages/AboutPage").then((module) => ({ default: module.AboutPage })));
 const ContactPage = lazy(() => import("./pages/ContactPage").then((module) => ({ default: module.ContactPage })));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const WikiPage = lazy(() => import("./pages/WikiPage").then((module) => ({ default: module.WikiPage })));
 const ShortLinkRedirect = lazy(() => import("./pages/ShortLinkRedirect").then((module) => ({ default: module.ShortLinkRedirect })));
+const DiscordRedirect = lazy(() => import("./pages/DiscordRedirect").then((module) => ({ default: module.DiscordRedirect })));
+
+// Local-only dev pages (e.g. the /design gallery): files in src/dev-local/ (not in git) that
+// export `path` and a default component. Dev builds only; production never bundles them.
+const devLocalRoutes = import.meta.env.DEV
+  ? Object.entries(import.meta.glob<{ path: string; default: React.ComponentType }>("./dev-local/*.tsx", { eager: true })).map(([, m]) => ({ path: m.path, element: <m.default /> }))
+  : [];
 
 // Redirects /?layout=X to /designer?layout=X; otherwise renders the calculator.
 const IndexRouteWithRedirect: React.FC = () => {
@@ -87,6 +98,39 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: "flows",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <FlowsPage />
+          </Suspense>
+        ),
+      },
+      {
+        // Moderation, reached by URL only (before flows/:id).
+        path: "flows/admin",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <FlowsAdminPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "flows/:id",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <FlowDetailPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "auth/callback",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <AuthCallbackPage />
+          </Suspense>
+        ),
+      },
+      {
         path: "guide",
         element: (
           <Suspense fallback={<LoadingSpinner />}>
@@ -133,6 +177,17 @@ const router = createBrowserRouter([
           </Suspense>
         ),
       },
+      {
+        // The header/footer Discord link. Production 301s at the edge (src/seo/routes.ts); this
+        // route is what hosts that serve the SPA use (dev, preview, GitHub Pages).
+        path: "discord",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <DiscordRedirect />
+          </Suspense>
+        ),
+      },
+      ...devLocalRoutes,
       {
         // /gloomgourd -> /wiki/gloomgourd; any other unknown path -> /.
         path: "*",

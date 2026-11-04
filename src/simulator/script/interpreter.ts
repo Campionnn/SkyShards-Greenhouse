@@ -52,6 +52,7 @@ export function compile(source: string): Program {
     throw err;
   }
   funcs.sort((a, b) => a.id - b.id);
+  internStrings(body);
   const program: Program = {
     source,
     body,
@@ -72,6 +73,45 @@ export function compileExpression(source: string): A.Expr {
     throw new ScriptSyntaxError("A condition must be a single expression, like plot.count(\"rose\") >= 4", at.line, at.col);
   }
   return body[0].expr;
+}
+
+const internTable = new Map<string, string>();
+
+/**
+ * The internalized copy of a string (same content): property names are stored internalized by
+ * V8, so reading one back gives it. Comparing two internalized strings is a pointer check, and
+ * using one as a property key skips the string-table lookup a fresh string needs on every access.
+ */
+function intern(s: string): string {
+  let out = internTable.get(s);
+  if (out === undefined) {
+    out = s.length <= 256 ? Object.keys({ [s]: 0 })[0] : s;
+    if (internTable.size < 100_000) internTable.set(s, out);
+  }
+  return out;
+}
+
+/**
+ * Replace every string in a parsed program (names, property keys, string literals, template parts)
+ * with its interned copy. Same content, so nothing observable changes; done once per compiled program.
+ */
+function internStrings(node: unknown): void {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i++) {
+      const v = node[i];
+      if (typeof v === "string") node[i] = intern(v);
+      else internStrings(v);
+    }
+    return;
+  }
+  const rec = node as Record<string, unknown>;
+  for (const key of Object.keys(rec)) {
+    const v = rec[key];
+    if (typeof v === "string") {
+      if (key !== "type") rec[key] = intern(v);
+    } else if (v && typeof v === "object") internStrings(v);
+  }
 }
 
 function collectFuncs(node: unknown, out: A.Func[]): void {
@@ -118,8 +158,127 @@ export interface Binding {
   kind: BindingKind;
 }
 
+/**
+ * A scope's bindings: the `Map` methods the interpreter and runtime use, over parallel arrays for
+ * the first few names (most function, block and loop scopes declare 0-3) and a real Map beyond
+ * that. Iteration is in insertion order, like a Map. Never shrinks (bindings are never removed).
+ */
+export class ScopeVars {
+  /** The first name and binding inline (most scopes declare exactly one: a parameter or loop variable). */
+  private name0: string | null = null;
+  private binding0: Binding | undefined = undefined;
+  /** Names and bindings after the first, while there are few (created on demand). */
+  private names: string[] | null = null;
+  private bindings: Binding[] | null = null;
+  private map: Map<string, Binding> | null = null;
+  get size(): number {
+    if (this.map) return this.map.size;
+    return this.name0 === null ? 0 : 1 + (this.names?.length ?? 0);
+  }
+  get(name: string): Binding | undefined {
+    if (this.name0 === name) return this.binding0;
+    if (this.map) return this.map.get(name);
+    const names = this.names;
+    if (names) for (let i = 0; i < names.length; i++) if (names[i] === name) return this.bindings![i];
+    return undefined;
+  }
+  has(name: string): boolean {
+    return this.get(name) !== undefined;
+  }
+  set(name: string, b: Binding): this {
+    if (this.map) {
+      this.map.set(name, b);
+      if (this.name0 === name) this.binding0 = b;
+      return this;
+    }
+    if (this.name0 === null || this.name0 === name) {
+      this.name0 = name;
+      this.binding0 = b;
+      return this;
+    }
+    const names = (this.names ??= []);
+    const bindings = (this.bindings ??= []);
+    for (let i = 0; i < names.length; i++) {
+      if (names[i] === name) {
+        bindings[i] = b;
+        return this;
+      }
+    }
+    if (names.length < 7) {
+      names.push(name);
+      bindings.push(b);
+      return this;
+    }
+    // Many names: a Map (the first stays inline too, kept in sync above).
+    const map = new Map<string, Binding>();
+    map.set(this.name0, this.binding0!);
+    for (let i = 0; i < names.length; i++) map.set(names[i], bindings[i]);
+    map.set(name, b);
+    this.map = map;
+    this.names = null;
+    this.bindings = null;
+    return this;
+  }
+  keys(): IterableIterator<string> {
+    return this.list().map(([k]) => k)[Symbol.iterator]();
+  }
+  [Symbol.iterator](): IterableIterator<[string, Binding]> {
+    return this.list()[Symbol.iterator]();
+  }
+  /** Every [name, binding] in insertion order. */
+  private list(): [string, Binding][] {
+    if (this.map) return [...this.map];
+    const out: [string, Binding][] = [];
+    if (this.name0 !== null) out.push([this.name0, this.binding0!]);
+    if (this.names) for (let i = 0; i < this.names.length; i++) out.push([this.names[i], this.bindings![i]]);
+    return out;
+  }
+}
+
+/** Blocks that need a scope of their own (see `blockScope`). */
+const scopedBlocks = new WeakMap<readonly A.Stmt[], boolean>();
+
+/** Does the subtree contain a function expression or declaration (anything that captures a scope)? */
+function containsFunc(node: unknown): boolean {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some(containsFunc);
+  const rec = node as Record<string, unknown>;
+  if (rec.type === "Func" || rec.type === "FuncDecl") return true;
+  for (const key of Object.keys(rec)) {
+    const v = rec[key];
+    if (v && typeof v === "object" && containsFunc(v)) return true;
+  }
+  return false;
+}
+
+const funcNodes = new WeakMap<object, boolean>();
+/** `containsFunc` of an AST node, cached per node (ASTs are immutable). */
+function createsFunctions(node: object): boolean {
+  let v = funcNodes.get(node);
+  if (v === undefined) {
+    v = containsFunc(node);
+    funcNodes.set(node, v);
+  }
+  return v;
+}
+
+/**
+ * The scope a block's statements run in. A block gets a fresh scope if it declares anything directly
+ * (only such a declaration could ever add a binding to it) or creates functions anywhere inside
+ * (a closure's captured scope is observable: closure `===` and which closures can be kept between
+ * cycles). Any other block runs in the enclosing scope: an empty scope in between changes no lookup.
+ */
+function blockScope(body: readonly A.Stmt[], outer: Scope): Scope {
+  let scoped = scopedBlocks.get(body);
+  if (scoped === undefined) {
+    scoped = body.some((s) => s.type === "VarDecl" || s.type === "FuncDecl") || containsFunc(body);
+    scopedBlocks.set(body, scoped);
+  }
+  return scoped ? new Scope(outer) : outer;
+}
+
 export class Scope {
-  readonly vars = new Map<string, Binding>();
+  readonly vars = new ScopeVars();
   readonly parent: Scope | null;
   constructor(parent: Scope | null) {
     this.parent = parent;
@@ -240,11 +399,14 @@ export class Interpreter {
 
   /** Call a script or host function (an entry point for hooks, and for callbacks from host functions). */
   call(fn: unknown, args: unknown[]): unknown {
-    return this.contained(() => {
+    // `contained`, inlined: this is the interpreter's hottest entry point.
+    try {
       if (fn instanceof Closure) return this.callClosure(fn, args);
       if (fn instanceof HostFn) return this.callHost(fn, args);
       return this.fail(`${typeOf(fn) === "undefined" ? "undefined" : toStr(fn)} is not a function`);
-    });
+    } catch (err) {
+      throw this.containedError(err);
+    }
   }
 
   /**
@@ -256,13 +418,18 @@ export class Interpreter {
     try {
       return f();
     } catch (err) {
-      if (err instanceof ScriptError) throw err;
-      if (isLimitError(err)) {
-        const msg = err instanceof RangeError ? "The script went too deep (the call stack ran out). Is something nested or recursing too far?" : (err as Error).message;
-        throw new ScriptError(msg, this.pos, false);
-      }
-      throw err;
+      throw this.containedError(err);
     }
+  }
+
+  /** What `contained` rethrows for an error caught inside it. */
+  private containedError(err: unknown): unknown {
+    if (err instanceof ScriptError) return err;
+    if (isLimitError(err)) {
+      const msg = err instanceof RangeError ? "The script went too deep (the call stack ran out). Is something nested or recursing too far?" : (err as Error).message;
+      return new ScriptError(msg, this.pos, false);
+    }
+    return err;
   }
 
   private callHost(fn: HostFn, args: unknown[]): unknown {
@@ -291,8 +458,9 @@ export class Interpreter {
     const scope = new Scope(fn.scope);
     this.depth++;
     try {
-      f.params.forEach((p, i) => this.bind(p, args[i], scope, "param"));
-      if (f.rest) this.bind(f.rest, args.slice(f.params.length), scope, "param");
+      const params = f.params;
+      for (let i = 0; i < params.length; i++) this.bind(params[i], args[i], scope, "param");
+      if (f.rest) this.bind(f.rest, args.slice(params.length), scope, "param");
       if (!Array.isArray(f.body)) return this.eval(f.body, scope);
       const sig = this.execBlock(f.body, scope);
       return sig instanceof Ret ? sig.value : undefined;
@@ -330,7 +498,7 @@ export class Interpreter {
         if (this.eval(s.test, scope)) return this.execNested(s.cons, scope);
         return s.alt ? this.execNested(s.alt, scope) : undefined;
       case "Block":
-        return this.execBlock(s.body, new Scope(scope));
+        return this.execBlock(s.body, blockScope(s.body, scope));
       case "While":
         while (this.eval(s.test, scope)) {
           const sig = this.execNested(s.body, scope);
@@ -372,7 +540,7 @@ export class Interpreter {
 
   /** A statement body that may be a lone declaration: give it its own scope. */
   private execNested(s: A.Stmt, scope: Scope): Signal {
-    if (s.type === "Block") return this.execBlock(s.body, new Scope(scope));
+    if (s.type === "Block") return this.execBlock(s.body, blockScope(s.body, scope));
     return this.exec(s, s.type === "VarDecl" ? new Scope(scope) : scope);
   }
 
@@ -393,7 +561,9 @@ export class Interpreter {
       if (s.init.type === "VarDecl") this.execVarDecl(s.init, scope);
       else this.eval(s.init, scope);
     }
-    const perIteration = s.init?.type === "VarDecl" && s.init.kind !== "var";
+    // Fresh bindings per iteration, so closures capture each value (like JS `let`). Only a closure
+    // can tell the difference, so a loop that creates no functions keeps one scope.
+    const perIteration = s.init?.type === "VarDecl" && s.init.kind !== "var" && createsFunctions(s);
     let iterScope = scope;
     for (;;) {
       if (s.test && !this.eval(s.test, iterScope)) break;
@@ -401,7 +571,6 @@ export class Interpreter {
       if (sig === BREAK) break;
       if (sig instanceof Ret) return sig;
       if (perIteration) {
-        // Fresh bindings per iteration, so closures capture each value (like JS `let`).
         const next = new Scope(outer);
         for (const [k, b] of iterScope.vars) next.vars.set(k, { ...b });
         iterScope = next;
@@ -581,14 +750,6 @@ export class Interpreter {
   private eval(e: A.Expr, scope: Scope): unknown {
     this.tick(e);
     switch (e.type) {
-      case "Literal":
-        return e.value;
-      case "Template": {
-        let s = e.quasis[0];
-        for (let i = 0; i < e.exprs.length; i++) s += toStr(this.eval(e.exprs[i], scope)) + e.quasis[i + 1];
-        this.checkString(s);
-        return s;
-      }
       case "Ident": {
         const b = scope.lookup(e.name);
         if (!b) {
@@ -596,6 +757,29 @@ export class Interpreter {
           return this.fail(`"${e.name}" is not defined`);
         }
         return b.value;
+      }
+      case "Member": {
+        // `evalChainPart` inlined for an object that isn't itself a member, call or chain (`x.y`,
+        // `x[k]`): there it evaluates the object with `eval`, which never returns SHORT. Same
+        // steps, same order.
+        const o = e.object;
+        if (o.type !== "Member" && o.type !== "Call" && o.type !== "Chain") {
+          const obj = this.eval(o, scope);
+          if (e.optional && (obj === null || obj === undefined)) return undefined;
+          const key = e.computed ? propKey(this.eval(e.prop as A.Expr, scope)) : (e.prop as string);
+          this.pos = e;
+          return this.getProp(obj, key);
+        }
+        const v = this.evalChainPart(e, scope);
+        return v === SHORT ? undefined : v;
+      }
+      case "Literal":
+        return e.value;
+      case "Template": {
+        let s = e.quasis[0];
+        for (let i = 0; i < e.exprs.length; i++) s += toStr(this.eval(e.exprs[i], scope)) + e.quasis[i + 1];
+        this.checkString(s);
+        return s;
       }
       case "Array": {
         const out: unknown[] = [];
@@ -641,7 +825,6 @@ export class Interpreter {
         return this.eval(e.test, scope) ? this.eval(e.cons, scope) : this.eval(e.alt, scope);
       case "Assign":
         return this.evalAssign(e, scope);
-      case "Member":
       case "Call": {
         const v = this.evalChainPart(e, scope);
         return v === SHORT ? undefined : v;
@@ -939,8 +1122,18 @@ function looseEquals(l: unknown, r: unknown): boolean {
   return false;
 }
 
+/** A canonical array index: "0" or digits without a leading zero (same as /^(0|[1-9]\d*)$/). */
 function isIndex(key: string): boolean {
-  return /^(0|[1-9]\d*)$/.test(key);
+  const n = key.length;
+  if (n === 0) return false;
+  const c0 = key.charCodeAt(0);
+  if (c0 === 48) return n === 1; // "0"
+  if (c0 < 49 || c0 > 57) return false;
+  for (let i = 1; i < n; i++) {
+    const c = key.charCodeAt(i);
+    if (c < 48 || c > 57) return false;
+  }
+  return true;
 }
 
 export function propKey(v: unknown): string {

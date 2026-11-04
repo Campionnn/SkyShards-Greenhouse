@@ -12,14 +12,23 @@ import { PlotMarkLegend, PlotView } from "./PlotView";
 import { LayoutPickerPanel } from "./LayoutPicker";
 import { MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
 import { InventoryTable } from "./InventoryTable";
-import { FlowEditor, WatchPicker } from "./FlowEditor";
-import { EventLog, RunControls, FlowTimeline } from "./RunPanels";
-import { AloeHarvestPreview, ScenarioPanel, SettingsPanel } from "./ScenarioPanels";
+import { WatchPicker } from "./flowgraph/TargetsTab";
+import { FlowEditorContext, type FlowEditorApi, type InspectorTab } from "./flowgraph/context";
+import { Inspector } from "./flowgraph/Inspector";
+import { StepList } from "./flowgraph/StepList";
+import { explicitExits } from "./flowgraph/model";
+import { EventLog, FlowTimeline } from "./RunPanels";
+import { CommandBar } from "./page/CommandBar";
+import { KpiStrip } from "./page/KpiStrip";
+import { ScenarioTab } from "./page/ScenarioTab";
+import { AloeHarvestPreview, SettingsPanel } from "./ScenarioPanels";
 import { SimTooltip } from "./SimTooltip";
 import { closestBlocked, hoveredCellOffset } from "./sanityFormat";
 import { describeEvent, formatCoins, formatCount, nameOf, plantIconOf } from "./format";
 import { BazaarMoneyPanel, BazaarPricePanel } from "./BazaarPanels";
 import { bazaarProfit, priceAge } from "./bazaarFormat";
+import { FrequencyPanel } from "./frequency/FrequencyPanel";
+import { EffortPanel } from "./EffortPanel";
 
 // Server-render every simulator panel against a real simulation, to catch
 // render-time errors (no browser needed).
@@ -262,13 +271,13 @@ describe("simulator panels render", () => {
     for (const [attributes, content] of disclosures.map((match) => [match[1], match[2]])) {
       expect(attributes).not.toMatch(/\bopen(?:\s|=|$)/);
       expect(content).toMatch(/^<summary\b[^>]*>/);
-      expect(content).toContain("group-open:rotate-90");
+      expect(content).toContain("group-open:rotate-180"); // the chevron turns when it opens
     }
-    expect(disclosures[0][2]).toContain("Placed items</summary>");
-    expect(disclosures[0][2]).toContain(">used</span>");
+    expect(disclosures[0][2]).toMatch(/<summary\b[^>]*><span[^>]*>Placed items<\/span>/);
+    expect(disclosures[0][2]).toContain(">Used</th>");
     expect(disclosures[0][2]).not.toContain("decay timers extended");
-    expect(disclosures[1][2]).toContain("Losses, halts and decay extensions</summary>");
-    expect(disclosures[1][2]).toContain("3 Wheat decay timers extended (minimum not met)");
+    expect(disclosures[1][2]).toMatch(/<summary\b[^>]*><span[^>]*>Losses, halts and decay extensions<\/span>/);
+    expect(disclosures[1][2]).toMatch(/>3<\/span> Wheat <span[^>]*>decay timers extended \(minimum not met\)/);
   });
 
   it("empty sustainability detail sections stay hidden", () => {
@@ -342,6 +351,13 @@ describe("simulator panels render", () => {
     expect(html).toContain("harvested (last cycle)");
   });
 
+  it("the frequency panel waits for Compute before simulating", () => {
+    const text = wrap(<FrequencyPanel scenario={sc} />).replace(/<!-- -->/g, "");
+    expect(text).toContain("Profit by online frequency");
+    expect(text).toContain("Compute");
+    expect(text).toContain("21 runs (7 frequencies × 3 seeds)");
+  });
+
   it("report panels", () => {
     const html = wrap(
       <>
@@ -358,12 +374,25 @@ describe("simulator panels render", () => {
     expect(html).toContain("Sustainab");
   });
 
+  it("the effort panel shows per-login effort and its breakdown, or waits for the first login", () => {
+    const html = wrap(<EffortPanel summary={state.summary} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("Effort");
+    expect(html).toContain("avg per login");
+    expect(html).toContain("heaviest login");
+    expect(html).toContain(`${formatCount(state.summary.effort!.sessions)} logins`);
+    expect(html).toContain("Harvests");
+    expect(html).toContain("Effort by action, per login");
+    expect(html).not.toMatch(/emerald|amber|orange/); // one slate ramp
+    const empty = wrap(<EffortPanel summary={start.state.summary} />);
+    expect(empty).toContain("No logins yet");
+  });
+
   it("ironman inventory: one row per item, made from the ledger in Total, net and NPC values, no Bazaar", () => {
     const html = wrap(<InventoryTable state={state} onAddItems={() => {}} startingInventory={{}} onStartingInventoryChange={() => {}} />).replace(/<!-- -->/g, "");
     expect(html).toContain(">Inventory</h3>");
     expect(html).not.toMatch(/Bazaar|Instant buy|reserve|Edit prices/);
-    expect(html).toContain("Mutations net");
-    expect(html).toContain("Shortfalls");
+    // The totals sit in the card header as one line, not as summary cards.
+    expect(html).toMatch(/aria-label="Totals"[^]*mutations net[^]*shortfall/);
     expect(html).toContain(">net</span>");
     expect(html).toContain(">NPC</span>");
     const table = html.slice(html.indexOf('data-testid="inventory-items"'));
@@ -455,18 +484,18 @@ describe("simulator panels render", () => {
         <PlotMarkLegend normalProfile />
       </>
     ).replace(/<!-- -->/g, "");
-    expect(html).toContain("Money (Bazaar)");
+    expect(html).toMatch(/>Money<\/h3>[^]*?Bazaar prices/);
     expect(html).toContain("Stock used");
     expect(html).toContain("Cost to build (one-off)");
     expect(html).toContain("Mutations sold so far");
     expect(html).toContain("Inventory &amp; Bazaar");
     expect(html).toContain("Instant buy");
     expect(html).toContain("Sell order");
-    expect(html).toContain("Prices 1m ago");
-    expect(html).toContain("Edit prices (1 set)");
-    // The Profit card shows the Money panel's profit (same valuation, overrides applied).
+    expect(html).toMatch(/Prices <b[^>]*>1m ago<\/b>/);
+    expect(html).toMatch(/Edit prices<span[^>]*>1 set<\/span>/);
+    // The header's profit total is the Money panel's profit (same valuation, overrides applied).
     const cardProfit = bazaarProfit(r.summary, bazaar.quotes, pricing)!.profit;
-    expect(html).toMatch(new RegExp(`>Profit</div><div class="[^"]*">${formatCoins(cardProfit).replace(".", "\\.")}<`));
+    expect(html).toMatch(new RegExp(`>${formatCoins(cardProfit).replace(".", "\\.")}</b> profit<`));
     expect(html).toContain("Reserve of Chloronite");
     // Base crops show the double-compacted item's price (both sides), not one crop's.
     const wheatHtml = wrap(
@@ -498,6 +527,13 @@ describe("simulator panels render", () => {
     expect(editor).toContain('value="50"');
     expect(editor).toContain("live 1.0k");
     expect(editor).toContain("Clear all (1)");
+    expect(editor).toContain("This scenario");
+    expect(editor).not.toContain('data-testid="bazaar-price-sides"');
+    // The flow pages' editor: its own scope label, and buy / sell side and tax inside (no price bar there).
+    const flows = wrap(<BazaarPricePanel bazaar={bazaar} focusItem={null} itemIds={["chloronite"]} scope="These flows" withSides onClose={() => {}} />).replace(/<!-- -->/g, "");
+    expect(flows).toContain("These flows");
+    expect(flows).toContain('data-testid="bazaar-price-sides"');
+    for (const s of ["Instant buy", "Sell order", "Bazaar sales tax in percent"]) expect(flows).toContain(s);
     // Without prices yet: no crash, a waiting line.
     expect(wrap(<BazaarMoneyPanel summary={r.summary} previous={null} quotes={null} pricing={pricing} />)).toContain("Waiting for Bazaar prices");
     // Ironman: no Bazaar panel content and no Bazaar mark in the legend.
@@ -506,19 +542,7 @@ describe("simulator panels render", () => {
     // The run bar shows the Bazaar profit when a pricer is given.
     const v = bazaarProfit(r.summary, quotes, pricing)!;
     const bar = wrap(
-      <RunControls
-        view={{ ...view, snapshot: { state: r.state, report: engine.analyse(r.state) } }}
-        plotCount={2}
-        onRun={() => {}}
-        onStep={() => {}}
-        onStepBack={() => {}}
-        onUndo={() => {}}
-        onStop={() => {}}
-        onReset={() => {}}
-        seed={1}
-        onSeedChange={() => {}}
-        priceSummary={(s) => bazaarProfit(s, quotes, pricing)}
-      />
+      <KpiStrip view={{ ...view, snapshot: { state: r.state, report: engine.analyse(r.state) } }} plotCount={2} priceSummary={(s) => bazaarProfit(s, quotes, pricing)} />
     ).replace(/<!-- -->/g, "");
     expect(bar).toContain(formatCoins(v.profit));
     expect(priceAge(0, 30_000)).toBe("just now");
@@ -527,9 +551,12 @@ describe("simulator panels render", () => {
   it("run controls, log and timeline", () => {
     const html = wrap(
       <>
-        <RunControls
+        <CommandBar
+          scenario={sc}
+          onChange={() => {}}
           view={view}
-          plotCount={2}
+          profile="ironman"
+          onProfileChange={() => {}}
           onRun={() => {}}
           onStep={() => {}}
           onStepBack={() => {}}
@@ -538,15 +565,27 @@ describe("simulator panels render", () => {
           onReset={() => {}}
           seed={1}
           onSeedChange={() => {}}
+          changedSettings={0}
+          onOpenSettings={() => {}}
+          problems={[]}
+          shareMenu={() => null}
         />
+        <KpiStrip view={view} plotCount={2} />
         <EventLog log={view.log} plotIds={[1, 2]} />
         <FlowTimeline flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} />
       </>
     );
     const text = html.replace(/<!-- -->/g, "");
-    expect(text).toContain("Ran 1 cycle on 2 plot(s)");
+    expect(text).toContain("Ran 1 cycle on 2 plots");
+    expect(text).toContain("Reset");
+    expect(text).toContain(`aria-label="Cycles to run"`);
     expect(text).toContain("Back");
     expect(text).toContain("Undo the step from cycle 40");
+    // The bar can't overflow: a shrinking, clipped left group (settings) and a fixed right group
+    // (run cluster). Submitting lives in the Leaderboard tab and the Share menu, not a bar button.
+    expect(text).toContain("flex min-w-0 flex-1 items-center gap-1 overflow-hidden");
+    expect(text).toContain("flex shrink-0 items-center gap-1");
+    expect(text).not.toContain("Test and submit this flow");
   });
 
   it("timeline uses accessible inspection tracks and bounded searchable plot legends", () => {
@@ -554,7 +593,8 @@ describe("simulator panels render", () => {
     expect(html).toContain('aria-label="Plot 1 step timeline"');
     expect(html).toContain('aria-label="Timeline cycle range"');
     expect(html).toContain('aria-label="Search Plot 1 steps"');
-    expect(html).toContain("Click or tap to pin details");
+    expect(html).toContain("Step timeline"); // the how-to moved into the card's InfoHint (closed in SSR)
+    expect(html).toContain('aria-label="More info"');
     expect(html).toContain("max-h-52 overflow-y-auto");
     expect(html).toContain("Plot 1 steps");
     expect(html).not.toContain("<details open");
@@ -581,65 +621,140 @@ describe("simulator panels render", () => {
   it("run controls after going back", () => {
     const rewound: SimulationView = { ...view, lastCall: null, rewound: { undone: { kind: "run", fromCycle: 0, cycles: 40 } } };
     const html = wrap(
-      <RunControls
-        view={rewound}
-        plotCount={2}
-        onRun={() => {}}
-        onStep={() => {}}
-        onStepBack={() => {}}
-        onUndo={() => {}}
-        onStop={() => {}}
-        onReset={() => {}}
-        seed={1}
-        onSeedChange={() => {}}
-      />
+      <KpiStrip view={rewound} plotCount={2} />
     );
     expect(html.replace(/<!-- -->/g, "")).toContain("Undid a run of 40 cycles");
   });
 
-  it("scenario, settings and the flow editor (embedded designer)", () => {
+  it("scenario and settings panels", () => {
     const html = wrap(
       <>
-        <ScenarioPanel scenario={sc} onChange={() => {}} onEditFlow={() => {}} issues={[]} warnings={[]} error={null} />
+        <ScenarioTab scenario={sc} onChange={() => {}} onEditFlow={() => {}} onDuplicate={() => {}} onRemove={() => {}} onLoadLayout={() => {}} issues={[]} warnings={[]} error={null} onExport={() => {}} onImport={() => {}} onSubmit={() => {}} />
         <SettingsPanel scenario={sc} onChange={() => {}} />
-        <FlowEditor scenario={sc} plotId={1} onChange={() => {}} onClose={() => {}} />
       </>
     );
-    expect(html.replace(/<!-- -->/g, "")).toContain("Plot 1 flow");
-    expect(html).toContain("Leave this step");
-    expect(html).not.toContain("then go to");
-    expect(html).toContain("checked targets");
-    // The Designer's crop summary sits under the embedded grid.
-    expect(html).toContain("Total Cells Used:");
+    const text = html.replace(/<!-- -->/g, "");
+    expect(text).toContain("Plot 1");
+    expect(text).toContain("Export flows");
+    expect(text).toContain("Submit to leaderboard");
   });
 
-  it("the flow editor with several exits to chosen steps and AND/OR groups", () => {
+  describe("the flow editor", () => {
     const routed = scenario([
       flow(
         [
           step("s1", { code: LAYOUT_B_CODE }, [{ kind: "cycles", n: 2 }]),
-          step("s2", { code: LAYOUT_B_CODE }, [], {
+          step("s2", { code: LAYOUT_A_CODE }, [], {
             exits: [
               { to: "s3", when: [{ kind: "stepVisits", count: 3, sinceStep: "s3" }] },
               {
                 to: "s1",
                 when: [{ kind: "group", match: "any", of: [{ kind: "cycles", n: 3 }, { kind: "inventoryBelow", item: "chloronite", qty: 4 }] }, { kind: "cycles", n: 1 }],
               },
+              { to: "s2", checkOnEntry: true, when: [{ kind: "layoutShort" }] },
             ],
+            policies: { replaceDecayed: false, gateInteractions: { clearRoots: false } },
           }),
-          step("s3", { code: LAYOUT_B_CODE }, [], { exits: [{ to: "s1", when: [{ kind: "cycles", n: 5 }] }] }),
+          step("s3", { code: LAYOUT_B_CODE }, [], { exits: [{ when: [{ kind: "cycles", n: 5 }] }] }),
         ],
         false
       ),
     ]);
-    const html = wrap(<FlowEditor scenario={routed} plotId={1} initialStep={1} onChange={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");
-    expect(html).toContain("Leave this step");
-    expect(html).toContain("otherwise");
-    expect(html).toContain("Another exit");
-    expect(html).toContain("ANY (OR)");
-    expect(html).toContain("→ 3. s3 when entered this step 3+ times since 3. s3");
-  });
+    // As the shell shows it: explicit targets everywhere except the finish exit on the last step.
+    const plot = explicitExits(routed.plots[0]);
+    const noop = () => {};
+    const editor = (over: Partial<FlowEditorApi>, node: React.ReactNode) => {
+      const api: FlowEditorApi = {
+        scenario: { ...routed, plots: [plot] },
+        plot,
+        plotId: 1,
+        selected: 1,
+        select: noop,
+        tab: "exits",
+        setTab: noop,
+        openExit: 1,
+        setOpenExit: noop,
+        hotExit: null,
+        setHotExit: noop,
+        edit: noop,
+        editStep: noop,
+        addStep: () => 0,
+        deleteStep: noop,
+        duplicateStep: noop,
+        openAddMenu: noop,
+        openLayout: noop,
+        focusStep: noop,
+        registerCanvas: noop,
+        scripted: false,
+        showAllWires: true,
+        setShowAllWires: noop,
+        dismissOverlays: noop,
+        setStart: noop,
+        copyStep: noop,
+        pasteStep: null,
+        switchPlot: noop,
+        ...over,
+      };
+      return wrap(<FlowEditorContext.Provider value={api}>{node}</FlowEditorContext.Provider>).replace(/<!-- -->/g, "");
+    };
+    const inspector = (tab: InspectorTab, over: Partial<FlowEditorApi> = {}) => editor({ tab, ...over }, <Inspector />);
 
+    it("the exits tab: ordered exits with explicit targets, conditions as sentences", () => {
+      const html = inspector("exits");
+      expect(html).toContain("Step 2 of 3");
+      expect(html).toContain("3. s3"); // exit 1 goes to step 3 (explicit target)
+      expect(html).toContain("1. s1");
+      expect(html).toContain("This step again (restart)");
+      expect(html).toContain("OTHERWISE");
+      expect(html).toContain("when entered 3+ times since 3. s3"); // collapsed exit 1
+      // Exit 2 is open: ALL / ANY, the nested group and its sentences.
+      expect(html).toContain("Take this exit when");
+      expect(html).toContain(">ALL<");
+      expect(html).toContain(">ANY<");
+      expect(html).toContain("of this group");
+      expect(html).toContain("cycles spent in this step");
+      expect(html).toContain("in stock is below");
+      expect(html).toContain("Skip this step if it&#x27;s already true");
+      expect(html).toContain("skips this step if already true"); // exit 3, collapsed
+    });
+
+    it("a step-visits sentence names its step", () => {
+      const html = inspector("exits", { openExit: 0 });
+      expect(html).toContain("This step was entered");
+      expect(html).toContain("entering 3. s3");
+    });
+
+    it("a finish exit on the last step of a non-looping flow", () => {
+      const html = inspector("exits", { selected: 2, openExit: 0 });
+      expect(html).toContain("Finish (hold this step)");
+    });
+
+    it("the checked targets and actions tabs", () => {
+      expect(inspector("targets")).toContain("18 of 18 checked");
+      const actions = inspector("actions");
+      expect(actions).toContain("Overridden here");
+      expect(actions).toContain("Re-place missing plants");
+      expect(actions).toContain("Break Devourer roots");
+      expect(actions).toContain("Inherited");
+      expect(actions).toContain("harvest when fully grown"); // effective inherited value
+    });
+
+    it("the plot settings with no step selected", () => {
+      const html = inspector("exits", { selected: null });
+      expect(html).toContain("Plot 1 flow");
+      expect(html).toContain("Start step");
+      expect(html).toContain("Plot actions");
+    });
+
+    it("the phone step list shows every step with its exits", () => {
+      const html = editor({}, <StepList onOpen={noop} onOpenPlot={noop} />);
+      expect(html).toContain("Plot settings");
+      expect(html).toContain("Steps · 3");
+      expect(html).toContain("START");
+      expect(html).toContain("3. s3</span><span class=\"text-fg-meta\"> when </span>");
+      expect(html).toContain("Finish (hold this step)");
+    });
+  });
   it("the layout picker: an incoming layout asks where it goes", () => {
     const incoming = { code: LAYOUT_A_CODE, name: "Chloronite x4", from: "calculator" as const };
     const html = wrap(<LayoutPickerPanel title="t" incoming={incoming} scenario={sc} onPlace={() => {}} onClose={() => {}} />).replace(/<!-- -->/g, "");
@@ -661,7 +776,7 @@ describe("simulator panels render", () => {
     expect(html).toContain("Plot 2");
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("Step 1 · "); // steps stay hidden until a plot is expanded
-    expect(html).toContain(">halted</span>"); // its own column, next to blocked
+    expect(html).toMatch(/>Blocked<\/span><span[^>]*>Halted<\/span>/); // its own column, next to blocked
   });
 
   it("the checked-target picker lists a layout's targets", () => {

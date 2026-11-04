@@ -7,6 +7,7 @@ interface ToggleSwitchProps {
   id?: string;
 }
 
+/** @deprecated Use `Switch` from components/ui/kit.tsx (with a separate label). */
 export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ label, checked, onChange, id }) => {
   const handleToggle = useCallback(
     (e: React.MouseEvent) => {

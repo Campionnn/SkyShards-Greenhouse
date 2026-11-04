@@ -11,10 +11,10 @@ export interface PriceSource {
 /**
  * Wiki NPC sell prices of non-crop items (base crops use data.json
  * `sell_price`). Non-sellable items (Iridium) are 0; Evergreen and Synthesis
- * Chips are 50,000.
+ * Chips are 150,000.
  */
 export const WIKI_NPC_PRICES: Record<string, number> = {
-  seeds: 3,
+  seeds: 1,
   dead_plant: 500,
   cropie: 25_000,
   squash: 75_000,
@@ -24,8 +24,8 @@ export const WIKI_NPC_PRICES: Record<string, number> = {
   overclocker_3000: 250_000,
   burrowing_spores: 1,
   overgrown_grass: 1,
-  evergreen_chip: 50_000,
-  synthesis_chip: 50_000,
+  evergreen_chip: 150_000,
+  synthesis_chip: 150_000,
   iridium: 0,
 };
 
@@ -37,12 +37,30 @@ export function defaultNpcPrice(data: GameData, item: ItemId): number {
   return 0;
 }
 
+/** `defaultNpcPrice` per game data, memoised by item (game data and the table never change). */
+const npcPriceCache = new WeakMap<GameData, Map<ItemId, number>>();
+
 export function npcPriceSource(data: GameData): PriceSource {
-  return { price: (item) => defaultNpcPrice(data, item) };
+  let cache = npcPriceCache.get(data);
+  if (!cache) {
+    cache = new Map();
+    npcPriceCache.set(data, cache);
+  }
+  const prices = cache;
+  return {
+    price: (item) => {
+      let p = prices.get(item);
+      if (p === undefined) {
+        p = defaultNpcPrice(data, item);
+        prices.set(item, p);
+      }
+      return p;
+    },
+  };
 }
 
 export function valueOf(drops: Record<ItemId, number>, prices: PriceSource): number {
   let total = 0;
-  for (const [item, qty] of Object.entries(drops)) total += qty * prices.price(item);
+  for (const item in drops) total += drops[item] * prices.price(item);
   return total;
 }

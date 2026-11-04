@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Built leaderboard verifier (pnpm build:verify); the copy in ../SkyShards-API/tools/verify is committed there
+dist-verify
 *.local
 
 # Editor directories and files
@@ -26,6 +28,11 @@ dist-ssr
 
 # Local-only Rose Dragon flow generator (its output lives in public/greenhouse/flows/)
 /tools/rose-dragon/
+/tools
 
-tmp
+tmp/
 docs/
+reference/
+# Stray flow exports in the project root (keep them under research/, see LOCAL-REPO.md)
+/*.flows.json
+/greenhouse-flows*.json

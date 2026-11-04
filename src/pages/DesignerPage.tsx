@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Eye, EyeOff, LayoutTemplate, ClipboardCheck } from "lucide-react";
+import { LayoutTemplate, ClipboardCheck } from "lucide-react";
 import {
   CropSelectionPalette,
   DesignerActions,
@@ -9,17 +9,18 @@ import {
   LayoutHistoryControls,
   MutationValidator,
   Panel,
+  GridVisibilityToggle,
 } from "../components";
-import { COMPASS_RESERVE } from "../components/grid";
 import { useToast } from "../components/ui/toastContext";
 import { useDesigner, useGreenhouseData } from "../context";
-import { useFitCellSize } from "../hooks";
+import { useFitCellSize, useTargetsVisible, useInputsVisible } from "../hooks";
 import { decodeDesign } from "../utilities";
 import { captureGridAsPng, aggregateCropInfo } from "../utilities/gridExport";
 import type { DesignerGridHandle } from "../components";
 
 export const DesignerPage: React.FC = () => {
-  const [showTargets, setShowTargets] = useState(true);
+  const [showTargets, setShowTargets] = useTargetsVisible();
+  const [inputsVisible, setInputsVisible] = useInputsVisible();
   const gridRef = useRef<DesignerGridHandle>(null);
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -29,7 +30,8 @@ export const DesignerPage: React.FC = () => {
   
   // Cells fit the available width; the grid never scrolls.
   const fitRef = useRef<HTMLDivElement>(null);
-  const gridSize = useFitCellSize(fitRef, { reserve: COMPASS_RESERVE });
+  // Same cap as the Calculator's grid, so wide screens get bigger cells.
+  const gridSize = useFitCellSize(fitRef, { max: 60 });
 
   // Share-image export, called by the Playwright renderer via window.exportGrid.
   const exportGridForShare = useCallback(async (): Promise<string> => {
@@ -184,7 +186,7 @@ export const DesignerPage: React.FC = () => {
   }, [layoutLoadState]);
   
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 max-w-screen-2xl">
+    <div className="w-full py-3 sm:py-4">
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[300px_minmax(0,1fr)_380px] gap-4 lg:gap-6 lg:items-start">
         {/* Actions and validation column: sticky on desktop, scrolls internally. */}
         <div className="order-2 space-y-4 lg:col-start-1 lg:row-start-2 xl:row-start-1 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto scrollbar-dark xl:pr-1">
@@ -203,36 +205,26 @@ export const DesignerPage: React.FC = () => {
               <h3 className="text-sm font-medium text-slate-200">Greenhouse Designer</h3>
               <div className="flex items-center gap-2 sm:gap-3">
                 <LayoutHistoryControls />
-                <button
-                  onClick={() => setShowTargets(!showTargets)}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-200"
-                  title={showTargets ? "Hide target mutations" : "Show target mutations"}
-                >
-                  {showTargets ? (
-                    <>
-                      <EyeOff className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Hide Targets</span>
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Show Targets</span>
-                    </>
-                  )}
-                </button>
-                <div className="flex gap-2 sm:gap-4 text-xs text-slate-400">
-                </div>
               </div>
             </div>
             
             <div className="mb-4">
-              <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
-                Grid Layout
-              </h4>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+                  Grid Layout
+                </h4>
+                <GridVisibilityToggle
+                  targetsVisible={showTargets}
+                  onTargetsVisibleChange={setShowTargets}
+                  inputsVisible={inputsVisible}
+                  onInputsVisibleChange={setInputsVisible}
+                />
+              </div>
               <div ref={fitRef} className="w-full flex flex-col items-center">
                 <DesignerGrid
                   ref={gridRef}
                   showTargets={showTargets}
+                  showInputs={inputsVisible}
                   cellSize={gridSize.cellSize}
                   gap={gridSize.gap}
                 />

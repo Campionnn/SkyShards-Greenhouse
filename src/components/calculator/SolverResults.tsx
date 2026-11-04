@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from "react";
-import { CheckCircle2, AlertTriangle, Grid3X3, Eye, EyeOff, RotateCcw, Paintbrush, Info, Loader2, FlaskConical } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Grid3X3, RotateCcw, Paintbrush, Info, Loader2, FlaskConical, Share2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { GRID_SIZE } from "../../constants";
 import { useGreenhouseData, useGridState, useLockedPlacements, useDesigner, useInfoModal } from "../../context";
-import { useGridPlacement, useFitCellSize } from "../../hooks";
+import { useGridPlacement, useFitCellSize, usePlacementFocus, focusKey, useTargetsVisible, useInputsVisible } from "../../hooks";
 import {
   getGridDimensions,
   simulateEffects,
@@ -13,6 +13,7 @@ import {
   makeIncomingLayout,
   simulatorHandoffState,
   solverResultCells,
+  copyShareLink,
 } from "../../utilities";
 import {
   GridBackground,
@@ -22,8 +23,11 @@ import {
   CropCell,
   MutationCell,
   EffectTooltip,
-  CompassFrame,
-  COMPASS_RESERVE,
+  GridVisibilityToggle,
+  FindOnGridHint,
+  focusItemClass,
+  focusFade,
+  FOCUS_TRANSITION,
 } from "../grid";
 import { CropImage } from "../shared";
 import { SectionLabel } from "../ui";
@@ -184,12 +188,13 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const [showMutations, setShowMutations] = useState(true);
+  const [targetsVisible, setTargetsVisible] = useTargetsVisible();
+  const [inputsVisible, setInputsVisible] = useInputsVisible();
   const [hoveredEffectItem, setHoveredEffectItem] = useState<PlacementItem | null>(null);
 
   // Grid sizing: fit the available width, never scroll.
   const fitRef = useRef<HTMLDivElement>(null);
-  const { cellSize, gap } = useFitCellSize(fitRef, { max: 60, reserve: COMPASS_RESERVE });
+  const { cellSize, gap } = useFitCellSize(fitRef, { max: 60 });
   const gridRef = useRef<HTMLDivElement>(null);
   const { width: gridWidth, height: gridHeight } = getGridDimensions(cellSize, gap);
 
@@ -267,6 +272,19 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     navigate("/simulator", { state: simulatorHandoffState(currentLayout) });
   }, [currentLayout, navigate, toast]);
 
+  const handleCopyShareLink = useCallback(async () => {
+    if (!currentLayout) {
+      toast({ title: "Nothing to share", description: "Place some locked crops or solve first", variant: "warning", duration: 3000 });
+      return;
+    }
+    try {
+      await copyShareLink(currentLayout.code);
+      toast({ title: "Share link copied!", description: "Paste this link in Discord or share with others", variant: "success", duration: 3000 });
+    } catch (err) {
+      toast({ title: "Couldn't copy the link", description: err instanceof Error ? err.message : "Clipboard not available", variant: "error", duration: 5000 });
+    }
+  }, [currentLayout, toast]);
+
   const {
     hoveredPlacementId,
     setHoveredPlacementId,
@@ -300,6 +318,28 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     if (!result || !result.mutations) return [];
     return processMutationsToItems(result.mutations, getMutationDef);
   }, [result, getMutationDef]);
+
+  // Cells under any placement (crops, targets, locks) get no empty-cell tile: a tile under a
+  // target would show through when the target fades.
+  const coveredCells = useMemo(() => {
+    const cells = new Set(occupiedCells);
+    const cover = ([r, c]: [number, number], size: number) => {
+      for (let dr = 0; dr < size; dr++) for (let dc = 0; dc < size; dc++) cells.add(`${r + dr},${c + dc}`);
+    };
+    for (const m of result?.mutations || []) cover(m.position, m.size);
+    for (const l of lockedPlacements) cover(l.position, l.size);
+    return cells;
+  }, [occupiedCells, result, lockedPlacements]);
+
+  // Hovering or clicking an entry in the Mutations / Crops to plant lists finds it on the grid.
+  const focusKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const p of result?.placements || []) keys.add(focusKey("input", p.crop));
+    for (const m of result?.mutations || []) keys.add(focusKey("target", m.mutation));
+    for (const l of lockedPlacements) keys.add(focusKey("input", l.crop));
+    return keys;
+  }, [result, lockedPlacements]);
+  const focus = usePlacementFocus(focusKeys);
 
   // Effect propagation over the displayed layout (solver crops + mutations + locks).
   // Locked placements are also in result.placements for final results, so dedupe by position.
@@ -346,7 +386,6 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
 
   const renderGrid = () => (
     <div ref={fitRef} className="w-full">
-      <CompassFrame className="mx-auto">
       <div
         ref={gridRef}
         className="relative select-none mx-auto"
@@ -361,12 +400,21 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
           Array.from({ length: GRID_SIZE }).flatMap((_, rowIndex) =>
             Array.from({ length: GRID_SIZE }).map((_, colIndex) => {
               const key = `${rowIndex},${colIndex}`;
-              if (occupiedCells.has(key)) return null;
+              if (coveredCells.has(key)) return null;
               const isUnlocked = unlockedCells.has(key);
               return (
                 <div
                   key={key}
-                  style={{ position: "absolute", top: rowIndex * (cellSize + gap), left: colIndex * (cellSize + gap), width: cellSize, height: cellSize }}
+                  style={{
+                    position: "absolute",
+                    top: rowIndex * (cellSize + gap),
+                    left: colIndex * (cellSize + gap),
+                    width: cellSize,
+                    height: cellSize,
+                    // Empty unlocked cells fade with everything else while a list entry is shown.
+                    ...(isUnlocked && focus.active ? focusFade("dimmed") : {}),
+                    transition: FOCUS_TRANSITION,
+                  }}
                   className={`rounded ${isUnlocked ? "bg-emerald-600/40 border border-emerald-500/30" : "bg-slate-700/30 border border-slate-600/20"}`}
                 />
               );
@@ -391,6 +439,8 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
             title=""
             onMouseEnter={() => setHoveredEffectItem(item)}
             onMouseLeave={() => setHoveredEffectItem(null)}
+            focus={focus.visualFor(focusKey("input", item.id))}
+            hidden={!inputsVisible}
           />
         ))}
 
@@ -404,11 +454,12 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
             groundType={groundOf(item.id)}
             cellSize={cellSize}
             gap={gap}
-            showImage={showMutations}
+            hidden={!targetsVisible}
             onClick={() => openInfo(item.id)}
             title=""
             onMouseEnter={() => setHoveredEffectItem(item)}
             onMouseLeave={() => setHoveredEffectItem(null)}
+            focus={focus.visualFor(focusKey("target", item.id))}
           />
         ))}
 
@@ -430,6 +481,8 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
               onMouseLeave={() => setHoveredPlacementId(null)}
               onClick={() => openInfo(placement.crop)}
               onCancelDrag={cancelDrag}
+              focus={focus.visualFor(focusKey("input", placement.crop))}
+              hidden={!inputsVisible}
             />
           );
         })}
@@ -471,7 +524,6 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
           />
         )}
       </div>
-      </CompassFrame>
     </div>
   );
 
@@ -529,6 +581,14 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
                 <FlaskConical className="w-3 h-3" />
                 Simulate
               </button>
+              <button
+                onClick={handleCopyShareLink}
+                className="px-2 py-1 text-xs bg-sky-500/30 hover:bg-sky-500/50 border border-sky-500/30 rounded text-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
+                title="Copy a share link to this layout"
+              >
+                <Share2 className="w-3 h-3" />
+                Share
+              </button>
             </>
           )}
           {(hasResult || error) && !isSolving && onClear && (
@@ -555,15 +615,14 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
 
       <SectionLabel
         actions={
-          hasResult ? (
-            <button
-              onClick={() => setShowMutations(!showMutations)}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-200 cursor-pointer"
-              title={showMutations ? "Hide mutation overlays" : "Show mutation overlays"}
-            >
-              {showMutations ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              <span>{showMutations ? "Hide targets" : "Show targets"}</span>
-            </button>
+          hasResult || lockedPlacements.length > 0 ? (
+            <GridVisibilityToggle
+              targetsVisible={targetsVisible}
+              onTargetsVisibleChange={setTargetsVisible}
+              inputsVisible={inputsVisible}
+              onInputsVisibleChange={setInputsVisible}
+              className="justify-end"
+            />
           ) : undefined
         }
       >
@@ -580,8 +639,8 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
 
       {hasResult && (
         <div className="mb-4">
-          <SectionLabel>Mutations</SectionLabel>
-          <MutationList result={result} />
+          <SectionLabel actions={<FindOnGridHint pinned={focus.pinned !== null} />}>Mutations</SectionLabel>
+          <MutationList result={result} focus={focus} />
         </div>
       )}
 
@@ -593,11 +652,14 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
               const cropDef = getCropDef(cropId);
               const mutationDef = getMutationDef(cropId);
               const displayName = cropDef?.name || mutationDef?.name || cropId.replace(/_/g, " ");
+              const key = focusKey("input", cropId);
+              const item = focus.itemProps(key, displayName);
               return (
                 <div
                   key={cropId}
-                  className="flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1"
-                  title={locked ? `${locked} of these are your locked placements` : undefined}
+                  {...item}
+                  className={`flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1 ${focusItemClass(focus, key)}`}
+                  title={locked ? `${item.title}. ${locked} of these are your locked placements.` : item.title}
                 >
                   <CropImage cropId={cropId} cropName={displayName} size="xs" showFallback={false} />
                   <span className="text-xs text-slate-300">{displayName}</span>

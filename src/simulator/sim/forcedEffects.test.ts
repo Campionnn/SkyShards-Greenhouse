@@ -84,6 +84,19 @@ describe("forced effects (debug)", () => {
       expect(JSON.stringify(engine.run(engine.run(s, 4).state, 6).state)).toBe(JSON.stringify(engine.run(s, 10).state));
     });
 
+    it("under the leaderboard rules every debug API fails with a clear error and forces nothing", () => {
+      const rules = { leaderboardRules: true };
+      for (const src of [`forceEffects("wheat", ["immunity"])`, `unforceEffects()`, `resetForcedEffects()`, `function onSession() { forceEffects("wheat", ["immunity"]) }`]) {
+        const r = engine.run(withScript(src, rules), 2).state;
+        expect(r.scripts?.halt?.kind).toBe("error");
+        expect(r.scripts?.halt?.message).toMatch(/debugging tool and isn't allowed under the leaderboard rules/);
+        expect(r.scripts?.forcedEffects).toBeUndefined();
+        expect(wheatHeld(r)).not.toContain("immunity");
+      }
+      // Reading what is forced stays harmless.
+      expect(engine.run(withScript(`let f = forcedEffects`, rules), 2).state.scripts?.halt).toBeNull();
+    });
+
     it("rejects unknown ids and use in exit conditions", () => {
       expect(engine.run(withScript(`forceEffects("nope", ["immunity"])`), 1).state.scripts?.halt?.message).toMatch(/isn't a crop or mutation/);
       expect(engine.run(withScript(`forceEffects("wheat", ["nope"])`), 1).state.scripts?.halt?.message).toMatch(/isn't an effect id/);

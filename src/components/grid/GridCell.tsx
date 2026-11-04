@@ -1,6 +1,12 @@
 import React, { useRef } from "react";
 import { useGridState } from "../../context";
 
+// The expansion API reports expected gloomgourd spawns per tick; each
+// gloomgourd spot spawns at 0.3/tick (weight 30 of a 100 pool), so dividing
+// gives the number of gloomgourd spots.
+const GLOOMGOURD_SPAWN_RATE = 0.3;
+const toGloomgourdSpots = (rate: number) => Math.round(rate / GLOOMGOURD_SPAWN_RATE);
+
 interface GridCellProps {
   row: number;
   col: number;
@@ -139,13 +145,13 @@ export const GridCell: React.FC<GridCellProps> = ({
       onClick={handleClick}
       onMouseDown={handleMouseDown}
       onMouseEnter={handleMouseEnter}
-      title={expansionStep ? `Step ${expansionStep.order}: +${expansionStep.gloomgourd_gain} (total: ${expansionStep.gloomgourd_potential})` : undefined}
+      title={expansionStep ? `Step ${expansionStep.order}: +${toGloomgourdSpots(expansionStep.gloomgourd_gain)} (total: ${toGloomgourdSpots(expansionStep.gloomgourd_potential)})` : undefined}
     >
       {expansionStep && hasExpansionOverlay ? (
         <>
           <span className="font-bold text-sm">{expansionStep.order}</span>
           <span className="absolute bottom-0.5 right-0.5 text-[8px] font-medium">
-            +{expansionStep.gloomgourd_gain}
+            +{toGloomgourdSpots(expansionStep.gloomgourd_gain)}
           </span>
         </>
       ) : showCoordinates ? (

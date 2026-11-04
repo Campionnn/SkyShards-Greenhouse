@@ -1,6 +1,6 @@
 import React from "react";
 import { Eye } from "lucide-react";
-import { DRY_FILTER, INDICATOR_LABEL, MARK_STYLE, markerKey, type GridMarker, type Indicator, type Mark } from "./markerStyles";
+import { DRY_FILTER, INDICATOR_LABEL, MARK_STYLE, markerKey, NORMAL_ONLY_MARKS, type GridMarker, type Indicator, type Mark } from "./markerStyles";
 
 /** The swatch drawn for each grid indicator, shared by the legend and the hover card. */
 const INDICATOR_SWATCH: Record<Indicator, React.ReactNode> = {
@@ -39,15 +39,18 @@ const MarkerItem: React.FC<{ marker: GridMarker; className?: string; active?: bo
   </span>
 );
 
-/** Marks only a normal (Bazaar) profile can produce. */
-const NORMAL_ONLY_MARKS: readonly Mark[] = ["bought"];
-
 /**
  * Legend for the grid marks (events of the last simulated cycle) and the other grid indicators.
  * `highlight` holds the `markerKey`s drawn on the hovered grid element: those entries light up and
  * the rest dim, so it is easy to see which legend entries apply.
  */
-export const PlotMarkLegend: React.FC<{ normalProfile?: boolean; highlight?: readonly string[] }> = ({ normalProfile = false, highlight = [] }) => {
+export const PlotMarkLegend: React.FC<{
+  normalProfile?: boolean;
+  highlight?: readonly string[];
+  /** Show only these entries (in this order, with their own labels); default: every entry. */
+  items?: readonly GridMarker[];
+  className?: string;
+}> = ({ normalProfile = false, highlight = [], items, className = "" }) => {
   const active = new Set(highlight);
   const anyActive = active.size > 0;
   const item = (marker: GridMarker, key: string) => {
@@ -58,11 +61,13 @@ export const PlotMarkLegend: React.FC<{ normalProfile?: boolean; highlight?: rea
     return <MarkerItem key={key} marker={marker} className={cls} active={on} />;
   };
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400" data-testid="plot-mark-legend">
-      {(Object.keys(MARK_STYLE) as Mark[])
-        .filter((m) => normalProfile || !NORMAL_ONLY_MARKS.includes(m))
-        .map((m) => item({ mark: m }, m))}
-      {(Object.keys(INDICATOR_LABEL) as Indicator[]).map((i) => item({ indicator: i }, i))}
+    <div className={`flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400 ${className}`} data-testid="plot-mark-legend">
+      {items
+        ? items.map((m) => item(m, markerKey(m)))
+        : [
+            ...(Object.keys(MARK_STYLE) as Mark[]).filter((m) => normalProfile || !NORMAL_ONLY_MARKS.includes(m)).map((m) => item({ mark: m }, m)),
+            ...(Object.keys(INDICATOR_LABEL) as Indicator[]).map((i) => item({ indicator: i }, i)),
+          ]}
     </div>
   );
 };

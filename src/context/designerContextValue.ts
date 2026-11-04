@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 import type { MutationDefinition } from "../types/greenhouse";
 import type { EffectSimulation, LayoutTransform } from "../utilities";
 import type { GroundTile, GroundType } from "../utilities/designEncoding";
+import type { PlacementFocus } from "../hooks/usePlacementFocus";
 
 // Designer context, types and `useDesigner`, kept apart from DesignerProvider so
 // DesignerContext.tsx exports only a component (required by React Fast Refresh).
@@ -43,6 +44,8 @@ export interface MutationValidationInfo {
   satisfiedRequirements: Array<RequirementInfo>;
   // Only for effect-based mutations (godseed).
   effectRequirements: Array<EffectRequirementInfo>;
+  // Lonelily: a neighbour stands in the ring, so it has no empty-ring requirement entry.
+  ringBlocked: boolean;
 }
 
 export interface DesignerContextType {
@@ -96,6 +99,9 @@ export interface DesignerContextType {
 
   // Effects propagated over the current inputs and targets.
   effectSimulation: EffectSimulation;
+
+  /** List-to-grid highlight: hovering or clicking a crop or mutation in a list finds it on the grid (keys from `focusKey`). */
+  placementFocus: PlacementFocus;
   
   loadFromSolverResult: (
     crops: Array<{ id: string; name: string; position: [number, number]; size: number }>,

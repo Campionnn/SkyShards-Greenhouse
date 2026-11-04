@@ -1,5 +1,217 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
+/* Local-only dev pages (the /design gallery) are gitignored, which Tailwind skips by default. */
+@source "./dev-local";
+
+/* ---- Design tokens (docs/design-system/foundations.md) -------------------------------------
+   The semantic layer every component should use. Tailwind turns each into utilities:
+   --color-surface-card → bg-surface-card, --color-fg-meta → text-fg-meta, --color-line → border-line,
+   --text-body → text-body (size + line height + weight + tracking), --radius-control → rounded-control.
+
+   Palette: "Hypixel emerald" (chosen 2026-10-30; research/design-audit-v2/palettes-v2/). True grey
+   neutrals (no blue tint), emerald go, Hypixel §b aqua for selection and focus, §6 gold coins, §e
+   yellow warnings, §9 periwinkle scripts, §d rose restart. Every pair is contrast-tested
+   (src/__tests__/tokens.test.ts). The legacy Tailwind ramps pages still use (slate, yellow, amber,
+   sky, violet, red-300) are re-pointed below so un-migrated pages follow the palette too. */
+@theme {
+  /* Surfaces: well < page < panel < card < raised < control < hover. */
+  --color-surface-page: oklch(14.5% 0 0);
+  --color-surface-panel: oklch(18.5% 0 0);
+  --color-surface-card: oklch(21% 0 0);
+  --color-surface-well: oklch(12% 0 0);
+  --color-surface-raised: oklch(23% 0 0);
+  --color-surface-hover: oklch(26.5% 0 0);
+  --color-surface-control: oklch(23.5% 0 0);
+
+  /* Lines: hairline between areas, strong for floating edges, control for input boundaries (≥3:1). */
+  --color-line: oklch(30% 0 0);
+  --color-line-strong: oklch(36% 0 0);
+  --color-line-control: oklch(54% 0 0);
+
+  /* Text. Every one ≥4.5:1 on every surface. */
+  --color-fg: oklch(96% 0 0);
+  --color-fg-body: oklch(89% 0 0);
+  --color-fg-muted: oklch(77% 0 0);
+  --color-fg-meta: oklch(68.5% 0 0);
+  --color-fg-disabled: oklch(50% 0 0);
+
+  /* Roles: each colour has exactly one meaning. */
+  --color-go: var(--color-emerald-500);
+  /* The darker segment of a split go button (Run's cycle field and menu). */
+  --color-go-strong: oklch(63% 0.15 163); /* on-go text 4.72:1 (emerald-600 was 4.13) */
+  --color-go-hover: var(--color-emerald-400);
+  --color-go-fg: var(--color-emerald-300);
+  --color-on-go: var(--color-emerald-950);
+  --color-coin: oklch(71% 0.149 75);
+  --color-warn: oklch(94% 0.13 105);
+  --color-problem: oklch(67% 0.17 28);
+  --color-script: oklch(78% 0.1 285);
+  --color-restart: oklch(74% 0.14 355);
+  --color-focus: oklch(85% 0.13 205);
+  /* Selection / "you are here" (secondary colour, Hypixel aqua): the selected tab, item, step or
+     plot, the checked menu row. Its own hue so "selected" never reads as "go". */
+  --color-select: oklch(85% 0.13 205);
+  --color-select-fg: oklch(89% 0.111 205);
+
+  /* Chart series (data only, never UI state or actions): where a flow's money comes from. Hues kept
+     clear of the roles above (go 163, select 205, coin 75, warn 105, problem 28, script 285, restart 355). */
+  --color-series-crops: oklch(72% 0.14 135);
+  --color-series-mutations: oklch(73% 0.14 50);
+  --color-series-rare: oklch(70% 0.13 320);
+
+  /* ---- Legacy ramps, re-pointed (pages that still use raw classes follow the palette) ---- */
+  /* slate → true grey. slate-500 is the passing meta grey, so legacy text-slate-500 becomes readable. */
+  --color-slate-50: oklch(98.5% 0 0);
+  --color-slate-100: oklch(96% 0 0);
+  --color-slate-200: oklch(89% 0 0);
+  --color-slate-300: oklch(84% 0 0);
+  --color-slate-400: oklch(77% 0 0);
+  --color-slate-500: oklch(68.5% 0 0);
+  --color-slate-600: oklch(50% 0 0);
+  --color-slate-700: oklch(37% 0 0);
+  --color-slate-800: oklch(28% 0 0);
+  --color-slate-900: oklch(18.5% 0 0);
+  --color-slate-950: oklch(14.5% 0 0);
+  /* yellow → §6 gold (coin = yellow-400), amber → §e yellow (warn = amber-300): told apart by lightness. */
+  --color-yellow-300: oklch(83% 0.127 75);
+  --color-yellow-400: oklch(71% 0.149 75);
+  --color-yellow-500: oklch(66% 0.15 72);
+  --color-amber-200: oklch(95% 0.09 105);
+  --color-amber-300: oklch(94% 0.13 105);
+  --color-amber-400: oklch(88% 0.15 100);
+  --color-amber-500: oklch(80% 0.15 95);
+  /* sky → §9 periwinkle (scripts), so it is never confused with aqua selection. */
+  --color-sky-300: oklch(78% 0.1 285);
+  --color-sky-400: oklch(72% 0.12 285);
+  --color-sky-500: oklch(64% 0.14 285);
+  /* violet → §d rose (restart). */
+  --color-violet-300: oklch(74% 0.14 355);
+  --color-violet-400: oklch(70% 0.16 355);
+  --color-violet-500: oklch(63% 0.18 355);
+  /* red-300 = the problem colour (the legacy problem text). */
+  --color-red-300: oklch(67% 0.17 28);
+
+  /* Type roles (size / line height / weight / tracking). Nothing else inside a page. */
+  --text-label: 11px;
+  --text-label--line-height: 14px;
+  --text-label--font-weight: 600;
+  --text-label--letter-spacing: 0.06em;
+  --text-meta: 11px;
+  --text-meta--line-height: 16px;
+  --text-secondary: 12px;
+  --text-secondary--line-height: 18px;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-title: 15px;
+  --text-title--line-height: 20px;
+  --text-title--font-weight: 600;
+  --text-hero: 22px;
+  --text-hero--line-height: 26px;
+  --text-hero--font-weight: 600;
+  --text-hero--letter-spacing: -0.01em;
+
+  /* Radii: inner (chips, kbd, thumbs) · control · container (cards, floating, grids). */
+  --radius-inner: 6px;
+  --radius-control: 8px;
+  --radius-container: 12px;
+
+  --shadow-raised: 0 20px 50px -12px rgb(0 0 0 / 0.9);
+
+  /* Motion: one strong ease-out for anything entering or responding, one ease-in-out for things
+     moving on screen. Tailwind turns these into `ease-snappy` / `ease-glide` utilities. */
+  --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-glide: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* Not Tailwind namespaces: use as z-(--z-popover), duration-(--duration-pop). */
+:root {
+  --z-sticky: 20;
+  --z-bar: 30;
+  --z-workspace: 50;
+  --z-drawer: 60;
+  --z-popover: 70;
+  --z-menu: 80;
+  --z-toast: 90;
+  --z-tooltip: 100;
+  --duration-hover: 150ms;
+  --duration-pop: 160ms;
+  --duration-ink: 200ms;
+  --duration-drawer: 220ms;
+  color-scheme: dark;
+  accent-color: var(--color-go);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-go) 35%, transparent);
+  color: var(--color-fg);
+}
+
+/* The one focus ring: 2px, 2px away, the focus colour. Every kit control uses it. */
+@utility focus-ring {
+  outline: none;
+  &:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}
+/* For rows inside menus and lists, where an outside ring would be clipped. */
+@utility focus-ring-inset {
+  outline: none;
+  &:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: -2px;
+  }
+}
+/* Grows a small control's hit area to 24px (44px on touch screens) without changing its look. */
+@utility hit-area {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 24px);
+    height: max(100%, 24px);
+    transform: translate(-50%, -50%);
+  }
+  @media (pointer: coarse) {
+    &::after {
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+    }
+  }
+}
+
+/* Popovers, menus and new canvas nodes: scale in from 0.96 (never from 0), origin-aware. */
+@keyframes kit-pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+}
+.kit-pop-in {
+  animation: kit-pop-in 160ms var(--ease-snappy) both;
+}
+/* Something new appears in a list (an exit, a condition). */
+@keyframes kit-rise-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+.kit-rise-in {
+  animation: kit-rise-in 180ms var(--ease-snappy) both;
+}
+@keyframes kit-fade-in {
+  from { opacity: 0; }
+}
+.kit-fade-in {
+  animation: kit-fade-in 160ms ease both;
+}
+/* A side drawer slides in from the right. */
+@keyframes sim-drawer-in {
+  from { opacity: 0; transform: translateX(24px); }
+}
+.sim-drawer-in {
+  animation: sim-drawer-in 220ms var(--ease-snappy) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kit-pop-in, .kit-rise-in, .sim-drawer-in { animation-name: kit-fade-in; }
+}
 
 @font-face {
   font-family: 'Minecraft';
@@ -10,9 +222,10 @@
 }
 
 body {
-  font-family: "Inter", "Minecraft", sans-serif;
-  background-color: #0f172a;
-  color: #f1f5f9;
+  /* Minecraft (unifont) stays last before the generic family: glyph coverage for game symbols only. */
+  font-family: "Inter", system-ui, "Segoe UI", "Minecraft", sans-serif;
+  background-color: var(--color-surface-page);
+  color: var(--color-fg);
 }
 
 .pn-leaderboard {
@@ -54,6 +267,27 @@ body {
   }
 }
 
+/* The site header uses the same frame as the page (Layout.tsx: px-1 sm:px-2 lg:px-4, the
+   pn-page grid, max-w-screen-2xl), so the logo lines up with the content column's left edge and
+   the header's right side with its right edge, with or without the ad rails. */
+.pn-header {
+  display: block;
+}
+@media (min-width: 1280px) {
+  .pn-header {
+    display: grid;
+    grid-template-columns: 100px minmax(0, 1fr) 300px;
+    column-gap: 16px;
+  }
+  .pn-header > .pn-content {
+    grid-column: 2;
+    min-width: 0;
+  }
+}
+html.ads-blocked .pn-header {
+  display: block;
+}
+
 /* Ad blocker detected (set in index.html): collapse every reserved ad slot so there is
    no empty space. Pure CSS, so it applies on first paint and on every route. */
 html.ads-blocked .pn-left,
@@ -72,6 +306,27 @@ html.ads-blocked .pn-page {
   100% { transform: translateX(300%); }
 }
 
+/* Flow rankings: rows rise in once, staggered by an inline animation-delay. */
+@keyframes flows-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.flows-row-in {
+  animation: flows-row-in 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+/* Flow rankings: the "log in to like" popover grows out of the heart. */
+@keyframes like-login-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.like-login-pop {
+  animation: like-login-pop 150ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flows-row-in { animation: none; }
+  .like-login-pop { animation-name: none; }
+}
+
 /* Hide number input spinners */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
@@ -87,7 +342,7 @@ input[type="number"] {
 /* Custom scrollbar - Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #475569 #1e293b;
+  scrollbar-color: var(--color-slate-600) var(--color-slate-800);
 }
 
 /* Custom scrollbar - Webkit (Chrome, Safari, Edge) */
@@ -97,22 +352,32 @@ input[type="number"] {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: var(--color-slate-800);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: var(--color-slate-600);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: var(--color-slate-500);
+}
+
+/* Scrolls without showing a scrollbar (tab bars, chip rows). A plain rule, not an @utility: the
+   unlayered `*` scrollbar rule above would beat anything in Tailwind's utilities layer. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 /* Dark scrollbar for scrollable containers */
 .scrollbar-dark {
   scrollbar-width: thin;
-  scrollbar-color: #475569 #1e293b;
+  scrollbar-color: var(--color-slate-600) var(--color-slate-800);
 }
 
 .scrollbar-dark::-webkit-scrollbar {
@@ -121,14 +386,14 @@ input[type="number"] {
 }
 
 .scrollbar-dark::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: var(--color-slate-800);
 }
 
 .scrollbar-dark::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: var(--color-slate-600);
   border-radius: 3px;
 }
 
 .scrollbar-dark::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: var(--color-slate-500);
 }

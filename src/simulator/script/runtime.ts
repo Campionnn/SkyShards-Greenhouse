@@ -16,7 +16,7 @@
 // completes and run() stops after it. After an error, no more script code runs that cycle.
 
 import { cellKey, footprintFits, GRID_SIZE, inBounds } from "../grid/cells";
-import { isFreePlacedItem, MAX_WATER } from "../config";
+import { isFreePlacedItem, MAX_WATER, RULES_HIDDEN_CONFIG_KEYS, type SimConfig } from "../config";
 import { isHarvestableCrop, kindDef } from "../data/load";
 import { dueTarget, transition } from "../flow/runner";
 import { collectedOf, conditionHolds, stepVisits, type TriggerView } from "../flow/triggers";
@@ -24,15 +24,16 @@ import type { Condition, PolicyOverrides, StepLayout } from "../flow/types";
 import { hourOfDay } from "../growth/clock";
 import { effectiveList, ensureEffects } from "../effects/adapter";
 import { effectsGivenBy } from "../../utilities/effectSimulation";
-import { intInclusive, nextFloat, seedRng } from "../rng";
+import { derivedSeed, intInclusive, nextFloat, seedRng } from "../rng";
 import { sanityCheck } from "../analysis/sanityCheck";
 import { newScratch, type CycleCtx, type Env, type TickScratch } from "../sim/context";
 import { wouldDecayWithin } from "../sim/decay";
+import { effort, effortBreak, effortPut, effortWater } from "../sim/effort";
 import { destroyPlant } from "../sim/explosion";
 import { harvestPlant } from "../sim/harvest";
 import { spend } from "../sim/inventory";
 import { canBuy } from "../sim/market";
-import { applyStepLayout, removeByPlayer } from "../sim/placement";
+import { applyStepLayout, markPickup, removeByPlayer } from "../sim/placement";
 import { runSessionPhase } from "../sim/player";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isDry, isFootprintFree, isFullyGrown, isHarvestable, isRoot, newPlant } from "../sim/plants";
 import type { PlantState, PlotState, SimulationState, TickEvent } from "../sim/state";
@@ -41,7 +42,7 @@ import { EVENT_HOOKS, SCRIPT_PHASES } from "./docs";
 import { compile, compileExpression, Interpreter, ScriptError, Scope, type Program } from "./interpreter";
 import { ScriptSyntaxError } from "./lexer";
 import { enabledScripts, forcedEffectsOf } from "./overrides";
-import { Decoder, Encoder, PersistError } from "./persist";
+import { Decoder, Encoder, isPersistable, PersistError } from "./persist";
 import { coreGlobals } from "./stdlib";
 import {
   GLOBAL_SCRIPT,
@@ -68,8 +69,17 @@ const MAX_MESSAGES_PER_CYCLE = 1000;
 const KNOWN_GROUND = ["farmland", "sand", "soul_sand", "mycelium", "netherrack", "end_stone"];
 
 export function emptyScriptsState(seed: number): ScriptsState {
-  // A stream of its own: scripts calling random() never shift the game's dice.
-  return { heap: [], scopes: {}, shared: { u: 1 }, rng: seedRng((Math.trunc(seed) ^ 0x5c41b7) >>> 0), plots: {}, logs: [], metrics: {}, halt: null };
+  // A stream of its own: scripts calling random() never shift the game's dice. Seeded one way from
+  // the scenario seed, so a script's random() output doesn't reveal the game's (secret) seed.
+  return { heap: [], scopes: {}, shared: { u: 1 }, rng: seedRng(derivedSeed(seed, "script")), plots: {}, logs: [], metrics: {}, halt: null };
+}
+
+/** The scripts' copy of the config: under the leaderboard rules, without the credit settings. */
+function scriptConfig(config: SimConfig): Record<string, unknown> {
+  if (config.leaderboardRules !== true) return { ...config };
+  const out: Record<string, unknown> = { ...config };
+  for (const k of RULES_HIDDEN_CONFIG_KEYS) delete out[k];
+  return out;
 }
 
 interface ScriptInstance {
@@ -201,13 +211,32 @@ export class ScriptRuntime {
     }
   }
 
-  /** Encode every script's top-level variables and `shared` into state.scripts. */
-  save(): void {
+  /**
+   * Encode every script's top-level variables and `shared` into state.scripts.
+   * `full: false` (run() between two cycles of one call, where nothing reads the encoding before
+   * the next save replaces it): only check that everything could be encoded and skip writing it;
+   * if something couldn't, do the real save, which records the error exactly as always.
+   */
+  save(full = true): void {
     const ss = this.scriptsState;
-    const enc = new Encoder({
-      closureOwner: (c) => this.scripts.find((s) => s.scope === c.scope)?.key ?? null,
-      hostRef: (v) => (v instanceof HostObject ? v.ref() : null),
-    });
+    const encodeEnv = {
+      closureOwner: (c: Closure) => this.scripts.find((s) => s.scope === c.scope)?.key ?? null,
+      hostRef: (v: HostObject | HostFn) => (v instanceof HostObject ? v.ref() : null),
+    };
+    if (!full) {
+      const roots: unknown[] = [this.shared];
+      for (const inst of this.scripts) {
+        for (const name of inst.declared.keys()) {
+          const b = inst.scope.vars.get(name);
+          if (b) roots.push(b.value);
+        }
+      }
+      if (isPersistable(roots, encodeEnv)) {
+        this.forgetGoneProtections();
+        return;
+      }
+    }
+    const enc = new Encoder(encodeEnv);
     const keep = (value: unknown, path: string, key: ScriptKey): EncodedValue => {
       try {
         return enc.encode(value, path);
@@ -230,7 +259,12 @@ export class ScriptRuntime {
     ss.heap = enc.heap;
     ss.shared = shared;
     ss.scopes = scopes;
-    // Forget protections of plants that are gone.
+    this.forgetGoneProtections();
+  }
+
+  /** Forget protections of plants that are gone (part of every save). */
+  private forgetGoneProtections(): void {
+    const ss = this.scriptsState;
     for (const [id, sp] of Object.entries(ss.plots)) {
       if (!sp.protected) continue;
       const plot = this.state.plots.find((p) => String(p.id) === id);
@@ -290,11 +324,17 @@ export class ScriptRuntime {
       if (outer) throw err; // the outermost call records it
       this.recordHalt(this.haltFor(err, inst.key, hook));
     } finally {
+      if (!outer) this.countSteps(this.interp.steps);
       this.current = prev.current;
       this.currentHook = prev.hook;
       this.mode = prev.mode;
     }
     if (!outer) this.flush();
+  }
+
+  /** Add one outermost call's interpreter steps to the run's total (ScriptsState.steps). */
+  private countSteps(n: number): void {
+    if (n > 0) this.scriptsState.steps = (this.scriptsState.steps ?? 0) + n;
   }
 
   private haltFor(err: ScriptError, script: ScriptKey, hook: string): ScriptHalt {
@@ -406,6 +446,7 @@ export class ScriptRuntime {
       this.recordHalt(halt);
       return false;
     } finally {
+      this.countSteps(this.interp.steps);
       this.current = prev.current;
       this.currentHook = prev.hook;
       this.mode = prev.mode;
@@ -520,13 +561,20 @@ export class ScriptRuntime {
     set("CROPS", [...this.env.data.cropIds]);
     set("inventory", new InventoryHost(this));
 
-    // Debug: forced effects (config.forcedEffects), switchable from scripts.
+    // Debug: forced effects (config.forcedEffects), switchable from scripts. Refused under the
+    // leaderboard rules: they give effects no layout earns.
     const kindArg = (v: unknown, info: CallInfo, what: string): string => {
       const id = toStr(v);
       if (!own(this.env.data.crops, id) && !own(this.env.data.mutations, id)) info.fail(`${what}: "${id}" isn't a crop or mutation id`);
       return id;
     };
+    const debugOnly = (info: CallInfo, what: string) => {
+      if (this.state.scenario.settings.config.leaderboardRules === true) {
+        info.fail(`${what} is a debugging tool and isn't allowed under the leaderboard rules. Place the real items instead (e.g. a Blastberry next to the plant, picked back up before the next tick).`);
+      }
+    };
     set("forceEffects", fn("forceEffects", (a, info) => {
+      debugOnly(info, "forceEffects()");
       this.notInCondition(info, "forceEffects()");
       const kind = kindArg(a[0], info, "forceEffects");
       const list = Array.isArray(a[1]) ? a[1] : a.slice(1);
@@ -544,6 +592,7 @@ export class ScriptRuntime {
       return true;
     }));
     set("unforceEffects", fn("unforceEffects", (a, info) => {
+      debugOnly(info, "unforceEffects()");
       this.notInCondition(info, "unforceEffects()");
       if (a.length === 0) {
         this.setForced({});
@@ -555,6 +604,7 @@ export class ScriptRuntime {
       return true;
     }));
     set("resetForcedEffects", fn("resetForcedEffects", (_a, info) => {
+      debugOnly(info, "resetForcedEffects()");
       this.notInCondition(info, "resetForcedEffects()");
       this.setForced(undefined);
       return true;
@@ -570,7 +620,7 @@ export class ScriptRuntime {
     live("plots", () => this.orderedPlots().map((p) => this.plotHost(p.id)));
     live("summary", () => fromData(this.state.summary));
     live("stats", () => fromData(this.state.scenario.settings.playerStats));
-    live("config", () => fromData(this.state.scenario.settings.config));
+    live("config", () => fromData(scriptConfig(this.state.scenario.settings.config)));
   }
 
   private orderedPlots(): PlotState[] {
@@ -1067,7 +1117,14 @@ class PlotHost extends HostObject {
       case "water":
         return fn(key, (_a, info) => {
           if (!rt.canAct(info, "plot.water")) return false;
-          for (const p of this.plot.plants) if (p.kindId !== "soggybud") p.water = MAX_WATER;
+          let watered = false;
+          for (const p of this.plot.plants) {
+            if (p.kindId === "soggybud") continue;
+            if (p.water < MAX_WATER) watered = true;
+            p.water = MAX_WATER;
+          }
+          // Effort: once per plot per session, like the built-in phase.
+          if (watered) effortWater(this.ctx.state, rt.scratchFor(this.id));
           return true;
         });
       case "setGround":
@@ -1197,13 +1254,17 @@ class PlotHost extends HostObject {
     const plot = this.plot;
     if (!isFootprintFree(buildOccupancy(plot), row, col, def!.size)) return false;
     const origin = isHarvestableCrop(data, kind) ? "planted" : "placed";
-    if (origin === "placed" && !isFreePlacedItem(kind)) {
+    const paid = origin === "placed" && !isFreePlacedItem(kind, ctx.config);
+    if (paid) {
       const allowDebt = ctx.config.allowMutationDebt === true && !!data.mutations[kind];
       const req = { cycle: ctx.cycle, plotId: plot.id, row, col, action: `place ${kind} (script)`, replacement: false, allowDebt };
       if (!spend(ctx.state, kind, 1, req, ctx.prices, ctx.emit)) return false;
     }
     const p = newPlant(ctx.state, data, ctx.config, kind, row, col, origin, ctx.cycle);
+    // Broken again before the next tick, it is picked back up (item returned).
+    if (paid) markPickup(p, ctx, false);
     insertPlant(plot, p);
+    effortPut(ctx.state, rt.scratchFor(plot.id), p.id, origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row, col, origin, replacement: false });
     return true;
   }
@@ -1249,7 +1310,7 @@ function mergeOverrides(base: PolicyOverrides | undefined, patch: PolicyOverride
 const PLANT_KEYS = [
   "id", "kind", "name", "row", "col", "size", "origin", "stage", "growthStages", "readyStage", "fullyGrown", "fullyGrownAtCycle", "harvestable",
   "water", "dry", "dead", "root", "rival", "decaySeconds", "decayCycles", "timesMutated", "mutatesRemaining", "effects", "activeEffects", "gives",
-  "lockedEffects", "ground", "cells", "target", "asleep", "ratAlive", "charge", "hunger", "primed", "exploded", "alive", "protected",
+  "lockedEffects", "ground", "cells", "target", "asleep", "ratAlive", "charge", "hunger", "primed", "exploded", "canPickUp", "alive", "protected",
 ];
 /** Keys copied by p.snapshot() (everything readable except host objects and functions). */
 const SNAPSHOT_KEYS = PLANT_KEYS.filter((k) => k !== "alive");
@@ -1384,6 +1445,8 @@ class PlantHost extends HostObject {
         return p.gate.hunger ?? null;
       case "primed":
         return !!p.gate.primed;
+      case "canPickUp":
+        return !!p.gate.pickup;
       case "target":
         return rt.plotState(this.plotId)!.slots.find((s) => s.row === p.row && s.col === p.col)?.mutationId ?? null;
       case "protected":
@@ -1398,25 +1461,42 @@ class PlantHost extends HostObject {
           return this.act(info, key, (plot, q) => harvestPlant(plot, q, rt.cycleCtx, rt.scratchFor(this.plotId)));
         });
       case "destroy":
-        return fn(key, (_a, info) => this.act(info, key, (plot, q) => destroyPlant(plot, q, rt.cycleCtx, "destroyed by script")));
+        return fn(key, (_a, info) => this.act(info, key, (plot, q) => {
+          effortBreak(rt.cycleCtx.state, rt.scratchFor(this.plotId), q.id);
+          destroyPlant(plot, q, rt.cycleCtx, "destroyed by script");
+        }));
       case "waterIt":
         return fn(key, (a, info) => {
           const add = a[0] === undefined ? null : num(a[0], info, "amount");
           return this.act(info, key, (_plot, q) => {
             if (q.kindId === "soggybud") return; // can't be watered
+            // Effort: once per plot per session, however many plants are watered (like the built-in phase).
+            if (q.water < MAX_WATER) effortWater(rt.cycleCtx.state, rt.scratchFor(this.plotId));
             q.water = add === null ? MAX_WATER : Math.min(MAX_WATER, q.water + add);
           });
         });
       case "wake":
-        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => void (q.gate.asleep = false)));
+        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => {
+          if (q.gate.asleep) effort(rt.cycleCtx.state, "gate");
+          q.gate.asleep = false;
+        }));
       case "vacuum":
-        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => void (q.gate.ratAlive = false)));
+        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => {
+          if (q.gate.ratAlive) effort(rt.cycleCtx.state, "gate");
+          q.gate.ratAlive = false;
+        }));
       case "discharge":
-        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => void (q.gate.charge !== undefined && (q.gate.charge = 0))));
+        return fn(key, (_a, info) => this.act(info, key, (_plot, q) => {
+          if (q.gate.charge) effort(rt.cycleCtx.state, "gate");
+          if (q.gate.charge !== undefined) q.gate.charge = 0;
+        }));
       case "feed":
         return fn(key, (_a, info) =>
           this.act(info, key, (_plot, q) => {
-            if (q.kindId === "fleshtrap" && q.origin === "spawned") q.gate.hunger = (q.gate.hunger ?? 0) + rt.cycleCtx.config.fleshtrapFeedHunger;
+            if (q.kindId === "fleshtrap" && q.origin === "spawned") {
+              q.gate.hunger = (q.gate.hunger ?? 0) + rt.cycleCtx.config.fleshtrapFeedHunger;
+              effort(rt.cycleCtx.state, "gate");
+            }
           })
         );
       case "protect":

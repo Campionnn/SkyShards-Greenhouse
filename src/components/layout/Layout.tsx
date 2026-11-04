@@ -2,23 +2,28 @@ import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Navigation } from "./Navigation";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { useBottomAdInset } from "../../hooks/useBottomAdInset";
+import { DISCORD_PATH } from "../../seo/routes";
 
 export const Layout: React.FC = () => {
   const location = useLocation();
+  // `--ad-bottom`: fixed bottom UI docks above Mediavine's adhesion ad instead of under it.
+  useBottomAdInset();
   // Remount per top-level section, not per path, so moving between wiki
   // entries keeps the wiki sidebar (search text, scroll) mounted.
   const sectionKey = location.pathname.split("/")[1] ?? "";
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-surface-page">
       <Navigation />
-      <main className="px-2 sm:px-4 lg:px-6 py-4">
+      {/* Same frame as skyshards.com: thin side padding, content up to max-w-screen-2xl. */}
+      <main className="px-1 sm:px-2 lg:px-4 py-3">
         {/* Reserved ad slots (Mediavine targets the pn-* classes). Ad-blocker users are
             handled in index.html, which sets `html.ads-blocked`; CSS then collapses these
             slots (see src/index.css) on first paint, without a React re-render. */}
         <div className="pn-page">
           <div className="pn-left" aria-hidden />
           <div className="pn-content">
-            <div className="max-w-screen-xl mx-auto w-full">
+            <div className="max-w-screen-2xl mx-auto w-full">
               <div className="pn-leaderboard" />
               <ErrorBoundary>
                 <Outlet key={sectionKey} />
@@ -29,35 +34,32 @@ export const Layout: React.FC = () => {
         </div>
       </main>
 
-      <footer className="text-center py-6 text-slate-400 text-sm border-t border-slate-800/50">
-        <div className="max-w-screen-xl mx-auto">
-          <p className="font-medium">Made by Campion</p>
-          <p className="mt-1 text-slate-500">A SkyShards Project. Big thanks to MegaMew14 for the help!</p>
-          <div className="h-px w-1/2 bg-slate-800/50 mx-auto my-3"></div>
-          <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1 px-4">
+      {/* One-line footer: credit on the left, links on the right (wraps on phones). */}
+      {/* Same frame as the page and header, so it lines up with the content column. */}
+      <footer className="mt-10 border-t border-line px-1 sm:px-2 lg:px-4">
+        <div className="pn-header">
+        <div className="pn-content">
+        <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center gap-x-5 gap-y-1.5 py-4 text-secondary text-fg-meta">
+          <span className="mr-auto">Made by Campion · a SkyShards project · thanks to MegaMew14</span>
+          {[
+            { href: "https://skyshards.com", label: "SkyShards", external: true },
+            { href: DISCORD_PATH, label: "Discord", external: true },
+            { href: "/about", label: "About" },
+            { href: "/contact", label: "Contact" },
+            { href: "/privacy-policy", label: "Privacy policy" },
+          ].map(({ href, label, external }) => (
             <a
-              href="https://skyshards.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-slate-500 hover:text-emerald-400 transition-colors duration-200 text-xs font-medium"
+              key={href}
+              href={href}
+              {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              className="focus-ring rounded-inner text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg"
             >
-              SkyShards
+              {label}
             </a>
-            <span className="text-slate-600">•</span>
-            <a href="/about" className="text-slate-500 hover:text-emerald-400 transition-colors duration-200 text-xs font-medium">
-              About
-            </a>
-            <span className="text-slate-600">•</span>
-            <a href="/contact" className="text-slate-500 hover:text-emerald-400 transition-colors duration-200 text-xs font-medium">
-              Contact
-            </a>
-            <span className="text-slate-600">•</span>
-            <a href="/privacy-policy" className="text-slate-500 hover:text-emerald-400 transition-colors duration-200 text-xs font-medium">
-              Privacy Policy
-            </a>
-            <span className="text-slate-600">•</span>
-            <span className="text-slate-600 text-xs">© {new Date().getFullYear()} SkyShards</span>
-          </div>
+          ))}
+          <span>© {new Date().getFullYear()} SkyShards</span>
+        </div>
+        </div>
         </div>
       </footer>
     </div>

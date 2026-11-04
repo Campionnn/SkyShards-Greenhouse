@@ -18,6 +18,8 @@ export interface TriggerView {
   layout?: ResolvedLayout;
   /** Normal profile: items the player buys when short (sim/market.ts), so they never make a layout short. */
   buyable?: (item: string) => boolean;
+  /** Placed items with an unlimited supply (`config.freePlacedItems`); they never make a layout short. Missing: fire only. */
+  free?: (item: string) => boolean;
   /** Evaluates a `script` condition (the scenario's script runtime). Missing: script conditions never hold. */
   script?: (expr: string) => boolean;
 }
@@ -27,11 +29,11 @@ export interface TriggerView {
  * their cell, by item. A natural spawn of the same mutation at the cell counts as present
  * (hybrid input).
  */
-export function layoutMissing(plot: PlotState, layout: ResolvedLayout): Record<string, number> {
+export function layoutMissing(plot: PlotState, layout: ResolvedLayout, free: (item: string) => boolean = (item) => isFreePlacedItem(item)): Record<string, number> {
   const occ = buildOccupancy(plot);
   const missing: Record<string, number> = {};
   for (const d of layout.plants) {
-    if (d.origin !== "placed" || isFreePlacedItem(d.kindId)) continue;
+    if (d.origin !== "placed" || free(d.kindId)) continue;
     const q = occ[cellIndex(d.row, d.col)];
     if (q && !q.isDeadPlant && q.kindId === d.kindId && q.row === d.row && q.col === d.col) continue;
     if (q && q.isDeadPlant && d.kindId === DEAD_PLANT && q.row === d.row && q.col === d.col) continue;
@@ -64,7 +66,7 @@ export function triggerHolds(t: Trigger, v: TriggerView): boolean {
       return (v.collected ? v.collected(t.item) : v.inventory[t.item] ?? 0) >= t.qty;
     case "layoutShort":
       if (!v.layout) return false;
-      return Object.entries(layoutMissing(v.plot, v.layout)).some(([item, n]) => (v.inventory[item] ?? 0) < n && !v.buyable?.(item));
+      return Object.entries(layoutMissing(v.plot, v.layout, v.free)).some(([item, n]) => (v.inventory[item] ?? 0) < n && !v.buyable?.(item));
     case "allFullyGrown": {
       const plants = growable(v.plot);
       return plants.length > 0 && plants.every(isFullyGrown);

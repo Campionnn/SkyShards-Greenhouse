@@ -2,12 +2,10 @@ import React, { useCallback, useState, type RefObject } from "react";
 import { useNavigate } from "react-router-dom";
 import { Save, FolderOpen, Share2, X, Image, Film, Download, ClipboardCopy, Loader2, FlaskConical } from "lucide-react";
 import { LayoutClearControls, LayoutTransformControls } from "./LayoutTools";
-
-const SHARE_BASE_URL = "https://api.skyshards.com/share";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDesigner, useGreenhouseData } from "../../context";
 import { useToast } from "../ui/toastContext";
-import { encodeDesign, makeIncomingLayout, simulatorHandoffState } from "../../utilities";
+import { copyShareLink, encodeDesign, makeIncomingLayout, simulatorHandoffState } from "../../utilities";
 import { 
   loadLayouts, 
   saveLayouts,
@@ -49,6 +47,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     groundTiles,
     loadFromSolverResult,
     undo,
+    placementFocus,
   } = useDesigner();
   const { getCropDef, getMutationDef } = useGreenhouseData();
   const { toast } = useToast();
@@ -226,27 +225,15 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
   }, [toast]);
   
   // Copies a share link to the clipboard.
-  const handleExportCode = useCallback(() => {
+  const handleExportCode = useCallback(async () => {
     try {
-      const encoded = encodeDesign(inputPlacements, targetPlacements, groundTiles);
-      const shareUrl = `${SHARE_BASE_URL}/${encoded}`;
-      navigator.clipboard.writeText(shareUrl);
-      
+      await copyShareLink(encodeDesign(inputPlacements, targetPlacements, groundTiles));
       toast({
         title: "Share link copied!",
         description: "Paste this link in Discord or share with others",
         variant: "success",
         duration: 3000,
       });
-      
-      // Pre-render the share image so it is ready when Discord crawls the link.
-      fetch(`${SHARE_BASE_URL}/prepare?layout=${encoded}`, {
-        method: 'POST',
-      }).catch(err => {
-        // Non-fatal: the image is generated on demand.
-        console.warn('Failed to pre-generate share image:', err);
-      });
-      
     } catch (err) {
       toast({
         title: "Export failed",
@@ -305,6 +292,11 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
     setExportStep("exporting");
     setExportProgress(0);
     setHasExportedOnce(true);
+    // A list highlight would fade most of the exported grid: drop it and let the grid repaint first.
+    if (placementFocus.active) {
+      placementFocus.clear();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    }
     
     try {
       const options = getExportOptions();
@@ -343,7 +335,7 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({
       });
       resetExportState();
     }
-  }, [gridRef, getExportOptions, inputPlacements, targetPlacements, showTargets, toast, resetExportState]);
+  }, [gridRef, getExportOptions, inputPlacements, targetPlacements, showTargets, toast, resetExportState, placementFocus]);
   
   const handleDownload = useCallback(() => {
     if (!currentExportBlob) return;

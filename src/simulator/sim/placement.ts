@@ -2,21 +2,30 @@ import { isFreePlacedItem, type SimConfig } from "../config";
 import type { GameData } from "../data/types";
 import { cellIndex, footprint, footprintFits, ringCells } from "../grid/cells";
 import type { CycleCtx, ResolvedLayout, TickScratch } from "./context";
+import { effortBreak, effortPut } from "./effort";
 import { destroyPlant, isPrimedBlastberry } from "./explosion";
 import { harvestPlant } from "./harvest";
-import { closePlotDebts, credit, spend } from "./inventory";
+import { closePlotDebts, credit, refundPlacement, spend } from "./inventory";
 import { canBuy } from "./market";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isFootprintFree, isHarvestable, newPlant, removePlant, type Occupancy } from "./plants";
 import type { PlantState, PlotState, SlotLabel } from "./state";
 import { bump } from "./summary";
 import { isProtected } from "../script/overrides";
 
-/** Player removal: harvest if harvestable, clear a Dead Plant (item back to inventory), else break it as a loss. */
+/**
+ * Player removal: harvest if harvestable, clear a Dead Plant (item back to inventory), pick a
+ * mutation item placed since the last tick back up (item back, `gate.pickup`), else break it as a loss.
+ */
 export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch, why: string): void {
+  if (p.gate.pickup) {
+    pickUp(plot, p, ctx, scratch);
+    return;
+  }
   if (isHarvestable(p)) {
     harvestPlant(plot, p, ctx, scratch);
     return;
   }
+  effortBreak(ctx.state, scratch, p.id);
   if (p.isDeadPlant) {
     removePlant(plot, p);
     credit(ctx.state, DEAD_PLANT, p.size * p.size);
@@ -26,9 +35,31 @@ export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, sc
   destroyPlant(plot, p, ctx, why);
 }
 
+/**
+ * Game rule: a mutation item placed from inventory can be broken and picked back up, at no loss,
+ * until the next greenhouse tick. In that window it already gives its effects to its neighbours
+ * (e.g. a Blastberry's Immunity and Improved Harvest Boost on an All-in Aloe or Magic Jellybean
+ * harvested in the same session), and a placed Blastberry is not primed yet, so it doesn't explode.
+ */
+function pickUp(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): void {
+  effortBreak(ctx.state, scratch, p.id);
+  removePlant(plot, p);
+  refundPlacement(ctx.state, p.kindId, p.gate.pickup === "replacement", ctx.prices);
+  ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "picked up (no tick since placed)" });
+}
 
 /**
- * - setup: starting layouts; free, never drawn from inventory.
+ * Mark a placed plant as paid for from inventory this session (`gate.pickup`): breaking it before
+ * the next tick returns the item. Mutation items only; free items (fire) cost nothing anyway.
+ */
+export function markPickup(p: PlantState, ctx: CycleCtx, replacement: boolean): void {
+  if (p.origin === "placed" && !p.isDeadPlant && ctx.env.data.mutations[p.kindId]) p.gate.pickup = replacement ? "replacement" : "placed";
+}
+
+
+/**
+ * - setup: starting layouts; free, never drawn from inventory (unless `config.bootstrapDebt` buys
+ *   them on credit or `config.setupFromStock` pays them from the starting stock).
  * - step: a later flow step laying out.
  * - replace: re-placing what decayed or was destroyed (counted as replacements).
  */
@@ -38,29 +69,38 @@ export type PlacementMode = "setup" | "step" | "replace";
  * Place missing layout plants on free cells. Base crops and free placed items
  * (fire, `FREE_PLACED_ITEMS`) cost nothing; outside setup, other placed items are a required spend and a shortfall records debt
  * (cell stays empty, retried next session). With `config.allowMutationDebt`, a mutation item is placed anyway and its
- * stock goes below 0 (borrowed).
+ * stock goes below 0 (borrowed). Setup is free, bought on credit (`bootstrapDebt`) or paid from stock like a step
+ * (`setupFromStock`: a shortfall leaves the cell empty).
  */
-export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, mode: PlacementMode): void {
+export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch, mode: PlacementMode): void {
   const replacement = mode === "replace";
   const occ = buildOccupancy(plot);
+  const setupOnCredit = mode === "setup" && ctx.config.bootstrapDebt === true;
+  const paidSetup = setupOnCredit || (mode === "setup" && ctx.config.setupFromStock === true);
   for (const d of layout.plants) {
     const at = occ[cellIndex(d.row, d.col)];
     if (at && at.kindId === d.kindId && at.row === d.row && at.col === d.col && at.origin === d.origin) continue;
     if (!isFootprintFree(occ, d.row, d.col, d.size)) continue;
-    if (d.origin === "placed" && mode !== "setup" && !isFreePlacedItem(d.kindId)) {
+    let paid = false;
+    if (d.origin === "placed" && (mode !== "setup" || paidSetup) && !isFreePlacedItem(d.kindId, ctx.config)) {
       // Mutation debt: mutation items only (not fermento or dead plants).
       const allowDebt = ctx.config.allowMutationDebt === true && !!ctx.env.data.mutations[d.kindId];
-      const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement, allowDebt };
+      // Bootstrap debt: the starting layouts are bought on credit (a loan per item).
+      const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `place ${d.kindId}`, replacement, allowDebt, openLoan: setupOnCredit };
       if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
+      paid = true;
     } else if (replacement) {
       ctx.state.summary.replacements += 1;
-    } else if (mode === "setup" && d.origin === "placed" && !isFreePlacedItem(d.kindId) && ctx.state.summary.market) {
+    } else if (mode === "setup" && d.origin === "placed" && !isFreePlacedItem(d.kindId, ctx.config) && ctx.state.summary.market) {
       // Normal profile: setup stays free, but count what building it would cost (sim/market.ts).
       bump(ctx.state.summary.market.built, d.kindId);
     }
     const p = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, d.origin, ctx.cycle);
+    if (paid && mode !== "setup") markPickup(p, ctx, replacement);
     insertPlant(plot, p);
     for (const idx of footprint(d.row, d.col, d.size)) occ[idx] = p;
+    // Setup is built before the run; everything after is the player's work.
+    if (mode !== "setup") effortPut(ctx.state, scratch, p.id, d.origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, origin: p.origin, replacement });
   }
 }
@@ -68,12 +108,29 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
 const matches = (p: PlantState, d: ResolvedLayout["plants"][number]) =>
   p.kindId === d.kindId && p.row === d.row && p.col === d.col && p.size === d.size && p.origin === d.origin;
 
+/** Layout plants by anchor cell (a later plant wins a shared anchor, like `new Map(...)` over the list). Resolved layouts are immutable. */
+const anchorMaps = new WeakMap<ResolvedLayout, Map<number, ResolvedLayout["plants"][number]>>();
+function layoutAnchors(layout: ResolvedLayout): Map<number, ResolvedLayout["plants"][number]> {
+  let m = anchorMaps.get(layout);
+  if (!m) {
+    m = new Map(layout.plants.map((d) => [cellIndex(d.row, d.col), d]));
+    anchorMaps.set(layout, m);
+  }
+  return m;
+}
+
 /**
  * Hybrid flows (`spawnsFillLayoutInputs`): a spawn standing exactly where the
  * layout places the same mutation serves as that input, at any stage.
  */
 export function layoutInputAt(p: PlantState, layout: ResolvedLayout, config: SimConfig): boolean {
   if (!config.spawnsFillLayoutInputs || p.origin !== "spawned" || p.isDeadPlant) return false;
+  const anchors = layoutAnchors(layout);
+  const anchored = anchors.get(cellIndex(p.row, p.col));
+  if (anchored && anchored.kindId === p.kindId && anchored.size === p.size) return true;
+  // With one layout plant per anchor (resolved layouts never overlap) the anchor lookup is the
+  // whole answer; otherwise an earlier plant on the same anchor could still match.
+  if (anchors.size === layout.plants.length) return false;
   return layout.plants.some((d) => d.kindId === p.kindId && d.row === p.row && d.col === p.col && d.size === p.size);
 }
 
@@ -91,7 +148,7 @@ export function applyStepLayout(
   mode: "setup" | "step" = "step"
 ): void {
   const keepIdentical = ctx.config.keepIdenticalOnStepChange && !fullClear;
-  const desiredAt = new Map(layout.plants.map((d) => [cellIndex(d.row, d.col), d]));
+  const desiredAt = layoutAnchors(layout);
   const desiredCells = new Set(layout.plants.flatMap((d) => footprint(d.row, d.col, d.size)));
 
   for (const p of [...plot.plants]) {
@@ -112,7 +169,7 @@ export function applyStepLayout(
   closePlotDebts(ctx.state, plot.id);
   // A later step (never setup) skips requirement inputs of targets already holding their mutation.
   const onlyNeeded = mode === "step" && ctx.policiesFor(plot.id).onlyReplaceForEmptyTargets === true;
-  placeLayoutPlants(plot, onlyNeeded ? neededLayout(plot, layout, ctx.env.data) : layout, ctx, mode);
+  placeLayoutPlants(plot, onlyNeeded ? neededLayout(plot, layout, ctx.env.data, ctx.config) : layout, ctx, scratch, mode);
 }
 
 type LayoutPlant = ResolvedLayout["plants"][number];
@@ -129,8 +186,8 @@ function slotHoldsTarget(occ: Occupancy, s: SlotLabel): boolean {
  * whose mutation requires its kind is only needed while at least one of those targets is empty
  * (doesn't hold its mutation). Anything that feeds no target is always needed.
  */
-export function layoutPlantNeeded(plot: PlotState, d: LayoutPlant, occ: Occupancy, data: GameData): boolean {
-  if (d.origin !== "placed" || isFreePlacedItem(d.kindId)) return true;
+export function layoutPlantNeeded(plot: PlotState, d: LayoutPlant, occ: Occupancy, data: GameData, config?: SimConfig): boolean {
+  if (d.origin !== "placed" || isFreePlacedItem(d.kindId, config)) return true;
   const cells = footprint(d.row, d.col, d.size);
   let feeds = false;
   for (const s of plot.slots) {
@@ -144,9 +201,9 @@ export function layoutPlantNeeded(plot: PlotState, d: LayoutPlant, occ: Occupanc
 }
 
 /** The layout, minus the requirement inputs only full targets would use (`layoutPlantNeeded`). */
-export function neededLayout(plot: PlotState, layout: ResolvedLayout, data: GameData): ResolvedLayout {
+export function neededLayout(plot: PlotState, layout: ResolvedLayout, data: GameData, config?: SimConfig): ResolvedLayout {
   const occ = buildOccupancy(plot);
-  return { ...layout, plants: layout.plants.filter((d) => layoutPlantNeeded(plot, d, occ, data)) };
+  return { ...layout, plants: layout.plants.filter((d) => layoutPlantNeeded(plot, d, occ, data, config)) };
 }
 
 /**
@@ -160,21 +217,25 @@ export function replacePlacedBeforeDecay(
   plot: PlotState,
   layout: ResolvedLayout,
   ctx: CycleCtx,
+  scratch: TickScratch,
   due: (p: PlantState) => boolean
 ): void {
   const kept = (p: PlantState) => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
   for (const d of layout.plants) {
-    if (d.origin !== "placed" || isFreePlacedItem(d.kindId)) continue;
+    if (d.origin !== "placed" || isFreePlacedItem(d.kindId, ctx.config)) continue;
     const p = buildOccupancy(plot)[cellIndex(d.row, d.col)];
     // A primed Blastberry would explode when broken: leave it to its own decay.
-    if (!p || !matches(p, d) || kept(p) || isPrimedBlastberry(p) || !due(p)) continue;
+    // One placed this session (`gate.pickup`) is already fresh.
+    if (!p || !matches(p, d) || kept(p) || isPrimedBlastberry(p) || p.gate.pickup || !due(p)) continue;
     if ((ctx.state.inventory[d.kindId] ?? 0) < 1 && !canBuy(ctx.state, d.kindId)) continue;
     const req = { cycle: ctx.cycle, plotId: plot.id, row: d.row, col: d.col, action: `replace ${d.kindId} before decay`, replacement: true };
     if (!spend(ctx.state, d.kindId, 1, req, ctx.prices, ctx.emit)) continue;
     removePlant(plot, p);
     ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "replaced before decay" });
     const fresh = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, "placed", ctx.cycle);
+    markPickup(fresh, ctx, true);
     insertPlant(plot, fresh);
+    effortPut(ctx.state, scratch, fresh.id, "replace");
     ctx.emit(plot.id, { kind: "placed", plantId: fresh.id, kindId: fresh.kindId, row: fresh.row, col: fresh.col, origin: "placed", replacement: true });
   }
 }
@@ -186,7 +247,7 @@ export function replacePlacedBeforeDecay(
  */
 export function maintainLayout(plot: PlotState, fullLayout: ResolvedLayout, ctx: CycleCtx, scratch: TickScratch, onlyForEmptyTargets = false): void {
   let layout = fullLayout;
-  const desiredAt = new Map(fullLayout.plants.map((d) => [cellIndex(d.row, d.col), d]));
+  const desiredAt = layoutAnchors(fullLayout);
   // Plants a script protected (`plant.protect()`) are left alone; no scripts, none.
   const kept = (p: PlantState) => !!ctx.state.scripts && isProtected(ctx.state, plot.id, p.id);
   for (const p of [...plot.plants]) {
@@ -197,7 +258,7 @@ export function maintainLayout(plot: PlotState, fullLayout: ResolvedLayout, ctx:
   }
 
   // After the Dead Plant pass, so a target a mutation decayed out of counts as empty.
-  if (onlyForEmptyTargets) layout = neededLayout(plot, fullLayout, ctx.env.data);
+  if (onlyForEmptyTargets) layout = neededLayout(plot, fullLayout, ctx.env.data, ctx.config);
   const occ = buildOccupancy(plot);
   for (const d of layout.plants) {
     for (const idx of footprint(d.row, d.col, d.size)) {
@@ -207,5 +268,5 @@ export function maintainLayout(plot: PlotState, fullLayout: ResolvedLayout, ctx:
       removeByPlayer(plot, q, ctx, scratch, "blocking layout");
     }
   }
-  placeLayoutPlants(plot, layout, ctx, "replace");
+  placeLayoutPlants(plot, layout, ctx, scratch, "replace");
 }

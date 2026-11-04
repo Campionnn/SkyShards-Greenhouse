@@ -1,0 +1,2 @@
+// Moved to components/ui/Card.tsx (the design system's card family); kept as the simulator's alias.
+export { Card as ResultCard, DisclosureCard, Fact, LinkButton, type CardProps as ResultCardProps } from "../../ui/Card";

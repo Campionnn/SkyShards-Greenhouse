@@ -15,7 +15,20 @@ export type { DragValidationOverlayProps } from "./DragValidationOverlay";
 export { InteractiveGrid } from "./InteractiveGrid";
 export type { InteractiveGridProps } from "./InteractiveGrid";
 
-export { CompassFrame, COMPASS_GUTTER, COMPASS_RESERVE } from "./CompassFrame";
-
 export { EffectTooltip } from "./EffectTooltip";
 export type { EffectTooltipProps } from "./EffectTooltip";
+
+export { GridVisibilityToggle } from "./GridVisibilityToggle";
+export { FindOnGridHint } from "./FindOnGridHint";
+export { BareGround } from "./BareGround";
+export {
+  focusItemClass,
+  shadows,
+  focusFade,
+  BARE_PLACEMENT_STYLE,
+  TARGET_GLOW,
+  REMOVE_HOVER_GLOW,
+  LOCKED_GLOW,
+  FOCUS_RING,
+  FOCUS_TRANSITION,
+} from "./placementStyles";

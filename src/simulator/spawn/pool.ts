@@ -32,6 +32,12 @@ export interface SpawnPlan {
   excluded: { id: string; by: string }[];
 }
 
+/** Whether any id in the pool has a spawn priority (planPool then changes something). */
+export function hasPriority(pool: SpawnPool): boolean {
+  for (const id of pool.ids) if (SPAWN_PRIORITY[id] !== undefined) return true;
+  return false;
+}
+
 export function planPool(pool: SpawnPool): SpawnPlan {
   const exclusiveAt = pool.ids.findIndex((id) => SPAWN_PRIORITY[id] === "exclusive");
   const excluded: SpawnPlan["excluded"] = [];
@@ -108,6 +114,11 @@ export function applyMutationChanceBonus(pool: SpawnPool, bonus: number): SpawnP
  */
 export function rollPool(pool: SpawnPool, rng: RngState, floor: number = SPAWN_POOL_FLOOR): string | null {
   if (pool.ids.length === 0) return null;
+  if (!hasPriority(pool)) {
+    // No priority mutation: the plan is the pool itself (one main roll), without building it.
+    const i = weightedPick(rng, pool.weights, poolDenominator(pool.weights, floor));
+    return i < 0 ? null : pool.ids[i];
+  }
   const plan = planPool(pool);
   for (const f of plan.first) {
     if (weightedPick(rng, [f.weight], Math.max(floor, f.weight)) === 0) return f.id;

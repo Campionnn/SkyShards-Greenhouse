@@ -5,5 +5,5 @@ export const CROP_IMAGE_GLOW_FILTER = "drop-shadow(0 0 5px rgba(255, 255, 255, 0
 export const CROPS_NEEDING_GLOW = ["choconut", "chocoberry", "dead_plant"] as const;
 
 export function needsCropGlow(cropId: string, groundType: string): boolean {
-  return CROPS_NEEDING_GLOW.includes(cropId as any) && groundType === "farmland";
+  return (CROPS_NEEDING_GLOW as readonly string[]).includes(cropId) && groundType === "farmland";
 }

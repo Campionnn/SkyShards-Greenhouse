@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from "react";
-import { Sparkles, RotateCcw, ChevronDown, ChevronUp, Minus, Plus } from "lucide-react";
+import { Sparkles, RotateCcw, ChevronDown, ChevronUp, Minus, Plus, AlertTriangle, X } from "lucide-react";
 import { useGreenhouseData } from "../../context";
 import { Panel } from "../ui";
 import {
@@ -42,6 +42,7 @@ export const EffectWeightsPanel: React.FC = () => {
   } = useGreenhouseData();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [collapsed, setCollapsed] = useState(() => Object.values(effectWeights).every((v) => v === 0));
+  const [cacheWarningDismissed, setCacheWarningDismissed] = useState(false);
 
   const activeCount = useMemo(
     () => Object.values(effectWeights).filter((v) => v !== 0).length,
@@ -129,6 +130,23 @@ export const EffectWeightsPanel: React.FC = () => {
     >
       {!collapsed && (
         <>
+          {/* Dismissible cache warning (per session), like the crop priorities one. The server only
+              caches solves with the default weights, so any other weighting starts from scratch. */}
+          {!effectWeightsAreDefault && !cacheWarningDismissed && (
+            <div className="flex items-start gap-2 p-2 mb-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
+              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-300/90 flex-1">
+                Non-default effect weights reduce solver cache efficiency and may increase solve times.
+              </p>
+              <button
+                onClick={() => setCacheWarningDismissed(true)}
+                className="p-0.5 hover:bg-amber-500/20 rounded text-amber-400/70 hover:text-amber-400 transition-colors"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-y-0.5">
             {EFFECT_IDS.map((effectId) => {
               const negative = isNegativeEffect(effectId);

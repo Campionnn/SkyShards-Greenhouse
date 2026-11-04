@@ -1,8 +1,11 @@
 import React, { useMemo } from "react";
 import { useDesigner, useGreenhouseData } from "../../context";
 import type { DesignerPlacement } from "../../context/DesignerContext";
+import { focusKey } from "../../hooks/usePlacementFocus";
 import { getRarityTextColor } from "../../utilities";
 import { CropImage } from "../shared";
+import { FindOnGridHint } from "../grid/FindOnGridHint";
+import { focusItemClass } from "../grid/placementStyles";
 
 interface CropCount {
   cropId: string;
@@ -21,9 +24,12 @@ function countCrops(placements: DesignerPlacement[], rarityOf: (id: string) => s
   return [...counts.values()];
 }
 
-/** Target mutations, input crops and total cells of the current Designer layout (shown under the grid). */
+/**
+ * Target mutations, input crops and total cells of the current Designer layout (shown under the
+ * grid). Hovering or clicking an entry finds it on the grid.
+ */
 export const LayoutCropSummary: React.FC<{ className?: string }> = ({ className = "" }) => {
-  const { inputPlacements, targetPlacements } = useDesigner();
+  const { inputPlacements, targetPlacements, placementFocus: focus } = useDesigner();
   const { getMutationDef } = useGreenhouseData();
 
   const targets = useMemo(() => countCrops(targetPlacements, (id) => getMutationDef(id)?.rarity), [targetPlacements, getMutationDef]);
@@ -35,36 +41,58 @@ export const LayoutCropSummary: React.FC<{ className?: string }> = ({ className 
 
   if (targets.length === 0 && inputs.length === 0) return null;
 
+  const hint = <FindOnGridHint pinned={focus.pinned !== null} />;
+
   return (
     <div className={className}>
       {targets.length > 0 && (
         <div className="mb-4">
-          <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Target Mutations</h4>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Target Mutations</h4>
+            {hint}
+          </div>
           <div className="space-y-2">
-            {targets.map(({ cropId, name, rarity, count }) => (
-              <div key={cropId} className="flex items-center justify-between bg-slate-700/30 rounded-md px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <CropImage cropId={cropId} cropName={name} size="xs" showFallback={false} />
-                  <span className={`text-sm ${getRarityTextColor(rarity)}`}>{name}</span>
+            {targets.map(({ cropId, name, rarity, count }) => {
+              const key = focusKey("target", cropId);
+              return (
+                <div
+                  key={cropId}
+                  {...focus.itemProps(key, name)}
+                  className={`flex items-center justify-between bg-slate-700/30 rounded-md px-3 py-2 ${focusItemClass(focus, key)}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <CropImage cropId={cropId} cropName={name} size="xs" showFallback={false} />
+                    <span className={`text-sm ${getRarityTextColor(rarity)}`}>{name}</span>
+                  </div>
+                  <span className="text-sm font-medium text-emerald-400">x{count}</span>
                 </div>
-                <span className="text-sm font-medium text-emerald-400">x{count}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
       {inputs.length > 0 && (
         <div className="mb-4">
-          <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Input Crops</h4>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Input Crops</h4>
+            {targets.length === 0 && hint}
+          </div>
           <div className="flex flex-wrap gap-2">
-            {inputs.map(({ cropId, name, count }) => (
-              <div key={cropId} className="flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1">
-                <CropImage cropId={cropId} cropName={name} size="xs" showFallback={false} />
-                <span className="text-xs text-slate-300">{name}</span>
-                <span className="text-xs text-slate-500">x{count}</span>
-              </div>
-            ))}
+            {inputs.map(({ cropId, name, count }) => {
+              const key = focusKey("input", cropId);
+              return (
+                <div
+                  key={cropId}
+                  {...focus.itemProps(key, name)}
+                  className={`flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1 ${focusItemClass(focus, key)}`}
+                >
+                  <CropImage cropId={cropId} cropName={name} size="xs" showFallback={false} />
+                  <span className="text-xs text-slate-300">{name}</span>
+                  <span className="text-xs text-slate-500">x{count}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

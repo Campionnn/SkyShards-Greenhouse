@@ -160,6 +160,8 @@ export interface RunTimeline {
   supplyNeed: Record<string, number>;
   /** Seconds into the run when each supply first ran out (null: never). */
   supplyShortAt: Record<string, number | null>;
+  /** Paid items placed over the whole run (this login's placements included), by item. */
+  placed?: Record<string, number>;
 }
 
 export interface Spread {

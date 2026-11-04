@@ -116,7 +116,12 @@ function geometryIssues(layout: ResolvedLayout): string[] {
 /** Memoising resolver for one engine (layouts are immutable inputs). */
 export function createLayoutResolver(data: GameData): (layout: StepLayout) => ResolvedLayout {
   const cache = new Map<string, ResolvedLayout>();
+  // In front: by object identity (a state's layouts are never changed in place), which skips
+  // serialising a spec layout on every lookup.
+  const byObject = new WeakMap<StepLayout, ResolvedLayout>();
   return (layout) => {
+    const known = byObject.get(layout);
+    if (known) return known;
     const key = "code" in layout ? `c:${layout.code}` : `s:${JSON.stringify(layout)}`;
     let hit = cache.get(key);
     if (!hit) {
@@ -125,6 +130,7 @@ export function createLayoutResolver(data: GameData): (layout: StepLayout) => Re
       hit = resolved;
       cache.set(key, hit);
     }
+    byObject.set(layout, hit);
     return hit;
   };
 }

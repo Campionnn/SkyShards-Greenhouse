@@ -1,251 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Keyboard, ListOrdered, Play, RotateCcw, Square, StepBack, StepForward, Undo2 } from "lucide-react";
-import { uptimeRatio, type RunSummary, type SustainabilityReport, type TimedEvent } from "../../simulator";
+import React, { useMemo, useState } from "react";
+import type { TimedEvent } from "../../simulator";
 export { FlowTimeline } from "./FlowTimeline";
-import type { SimulationView } from "../../hooks/useSimulation";
 import { LOG_CYCLES } from "../../hooks/useSimulation";
-import { InfoHint, Panel, SegmentedControl } from "../ui";
-import { modalOpen, ownsKeys, RUN_SHORTCUTS, runShortcutFor } from "./runShortcuts";
-import { describeEvent, formatCoins, formatDuration, spotFailureText } from "./format";
-import { buttonClass, inputClass } from "./styles";
-import { NumberInput } from "./controls";
-
-/** UI cap on cycles per Run, matching the reference tool's 1-500; the engine is uncapped. */
-const MAX_RUN = 500;
-
-// ---- Run controls -----------------------------------------------------------
-
-export const RunControls: React.FC<{
-  view: SimulationView;
-  plotCount: number;
-  onRun: (n: number) => void;
-  onStep: () => void;
-  /** Go back one cycle. */
-  onStepBack: () => void;
-  /** Take back the last Step / Run / inventory change. */
-  onUndo: () => void;
-  onStop: () => void;
-  onReset: () => void;
-  seed: number;
-  onSeedChange: (seed: number) => void;
-  /**
-   * Normal profile: price a summary at Bazaar prices (profit, /day). Missing, or null for a
-   * summary: the summary's own NPC figures.
-   */
-  priceSummary?: (s: RunSummary) => { profit: number; perDay: number } | null;
-}> = ({ view, plotCount, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange, priceSummary }) => {
-  const [n, setN] = useState(200);
-  const running = view.status === "running";
-  const ready = view.status === "ready";
-
-  // Keyboard shortcuts. The listener reads the latest props through a ref so it is bound once.
-  const latest = useRef({ view, n, onRun, onStep, onStepBack, onUndo, onStop });
-  useEffect(() => {
-    latest.current = { view, n, onRun, onStep, onStepBack, onUndo, onStop };
-  });
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
-      const action = runShortcutFor(e);
-      if (!action || ownsKeys(e.target, action) || modalOpen()) return;
-      const { view, n, onRun, onStep, onStepBack, onUndo, onStop } = latest.current;
-      const isReady = view.status === "ready";
-      const isRunning = view.status === "running";
-      // Holding Step / Back repeats; everything else fires once per press.
-      if (e.repeat && action !== "step" && action !== "back") {
-        e.preventDefault();
-        return;
-      }
-      if (action === "stop" && !isRunning) return; // leave Escape alone for other UI
-      e.preventDefault();
-      switch (action) {
-        case "step":
-          if (isReady) onStep();
-          break;
-        case "back":
-          if (isReady && view.history.canStepBack) onStepBack();
-          break;
-        case "run":
-          if (isReady) onRun(n);
-          break;
-        case "toggleRun":
-          if (isRunning) onStop();
-          else if (isReady) onRun(n);
-          break;
-        case "stop":
-          onStop();
-          break;
-        case "undo":
-          if (isReady && view.history.lastAction) onUndo();
-          break;
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-  // While a run is in flight, show the worker's running totals.
-  const summary = (running && view.progress?.summary) || view.snapshot?.state.summary;
-  const priced = summary ? priceSummary?.(summary) ?? null : null;
-  const profit = priced ? priced.profit : summary?.profit ?? 0;
-  const profitPerDay = priced ? priced.perDay : summary?.coinsPerDay ?? 0;
-
-  let status = "Loading...";
-  if (view.status === "error") status = "Scenario has errors - see the Scenario panel.";
-  else if (running && view.progress) status = `${view.progress.done} / ${view.progress.total} cycles`;
-  else if (running) status = "Going back...";
-  else if (ready && summary && view.rewound) {
-    const undone = view.rewound.undone;
-    const cycle = view.snapshot!.state.cycle;
-    status = !undone
-      ? `Went back to cycle ${cycle}. Step or Run to continue from here.`
-      : undone.kind === "run"
-        ? `Undid ${undone.cycles === 1 ? "a step" : `a run of ${undone.cycles} cycles`}; back at cycle ${cycle}.`
-        : `Undid an inventory change; back at cycle ${cycle}.`;
-  } else if (ready && summary && view.lastCall && view.snapshot?.state.scripts?.halt) {
-    const halt = view.snapshot.state.scripts.halt;
-    status = `Ran ${view.lastCall.cyclesRun} cycle${view.lastCall.cyclesRun === 1 ? "" : "s"}; ${halt.kind === "pause" ? "a script paused the run" : "a script error stopped the run"} at cycle ${halt.cycle}.`;
-  } else if (ready && summary) {
-    status = view.lastCall
-      ? `${view.lastCall.truncated ? "Stopped after" : "Ran"} ${view.lastCall.cyclesRun} cycle${view.lastCall.cyclesRun === 1 ? "" : "s"} on ${plotCount} plot(s). Rivals: ${summary.rivals.spawned} spawned, ${summary.rivals.cleared} cleared.`
-      : `Set up ${plotCount} plot(s). Cycle ${view.snapshot!.state.cycle}.`;
-  }
-
-  return (
-    <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <button className={buttonClass.primary} onClick={() => onRun(n)} disabled={!ready} title="Run N growth cycles (Space or Shift+→)">
-          <Play className="w-3.5 h-3.5" /> Run
-        </button>
-        <input
-          type="range"
-          min={1}
-          max={MAX_RUN}
-          value={n}
-          onChange={(e) => setN(e.target.valueAsNumber)}
-          className="w-32 accent-emerald-500"
-          aria-label="Cycles to run"
-        />
-        <NumberInput
-          integer
-          min={1}
-          max={100000}
-          value={n}
-          onChange={setN}
-          className={`${inputClass} w-20 text-right`}
-          aria-label="Cycles to run"
-        />
-        <button
-          className={buttonClass.neutral}
-          onClick={onStepBack}
-          disabled={!ready || !view.history.canStepBack}
-          title="Go back exactly one growth cycle, inventory changes included (← or ,)"
-        >
-          <StepBack className="w-3.5 h-3.5" /> Back
-        </button>
-        <button className={buttonClass.neutral} onClick={onStep} disabled={!ready} title="Advance exactly one growth cycle (→ or .)">
-          <StepForward className="w-3.5 h-3.5" /> Step
-        </button>
-        <button
-          className={buttonClass.neutral}
-          onClick={onUndo}
-          disabled={!ready || !view.history.lastAction}
-          title={view.history.lastAction ? `${undoTitle(view.history.lastAction)} (Ctrl/⌘+Z)` : undoTitle(null)}
-        >
-          <Undo2 className="w-3.5 h-3.5" /> Undo
-        </button>
-        <button className={buttonClass.danger} onClick={onStop} disabled={!running} title="Stop the run (Space or Esc)">
-          <Square className="w-3.5 h-3.5" /> Stop
-        </button>
-        <button className={buttonClass.neutral} onClick={onReset} disabled={running || view.status === "loading"} title="Back to cycle 0">
-          <RotateCcw className="w-3.5 h-3.5" /> Reset
-        </button>
-        <InfoHint
-          title="Keyboard shortcuts"
-          label="Keyboard shortcuts"
-          width={300}
-          className="ml-auto"
-          trigger={<Keyboard className="w-4 h-4" />}
-        >
-          <ul className="space-y-1">
-            {RUN_SHORTCUTS.map((s) => (
-              <li key={s.keys} className="flex gap-2">
-                <kbd className="shrink-0 min-w-[5.5rem] px-1.5 py-0.5 rounded bg-slate-700/60 border border-slate-600/60 text-[11px] text-slate-200 font-mono text-center">
-                  {s.keys}
-                </kbd>
-                <span>{s.action}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="text-slate-400">Shortcuts work anywhere on the page except while typing in a field or with a dialog open.</p>
-        </InfoHint>
-        <label className="flex items-center gap-1.5 text-xs text-slate-400" title="Changing the seed restarts the simulation">
-          seed
-          <NumberInput
-            integer
-            className={`${inputClass} w-24 text-right`}
-            value={seed}
-            onChange={onSeedChange}
-            disabled={running}
-          />
-        </label>
-      </div>
-      <div className="h-1 bg-slate-700/50 rounded overflow-hidden">
-        {running && view.progress && (
-          <div className="h-full bg-emerald-500/80 transition-all" style={{ width: `${(view.progress.done / Math.max(1, view.progress.total)) * 100}%` }} />
-        )}
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <p className="text-xs text-slate-400">{status}</p>
-        {summary && view.snapshot && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-            <span className="text-slate-400" title={priced ? "Bazaar prices (normal profile)" : "NPC prices"}>
-              Profit <span className="text-slate-100 font-medium">{formatCoins(profit)}</span>
-            </span>
-            <span className="text-slate-400">
-              <span className={`${profitPerDay < 0 ? "text-red-300" : "text-emerald-300"} font-medium`}>{formatCoins(profitPerDay)}</span>/day
-              {priced ? " profit" : ""}
-            </span>
-            <span className="text-slate-400">
-              {summary.cyclesRun} cycles · {formatDuration(summary.elapsedSeconds)}
-            </span>
-            <UptimeBadge summary={summary} report={running ? null : view.snapshot.report} />
-          </div>
-        )}
-      </div>
-      {view.error && view.status !== "error" && <p className="text-xs text-red-300">{view.error}</p>}
-    </div>
-  );
-};
-
-function undoTitle(action: SimulationView["history"]["lastAction"]): string {
-  if (!action) return "Nothing to undo";
-  if (action.kind === "items") return `Undo the inventory change at cycle ${action.cycle}`;
-  if (action.cycles === 1) return `Undo the step from cycle ${action.fromCycle}`;
-  return `Undo the run of ${action.cycles} cycles (back to cycle ${action.fromCycle})`;
-}
-
-/** Checked-target uptime; red once a checked target sat empty without its requirements. */
-const UptimeBadge: React.FC<{ summary: RunSummary; report: SustainabilityReport | null }> = ({ summary, report }) => {
-  const u = summary.uptime;
-  if (!u || u.watched === 0) {
-    return <span className="px-2 py-0.5 rounded-full bg-slate-600/20 text-slate-400 border border-slate-600/40">no targets checked</span>;
-  }
-  const text = `${(uptimeRatio(u) * 100).toFixed(1).replace(/\.0$/, "")}% uptime`;
-  if (u.requirements === 0) {
-    return <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">{text}</span>;
-  }
-  const first = report?.firstFailure;
-  return (
-    <span className="px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30" title={first ? spotFailureText(first) : undefined}>
-      {text}
-      {first ? ` · short at cycle ${first.firstRequirementsCycle}` : " · not sustainable"}
-    </span>
-  );
-};
+import { Segmented } from "../ui/kit";
+import { ResultCard } from "./page/ResultCard";
+import { describeEvent } from "./format";
 
 // ---- Recent events --------------------------------------------------------
 
-export const EventLog: React.FC<{ log: TimedEvent[]; plotIds: number[] }> = ({ log, plotIds }) => {
+export const EventLog: React.FC<{ log: TimedEvent[]; plotIds: number[]; className?: string }> = ({ log, plotIds, className }) => {
   const [plot, setPlot] = useState(String(plotIds[0] ?? 1));
   const selected = plotIds.includes(Number(plot)) ? Number(plot) : plotIds[0];
   const byCycle = useMemo(() => {
@@ -260,31 +23,33 @@ export const EventLog: React.FC<{ log: TimedEvent[]; plotIds: number[] }> = ({ l
   }, [log, selected]);
 
   return (
-    <Panel title="Recent events" icon={<ListOrdered />} description={`Last ${LOG_CYCLES} cycles, newest first.`}>
-      {plotIds.length > 1 && (
-        <SegmentedControl
-          size="xs"
-          className="mb-2"
-          value={String(selected)}
-          onChange={setPlot}
-          options={plotIds.map((id) => ({ value: String(id), label: `Plot ${id}` }))}
-        />
-      )}
-      <div className="max-h-72 overflow-y-auto scrollbar-dark pr-1 space-y-2">
-        {byCycle.length === 0 && <p className="text-xs text-slate-500">Nothing yet - Step or Run.</p>}
-        {byCycle.map(([cycle, events]) => (
-          <div key={cycle}>
-            <div className="text-[11px] text-slate-500 uppercase tracking-wide">Cycle {cycle}</div>
-            <ul className="text-xs text-slate-300 space-y-0.5">
-              {events.map((e, i) => (
-                <li key={i} className={e.kind === "debt" ? "text-red-300" : e.kind === "spawned" ? "text-emerald-200" : e.kind === "bought" ? "text-blue-200" : undefined}>
-                  {describeEvent(e)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+    <ResultCard
+      title="Recent events"
+      className={className}
+      meta={`last ${LOG_CYCLES} cycles, newest first`}
+      actions={
+        plotIds.length > 1 ? (
+          <Segmented label="Plot" value={String(selected)} onChange={setPlot} options={plotIds.map((id) => ({ value: String(id), label: `Plot ${id}` }))} />
+        ) : undefined
+      }
+    >
+      <div className="max-h-[420px] overflow-y-auto overscroll-contain pr-1 scrollbar-dark">
+        {byCycle.length === 0 && <p className="text-[12.5px] text-slate-500">Nothing yet. Step or Run.</p>}
+        <ol className="space-y-3">
+          {byCycle.map(([cycle, events]) => (
+            <li key={cycle} className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3">
+              <span className="pt-px text-[11px] tabular-nums text-slate-500">Cycle {cycle}</span>
+              <ul className="space-y-0.5 text-[12.5px] text-slate-300">
+                {events.map((e, i) => (
+                  <li key={i} className={e.kind === "debt" ? "text-red-300" : e.kind === "spawned" ? "text-slate-100" : undefined}>
+                    {describeEvent(e)}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ol>
       </div>
-    </Panel>
+    </ResultCard>
   );
 };

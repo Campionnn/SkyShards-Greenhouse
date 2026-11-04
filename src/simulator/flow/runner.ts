@@ -1,4 +1,6 @@
+import { isFreePlacedItem } from "../config";
 import type { CycleCtx, TickScratch } from "../sim/context";
+import { effort } from "../sim/effort";
 import { canBuy } from "../sim/market";
 import { applyStepLayout } from "../sim/placement";
 import type { FlowRunnerState, PlotState, ScenarioPlot, TickEvent } from "../sim/state";
@@ -70,6 +72,7 @@ export function transition(
     stepIndex: runner.stepIndex,
     ...(skipped.length ? { skipped } : {}),
   });
+  effort(ctx.state, "stepChange");
   applyStepLayout(plot, ctx.layoutFor(plot.id), ctx, scratch, !!to.fullClear);
   resetStepCounters(runner);
 }
@@ -137,6 +140,7 @@ export function dueTarget(plot: PlotState, def: ScenarioPlot, runner: FlowRunner
     cycleSeconds: ctx.cycleSeconds,
     collected: (item: string) => collectedOf(ctx.state, item),
     layout: ctx.layoutFor(plot.id), // the step at runner.stepIndex (also during an on-arrival check)
+    free: (item: string) => isFreePlacedItem(item, ctx.config),
     ...(ctx.state.summary.market ? { buyable: (item: string) => canBuy(ctx.state, item) } : {}),
   };
   const scripts = ctx.scripts;

@@ -10,6 +10,7 @@ import type { GreenhouseDataJSON } from "../services/greenhouseDataService";
 import { SITE_URL, WIKI_BASE_PATH, buildWikiIndex, wikiUrl } from "./slugs";
 import type { WikiEntry } from "./slugs";
 import { buildUsedInMap, getRecipeSource } from "./recipes";
+import { SITE_ROUTES } from "../seo/routes";
 
 export interface StaticPage {
   /** Path inside dist/, e.g. "wiki/gloomgourd.html". */
@@ -27,6 +28,53 @@ interface PageMeta {
   /** Summary card with a small image instead of the large site screenshot. */
   smallImage: boolean;
   bodyHtml: string;
+  /** Defaults to "article". */
+  ogType?: "article" | "website";
+}
+
+/**
+ * dist/<route>.html for every top-level page except "/" (that is index.html):
+ * the app shell with the route's own title, description and canonical URL.
+ * Cloudflare Pages serves /designer from designer.html with a 200 instead of
+ * falling back to 404.html.
+ */
+export function buildRoutePages(template: string, siteUrl: string = SITE_URL): StaticPage[] {
+  const image = extractMeta(template, "property", "og:image") ?? `${siteUrl}/favicon/favicon.png`;
+  return SITE_ROUTES.filter((route) => route.path !== "/").map((route) => {
+    const url = `${siteUrl}${route.path}`;
+    return {
+      file: `${route.path.slice(1)}.html`,
+      url,
+      html: applyMeta(template, {
+        title: route.title,
+        description: route.description,
+        url,
+        image,
+        imageAlt: route.title,
+        smallImage: false,
+        ogType: "website",
+        bodyHtml: `<h1>${escapeHtml(route.title)}</h1><p>${escapeHtml(route.description)}</p>`,
+      }),
+    };
+  });
+}
+
+/**
+ * dist/404.html: the app shell, so unknown paths and short links still load
+ * the app (which redirects them), but marked noindex and without a canonical
+ * URL so a 404 is never reported as a duplicate of the home page.
+ */
+export function buildNotFoundPage(template: string): string {
+  let html = template.replace(/\s*<link rel="canonical" href="[^"]*"\s*\/?>/, "");
+  html = html.replace(/<meta name="robots" content="[^"]*"\s*\/?>/, '<meta name="robots" content="noindex" />');
+  html = html.replace(/\s*<meta name="googlebot" content="[^"]*"\s*\/?>/, "");
+  return html;
+}
+
+/** A complete sitemap for the given URLs. */
+export function buildSitemap(urls: string[], lastmod: string): string {
+  const entries = urls.map((url) => `  <url>\n    <loc>${url}</loc>\n    <lastmod>${lastmod}</lastmod>\n  </url>\n`).join("");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}</urlset>\n`;
 }
 
 export function buildWikiStaticPages(template: string, data: GreenhouseDataJSON, siteUrl: string = SITE_URL): StaticPage[] {
@@ -183,7 +231,7 @@ function applyMeta(template: string, meta: PageMeta): string {
   html = html.replace(/<head>/, `<head>\n    <title>${escapeHtml(meta.title)}</title>`);
 
   html = setMeta(html, "name", "description", meta.description);
-  html = setMeta(html, "property", "og:type", "article");
+  html = setMeta(html, "property", "og:type", meta.ogType ?? "article");
   html = setMeta(html, "property", "og:url", meta.url);
   html = setMeta(html, "property", "og:title", meta.title);
   html = setMeta(html, "property", "og:description", meta.description);
