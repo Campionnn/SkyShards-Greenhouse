@@ -17,7 +17,9 @@ import { getGroundImagePath } from "../../types/greenhouse";
 import { calculateCropImageDimensions, getCellPixelPosition, getGridDimensions } from "../../utilities/gridCalculations";
 import { getRarityTextColor } from "../../utilities/rarity";
 import { CropImage } from "../shared/CropImage";
+import { cn } from "../ui/cn";
 import { Portal } from "../ui/Portal";
+import { surface } from "../ui/surface";
 import { useOptionalOpenInfo } from "../../context/InfoModalContext";
 import type { Cell, PlotFacts } from "../../guide";
 
@@ -140,7 +142,7 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
           <div
             key={i}
             aria-hidden
-            className={`absolute rounded border ${ground ? "border-emerald-700/20" : "border-slate-700/20"}`}
+            className={cn("absolute rounded-inner border", ground ? "border-line/60" : "border-line/40")}
             style={{
               ...getCellPixelPosition(r, c, cellSize, gap),
               width: cellSize,
@@ -162,18 +164,21 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
             key={`slot-${k}`}
             role="img"
             aria-label={`Target: ${nameOf(s.mutationId)}`}
-            className={`absolute flex items-center justify-center rounded border-2 border-dashed ${showTips ? (openInfo ? "cursor-pointer" : "cursor-help") : ""} ${
-              grown ? "border-emerald-400/80 bg-emerald-500/15" : "border-cyan-400/70 bg-cyan-500/10"
-            }`}
+            className={cn(
+              "absolute flex items-center justify-center rounded-inner border-2 border-dashed",
+              showTips && (openInfo ? "cursor-pointer" : "cursor-help"),
+              // Target cells: the aqua the simulator draws them in; a reported plant on one: go.
+              grown ? "border-go/80 bg-go/15" : "border-select/70 bg-select/10",
+            )}
             style={{ ...getCellPixelPosition(s.row, s.col, cellSize, gap), width: size, height: size }}
             {...tipProps({ kind: "slot", id: s.mutationId, row: s.row, col: s.col, size: s.size, stage: grown?.stage, fullyGrown: grown?.fullyGrown })}
           >
             {/* Flex, not block: a block wrapper's line-height strut pushes the image off-centre. */}
-            <div className={`flex items-center justify-center ${grown ? "" : "opacity-45 grayscale-[40%]"}`}>
+            <div className={cn("flex items-center justify-center", !grown && "opacity-45 grayscale-[40%]")}>
               <CropImage cropId={s.mutationId} cropName={nameOf(s.mutationId)} width={image.imageWidth * 0.75} height={image.imageHeight * 0.75} showFallback={false} />
             </div>
             {grown && cellSize >= 18 && (
-              <span className="absolute bottom-0 right-0.5 text-[9px] font-semibold leading-none text-emerald-200 drop-shadow">{grown.fullyGrown ? "✓" : grown.stage}</span>
+              <span className="absolute right-0.5 bottom-0 text-meta leading-none font-semibold text-go-fg">{grown.fullyGrown ? "✓" : grown.stage}</span>
             )}
           </div>
         );
@@ -192,30 +197,32 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
             key={`plant-${k}`}
             role="img"
             aria-label={`${nameOf(p.kindId)}${placing ? ", placed from your inventory" : ""}${gone ? ", missing" : ""}`}
-            className={`absolute flex items-center justify-center overflow-hidden rounded ${showTips ? (openInfo ? "cursor-pointer" : "cursor-help") : ""} ${
-              gone ? "border-2 border-dashed border-red-500/70 bg-red-500/10" : ""
-            }`}
+            className={cn(
+              "absolute flex items-center justify-center overflow-hidden rounded-inner",
+              showTips && (openInfo ? "cursor-pointer" : "cursor-help"),
+              gone && "border-2 border-dashed border-problem/70 bg-problem/10",
+            )}
             style={{
               ...getCellPixelPosition(p.row, p.col, cellSize, gap),
               width: size,
               height: size,
               ...(ground && !gone ? { backgroundImage: `url(${getGroundImagePath(ground)})`, backgroundSize: `${cellSize}px ${cellSize}px` } : {}),
-              boxShadow: placing && !gone ? "inset 0 0 0 1px rgba(251,191,36,0.75)" : undefined,
+              boxShadow: placing && !gone ? "inset 0 0 0 1px var(--color-coin)" : undefined,
             }}
             {...tipProps({ kind: "plant", id: p.kindId, row: p.row, col: p.col, size: p.size, paid, placing, missing: gone })}
           >
-            <div className={`flex items-center justify-center ${gone ? "opacity-35" : ""}`}>
+            <div className={cn("flex items-center justify-center", gone && "opacity-35")}>
               <CropImage cropId={p.kindId} cropName={nameOf(p.kindId)} width={image.imageWidth} height={image.imageHeight} hasGroundContext={!gone} showFallback />
             </div>
             {/* Gold corner: placed from your inventory. Small, so the crop stays visible. */}
             {placing && !gone && (
               <span
                 aria-hidden
-                className="absolute right-0 top-0 h-0 w-0 border-l-transparent border-t-amber-400"
+                className="absolute top-0 right-0 h-0 w-0 border-t-coin border-l-transparent"
                 style={{ borderTopWidth: Math.max(5, Math.round(cellSize * 0.28)), borderLeftWidth: Math.max(5, Math.round(cellSize * 0.28)) }}
               />
             )}
-            {gone && cellSize >= 14 && <span className="absolute right-0.5 top-0 text-[10px] font-bold text-red-400">!</span>}
+            {gone && cellSize >= 14 && <span className="absolute top-0 right-0.5 text-meta font-bold text-problem">!</span>}
           </div>
         );
       })}
@@ -223,7 +230,7 @@ export const FarmPicture: React.FC<FarmPictureProps> = ({
   );
 
   return (
-    <div ref={fixed ? undefined : fitRef} className={`w-full min-w-0 max-w-full overflow-hidden ${className}`}>
+    <div ref={fixed ? undefined : fitRef} className={cn("w-full max-w-full min-w-0 overflow-hidden", className)}>
       <div className="mx-auto w-fit">{grid}</div>
       {tip && <CellTooltip {...tip} nameOf={nameOf} data={data} hint={openInfo ? (tip.pinned ? "Tap again for details." : "Click for details.") : undefined} />}
     </div>
@@ -255,12 +262,12 @@ const CellTooltip: React.FC<{ tip: Tip; rect: DOMRect; nameOf: (id: string) => s
   // Only what the player has to act on; everything else is in the wiki modal a click away.
   let lines: { text: string; tone?: string }[] = [];
   if (tip.kind === "slot") {
-    lines = [{ text: "Target cell: it spawns here. Leave it empty.", tone: "text-cyan-300" }];
-    if (tip.stage !== undefined) lines.push({ text: tip.fullyGrown ? "Reported fully grown: harvest it." : `Reported growing (stage ${tip.stage}).`, tone: "text-emerald-300" });
+    lines = [{ text: "Target cell: it spawns here. Leave it empty.", tone: "text-select-fg" }];
+    if (tip.stage !== undefined) lines.push({ text: tip.fullyGrown ? "Reported fully grown: harvest it." : `Reported growing (stage ${tip.stage}).`, tone: "text-go-fg" });
   } else if (tip.missing) {
-    lines = [{ text: "Missing: none in your inventory. Place one when you have it.", tone: "text-red-300" }];
+    lines = [{ text: "Missing: none in your inventory. Place one when you have it.", tone: "text-problem" }];
   } else if (tip.placing) {
-    lines = [{ text: "Place this from your inventory.", tone: "text-amber-300" }];
+    lines = [{ text: "Place this from your inventory.", tone: "text-coin" }];
   }
 
   return (
@@ -268,23 +275,23 @@ const CellTooltip: React.FC<{ tip: Tip; rect: DOMRect; nameOf: (id: string) => s
       <div
         ref={ref}
         role="tooltip"
-        className="pointer-events-none fixed z-[9999] rounded-lg border border-slate-600/60 bg-slate-900/95 p-3 text-xs shadow-xl backdrop-blur-sm"
+        className={cn(surface.raised, "pointer-events-none fixed z-(--z-tooltip) p-3 text-secondary")}
         style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: TIP_WIDTH }}
       >
-        <div className={`flex items-center gap-2 ${lines.length || hint ? "mb-1.5" : ""}`}>
+        <div className={cn("flex items-center gap-2", (lines.length > 0 || hint) && "mb-1.5")}>
           <CropImage cropId={tip.id} cropName={nameOf(tip.id)} size="xs" showFallback={false} />
           <div className="min-w-0">
-            <div className={`truncate text-sm font-medium ${rarity ? getRarityTextColor(rarity) : "text-slate-100"}`}>{nameOf(tip.id)}</div>
-            {rarity && <div className="text-[11px] capitalize text-slate-500">{rarity}</div>}
+            <div className={cn("truncate text-body font-medium", rarity ? getRarityTextColor(rarity) : "text-fg")}>{nameOf(tip.id)}</div>
+            {rarity && <div className="text-meta text-fg-meta capitalize">{rarity}</div>}
           </div>
         </div>
         <div className="space-y-1">
           {lines.map((l) => (
-            <p key={l.text} className={l.tone ?? "text-slate-300"}>
+            <p key={l.text} className={l.tone ?? "text-fg-body"}>
               {l.text}
             </p>
           ))}
-          {hint && <p className="text-[11px] text-slate-500">{hint}</p>}
+          {hint && <p className="text-meta text-fg-meta">{hint}</p>}
         </div>
       </div>
     </Portal>

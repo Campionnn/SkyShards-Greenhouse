@@ -1,66 +1,63 @@
 /**
- * "How to use this guide", near the top of the page instead of behind a tooltip. Open by default;
- * folding it away is remembered (`skyshards-guide-howto`), and the fold keeps a one-line summary.
+ * How to use the Guide. The three steps live in the title's InfoHint; on a first visit they also show
+ * as one line under the header ("Got it" folds it away, remembered in `skyshards-guide-howto`).
  */
 import React, { useState } from "react";
-import { BookOpen, ChevronDown } from "lucide-react";
+import { InfoHint } from "../ui/InfoHint";
+import { LinkButton } from "../ui/Card";
 import { LocalStorageManager } from "../../utilities/localStorageManager";
 
+const steps = (plotCount: number, loginOrder: string) => [
+  "Update what you own: Import again, or Add harvest.",
+  `Do each plot in the game, in order: ${loginOrder}.`,
+  `Press the button on all ${plotCount} cards. Next time you're online, press Next check-in.`,
+];
+
+/** The first-visit line: the same steps, shorter. */
+const shortSteps = (plotCount: number, loginOrder: string) => [
+  "Update what you own",
+  `Do each plot in the game, ${loginOrder}`,
+  `Press the button on all ${plotCount} cards`,
+];
+
+/** The "?" next to the page title. */
+export const HowToHint: React.FC<{ plotCount: number; loginOrder: string }> = ({ plotCount, loginOrder }) => (
+  <InfoHint title="How to use this guide" width={360} label="How to use this guide">
+    <ol className="list-decimal space-y-1 pl-4">
+      {steps(plotCount, loginOrder).map((s) => (
+        <li key={s}>{s}</li>
+      ))}
+    </ol>
+    <p>
+      The cards are the Rose Dragon flow's own decisions for exactly what you entered. Pressing a card's button takes off what that plot placed; harvests are random, so you add
+      those (or import them). Hover or tap any cell of a farm to see what it is. Only have Plots 1 and 2? Pick 2 plots: each version keeps its own inventory and progress.
+    </p>
+  </InfoHint>
+);
+
+/** First visit only: the steps in one line, until "Got it". */
 export const HowTo: React.FC<{ plotCount: number; loginOrder: string }> = ({ plotCount, loginOrder }) => {
   const [hidden, setHidden] = useState(() => typeof localStorage !== "undefined" && LocalStorageManager.loadGuideHowToHidden());
-  const toggle = () => {
-    LocalStorageManager.saveGuideHowToHidden(!hidden);
-    setHidden(!hidden);
-  };
-  const steps = [
-    {
-      title: "Update what you own",
-      body: "After harvesting, press Import again (it reads your sacks and storage from Hypixel) or Add a harvest to type it in. The cards are only as good as these numbers.",
-    },
-    {
-      title: `Do each plot's card, ${loginOrder}`,
-      body: "Each card says what to do on that plot right now, with the farm drawn cell by cell. Do it in the game, then press the card's green button. The plots are worked out in this order against the same stock, so doing them in order never runs you short.",
-    },
-    {
-      title: `Press the button on all ${plotCount} cards`,
-      body: "A pressed card turns into \"Plot N is set up\" and waits; it doesn't change again until the next visit. Once every plot is done, press \"I'm back: next check-in\" next time you're online.",
-    },
-  ];
+  if (hidden) return null;
   return (
-    <section className="rounded-lg border border-slate-600/30 bg-slate-800/40" aria-label="How to use this guide">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={!hidden}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-4 py-2.5 text-left text-sm transition-colors hover:bg-slate-700/20"
+    <section className="flex items-start gap-3 text-secondary text-fg-muted" aria-label="How to use this guide">
+      <ol className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-4 gap-y-1">
+        {shortSteps(plotCount, loginOrder).map((s, i) => (
+          <li key={s} className="flex min-w-0 items-baseline gap-1.5">
+            <span className="tabular-nums text-fg-meta">{i + 1}</span>
+            <span>{s}</span>
+          </li>
+        ))}
+      </ol>
+      <LinkButton
+        className="shrink-0"
+        onClick={() => {
+          LocalStorageManager.saveGuideHowToHidden(true);
+          setHidden(true);
+        }}
       >
-        <BookOpen className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
-        <span className="font-medium text-slate-200">How to use this guide</span>
-        {hidden && <span className="hidden min-w-0 truncate text-xs text-slate-400 sm:inline">Update what you own → do each plot's card → press all {plotCount} buttons</span>}
-        <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-slate-400">
-          {hidden ? "Show" : "Hide"} <ChevronDown className={`h-4 w-4 transition-transform motion-reduce:transition-none ${hidden ? "" : "rotate-180"}`} />
-        </span>
-      </button>
-      {!hidden && (
-        <div className="border-t border-slate-600/30 px-4 py-3">
-          <ol className="grid gap-3 md:grid-cols-3">
-            {steps.map((s, i) => (
-              <li key={s.title} className="flex gap-2.5">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-semibold text-emerald-300">{i + 1}</span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-slate-100">{s.title}</span>
-                  <span className="block text-xs leading-relaxed text-slate-400">{s.body}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-            The cards are the shipped Rose Dragon flow's own decisions for exactly what you entered. Pressing a card's button takes off what that plot placed; harvests
-            are random, so you add those (or import them). Hover or tap any cell of a farm to see what it is. Only have Plots 1 and 2? Switch to{" "}
-            <strong className="text-slate-400">2 plots</strong> at the top: each version keeps its own inventory and progress.
-          </p>
-        </div>
-      )}
+        Got it
+      </LinkButton>
     </section>
   );
 };
