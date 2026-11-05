@@ -9,27 +9,18 @@ export interface DragValidationOverlayProps {
   isValid: boolean;
 }
 
-export const DragValidationOverlay: React.FC<DragValidationOverlayProps> = ({
-  position,
-  size,
-  cellSize,
-  gap,
-  isValid,
-}) => {
+export const DragValidationOverlay: React.FC<DragValidationOverlayProps> = ({ position, size, cellSize, gap, isValid }) => {
   const { totalWidth, totalHeight } = calculateCropImageDimensions(size, cellSize, gap);
   const { top, left } = getCellPixelPosition(position[0], position[1], cellSize, gap);
-  
   return (
     <div
+      className="pointer-events-none absolute rounded-inner"
       style={{
-        position: "absolute",
         top,
         left,
         width: totalWidth,
         height: totalHeight,
-        border: isValid ? "2px dashed #22c55e" : "2px dashed #ef4444",
-        borderRadius: 4,
-        pointerEvents: "none",
+        border: `2px dashed ${isValid ? "var(--color-go)" : "var(--color-problem)"}`,
         zIndex: 25,
       }}
     />

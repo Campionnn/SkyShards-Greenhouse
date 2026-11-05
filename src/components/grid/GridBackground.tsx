@@ -1,6 +1,8 @@
 import React from "react";
 import { GRID_SIZE } from "../../constants";
 import { getCellPixelPosition } from "../../utilities";
+import { cn } from "../ui/cn";
+import { LOCKED_CELL, UNLOCKED_CELL } from "./gridCellStyles";
 
 export interface GridBackgroundProps {
   cellSize: number;
@@ -9,43 +11,20 @@ export interface GridBackgroundProps {
   variant?: "green" | "gray";
 }
 
-export const GridBackground: React.FC<GridBackgroundProps> = ({
-  cellSize,
-  gap,
-  unlockedCells,
-  variant = "green",
-}) => {
-  const unlockedColor = variant === "gray"
-    ? "bg-slate-600/40 border border-slate-500/30"
-    : "bg-emerald-600/40 border border-emerald-500/30";
-  
-  return (
-    <>
-      {Array.from({ length: GRID_SIZE }).map((_, rowIndex) =>
-        Array.from({ length: GRID_SIZE }).map((_, colIndex) => {
-          const key = `${rowIndex},${colIndex}`;
-          const isUnlocked = unlockedCells.has(key);
-          const { top, left } = getCellPixelPosition(rowIndex, colIndex, cellSize, gap);
-          
-          return (
-            <div
-              key={key}
-              style={{
-                position: "absolute",
-                top,
-                left,
-                width: cellSize,
-                height: cellSize,
-              }}
-              className={`rounded ${
-                isUnlocked
-                  ? unlockedColor
-                  : "bg-slate-700/30 border border-slate-600/20"
-              }`}
-            />
-          );
-        })
-      )}
-    </>
-  );
-};
+export const GridBackground: React.FC<GridBackgroundProps> = ({ cellSize, gap, unlockedCells, variant = "green" }) => (
+  <>
+    {Array.from({ length: GRID_SIZE }).map((_, rowIndex) =>
+      Array.from({ length: GRID_SIZE }).map((_, colIndex) => {
+        const key = `${rowIndex},${colIndex}`;
+        const { top, left } = getCellPixelPosition(rowIndex, colIndex, cellSize, gap);
+        return (
+          <div
+            key={key}
+            style={{ position: "absolute", top, left, width: cellSize, height: cellSize }}
+            className={cn("rounded-inner", unlockedCells.has(key) ? UNLOCKED_CELL[variant] : LOCKED_CELL)}
+          />
+        );
+      }),
+    )}
+  </>
+);

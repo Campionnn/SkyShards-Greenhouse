@@ -159,8 +159,8 @@ export const LockedPlacementCell: React.FC<LockedPlacementCellProps> = ({
       
       {/* Trash icon on hover */}
       {isHovered && (
-        <div className="absolute top-0.5 right-0.5 bg-red-500 rounded-bl-md p-0.5" data-gif-exclude="true">
-          <Trash2 className="w-3 h-3 text-white" />
+        <div className="absolute top-0.5 right-0.5 rounded-inner bg-problem p-0.5" data-gif-exclude="true">
+          <Trash2 aria-hidden className="size-3 text-fg" />
         </div>
       )}
     </div>
@@ -196,10 +196,7 @@ export const PlacementPreview: React.FC<PlacementPreviewProps> = ({
     ...baseStyle,
     zIndex: 15,
     opacity: 0.7,
-    border: isValid ? "2px solid #22c55e" : "2px solid #ef4444",
-    boxShadow: isValid 
-      ? "0 0 12px rgba(34, 197, 94, 0.5)" 
-      : "0 0 12px rgba(239, 68, 68, 0.5)",
+    border: `2px solid ${isValid ? "var(--color-go)" : "var(--color-problem)"}`,
     pointerEvents: "none",
   };
 

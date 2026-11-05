@@ -1,5 +1,7 @@
 import React from "react";
 import { Search, X } from "lucide-react";
+import { cn } from "../ui/cn";
+import { IconButton, KitInput } from "../ui/kit";
 
 export interface CropSearchInputProps {
   value: string;
@@ -8,31 +10,15 @@ export interface CropSearchInputProps {
   className?: string;
 }
 
-/** Crop search input shared by the Calculator and Designer. */
-export const CropSearchInput: React.FC<CropSearchInputProps> = ({
-  value,
-  onChange,
-  placeholder = "Search...",
-  className = "",
-}) => {
-  return (
-    <div className={`relative ${className}`}>
-      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full pl-8 pr-3 py-1.5 bg-slate-700/50 border border-slate-600/30 rounded-md text-sm text-slate-200 placeholder-slate-400 focus:outline-none focus:border-emerald-500/50"
-      />
-      {value && (
-        <button
-          onClick={() => onChange("")}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      )}
-    </div>
-  );
-};
+/** Crop search input shared by the Calculator, Designer and Wiki. */
+export const CropSearchInput: React.FC<CropSearchInputProps> = ({ value, onChange, placeholder = "Search...", className }) => (
+  <div className={cn("relative min-w-0", className)}>
+    <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-meta" />
+    <KitInput type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder.replace(/\.{3}|…$/, "")} className="w-full pr-8 pl-8 [&::-webkit-search-cancel-button]:hidden" />
+    {value && (
+      <IconButton aria-label="Clear the search" className="absolute top-1/2 right-0.5 -translate-y-1/2" onClick={() => onChange("")}>
+        <X />
+      </IconButton>
+    )}
+  </div>
+);

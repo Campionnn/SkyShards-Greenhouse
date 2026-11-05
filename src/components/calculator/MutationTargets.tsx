@@ -1,298 +1,186 @@
+/**
+ * Targets (C08): the mutations to solve for. Each row: the mutation, what it needs, Count (an exact
+ * number, 1–100) or Max (as many as fit), and remove. "Add a mutation" type-ahead underneath.
+ */
 import React, { useMemo, useState, useEffect } from "react";
-import { X, Target, TrendingUp, Trash2, AlertTriangle, ChevronUp, ChevronDown } from "lucide-react";
+import { AlertTriangle, Minus, Plus, X } from "lucide-react";
 import { useGreenhouseData } from "../../context";
 import { MutationAutocomplete } from "./MutationAutocomplete";
 import { CropImage } from "../shared";
-import { Panel } from "../ui";
+import { cn } from "../ui/cn";
+import { InfoHint } from "../ui/InfoHint";
+import { LinkButton } from "../ui/Card";
+import { IconButton, KitInput, KitLabel, Segmented } from "../ui/kit";
 import { getRarityTextColor, getEffectName } from "../../utilities";
 import type { MutationDefinition } from "../../types/greenhouse";
 
-export const MutationTargets: React.FC = () => {
-  const {
-    mutations,
-    selectedMutations,
-    addMutation,
-    removeMutation,
-    updateMutationMode,
-    updateMutationTargetCount,
-    isLoading,
-    getCropDef,
-    getMutationDef,
-  } = useGreenhouseData();
-  
+const Note: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <p className="flex items-start gap-1.5 text-secondary text-warn" role="note">
+    <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+    <span>{children}</span>
+  </p>
+);
+
+export const MutationTargets: React.FC<{ className?: string }> = ({ className }) => {
+  const { mutations, selectedMutations, addMutation, removeMutation, updateMutationMode, updateMutationTargetCount, isLoading, getCropDef, getMutationDef } = useGreenhouseData();
+
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  
+
   // Keep the count drafts in step with selectedMutations; empty or "0" drafts are left mid-edit.
   useEffect(() => {
-    setInputValues(prev => {
-      const newInputValues = { ...prev };
-      let hasChanges = false;
-      
-      selectedMutations.forEach(mutation => {
+    setInputValues((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      selectedMutations.forEach((mutation) => {
         if (mutation.mode === "target") {
-          const currentInputValue = prev[mutation.id];
-          const currentInputNum = currentInputValue ? parseInt(currentInputValue) : undefined;
-
-          if (currentInputValue === undefined || currentInputValue === null) {
+          const draft = prev[mutation.id];
+          const n = draft ? parseInt(draft) : undefined;
+          if (draft === undefined || draft === null) {
             if (mutation.targetCount !== 1) {
-              newInputValues[mutation.id] = mutation.targetCount.toString();
-              hasChanges = true;
+              next[mutation.id] = mutation.targetCount.toString();
+              changed = true;
             }
-          } else if (currentInputValue === "" || currentInputValue === "0") {
+          } else if (draft === "" || draft === "0") {
             // Mid-edit: leave the draft alone.
-          } else if (!isNaN(currentInputNum!) && currentInputNum !== mutation.targetCount) {
-            newInputValues[mutation.id] = mutation.targetCount.toString();
-            hasChanges = true;
+          } else if (!isNaN(n!) && n !== mutation.targetCount) {
+            next[mutation.id] = mutation.targetCount.toString();
+            changed = true;
           }
         }
       });
-      
-      Object.keys(prev).forEach(id => {
-        const mutation = selectedMutations.find(m => m.id === id);
+      Object.keys(prev).forEach((id) => {
+        const mutation = selectedMutations.find((m) => m.id === id);
         if (!mutation || mutation.mode !== "target") {
-          delete newInputValues[id];
-          hasChanges = true;
+          delete next[id];
+          changed = true;
         }
       });
-      
-      return hasChanges ? newInputValues : prev;
+      return changed ? next : prev;
     });
   }, [selectedMutations]);
 
-  const availableMutations = mutations.filter(
-    (m) => !selectedMutations.some((s) => s.id === m.id)
-  );
-
-  const hasMultipleMaximize = useMemo(() => {
-    return selectedMutations.filter((m) => m.mode === "maximize").length > 1;
-  }, [selectedMutations]);
-
+  const availableMutations = mutations.filter((m) => !selectedMutations.some((s) => s.id === m.id));
+  const hasMultipleMaximize = useMemo(() => selectedMutations.filter((m) => m.mode === "maximize").length > 1, [selectedMutations]);
   // Mutations whose special rules the solver doesn't model.
-  const hasSpecialRuleMutations = useMemo(() => {
-    const specialRuleMutationIds = ["shellfruit", "jerryflower"];
-    return selectedMutations.some((m) => specialRuleMutationIds.includes(m.id.toLowerCase()));
-  }, [selectedMutations]);
+  const hasSpecialRuleMutations = useMemo(() => selectedMutations.some((m) => ["shellfruit", "jerryflower"].includes(m.id.toLowerCase())), [selectedMutations]);
 
-  const handleAddMutation = (id: string, name: string) => {
-    addMutation(id, name);
-  };
-  
   const handleCountChange = (id: string, value: string) => {
-    setInputValues(prev => ({ ...prev, [id]: value }));
-    if (value === "") {
-      return;
-    }
-    const numValue = parseInt(value);
-    if (!isNaN(numValue) && numValue >= 1 && numValue <= 100) {
-      updateMutationTargetCount(id, numValue);
-    }
+    setInputValues((prev) => ({ ...prev, [id]: value }));
+    if (value === "") return;
+    const n = parseInt(value);
+    if (!isNaN(n) && n >= 1 && n <= 100) updateMutationTargetCount(id, n);
   };
-  
-  const incrementCount = (id: string, currentCount: number) => {
-    const newCount = Math.min(100, currentCount + 1);
-    setInputValues(prev => ({ ...prev, [id]: newCount.toString() }));
-    updateMutationTargetCount(id, newCount);
+  const step = (id: string, current: number, delta: number) => {
+    const n = Math.min(100, Math.max(1, current + delta));
+    setInputValues((prev) => ({ ...prev, [id]: n.toString() }));
+    updateMutationTargetCount(id, n);
   };
-  
-  const decrementCount = (id: string, currentCount: number) => {
-    const newCount = Math.max(1, currentCount - 1);
-    setInputValues(prev => ({ ...prev, [id]: newCount.toString() }));
-    updateMutationTargetCount(id, newCount);
-  };
-
-  if (isLoading) {
-    return (
-      <Panel title="Mutation Targets" icon={<Target />}>
-        <div className="flex items-center justify-center py-4">
-          <div className="w-5 h-5 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
-        </div>
-      </Panel>
-    );
-  }
 
   return (
-    <Panel
-      title="Mutation Targets"
-      icon={<Target />}
-      description="Pick the mutations to optimize for: maximize how many spawn, or ask for an exact number."
-      actions={
-        selectedMutations.length > 0 ? (
-          <button
-            onClick={() => selectedMutations.forEach((m) => removeMutation(m.id))}
-            className="p-1.5 hover:bg-slate-600/50 rounded text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
-            title="Clear all targets"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        ) : undefined
-      }
-    >
+    <section className={cn("space-y-2", className)} aria-label="Targets" aria-busy={isLoading || undefined}>
+      <KitLabel
+        actions={
+          selectedMutations.length > 0 ? (
+            <LinkButton className="text-meta" onClick={() => selectedMutations.forEach((m) => removeMutation(m.id))} title="Remove every target">
+              Clear
+            </LinkButton>
+          ) : (
+            <InfoHint title="Targets">Pick the mutations to solve for: Max fits as many as it can, Count asks for an exact number.</InfoHint>
+          )
+        }
+      >
+        Targets
+      </KitLabel>
 
-      <div className="space-y-2 mb-3">
-        {selectedMutations.map((selected) => {
-          const mutation = mutations.find((m) => m.id === selected.id);
-          return (
-            <div
-              key={selected.id}
-              className="bg-slate-700/50 border border-slate-600/30 rounded-md p-3"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
-                    <CropImage
-                      cropId={selected.id}
-                      cropName={selected.name}
-                      size="xs"
-                      showFallback={false}
-                    />
-                  </div>
-                  <span className={`text-sm font-medium ${mutation ? getRarityTextColor(mutation.rarity) : "text-slate-200"}`}>
-                    {selected.name}
-                  </span>
-                </div>
-                <button
-                  onClick={() => removeMutation(selected.id)}
-                  className="p-1.5 hover:bg-slate-600/50 rounded text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
-                  title="Remove target"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {mutation && mutation.special === "all_positive_crop_effects" && (
-                <div className="text-xs text-slate-400 mb-2">
-                  Requires all effects:{" "}
-                  <span className="text-emerald-300/90">
-                    {mutation.positive_buffs.map((e) => getEffectName(e)).join(", ")}
-                  </span>
-                </div>
-              )}
-              {mutation && mutation.special !== "all_positive_crop_effects" && (
-                <div className="text-xs text-slate-400 mb-2">
-                  Requires:{" "}
-                  {mutation.requirements.map((r, i) => {
-                    const reqCropDef = getCropDef(r.crop);
-                    const reqMutationDef = getMutationDef(r.crop);
-                    const displayName = reqCropDef?.name || reqMutationDef?.name || r.crop.replace(/_/g, " ");
-                    const rarityColor = reqMutationDef ? getRarityTextColor(reqMutationDef.rarity) : "text-white";
-                    
-                    return (
-                      <span key={r.crop}>
-                        {i > 0 && ", "}
-                        <span className={rarityColor}>
-                          {r.count}x {displayName}
-                        </span>
+      {isLoading ? (
+        <p className="text-secondary text-fg-meta">Loading mutations…</p>
+      ) : (
+        <ul className="space-y-2">
+          {selectedMutations.map((selected) => {
+            const mutation = mutations.find((m) => m.id === selected.id);
+            const needs =
+              mutation && mutation.special === "all_positive_crop_effects" ? (
+                <>All effects: {mutation.positive_buffs.map((e) => getEffectName(e)).join(", ")}</>
+              ) : mutation ? (
+                mutation.requirements.map((r, i) => {
+                  const reqMutation = getMutationDef(r.crop);
+                  const name = getCropDef(r.crop)?.name || reqMutation?.name || r.crop.replace(/_/g, " ");
+                  return (
+                    <span key={r.crop}>
+                      {i > 0 && ", "}
+                      <span className={reqMutation ? getRarityTextColor(reqMutation.rarity) : undefined}>
+                        {r.count}× {name}
                       </span>
-                    );
-                  })}
+                    </span>
+                  );
+                })
+              ) : null;
+            return (
+              <li key={selected.id} className="space-y-1">
+                <div className="flex min-w-0 items-center gap-2">
+                  <CropImage cropId={selected.id} cropName={selected.name} size="xs" showFallback={false} />
+                  <span className={cn("min-w-0 flex-1 truncate text-body", mutation ? getRarityTextColor(mutation.rarity) : "text-fg-body")}>{selected.name}</span>
+                  <IconButton aria-label={`Remove ${selected.name}`} title="Remove target" onClick={() => removeMutation(selected.id)}>
+                    <X />
+                  </IconButton>
                 </div>
-              )}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => updateMutationMode(selected.id, "target")}
-                  className={`flex-1 px-2 py-1.5 rounded text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                    selected.mode === "target"
-                      ? "bg-blue-500/30 text-blue-300 border border-blue-500/40"
-                      : "bg-slate-600/30 text-slate-400 border border-slate-500/30 hover:bg-slate-600/50"
-                  }`}
-                >
-                  <Target className="w-3 h-3" />
-                  <span>Target</span>
-                </button>
-                <button
-                  onClick={() => updateMutationMode(selected.id, "maximize")}
-                  className={`flex-1 px-2 py-1.5 rounded text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                    selected.mode === "maximize"
-                      ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
-                      : "bg-slate-600/30 text-slate-400 border border-slate-500/30 hover:bg-slate-600/50"
-                  }`}
-                >
-                  <TrendingUp className="w-3 h-3" />
-                  <span>Maximize</span>
-                </button>
-              </div>
-
-              {selected.mode === "target" && (
-                <div className="mt-2 flex items-center gap-2">
-                  <label className="text-xs text-slate-400">Count:</label>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={inputValues[selected.id] ?? ""}
-                      placeholder="1"
-                      onChange={(e) => handleCountChange(selected.id, e.target.value)}
-                      className="w-14 px-2 py-1 bg-slate-700/50 border border-slate-600/30 rounded text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500/50 text-center"
-                    />
-                    <div className="flex flex-col">
-                      <button
-                        onClick={() => incrementCount(selected.id, selected.targetCount)}
-                        className="p-0.5 hover:bg-slate-600/50 rounded-t text-slate-400 hover:text-slate-200 transition-colors"
-                        title="Increase count"
-                      >
-                        <ChevronUp className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={() => decrementCount(selected.id, selected.targetCount)}
-                        className="p-0.5 hover:bg-slate-600/50 rounded-b text-slate-400 hover:text-slate-200 transition-colors"
-                        title="Decrease count"
-                      >
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
+                <p className="truncate pl-6 text-meta text-fg-meta">{needs}</p>
+                <div className="flex min-w-0 items-center gap-2 pl-6">
+                  <Segmented
+                    label={`${selected.name} goal`}
+                    value={selected.mode}
+                    onChange={(mode) => updateMutationMode(selected.id, mode)}
+                    options={[
+                      { value: "maximize", label: "Max", title: "As many as fit" },
+                      { value: "target", label: "Count", title: "An exact number" },
+                    ]}
+                  />
+                  {selected.mode === "target" && (
+                    <span className="ml-auto flex shrink-0 items-center gap-0.5">
+                      <IconButton aria-label={`One fewer ${selected.name}`} size="sm" onClick={() => step(selected.id, selected.targetCount, -1)}>
+                        <Minus />
+                      </IconButton>
+                      <KitInput
+                        type="text"
+                        inputMode="numeric"
+                        aria-label={`${selected.name} count`}
+                        value={inputValues[selected.id] ?? ""}
+                        placeholder="1"
+                        onChange={(e) => handleCountChange(selected.id, e.target.value.replace(/[^0-9]/g, ""))}
+                        onKeyDown={(e) => {
+                          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                            e.preventDefault();
+                            step(selected.id, selected.targetCount, e.key === "ArrowUp" ? 1 : -1);
+                          }
+                        }}
+                        className="h-7 w-11 text-center tabular-nums"
+                      />
+                      <IconButton aria-label={`One more ${selected.name}`} size="sm" onClick={() => step(selected.id, selected.targetCount, 1)}>
+                        <Plus />
+                      </IconButton>
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-
-        {selectedMutations.length === 0 && (
-          <div className="text-center py-4 text-xs text-slate-500">
-            No mutations selected. Add a target to optimize for.
-          </div>
-        )}
-      </div>
-
-      {hasMultipleMaximize && (
-        <div className="flex items-start gap-2 p-2.5 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-md">
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-300/90">
-            Multiple maximize targets selected. The solver will prioritize whichever mutation it can fit the most of, and will not balance between them.
-          </p>
-        </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
-      {hasSpecialRuleMutations && (
-        <div className="flex items-start gap-2 p-2.5 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-md">
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-300/90">
-            One or more selected mutations spawn through special conditions the solver does not model (Shellfruit, Jerryflower). They cannot be solved for.
-          </p>
-        </div>
-      )}
-
+      {hasMultipleMaximize && <Note>More than one Max: the solver favours whichever fits most, without balancing them.</Note>}
+      {hasSpecialRuleMutations && <Note>Shellfruit and Jerryflower spawn under special conditions the solver doesn't model, so they can't be solved for.</Note>}
       {selectedMutations.some((m) => m.id === "godseed") && (
-        <div className="flex items-start gap-2 p-2.5 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-md">
-          <Target className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-emerald-300/90">
-            Godseed requires any empty 3x3 that receives all six of its positive effects from
-            neighbouring crops (directly or relayed by Effect Spread) can spawn one.
-          </p>
-        </div>
+        <p className="text-secondary text-fg-muted">Godseed needs an empty 3×3 that gets all six of its positive effects from the crops around it (directly or through Effect Spread).</p>
       )}
 
-      {availableMutations.length > 0 && (
+      {!isLoading && availableMutations.length > 0 && (
         <MutationAutocomplete
           mutations={mutations}
           excludeIds={selectedMutations.map((m) => m.id)}
-          onSelect={(mutation: MutationDefinition) => handleAddMutation(mutation.id, mutation.name)}
-          placeholder="Add mutation target..."
+          onSelect={(mutation: MutationDefinition) => addMutation(mutation.id, mutation.name)}
+          placeholder="Add a mutation"
         />
       )}
-
-    </Panel>
+    </section>
   );
 };

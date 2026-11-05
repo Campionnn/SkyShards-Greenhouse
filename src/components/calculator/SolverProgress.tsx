@@ -1,6 +1,12 @@
+/**
+ * A running solve (C18): one headline ("Finding the max score"), where it runs, a thin progress bar
+ * (the page's one progress element) and, behind Details, the steps and the live numbers.
+ */
 import React, { useEffect, useState } from "react";
-import { Loader2, Clock, Cpu, Cloud, Check, Sparkles, TrendingUp, Target, Timer, Hourglass, Scale, LayoutGrid } from "lucide-react";
-import { InfoHint } from "../ui";
+import { Check } from "lucide-react";
+import { InfoHint } from "../ui/InfoHint";
+import { cn } from "../ui/cn";
+import { Pill } from "../ui/kit";
 import {
   bestSoFar,
   formatDuration,
@@ -24,66 +30,33 @@ function useNow(active: boolean): number {
   return now;
 }
 
-const Stat: React.FC<{ icon: React.ReactNode; label: string; value: React.ReactNode; hint?: string; tone?: string }> = ({
-  icon,
-  label,
-  value,
-  hint,
-  tone = "text-slate-100",
-}) => (
-  <div className="bg-slate-800/60 border border-slate-700/50 rounded-md px-2.5 py-1.5 min-w-0" title={hint}>
-    <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-400">
-      <span className="[&>svg]:w-3 [&>svg]:h-3 flex-shrink-0">{icon}</span>
-      <span className="truncate">{label}</span>
-    </div>
-    <div className={`text-sm font-semibold tabular-nums leading-tight mt-0.5 ${tone}`}>{value}</div>
+/** One live figure: label over value. */
+const Stat: React.FC<{ label: string; value: React.ReactNode; hint?: string }> = ({ label, value, hint }) => (
+  <div className="min-w-0" title={hint}>
+    <dt className="truncate text-meta text-fg-meta">{label}</dt>
+    <dd className="text-body font-semibold tabular-nums text-fg">{value}</dd>
   </div>
 );
 
-/** Step tracker. Each step gets an equal-width column so labels under the dots never compete with the connectors. */
-const Stepper: React.FC<{ stage: SolveStage; local: boolean; hasScore: boolean }> = ({ stage, local, hasScore }) => {
+/** The steps, as a quiet row of labels: done ones ticked, the current one bold. */
+const Steps: React.FC<{ stage: SolveStage; local: boolean; hasScore: boolean }> = ({ stage, local, hasScore }) => {
   const current = stageIndex(stage);
-  const steps = stageSteps({ local, hasScore });
   return (
-    <ol className="flex mb-3" aria-label="Solve steps">
-      {steps.map((s, i) => {
+    <ol className="flex flex-wrap items-center gap-x-3 gap-y-1 text-secondary" aria-label="Solve steps">
+      {stageSteps({ local, hasScore }).map((s) => {
         const idx = stageIndex(s.key);
         const done = idx < current;
         const active = idx === current;
         return (
-          <li key={s.key} className="relative flex-1 min-w-0 flex flex-col items-center" title={s.hint}>
-            {i > 0 && (
-              <span
-                className={`absolute top-2 right-1/2 w-full h-px ${done || active ? "bg-emerald-500/60" : "bg-slate-700"}`}
-                aria-hidden
-              />
-            )}
-            <span
-              className={`relative z-10 flex items-center justify-center w-4 h-4 rounded-full text-[9px] border ${
-                done
-                  ? "bg-emerald-500 border-emerald-400 text-white"
-                  : active
-                    ? "bg-slate-900 border-emerald-400 text-emerald-300"
-                    : "bg-slate-900 border-slate-600 text-slate-500"
-              }`}
-            >
-              {done ? <Check className="w-2.5 h-2.5" /> : active ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> : i + 1}
-            </span>
-            <span
-              className={`mt-1 px-0.5 text-[11px] leading-tight text-center ${
-                active ? "text-emerald-300 font-medium" : done ? "text-slate-300" : "text-slate-500"
-              }`}
-            >
-              {s.label}
-            </span>
+          <li key={s.key} title={s.hint} aria-current={active ? "step" : undefined} className={cn("flex items-center gap-1", active ? "font-medium text-fg" : done ? "text-fg-muted" : "text-fg-meta")}>
+            {done && <Check aria-hidden className="size-3" />}
+            {s.label}
           </li>
         );
       })}
     </ol>
   );
 };
-
-/** Live status of a running solve, with hints for every number. Long activity text wraps rather than truncating. */
 export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session }) => {
   const now = useNow(true);
   const { progress, endpoint } = session;
@@ -112,7 +85,6 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
   const tieBreakGoal = hasPriority ? "the fewest crop priority points, then the fewest cells used" : "the fewest cells used";
 
   const where = endpoint?.local ? "your computer" : "the SkyShards server";
-  const WhereIcon = endpoint?.local ? Cpu : Cloud;
 
   let headline: string;
   let detail: string;
@@ -158,44 +130,15 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
         ? pct
         : null;
 
+
   return (
-    <div className="mb-4 bg-slate-700/30 border border-slate-600/30 rounded-lg p-3" aria-live="polite">
-      <div className={`flex items-start gap-2 ${detailsOpen ? "mb-3" : "mb-2"}`}>
-        {stage === "queued" ? (
-          <Clock className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
-        ) : (
-          <Loader2 className={`w-4 h-4 animate-spin mt-0.5 flex-shrink-0 ${cancelling ? "text-amber-400" : "text-emerald-400"}`} />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-slate-100">{headline}</div>
-          {detailsOpen && <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{detail}</p>}
-        </div>
-        <span
-          className="flex items-center gap-1 text-[11px] text-slate-400 flex-shrink-0 bg-slate-800/60 rounded px-1.5 py-0.5"
-          title={endpoint?.local ? "Running on the local solver" : "Running on api.skyshards.com"}
-        >
-          <WhereIcon className="w-3 h-3" />
-          {endpoint ? (endpoint.local ? "Local" : "Server") : "..."}
-        </span>
-        <DetailsToggle open={detailsOpen} onToggle={toggleDetails} className="mt-0.5" />
-      </div>
-
-      {detailsOpen && <Stepper stage={stage} local={!!endpoint?.local} hasScore={hasScore} />}
-
-      <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-slate-400">
-        <span className="flex items-center gap-1">
-          {stage === "queued" ? "Queue" : "Progress"}
-          {stage !== "queued" && detailsOpen && (
-            <InfoHint title="What the progress bar means">
-              <p>
-                It shows whichever is further along: the share of the time budget used, or how close the best score is to
-                the most the solver thinks might be possible.
-              </p>
-              <p>Solves normally use their whole time budget, so reaching 100% doesn't mean the answer is proven best.</p>
-            </InfoHint>
-          )}
-        </span>
-        <span className="tabular-nums text-right">
+    <div className="space-y-2" aria-live="polite">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className={cn("text-title", cancelling ? "text-warn" : "text-fg")}>{headline}</span>
+        <Pill tone="neutral" title={endpoint?.local ? "Running on the local solver" : "Running on api.skyshards.com"}>
+          {endpoint ? (endpoint.local ? "Local" : "Server") : "…"}
+        </Pill>
+        <span className="ml-auto flex items-center gap-1 text-secondary tabular-nums text-fg-meta">
           {stage === "queued"
             ? session.queuePosition
               ? `position #${session.queuePosition}`
@@ -203,43 +146,38 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
             : running
               ? `${formatDuration(elapsed)}${budget !== null ? ` of ${formatDuration(budget)}` : ""}${pct !== null ? ` · ${Math.round(pct)}%` : ""}`
               : formatDuration(elapsed)}
+          {stage !== "queued" && (
+            <InfoHint title="What the progress bar means">
+              <p>It shows whichever is further along: the share of the time budget used, or how close the best score is to the most the solver thinks might be possible.</p>
+              <p>Solves normally use their whole time budget, so reaching 100% doesn't mean the answer is proven best.</p>
+            </InfoHint>
+          )}
         </span>
+        <DetailsToggle open={detailsOpen} onToggle={toggleDetails} />
       </div>
-      <div
-        className={`h-2 bg-slate-800 rounded-full overflow-hidden ${detailsOpen ? "mb-3" : ""}`}
-        role="progressbar"
-        aria-valuenow={barPct ?? undefined}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
+      <div className="h-1 overflow-hidden rounded-full bg-line" role="progressbar" aria-label={stage === "queued" ? "Queue" : "Solve progress"} aria-valuenow={barPct ?? undefined} aria-valuemin={0} aria-valuemax={100}>
         {barPct !== null && barPct !== undefined ? (
           <div
-            className={`h-full transition-all duration-500 ${stage === "queued" ? "bg-blue-500" : cancelling ? "bg-amber-500" : "bg-emerald-500"}`}
-            style={{ width: `${Math.min(100, barPct)}%` }}
+            className={cn("h-full w-full origin-left rounded-full transition-transform duration-500 motion-reduce:transition-none", cancelling ? "bg-warn" : "bg-fg-meta")}
+            style={{ transform: `scaleX(${Math.min(100, barPct) / 100})` }}
           />
         ) : (
-          <div
-            className={`h-full w-1/3 rounded-full animate-[indeterminate_1.4s_ease-in-out_infinite] ${stage === "queued" ? "bg-blue-500/70" : "bg-emerald-500/70"}`}
-          />
+          <div className="h-full w-1/3 animate-[indeterminate_1.4s_ease-in-out_infinite] rounded-full bg-fg-meta motion-reduce:animate-none" />
         )}
       </div>
 
       {detailsOpen && (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+        <div className="space-y-2">
+          <p className="text-secondary text-fg-muted">{detail}</p>
+          <Steps stage={stage} local={!!endpoint?.local} hasScore={hasScore} />
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
             <Stat
-              icon={<Timer />}
               label="Elapsed"
               value={formatDuration(elapsed)}
-              hint={
-                serverElapsed !== null
-                  ? `Solver running for ${formatDuration(serverElapsed)}; ${formatDuration(wall)} since you pressed Solve`
-                  : "Time since you pressed Solve"
-              }
+              hint={serverElapsed !== null ? `Solver running for ${formatDuration(serverElapsed)}; ${formatDuration(wall)} since you pressed Solve` : "Time since you pressed Solve"}
             />
             {budget !== null && (
               <Stat
-                icon={<Hourglass />}
                 label="Time budget"
                 value={formatDuration(budget)}
                 hint={
@@ -249,70 +187,39 @@ export const SolverProgress: React.FC<{ session: SolveSession }> = ({ session })
                 }
               />
             )}
-            {remaining !== null && running && (
-              <Stat icon={<Hourglass />} label="Time left" value={`~${formatDuration(remaining)}`} hint="Remaining time budget" />
-            )}
-            {running && (
-              <Stat
-                icon={<Sparkles />}
-                label="Layouts found"
-                value={solutions}
-                tone={solutions > 0 ? "text-emerald-300" : "text-slate-400"}
-                hint="How many times the solver found a valid layout that beat its previous best"
-              />
-            )}
-            {running && hasScore && best.score !== undefined && (
-              <Stat
-                icon={<TrendingUp />}
-                label="Best score"
-                value={best.score.toFixed(3)}
-                tone="text-emerald-300"
-                hint="Score of the best layout so far (higher is better)"
-              />
-            )}
+            {remaining !== null && running && <Stat label="Time left" value={`~${formatDuration(remaining)}`} hint="Remaining time budget" />}
+            {running && <Stat label="Layouts found" value={solutions} hint="How many times the solver found a valid layout that beat its previous best" />}
+            {running && hasScore && best.score !== undefined && <Stat label="Best score" value={best.score.toFixed(3)} hint="Score of the best layout so far (higher is better)" />}
             {stage === "maximizing" && hasScore && best.scoreBound !== undefined && best.score !== undefined && best.scoreBound > best.score && (
               <Stat
-                icon={<TrendingUp />}
                 label="Could reach"
                 value={`≤ ${best.scoreBound.toFixed(3)}`}
                 hint="The highest score the solver hasn't ruled out yet. The real best is usually the current score or close to it; once this drops to the current score, the score is proven best and tie-breaking starts."
               />
             )}
-            {running && best.mutations !== undefined && (
-              <Stat icon={<Target />} label="Mutation spots" value={best.mutations} hint="Target mutation spots in the best layout so far" />
-            )}
+            {running && best.mutations !== undefined && <Stat label="Mutation spots" value={best.mutations} hint="Target mutation spots in the best layout so far" />}
             {running && hasPriority && best.priority !== undefined && (
               <Stat
-                icon={<Scale />}
                 label="Priority points"
                 value={best.priority}
                 hint="Sum of the crop priorities of every crop placed (lower is better). The first tie-breaker between layouts with the same score."
               />
             )}
-            {running && best.cells !== undefined && (
-              <Stat
-                icon={<LayoutGrid />}
-                label="Cells used"
-                value={best.cells}
-                hint="Cells occupied by the best layout so far (lower is better). The last tie-breaker."
-              />
-            )}
+            {running && best.cells !== undefined && <Stat label="Cells used" value={best.cells} hint="Cells occupied by the best layout so far (lower is better). The last tie-breaker." />}
             {running && sinceImprovement !== null && (
               <Stat
-                icon={<Clock />}
                 label="Last improved"
                 value={`${formatDuration(sinceImprovement)} ago`}
                 hint="Time since the solver last found a better layout. A long time without improvement usually means the current layout is already the best or close to it."
               />
             )}
-          </div>
-
+          </dl>
           {progress?.current_activity && (
-            <p className="mt-2 text-[11px] text-slate-500 break-words" title="Latest message from the solver">
-              <span className="text-slate-400">Solver:</span> {progress.current_activity}
+            <p className="text-meta break-words text-fg-meta" title="Latest message from the solver">
+              Solver: {progress.current_activity}
             </p>
           )}
-        </>
+        </div>
       )}
     </div>
   );

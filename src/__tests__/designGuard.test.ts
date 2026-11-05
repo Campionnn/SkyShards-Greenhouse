@@ -18,7 +18,7 @@ import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /** Folders that must stay on the design system. Grow this list; never shrink it. */
-export const GUARDED: string[] = ["src/components/ui", "src/components/layout", "src/components/simulator/page", "src/components/simulator/flowgraph", "src/components/flows", "src/components/playerStats", "src/components/playerImport", "src/components/guide"];
+export const GUARDED: string[] = ["src/components/ui", "src/components/layout", "src/components/simulator/page", "src/components/simulator/flowgraph", "src/components/flows", "src/components/playerStats", "src/components/playerImport", "src/components/guide", "src/components/calculator", "src/components/grid", "src/components/shared"];
 
 /**
  * Files inside a guarded folder that are knowingly off-system, each with the reason and the plan
@@ -28,7 +28,6 @@ export const GUARDED: string[] = ["src/components/ui", "src/components/layout", 
 export const PENDING: Record<string, string> = {
   "src/components/ui/Panel.tsx": "legacy, @deprecated; deleted when the last page migrates (migration.md)",
   "src/components/ui/ToggleSwitch.tsx": "legacy, @deprecated; deleted when the last page migrates (migration.md)",
-  "src/components/ui/FirstTimeVisitorModal.tsx": "page component living in ui/; migrated in its page revamp (page-audit.md)",
   "src/components/ui/MutationRequirementGrid.tsx": "page component living in ui/; migrated in its page revamp (page-audit.md)",
 };
 

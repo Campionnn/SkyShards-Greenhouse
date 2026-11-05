@@ -4,16 +4,17 @@ import type { FocusVisual, PlacementFocus } from "../../hooks/usePlacementFocus"
 /**
  * Shared look of placements on the Calculator and Designer grids: glows, invalid-target marks and
  * how list-driven focus highlights or fades a placement. Hidden placements draw `BareGround`.
+ * Colours are the design tokens (index.css @theme), so a palette change follows.
  */
 
-/** Cyan glow of a target mutation. */
-export const TARGET_GLOW = "0 0 8px rgba(0, 200, 255, 1), inset 0 0 8px rgba(0, 200, 255, 1)";
+/** Aqua glow of a target mutation (the `select` role: the cells the layout aims at). */
+export const TARGET_GLOW = "0 0 6px var(--color-select), inset 0 0 6px var(--color-select)";
 /** Hover glow of a draggable (removable) placement. */
-export const REMOVE_HOVER_GLOW = "0 0 8px rgba(239, 68, 68, 0.8), inset 0 0 8px rgba(239, 68, 68, 0.4)";
+export const REMOVE_HOVER_GLOW = "0 0 6px var(--color-problem), inset 0 0 4px var(--color-problem)";
 /** Gold glow of a locked Calculator placement. */
-export const LOCKED_GLOW = "0 0 8px rgba(234, 179, 8, 0.8), inset 0 0 8px rgba(234, 179, 8, 0.4)";
-/** White ring of a placement found from the list below the grid. */
-export const FOCUS_RING = "0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 12px 2px rgba(255, 255, 255, 0.45)";
+export const LOCKED_GLOW = "0 0 6px var(--color-coin), inset 0 0 4px var(--color-coin)";
+/** Ring of a placement found from the list below the grid. */
+export const FOCUS_RING = "0 0 0 2px var(--color-fg), 0 0 10px 2px var(--color-fg-muted)";
 
 /** Style overrides for a placement drawn as `BareGround`: no merged texture, no border. */
 export const BARE_PLACEMENT_STYLE: CSSProperties = {
@@ -42,9 +43,8 @@ export const FOCUS_TRANSITION = "opacity 150ms ease, filter 150ms ease, box-shad
  */
 export function focusItemClass(focus: PlacementFocus, key: string): string {
   if (!focus.has(key)) return "";
-  const base =
-    "cursor-pointer select-none transition-[background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70";
-  if (focus.pinned === key) return `${base} !bg-slate-600/70 ring-1 ring-white/70`;
-  if (focus.active === key) return `${base} !bg-slate-600/60`;
-  return `${base} hover:!bg-slate-600/50`;
+  const base = "focus-ring cursor-pointer select-none transition-[background-color,box-shadow] duration-(--duration-hover)";
+  if (focus.pinned === key) return `${base} !bg-surface-hover ring-1 ring-select`;
+  if (focus.active === key) return `${base} !bg-surface-hover`;
+  return `${base} hover:!bg-surface-hover`;
 }

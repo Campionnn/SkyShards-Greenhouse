@@ -1,6 +1,7 @@
 import React from "react";
 import { CropImage } from "./CropImage";
 import { getEffectName, getEffectDescriptionText, isNegativeEffect, sortEffects } from "../../utilities";
+import { cn } from "../ui/cn";
 
 export type EffectChipVariant = "has" | "gives" | "missing" | "satisfied";
 
@@ -18,18 +19,14 @@ function chipClasses(effect: string, variant: EffectChipVariant): string {
   const negative = isNegativeEffect(effect);
   switch (variant) {
     case "missing":
-      return "bg-rose-500/15 border-rose-500/40 text-rose-300";
+      return "bg-problem/10 border-problem/40 text-problem";
     case "satisfied":
-      return "bg-emerald-500/15 border-emerald-500/40 text-emerald-300";
+      return "bg-go/10 border-go/40 text-go-fg";
     case "gives":
-      return negative
-        ? "bg-rose-500/10 border-rose-500/30 text-rose-300/80"
-        : "bg-sky-500/10 border-sky-500/30 text-sky-200";
+      return negative ? "bg-problem/10 border-problem/30 text-problem" : "bg-surface-control border-line-strong text-fg-body";
     case "has":
     default:
-      return negative
-        ? "bg-rose-500/15 border-rose-500/40 text-rose-300"
-        : "bg-emerald-500/15 border-emerald-500/40 text-emerald-300";
+      return negative ? "bg-problem/10 border-problem/40 text-problem" : "bg-go/10 border-go/40 text-go-fg";
   }
 }
 
@@ -44,10 +41,10 @@ export const EffectChips: React.FC<EffectChipsProps> = ({
 }) => {
   const list = sortEffects(effects);
   if (list.length === 0) {
-    return <span className={`text-xs text-slate-500 ${className}`}>{emptyText}</span>;
+    return <span className={cn("text-secondary text-fg-meta", className)}>{emptyText}</span>;
   }
   return (
-    <div className={`flex flex-wrap gap-1 ${className}`}>
+    <div className={cn("flex flex-wrap gap-1", className)}>
       {list.map((effect) => {
         const count = counts?.[effect];
         const showCount = count !== undefined && total !== undefined && count < total;
@@ -55,7 +52,7 @@ export const EffectChips: React.FC<EffectChipsProps> = ({
           <span
             key={effect}
             title={getEffectDescriptionText(effect)}
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[11px] leading-tight ${chipClasses(effect, variant)}`}
+            className={cn("inline-flex items-center gap-1 rounded-inner border px-1.5 py-px text-meta", chipClasses(effect, variant))}
           >
             {getEffectName(effect)}
             {showCount && <span className="opacity-70">{count}/{total}</span>}
@@ -91,27 +88,27 @@ export const PlantEffectsPanel: React.FC<PlantEffectsPanelProps> = ({
 }) => {
   const suppressedList = suppressed ? sortEffects(suppressed) : [];
   return (
-    <div className={`bg-slate-700/30 border border-slate-600/30 rounded-md px-3 py-2 ${className}`}>
+    <div className={cn("rounded-control border border-line bg-surface-well px-3 py-2", className)}>
       <div className="flex items-center gap-2 mb-1.5">
         <CropImage cropId={id} cropName={name} size="xs" showFallback={false} />
-        <span className="text-sm text-slate-200">{name}</span>
+        <span className="text-body text-fg">{name}</span>
         {position && (
-          <span className="text-xs text-slate-500">
+          <span className="text-secondary text-fg-meta">
             ({position[0]}, {position[1]}){size && size > 1 ? ` ${size}x${size}` : ""}
           </span>
         )}
       </div>
       <div className="grid grid-cols-[52px_1fr] gap-x-2 gap-y-1 items-start">
-        <span className="text-xs text-slate-400 pt-0.5">Has</span>
+        <span className="pt-0.5 text-secondary text-fg-muted">Has</span>
         <div>
           <EffectChips effects={has} variant="has" />
           {suppressedList.length > 0 && (
-            <div className="mt-1 text-[11px] text-slate-500">
+            <div className="mt-1 text-meta text-fg-meta">
               cancelled: {suppressedList.map(getEffectName).join(", ")}
             </div>
           )}
         </div>
-        <span className="text-xs text-slate-400 pt-0.5">Gives</span>
+        <span className="pt-0.5 text-secondary text-fg-muted">Gives</span>
         <EffectChips effects={gives} variant="gives" />
       </div>
     </div>
