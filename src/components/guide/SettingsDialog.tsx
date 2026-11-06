@@ -47,7 +47,7 @@ const SettingsBody: React.FC<React.ComponentProps<typeof SettingsDialog>> = ({ s
         footer={
           <div className="flex w-full flex-wrap items-center justify-between gap-2">
             <ConfirmButton onConfirm={onReset} title="Forget your inventory, plots and settings and start over">
-              <RotateCcw className="size-4" /> Start over
+              <RotateCcw /> Start over
             </ConfirmButton>
             <KitButton variant="primary" size="md" onClick={onClose}>
               Done

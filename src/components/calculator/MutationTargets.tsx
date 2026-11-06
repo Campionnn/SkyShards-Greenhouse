@@ -70,6 +70,13 @@ export const MutationTargets: React.FC<{ className?: string }> = ({ className })
     const n = parseInt(value);
     if (!isNaN(n) && n >= 1 && n <= 100) updateMutationTargetCount(id, n);
   };
+  /** Blur / Enter: clamp the draft to 1–100 and show what the solver will use; blank or junk reverts. */
+  const commitCount = (id: string, current: number) => {
+    const n = parseInt(inputValues[id] ?? "", 10);
+    const next = Number.isNaN(n) ? current : Math.min(100, Math.max(1, n));
+    setInputValues((prev) => ({ ...prev, [id]: next.toString() }));
+    if (next !== current) updateMutationTargetCount(id, next);
+  };
   const step = (id: string, current: number, delta: number) => {
     const n = Math.min(100, Math.max(1, current + delta));
     setInputValues((prev) => ({ ...prev, [id]: n.toString() }));
@@ -147,8 +154,12 @@ export const MutationTargets: React.FC<{ className?: string }> = ({ className })
                         value={inputValues[selected.id] ?? ""}
                         placeholder="1"
                         onChange={(e) => handleCountChange(selected.id, e.target.value.replace(/[^0-9]/g, ""))}
+                        onBlur={() => commitCount(selected.id, selected.targetCount)}
                         onKeyDown={(e) => {
-                          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            commitCount(selected.id, selected.targetCount);
+                          } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                             e.preventDefault();
                             step(selected.id, selected.targetCount, e.key === "ArrowUp" ? 1 : -1);
                           }

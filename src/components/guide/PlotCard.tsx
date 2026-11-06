@@ -40,7 +40,7 @@ const VERB_BADGE: Record<Verb, { label: string; tone: Tone }> = {
   clear: { label: "Clear", tone: "neutral" },
   wait: { label: "Wait", tone: "neutral" },
   supplies: { label: "Needs supplies", tone: "warn" },
-  done: { label: "Done", tone: "go" },
+  done: { label: "Done", tone: "neutral" },
 };
 
 function tally(kinds: string[]): ItemCount[] {
@@ -79,6 +79,8 @@ export interface PlotCardProps {
   /** Plots in this visit (login order) and which of them are already checked, for "waiting on" lines. */
   visitPlots?: number[];
   checked?: number[];
+  /** The plot was skipped this visit (not done): what it still needs, e.g. "7 Dead Plant". */
+  skipped?: string;
 }
 
 /** "Plot 2", "Plots 2 and 3". */
@@ -140,7 +142,11 @@ const CardHeader: React.FC<{ plotId: number; next?: boolean; badge: React.ReactN
   <header className="flex min-h-6 flex-wrap items-center gap-2">
     <h2 className="text-title text-fg">Plot {plotId}</h2>
     {badge}
-    {next && <Pill className="ml-auto bg-select/10 text-select-fg">Next up</Pill>}
+    {next && (
+      <Pill strong className="ml-auto bg-select/15 text-select-fg">
+        <ArrowRight aria-hidden /> Next up
+      </Pill>
+    )}
   </header>
 );
 
@@ -186,6 +192,7 @@ export const PlotCard: React.FC<PlotCardProps> = ({
   inventory = {},
   visitPlots = [],
   checked = [],
+  skipped,
 }) => {
   const name = (id: string) => itemName(data, id);
   const current = farmOf(catalog, plotId, plot.farm);
@@ -194,29 +201,40 @@ export const PlotCard: React.FC<PlotCardProps> = ({
   const othersLeft = visitPlots.filter((id) => id !== plotId && !checked.includes(id));
 
   if (!outcome) {
+    // Waiting on other plots: say which. Once every plot is through, the page's banner carries the
+    // "Next check-in" instruction, so the cards don't repeat it.
+    const waitingLine = othersLeft.length
+      ? `Waiting on ${plotList(othersLeft)}. This card stays as it is until the next visit: do ${othersLeft.length === 1 ? "that plot" : "those plots"} and press ${othersLeft.length === 1 ? "its" : "their"} button too.`
+      : null;
     return (
       <article className={cn(surface.card, "flex min-w-0 flex-col gap-3 p-3")} aria-label={`Plot ${plotId}`}>
         <CardHeader
           plotId={plotId}
           badge={
-            <Pill tone="go">
-              <Check aria-hidden /> Done this visit
-            </Pill>
+            skipped !== undefined ? (
+              <Pill>
+                <SkipForward aria-hidden /> Skipped
+              </Pill>
+            ) : (
+              <Pill>
+                <Check aria-hidden /> Done this visit
+              </Pill>
+            )
           }
         />
         <div className="space-y-0.5">
-          <p className="flex items-center gap-1.5 text-title text-fg">
-            <Check aria-hidden className="size-4 shrink-0 text-go-fg" /> Plot {plotId} is set up on {current.name}
-          </p>
-          <p className="text-secondary text-fg-muted">
-            {othersLeft.length
-              ? `Waiting on ${plotList(othersLeft)}. This card stays as it is until the next visit: do ${othersLeft.length === 1 ? "that plot" : "those plots"} and press ${othersLeft.length === 1 ? "its" : "their"} button too.`
-              : "Every plot is done for this visit. Next time you're online, harvest and press \"I'm back\"."}
-          </p>
+          {skipped !== undefined ? (
+            <p className="text-title text-fg">{skipped ? `Skipped this visit · still needs ${skipped}` : "Skipped this visit"}</p>
+          ) : (
+            <p className="flex items-center gap-1.5 text-title text-fg">
+              <Check aria-hidden className="size-4 shrink-0 text-fg-muted" /> Plot {plotId} is set up on {current.name}
+            </p>
+          )}
+          {waitingLine && <p className="text-secondary text-fg-muted">{waitingLine}</p>}
         </div>
         {canUndo && (
           <KitButton size="md" className="self-start" onClick={onUndo}>
-            <Undo2 /> Undo, I didn't do this
+            <Undo2 /> {skipped !== undefined ? "Undo skip" : "Undo, I didn't do this"}
           </KitButton>
         )}
         <FarmPicture layout={current.layout} nameOf={name} data={data} maxCell={30} facts={plot.facts} />
@@ -244,13 +262,17 @@ export const PlotCard: React.FC<PlotCardProps> = ({
   const hint = confirmHintText(visitPlots.length, spentWord);
 
   return (
-    <article className={cn(surface.card, "flex min-w-0 flex-col gap-3 p-3", next && "border-select/60")} aria-label={`Plot ${plotId}`}>
+    <article
+      className={cn(surface.card, "flex min-w-0 flex-col gap-3 p-3", next && "border-select/70 ring-1 ring-select/40")}
+      aria-label={`Plot ${plotId}`}
+      aria-current={next ? "step" : undefined}
+    >
       <CardHeader plotId={plotId} next={next} badge={<Pill tone={badge.tone}>{badge.label}</Pill>} />
 
       {/* The action, first: the same place on every card, whatever opens, closes or changes below. */}
       {ex.verb === "supplies" ? (
         <div className="flex flex-wrap gap-2">
-          <KitButton variant="primary" size="md" className="min-w-32 flex-1" onClick={onOpenInventory} aria-label={`Add supplies for Plot ${plotId}`}>
+          <KitButton size="md" className="min-w-32 flex-1" onClick={onOpenInventory} aria-label={`Add supplies for Plot ${plotId}`}>
             <Plus /> Add supplies
           </KitButton>
           <KitButton size="md" className="min-w-32 flex-1" onClick={onSkip} aria-label={`Skip Plot ${plotId} for now`}>
@@ -260,7 +282,8 @@ export const PlotCard: React.FC<PlotCardProps> = ({
       ) : ex.verb === "done" ? null : (
         <div className="flex items-center gap-2" data-testid="plot-confirm">
           <KitButton
-            variant="primary"
+            // One primary on the page: the next plot's confirm. Later plots can still be confirmed.
+            variant={next ? "primary" : "neutral"}
             size="md"
             className="flex-1"
             aria-label={label.aria}

@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { CropImage } from "../shared/CropImage";
 import { cn } from "../ui/cn";
-import { IconButton } from "../ui/kit";
+import { IconButton, KitButton } from "../ui/kit";
 import { PortalHost } from "../ui/Portal";
 
 const CHIP_TONE = {
@@ -183,9 +183,11 @@ export const ConfirmButton: React.FC<{ onConfirm: () => void; children: React.Re
     const timer = setTimeout(() => setArmed(false), 4000);
     return () => clearTimeout(timer);
   }, [armed]);
+  // The kit's danger button; armed, its border firms up and the label asks for the second click.
   return (
-    <button
-      type="button"
+    <KitButton
+      variant="danger"
+      size="md"
       onClick={() => {
         if (!armed) return setArmed(true);
         setArmed(false);
@@ -194,13 +196,9 @@ export const ConfirmButton: React.FC<{ onConfirm: () => void; children: React.Re
       onBlur={() => setArmed(false)}
       title={armed ? "Click again to confirm" : title}
       aria-live="polite"
-      className={cn(
-        "hit-area focus-ring inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-control border px-3 text-body font-medium transition-colors duration-(--duration-hover) [&>svg]:size-4",
-        armed ? "border-problem bg-problem/25 text-fg hover:bg-problem/35" : "border-line-strong bg-surface-control text-fg-body hover:border-problem/40 hover:bg-problem/10 hover:text-problem",
-        className,
-      )}
+      className={cn(armed && "border-problem", className)}
     >
       {armed ? confirmLabel : children}
-    </button>
+    </KitButton>
   );
 };

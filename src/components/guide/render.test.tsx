@@ -66,6 +66,13 @@ const card = (plotId: number, overrides: Partial<Parameters<typeof PlotCard>[0]>
     />
   ));
 
+/** Whether the button whose aria-label starts with `label` is the kit's primary (go-filled) button. */
+const isPrimary = (html: string, label: string) => {
+  const tag = html.match(new RegExp(`<button[^>]*aria-label="${label}[^>]*>`))?.[0];
+  if (!tag) throw new Error(`no button labelled ${label}`);
+  return /\bbg-go\b/.test(tag);
+};
+
 describe("FarmPicture", () => {
   it("draws the real crops, ground and target cells of a layout", () => {
     const html = renderToString(<FarmPicture layout={farmOf(catalog, 1, "glasscorn").layout} nameOf={(id) => id} cellSize={20} />);
@@ -128,8 +135,30 @@ describe("PlotCard", () => {
     const waiting = card(1, { outcome: null, plot: { farm: "commons", acted: true }, visitPlots: [1, 2, 3], checked: [1] });
     expect(waiting).toContain("Plot 1 is set up on Commons farm");
     expect(waiting).toContain("Waiting on Plots 2 and 3");
+    // With every plot through, the page's banner says what to do next: the cards don't repeat it,
+    // and never name the old "I'm back" button.
     const last = card(3, { outcome: null, plot: { farm: "commons", acted: true }, visitPlots: [1, 2, 3], checked: [1, 2, 3] });
-    expect(last).toContain("Every plot is done for this visit");
+    expect(last).toContain("Plot 3 is set up on Commons farm");
+    expect(last).not.toContain("Every plot is done for this visit");
+    expect(last).not.toContain("I'm back");
+  });
+
+  it("shows a skipped plot as skipped, with what it still needs, never as done", () => {
+    const html = card(3, { outcome: null, plot: { farm: "hub", acted: true }, canUndo: true, skipped: "7 Dead Plant", visitPlots: [1, 2, 3], checked: [3] });
+    expect(html).toContain("Skipped this visit · still needs 7 Dead Plant");
+    expect(html).not.toContain("Done this visit");
+    expect(html).not.toContain("is set up on");
+    expect(html).toContain("Undo skip");
+    expect(html).toContain("Waiting on Plots 1 and 2");
+  });
+
+  it("makes only the next plot's confirm the primary (go) button", () => {
+    expect(isPrimary(card(1, { next: true }), "Did it: Plot 1")).toBe(true);
+    expect(isPrimary(card(1, { next: false }), "Did it: Plot 1")).toBe(false);
+    expect(card(1, { next: false })).toContain('aria-label="Did it: Plot 1 is on Commons farm"');
+    // The next plot is marked by a Next up pill and the select ring.
+    expect(card(1, { next: true })).toContain("ring-select");
+    expect(card(1, { next: false })).not.toContain("Next up");
   });
 
   it("tells you to press every plot's button", () => {
@@ -150,6 +179,8 @@ describe("PlotCard", () => {
     expect(html).toContain("Skip for now");
     expect(html).not.toContain("I have more now");
     expect(html.indexOf("Add supplies")).toBeLessThan(html.indexOf("data:image/png;base64"));
+    // Secondary: only a confirm is ever the page's primary button.
+    expect(isPrimary(html, "Add supplies for Plot 1")).toBe(false);
   });
 
   it("shows what a farm is working towards, with whole-flow totals, even on a switch", () => {
@@ -172,8 +203,9 @@ describe("FlowNeedsPanel", () => {
   it("sums the whole flow, and says so while it is still simulating", () => {
     const ready = flowNeeds({ gloomgourd: 60, choconut: 150 }, [needsRun({ gloomgourd: 30, choconut: 100 })], catalog, { gloomgourd: 10 }, {}, 16);
     const html = text(renderToString(<FlowNeedsPanel needs={ready} catalog={catalog} data={data} />));
-    expect(html).toMatch(/Whole flow <b[^>]*>\d+<\/b> of ~210 mutations/);
-    expect(html).toMatch(/\d+\/\d+ items · \d+%/);
+    // Compact on the status row; the full sentence is for screen readers and the title.
+    expect(html).toMatch(/Whole flow <b[^>]*>\d+<\/b><span[^>]*>\/~210<\/span>/);
+    expect(html).toMatch(/mutations covered, \d+ of \d+ items done/);
     expect(html).toContain("Every item");
     expect(html).toContain('role="meter"');
     const pending = text(renderToString(<FlowNeedsPanel needs={flowNeeds(null, null, catalog, {}, {})} catalog={catalog} data={data} />));

@@ -7,14 +7,15 @@ import type { FocusVisual, PlacementFocus } from "../../hooks/usePlacementFocus"
  * Colours are the design tokens (index.css @theme), so a palette change follows.
  */
 
-/** Aqua glow of a target mutation (the `select` role: the cells the layout aims at). */
-export const TARGET_GLOW = "0 0 6px var(--color-select), inset 0 0 6px var(--color-select)";
-/** Hover glow of a draggable (removable) placement. */
-export const REMOVE_HOVER_GLOW = "0 0 6px var(--color-problem), inset 0 0 4px var(--color-problem)";
-/** Gold glow of a locked Calculator placement. */
-export const LOCKED_GLOW = "0 0 6px var(--color-coin), inset 0 0 4px var(--color-coin)";
+// Flat inset outlines, no blur (no glows on static content). The names are kept for the callers.
+/** Aqua outline of a target mutation (the `select` role: the cells the layout aims at). */
+export const TARGET_GLOW = "inset 0 0 0 2px var(--color-select)";
+/** Outline of a draggable (removable) placement under the pointer. */
+export const REMOVE_HOVER_GLOW = "inset 0 0 0 2px var(--color-problem)";
+/** Gold outline of a locked Calculator placement. */
+export const LOCKED_GLOW = "inset 0 0 0 2px var(--color-coin)";
 /** Ring of a placement found from the list below the grid. */
-export const FOCUS_RING = "0 0 0 2px var(--color-fg), 0 0 10px 2px var(--color-fg-muted)";
+export const FOCUS_RING = "0 0 0 2px var(--color-fg)";
 
 /** Style overrides for a placement drawn as `BareGround`: no merged texture, no border. */
 export const BARE_PLACEMENT_STYLE: CSSProperties = {

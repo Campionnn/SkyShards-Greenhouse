@@ -41,14 +41,14 @@ export const FlowNeedsPanel: React.FC<{ needs: FlowNeeds; catalog: Catalog; data
     );
   return (
     <section className={cn("min-w-0", className)} aria-label="Everything the flow needs">
+      {/* Compact, so the stock and its actions fit on the same row of the status panel. */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-secondary text-fg-muted">
-        <span className="whitespace-nowrap">
-          Whole flow <b className="font-semibold tabular-nums text-fg">{n(totals.covered)}</b> of ~{n(totals.total)} mutations
+        <span className="whitespace-nowrap" title={`${n(totals.covered)} of ~${n(totals.total)} mutations covered · ${totals.done} of ${totals.items} items done · ${pct}%`}>
+          Whole flow <b className="font-semibold tabular-nums text-fg">{n(totals.covered)}</b>
+          <span className="tabular-nums">/~{n(totals.total)}</span>
+          <span className="sr-only"> mutations covered, {totals.done} of {totals.items} items done</span>
         </span>
-        <Bar value={totals.covered} max={totals.total} label="Whole flow" done={totals.covered >= totals.total} className="w-20 flex-none" />
-        <span className="tabular-nums whitespace-nowrap text-fg-meta">
-          {totals.done}/{totals.items} items · {pct}%
-        </span>
+        <Bar value={totals.covered} max={totals.total} label="Whole flow" done={totals.covered >= totals.total} className="w-16 flex-none" />
         <button
           type="button"
           onClick={() => setOpen(!open)}
@@ -61,8 +61,14 @@ export const FlowNeedsPanel: React.FC<{ needs: FlowNeeds; catalog: Catalog; data
       {open && (
         <div className="mt-3 space-y-4 border-t border-line pt-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-secondary text-fg-muted">
-              Typical use from an empty start, from {needs.runs} simulated runs
+            <span className="flex flex-wrap items-center gap-1.5 text-secondary text-fg-muted">
+              <b className="font-semibold tabular-nums text-fg">
+                {n(totals.covered)} of ~{n(totals.total)} mutations
+              </b>
+              <span className="tabular-nums">
+                · {totals.done}/{totals.items} items · {pct}% ·
+              </span>
+              typical use from an empty start, from {needs.runs} simulated runs
               <InfoHint title="Whole-flow totals" width={340}>
                 How many of each mutation the whole Rose Dragon flow typically uses from an empty start: what its farms place, plus what the goal keeps. Measured with your
                 schedule and stats (the middle run per item). What's left is measured the same way from where you are now, so owning what an item gets made into counts too:

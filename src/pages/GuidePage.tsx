@@ -10,9 +10,9 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, FlaskConical, LoaderCircle, Pencil, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { Check, FlaskConical, LoaderCircle, Pencil, Plus, RefreshCw, SkipForward, SlidersHorizontal } from "lucide-react";
 import { cn } from "../components/ui/cn";
-import { KitButton, Segmented } from "../components/ui/kit";
+import { IconButton, KitButton, Segmented } from "../components/ui/kit";
 import { surface } from "../components/ui/surface";
 import { LocalStorageManager, type StoredGuideState } from "../utilities/localStorageManager";
 import type { SimulatorScenarioHandoff } from "../utilities/layoutHandoff";
@@ -73,6 +73,7 @@ import { SettingsDialog } from "../components/guide/SettingsDialog";
 import { FlowNeedsPanel } from "../components/guide/FlowNeeds";
 import { HowTo, HowToHint } from "../components/guide/HowTo";
 import { scheduleText, timeAgo, type Precision } from "../components/guide/format";
+import { liveSkipped, loadSkipped, saveSkipped, type SkippedPlots } from "../components/guide/skipped";
 import "../components/guide/guide.css";
 
 const guideEnv = createGuideEnv();
@@ -143,6 +144,17 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
   const [precision, setPrecision] = useState<Precision>("quick");
   const [open, setOpen] = useState<Open>(null);
   const navigate = useNavigate();
+  // Plots skipped this visit and what each still needs (the saved state can't tell a skip from a confirm).
+  const [skippedStore, setSkippedStore] = useState<SkippedPlots>(() => loadSkipped(variant));
+  const setSkipped = useCallback(
+    (fn: (s: SkippedPlots) => SkippedPlots) =>
+      setSkippedStore((s) => {
+        const next = fn(s);
+        saveSkipped(variant, next);
+        return next;
+      }),
+    [variant]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -338,6 +350,16 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
   const lastImport = state.lastImport?.appliedAt !== undefined ? state.lastImport : undefined;
   const confirmedSinceImport = lastImport ? Object.keys(state.confirmations).filter((id) => Object.keys(state.confirmations[Number(id)].delta).length > 0).length : 0;
   const checked = catalog.plots.filter((id) => state.plots[id]?.acted);
+  const skipped = liveSkipped(skippedStore, (id) => !!state.plots[id]?.acted && !!state.confirmations[id]);
+  /** "7 Dead Plant", "7 Dead Plant and 2 Fermento" (what a supplies card was short of). */
+  const needText = (outcome: PlotOutcome | null) => (outcome?.supplyBlock?.need ?? []).map((b) => `${b.count} ${itemName(data, b.item)}`).join(" and ");
+  const simulatorHandoff = () =>
+    navigate("/simulator", {
+      state: {
+        incomingScenario: { scenario: simulatorScenario(flow, toInput(state)), name: plotCount === 2 ? "the two-plot Rose Dragon flow" : "the Rose Dragon flow" },
+      } satisfies SimulatorScenarioHandoff,
+    });
+  const simulatorTitle = `Load all ${plotsWord} plots' flows and scripts into the Simulator, starting from your farms and what you own now`;
   // What the plots grew since last visit: the farms they stood on before this visit's confirmations
   // (empty farmland grows Lonelilies), then the farms they're on now.
   const harvestable = catalog.plots.flatMap((id) => {
@@ -361,21 +383,12 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         <HowToHint plotCount={plotCount} loginOrder={loginOrder(catalog.plots)} />
         <VariantSwitch value={variant} onChange={onVariant} />
         <span className="ml-auto flex flex-wrap items-center gap-1.5">
-          <KitButton
-            variant="ghost"
-            size="md"
-            className="max-sm:hidden"
-            onClick={() =>
-              navigate("/simulator", {
-                state: {
-                  incomingScenario: { scenario: simulatorScenario(flow, toInput(state)), name: plotCount === 2 ? "the two-plot Rose Dragon flow" : "the Rose Dragon flow" },
-                } satisfies SimulatorScenarioHandoff,
-              })
-            }
-            title={`Load all ${plotsWord} plots' flows and scripts into the Simulator, starting from your farms and what you own now`}
-          >
+          <KitButton variant="ghost" size="md" className="max-sm:hidden" onClick={simulatorHandoff} title={simulatorTitle}>
             <FlaskConical /> Simulator
           </KitButton>
+          <IconButton variant="ghost" size="md" className="sm:hidden" onClick={simulatorHandoff} title={simulatorTitle} aria-label="Open in the Simulator">
+            <FlaskConical />
+          </IconButton>
           <KitButton size="md" onClick={() => setOpen({ kind: "settings" })} aria-label={`How you play: online ${schedule}, your stats, forecast precision`} title="When you're online, your stats and the forecast precision">
             <SlidersHorizontal /> {state.checkEvery !== null ? `Every ${Number.isInteger(state.checkEvery) ? state.checkEvery : state.checkEvery.toFixed(1)} h` : schedule}
           </KitButton>
@@ -397,7 +410,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
       <section className={cn(surface.card, "space-y-2 px-4 py-3")} aria-label="Status">
         {done ? (
           <div aria-label="Done" className="space-y-1">
-            <h2 className="text-hero text-coin">You have everything for the Rose Dragon.</h2>
+            <h2 className="text-hero text-fg">You have everything for the Rose Dragon.</h2>
             <p className="text-body text-fg-body">
               Every legendary ingredient is in your inventory ({goalState.legendaries.items.map((g) => `${g.count}× ${itemName(data, g.item)}`).join(", ")})
               {goalState.others.total > 0 ? ", plus one of every other mutation" : ""}. Your plots are free for whatever comes next.
@@ -406,14 +419,15 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         ) : (
           <ForecastStrip forecast={forecast} plan={plan} progress={progress} error={forecastError} catalog={catalog} data={data} outcomes={outcomes} onOpenSettings={() => setOpen({ kind: "settings" })} />
         )}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-line pt-2">
-          {!done && needs && <FlowNeedsPanel needs={needs} catalog={catalog} data={data} className="max-w-full" />}
+        {/* One row while the column is 800px or more (1366 and 1024 windows): whole flow, then the stock (shrinks and truncates), then its fixed actions. */}
+        <div className="flex flex-nowrap items-center gap-x-5 gap-y-2 border-t border-line pt-2 @max-[50rem]:flex-wrap">
+          {!done && needs && <FlowNeedsPanel needs={needs} catalog={catalog} data={data} className="max-w-full shrink-0 @max-[50rem]:shrink" />}
           {tracked === 0 ? (
             <section className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2" aria-label="What you own">
               <span className="min-w-0 flex-1 basis-64 text-secondary text-fg-muted">
                 <b className="font-semibold text-fg">Start by entering what you own.</b> Until then, the cards only use farms that cost nothing.
               </span>
-              <span className="flex flex-wrap items-center gap-1.5">
+              <span className="flex shrink-0 flex-wrap items-center gap-1.5">
                 <KitButton size="md" onClick={() => setOpen({ kind: "import" })} title="Count what's in your sacks, ender chest and backpacks">
                   <RefreshCw /> Import from Hypixel
                 </KitButton>
@@ -423,8 +437,11 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
               </span>
             </section>
           ) : (
-            <section className="contents" aria-label="What you own">
-              <span className="min-w-0 text-secondary tabular-nums text-fg-muted">
+            <section className="flex min-w-0 flex-1 items-center gap-x-3 gap-y-2 @max-[50rem]:basis-full @max-[50rem]:flex-wrap" aria-label="What you own">
+              <span
+                className="min-w-0 flex-1 truncate text-secondary tabular-nums text-fg-muted @max-[50rem]:basis-full @max-[50rem]:whitespace-normal"
+                title={`${goalState.legendaries.owned}/${goalState.legendaries.total} Rose Dragon legendaries · ${goalState.others.owned}/${goalState.others.total} one of each other mutation · ${tracked} items tracked`}
+              >
                 <b className="font-semibold text-fg">
                   {goalState.legendaries.owned}/{goalState.legendaries.total}
                 </b>{" "}
@@ -453,7 +470,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
                   </span>
                 )}
               </span>
-              <span className="ml-auto flex flex-wrap items-center gap-1.5">
+              <span className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">
                 <KitButton
                   size="md"
                   onClick={() => setOpen({ kind: "import" })}
@@ -465,7 +482,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
                   <Pencil /> Edit
                 </KitButton>
                 {!done && (
-                  <KitButton variant="primary" size="md" onClick={() => setOpen({ kind: "inventory", mode: "add" })} title="Type what you just harvested; it's added to what you have">
+                  <KitButton size="md" onClick={() => setOpen({ kind: "inventory", mode: "add" })} title="Type what you just harvested; it's added to what you have">
                     <Plus /> Add harvest
                   </KitButton>
                 )}
@@ -478,13 +495,17 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
       {!done && allActed(state) && (
         <section className={cn(surface.card, "flex flex-wrap items-center justify-between gap-3 px-4 py-3")} aria-label="This visit">
           <p className="text-body text-fg-body">
-            <b className="font-semibold text-fg">All {plotsWord} plots are done for this visit.</b> Next time you're online, harvest, then start the next check-in.
+            <b className="font-semibold text-fg">
+              {Object.keys(skipped).length > 0 ? `All ${plotsWord} plots are done or skipped for this visit.` : `All ${plotsWord} plots are done for this visit.`}
+            </b>{" "}
+            Next time you're online, harvest, then press Next check-in.
           </p>
           <KitButton
             variant="primary"
             size="md"
             onClick={() => {
               commit(startNewCheckIn);
+              setSkipped(() => ({}));
               setOpen({ kind: "inventory", mode: "add" });
             }}
           >
@@ -497,7 +518,8 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
       {!done && !allActed(state) && (
         <ol className="flex min-w-0 flex-wrap items-center gap-1" aria-label="This visit">
           {catalog.plots.map((id, i) => {
-            const isDone = checked.includes(id);
+            const isSkipped = id in skipped;
+            const isDone = checked.includes(id) && !isSkipped;
             return (
               <li key={id} className="flex items-center gap-1">
                 {i > 0 && <span aria-hidden className="h-px w-3 bg-line-control" />}
@@ -505,16 +527,21 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
                   aria-current={id === nextPlot ? "step" : undefined}
                   className={cn(
                     "inline-flex h-7 items-center gap-1 rounded-control border px-2 text-secondary",
-                    isDone ? "border-line text-fg-meta" : id === nextPlot ? "border-select/60 bg-select/10 text-select-fg" : "border-line-strong text-fg-muted",
+                    isDone || isSkipped ? "border-line text-fg-meta" : id === nextPlot ? "border-select/60 bg-select/10 text-select-fg" : "border-line-strong text-fg-muted",
+                    isSkipped && "border-dashed",
                   )}
                 >
-                  {isDone && <Check aria-hidden className="size-3" />}Plot {id}
+                  {isDone && <Check aria-hidden className="size-3" />}
+                  {isSkipped && <SkipForward aria-hidden className="size-3" />}Plot {id}
+                  {isSkipped && <span className="sr-only"> (skipped)</span>}
                 </span>
               </li>
             );
           })}
           <li className="ml-2 text-secondary tabular-nums text-fg-meta">
-            {checked.length} of {plotCount} done{nextPlot !== undefined && checked.length > 0 ? ` · next: Plot ${nextPlot}` : ""}
+            {checked.length - Object.keys(skipped).length} of {plotCount} done
+            {Object.keys(skipped).length > 0 && ` · ${Object.keys(skipped).length} skipped`}
+            {nextPlot !== undefined && checked.length > 0 ? ` · next: Plot ${nextPlot}` : ""}
           </li>
         </ol>
       )}
@@ -546,9 +573,28 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
                 earlier={earlier}
                 zombudPerHarvest={perHarvest}
                 canUndo={!!state.confirmations[plotId]}
-                onConfirm={(extras) => outcome && commit((s) => confirmPlot(s, outcome, extras))}
-                onSkip={() => commit((s) => skipPlot(s, plotId))}
-                onUndo={() => commit((s) => undoPlot(s, plotId))}
+                onConfirm={(extras) => {
+                  if (!outcome) return;
+                  commit((s) => confirmPlot(s, outcome, extras));
+                  setSkipped((s) => {
+                    const next = { ...s };
+                    delete next[plotId];
+                    return next;
+                  });
+                }}
+                onSkip={() => {
+                  const need = needText(outcome);
+                  commit((s) => skipPlot(s, plotId));
+                  setSkipped((s) => ({ ...s, [plotId]: need }));
+                }}
+                onUndo={() => {
+                  commit((s) => undoPlot(s, plotId));
+                  setSkipped((s) => {
+                    const next = { ...s };
+                    delete next[plotId];
+                    return next;
+                  });
+                }}
                 onPickFarm={() => setOpen({ kind: "farm", plotId })}
                 onDevourerRefresh={(on) =>
                   commit((s) => setFacts(s, plotId, { ...(s.plots[plotId].facts ?? emptyFacts()), devourerRefresh: on }))
@@ -558,6 +604,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
                 inventory={state.inventory}
                 visitPlots={catalog.plots}
                 checked={checked}
+                skipped={plot.acted ? skipped[plotId] : undefined}
               />
             );
           })}
@@ -596,6 +643,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         onPrecision={setPrecision}
         onReset={() => {
           LocalStorageManager.clearGuideState(variant);
+          setSkipped(() => ({}));
           latest.current = null;
           setState(initialState(flow, guideDefaultSettings()));
           setOpen(null);
@@ -611,6 +659,11 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
           data={data}
           onPick={(farm) => {
             commit((s) => setFarm(s, open.plotId, farm));
+            setSkipped((s) => {
+              const next = { ...s };
+              delete next[open.plotId];
+              return next;
+            });
             setOpen(null);
           }}
           onClose={() => setOpen(null)}

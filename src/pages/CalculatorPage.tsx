@@ -1,9 +1,11 @@
 /**
  * The Calculator (`/`): pick mutation targets, Solve, read the best layout.
  *
- * Desktop: a left rail (Targets, Solve, More settings) · the result in the centre (score line, the
- * large grid, the legend; the progress bar while solving) · Priorities & locks in a right rail, which
- * drops under the result below ~1100px. Phone: the result first, a setup fold, and a sticky Solve bar.
+ * Wide (page ≥ 69rem): a left rail (Targets, Solve, More settings) · the result in the centre (score
+ * line, the large grid, the legend; the progress bar while solving) · Priorities & locks in a right
+ * rail. Both rails are sticky with their own scroll. Mid widths: one sticky left rail with
+ * Targets | Priorities tabs, so the lock brush stays beside the grid. Phone: the result first, a
+ * setup fold, the priorities, and a sticky Solve bar.
  */
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { ChevronDown, Grid3x3, Square } from "lucide-react";
@@ -18,9 +20,11 @@ import type { SolveSession, SolveRunMeta } from "../components/calculator/solver
 import type { SolveResponse, MutationGoal } from "../types/greenhouse";
 import { cn } from "../components/ui/cn";
 import { InfoHint } from "../components/ui/InfoHint";
-import { KitButton } from "../components/ui/kit";
+import { KitButton, TabPanel, Tabs } from "../components/ui/kit";
 import { surface } from "../components/ui/surface";
 import { ResultFocusProvider } from "../components/calculator/ResultLists";
+import { StickyRail } from "../components/calculator/StickyRail";
+import { useCalculatorLayout } from "../components/calculator/calculatorLayout";
 
 const setupError = (title: string, message: string, suggestion: string): SolveErrorInfo => ({
   kind: "invalid_request",
@@ -231,6 +235,11 @@ export const CalculatorPage: React.FC = () => {
 
   const displayResult = result || previewResult;
 
+  // One tree per layout (measured from the page's own width), so every panel renders once.
+  const pageRef = useRef<HTMLDivElement>(null);
+  const layout = useCalculatorLayout(pageRef);
+  const [railTab, setRailTab] = useState<"targets" | "priorities">("targets");
+
   const solveButton = (className?: string, touch?: boolean) => (
     <KitButton
       variant={isLoading ? "danger" : "primary"}
@@ -270,9 +279,89 @@ export const CalculatorPage: React.FC = () => {
     </details>
   );
 
+  const setup = (
+    <div className="space-y-4">
+      <MutationTargets />
+      {layout === "wide" && solveButton("w-full")}
+      {moreSettings}
+    </div>
+  );
+
+  const resultSection = (
+    <section aria-label="Result" className="min-w-0">
+      <SolverResults
+        result={displayResult}
+        error={error}
+        session={session}
+        runMeta={result ? runMeta : null}
+        onClear={handleClearResults}
+        onDismissError={handleDismissError}
+        onRetry={error && error.kind !== "invalid_request" ? handleSolve : undefined}
+        lists="inline"
+      />
+    </section>
+  );
+
+  let body: React.ReactNode = null;
+  if (layout === "phone") {
+    // Phone: the result first, then the setup fold and the priorities, stacked in the page.
+    body = (
+      <div className="grid grid-cols-1 gap-5">
+        {resultSection}
+        <details className={cn("group/setup", surface.card, "p-3")} open={selectedMutations.length === 0 || undefined}>
+          <summary className="focus-ring flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-inner text-body text-fg-body [&::-webkit-details-marker]:hidden">
+            <span className="min-w-0 flex-1 truncate">Targets ({selectedMutations.length}) · settings</span>
+            <ChevronDown aria-hidden className="size-4 text-fg-meta transition-transform duration-(--duration-ink) group-open/setup:rotate-180" />
+          </summary>
+          <div className="pt-2">{setup}</div>
+        </details>
+        <aside aria-label="Priorities & locks" className="min-w-0">
+          <CropConfigurationsPanel inFlow />
+        </aside>
+      </div>
+    );
+  } else if (layout === "mid") {
+    // Mid widths: one sticky left rail with Targets | Priorities, so the brush sits beside the grid.
+    body = (
+      <div className="grid grid-cols-[17rem_minmax(0,1fr)] items-start gap-5">
+        <StickyRail label="Setup">
+          <Tabs
+            idPrefix="calc-rail"
+            label="Setup"
+            value={railTab}
+            onChange={setRailTab}
+            items={[
+              { value: "targets", label: "Targets", count: selectedMutations.length || null },
+              { value: "priorities", label: "Priorities" },
+            ]}
+            className="shrink-0"
+          />
+          <TabPanel idPrefix="calc-rail" value={railTab} className="scrollbar-dark mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pr-1">
+            {railTab === "targets" ? setup : <CropConfigurationsPanel className="min-h-0 flex-1" inFlow />}
+          </TabPanel>
+          {/* Solve stays under both tabs. */}
+          <div className="shrink-0 border-t border-line pt-3">{solveButton("w-full")}</div>
+        </StickyRail>
+        {resultSection}
+      </div>
+    );
+  } else if (layout === "wide") {
+    body = (
+      <div className="grid grid-cols-[16rem_minmax(0,1fr)_17rem] gap-5">
+        <StickyRail label="Setup" innerClassName="scrollbar-dark overflow-y-auto overscroll-contain pr-1">
+          {setup}
+        </StickyRail>
+        {resultSection}
+        <StickyRail label="Priorities & locks">
+          <CropConfigurationsPanel className="min-h-0 flex-1" />
+        </StickyRail>
+      </div>
+    );
+  }
+
   return (
     <>
-      <div className="@container w-full py-3 max-md:pb-24 sm:py-4">
+      <div ref={pageRef} className="w-full py-3 max-md:pb-24 sm:py-4">
         <header className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-hero text-fg max-sm:text-title">Calculator</h1>
           <InfoHint title="How the Calculator works" width={320} label="How the Calculator works">
@@ -282,58 +371,15 @@ export const CalculatorPage: React.FC = () => {
           <span className="ml-auto">{cellsButton}</span>
         </header>
 
-        <ResultFocusProvider result={displayResult}>
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-[15rem_minmax(0,1fr)] @min-[69rem]:grid-cols-[16rem_minmax(0,1fr)_17rem] @min-[69rem]:items-start">
-          {/* Setup rail: sticky on desktop; on phones a fold under the result. */}
-          <aside aria-label="Setup" className="order-2 md:sticky md:top-4 md:order-1 md:self-start">
-            <details className={cn("group/setup md:hidden", surface.card, "p-3")}>
-              <summary className="focus-ring flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-inner text-body text-fg-body [&::-webkit-details-marker]:hidden">
-                <span className="min-w-0 flex-1 truncate">
-                  Targets ({selectedMutations.length}) · settings
-                </span>
-                <ChevronDown aria-hidden className="size-4 text-fg-meta transition-transform duration-(--duration-ink) group-open/setup:rotate-180" />
-              </summary>
-              <div className="space-y-4 pt-2">
-                <MutationTargets />
-                {moreSettings}
-              </div>
-            </details>
-            <div className="hidden space-y-4 md:block">
-              <MutationTargets />
-              {solveButton("w-full")}
-              {moreSettings}
-            </div>
-          </aside>
-
-          <main aria-label="Result" className="order-1 min-w-0 md:order-2">
-            <SolverResults
-              result={displayResult}
-              error={error}
-              session={session}
-              runMeta={result ? runMeta : null}
-              onClear={handleClearResults}
-              onDismissError={handleDismissError}
-              onRetry={error && error.kind !== "invalid_request" ? handleSolve : undefined}
-              lists="inline"
-            />
-          </main>
-
-          {/* Priorities & locks: a fixed-height column whose list scrolls inside it, so scrolling the
-              crops never moves the page (or the grid). Sticky beside the result on wide screens. */}
-          <aside
-            aria-label="Priorities & locks"
-            className="order-3 flex max-h-[32rem] min-h-0 min-w-0 flex-col max-md:overflow-x-clip md:col-start-2 @min-[69rem]:sticky @min-[69rem]:top-4 @min-[69rem]:col-start-3 @min-[69rem]:row-start-1 @min-[69rem]:max-h-[calc(100dvh-2rem)]"
-          >
-            <CropConfigurationsPanel className="min-h-0 flex-1" />
-          </aside>
-        </div>
-        </ResultFocusProvider>
+        <ResultFocusProvider result={displayResult}>{body}</ResultFocusProvider>
       </div>
 
       {/* Phone: Solve stays in reach. */}
-      <div className="fixed inset-x-0 bottom-0 z-(--z-bar) border-t border-line bg-surface-panel px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden">
-        {solveButton("w-full", true)}
-      </div>
+      {layout === "phone" && (
+        <div className="fixed inset-x-0 bottom-0 z-(--z-bar) border-t border-line bg-surface-panel px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          {solveButton("w-full", true)}
+        </div>
+      )}
 
       <GridManagerModal isOpen={isGridModalOpen} onClose={() => setIsGridModalOpen(false)} />
 

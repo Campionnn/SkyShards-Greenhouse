@@ -25,13 +25,16 @@ export const LocalSolverPanel: React.FC = () => {
   const [portDraft, setPortDraft] = useState(String(settings.port));
   const [limitDraft, setLimitDraft] = useState(settings.timeLimit === null ? "" : String(settings.timeLimit));
 
-  const update = useCallback((patch: Partial<LocalSolverSettings>) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...patch };
+  // Saved outside the state updater: saving fires the settings-changed event (which other listeners
+  // turn into state updates), and an updater must stay pure (React may run it during render).
+  const update = useCallback(
+    (patch: Partial<LocalSolverSettings>) => {
+      const next = { ...settings, ...patch };
+      setSettings(next);
       saveLocalSolverSettings(next);
-      return next;
-    });
-  }, []);
+    },
+    [settings],
+  );
 
   const probe = useCallback(async (port: number) => {
     setProbing(true);

@@ -14,6 +14,8 @@ interface CropConfigurationsPanelProps {
   className?: string;
   /** Render as a collapsible section (closed unless priorities or locks are set). */
   collapsible?: boolean;
+  /** The crop list grows with its rows instead of scrolling inside a fixed height (the page or a rail scrolls it). */
+  inFlow?: boolean;
 }
 
 /** One crop: image, name (rarity colour on mutation names), info, brush (lock it on the grid), priority. */
@@ -95,7 +97,7 @@ const CropItemRow: React.FC<{
   );
 };
 
-export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = ({ className, collapsible = false }) => {
+export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = ({ className, collapsible = false, inFlow = false }) => {
   const { crops, getCropDef, getMutationDef, addMutation } = useGreenhouseData();
   const { lockedPlacements, selectedCropForPlacement, setSelectedCropForPlacement, removeLockedPlacement, clearLockedPlacements, setPriority, getPriority, priorities, defaultPriorities } =
     useLockedPlacements();
@@ -215,7 +217,7 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
           {filteredCrops.length === 0 ? (
             <p className="shrink-0 py-4 text-center text-secondary text-fg-meta">No crops match the filter.</p>
           ) : (
-            <ul className="scrollbar-dark min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain md:-mr-1.5 md:pr-1.5" aria-label="Crops">
+            <ul className={cn("space-y-0.5", !inFlow && "scrollbar-dark min-h-0 flex-1 overflow-y-auto overscroll-contain md:-mr-1.5 md:pr-1.5")} aria-label="Crops">
               {filteredCrops.map((crop) => (
                 <CropItemRow
                   key={crop.id}
