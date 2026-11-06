@@ -3,9 +3,10 @@
 // limit), and every error carries the script line/column.
 
 import type * as A from "./ast";
+import { generateExpression, generateFunction, type CodegenStatics } from "./compile";
 import { ScriptSyntaxError } from "./lexer";
 import { parse } from "./parser";
-import { arrayMethod, numberMethod, stringMethod } from "./stdlib";
+import { arrayMethod, arrayMethodImpl, numberMethod, stringMethod, stringMethodImpl, type MethodImpl } from "./stdlib";
 import {
   Closure,
   ConversionLimitError,
@@ -269,12 +270,76 @@ function createsFunctions(node: object): boolean {
  * cycles). Any other block runs in the enclosing scope: an empty scope in between changes no lookup.
  */
 function blockScope(body: readonly A.Stmt[], outer: Scope): Scope {
+  return isScopedBlock(body) ? new Scope(outer) : outer;
+}
+
+/** Does `blockScope` give this block a fresh scope? (Cached per block.) */
+function isScopedBlock(body: readonly A.Stmt[]): boolean {
   let scoped = scopedBlocks.get(body);
   if (scoped === undefined) {
     scoped = body.some((s) => s.type === "VarDecl" || s.type === "FuncDecl") || containsFunc(body);
     scopedBlocks.set(body, scoped);
   }
-  return scoped ? new Scope(outer) : outer;
+  return scoped;
+}
+
+// ---- compiled code (compile.ts) ----
+
+type CompiledCode = (interp: Interpreter, scope: Scope, args: unknown[]) => unknown;
+
+/** Run script functions and conditions as compiled JavaScript (false: always tree-walk; tests compare both). */
+let compiledScripts = true;
+
+/** Switch compiled execution on or off (differential tests). Results are identical either way. */
+export function setCompiledScripts(on: boolean): void {
+  compiledScripts = on;
+}
+
+/**
+ * Compiled code per function node and per expression node (kept apart: an arrow function can be a
+ * whole condition expression too); null: can't be compiled here (always interpreted).
+ */
+const compiledFuncs = new WeakMap<object, CompiledCode | null>();
+const compiledExprs = new WeakMap<object, CompiledCode | null>();
+
+/** Code generation failed once (e.g. a Content-Security-Policy without 'unsafe-eval'): interpret everything. */
+let codegenUnavailable = false;
+/** Nodes the generator produced invalid JavaScript for (always 0; tests check it). */
+let codegenFailures = 0;
+export function compiledCodeFailures(): number {
+  return codegenFailures;
+}
+
+const CODEGEN_STATICS: CodegenStatics = {
+  blockIsScoped: isScopedBlock,
+  createsFunctions,
+  arrayMethod: arrayMethodImpl,
+  stringMethod: stringMethodImpl,
+};
+
+/** The compiled form of `node` (a Func, or an expression), compiled on first use; null: interpret it. */
+function compiledFor(node: A.Func | A.Expr, expression: boolean): CompiledCode | null {
+  const compiledNodes = expression ? compiledExprs : compiledFuncs;
+  let code = compiledNodes.get(node);
+  if (code !== undefined) return code;
+  code = null;
+  if (!codegenUnavailable) {
+    const gen = expression ? generateExpression(node, CODEGEN_STATICS) : generateFunction(node as A.Func, CODEGEN_STATICS);
+    try {
+      // Only generator templates, temporaries and labels are in the source; every script name,
+      // string and AST node is a constant from `consts` (see compile.ts).
+      code = new Function("H", "K", gen.source)(CODEGEN_HELPERS, gen.consts) as CompiledCode;
+    } catch (err) {
+      // EvalError: code generation is switched off here (a Content-Security-Policy); interpret
+      // everything from now on. Anything else is a generator bug: interpret this node (the same
+      // results, only slower) and count it, so tests notice.
+      if (err instanceof EvalError) codegenUnavailable = true;
+      else codegenFailures++;
+      code = null;
+    }
+  }
+  compiledNodes.set(node, code);
+  return code;
 }
 
 export class Scope {
@@ -312,6 +377,8 @@ const SHORT = Symbol("short");
 export const DEFAULT_BUDGET = 2_000_000;
 export const MAX_CALL_DEPTH = 200;
 const MAX_ARRAY_LENGTH = 1_000_000;
+/** Recorded stores (pairs) kept between two saves before the list is given up (see `Interpreter.stores`). */
+const MAX_RECORDED_STORES = 200_000;
 
 export interface InterpreterOptions {
   budget?: number;
@@ -323,7 +390,7 @@ export class Interpreter {
   budget: number;
   private readonly maxDepth: number;
   private depth = 0;
-  private pos: A.Pos = { line: 1, col: 1 };
+  pos: A.Pos = { line: 1, col: 1 };
   /** Running top-level code after a restore: skip declarations whose names are already bound. */
   private restoring: Scope | null = null;
   readonly info: CallInfo;
@@ -335,7 +402,48 @@ export class Interpreter {
       call: (fn, args) => this.call(fn, args),
       fail: (message) => this.fail(message),
       charge: (n) => this.charge(n),
+      noteStore: (container, value) => this.noteStore(container, value),
     };
+  }
+
+  /**
+   * Containers whose stores are recorded (the runtime's set of checked containers, see
+   * ScriptRuntime.save and persist.ts `PersistWatch`); null: nothing is recorded.
+   */
+  private watched: ReadonlySet<object> | null = null;
+  /** Non-primitive values stored into a watched container since the last `takeStores`. */
+  private stores: unknown[] = [];
+  /** More than `MAX_RECORDED_STORES` since the last take: the list is incomplete. */
+  private storesOverflow = false;
+
+  /** Record stores into the containers of `watched` from now on (null: stop), starting a fresh list. */
+  watchStores(watched: ReadonlySet<object> | null): void {
+    this.watched = watched;
+    this.stores = [];
+    this.storesOverflow = false;
+  }
+
+  /** The values recorded since the last call (null: some were dropped), and start a new list. */
+  takeStores(): unknown[] | null {
+    const out = this.storesOverflow ? null : this.stores;
+    this.stores = [];
+    this.storesOverflow = false;
+    return out;
+  }
+
+  /**
+   * `value` was stored into the script array or object `container`. Only stores into watched
+   * containers matter, and only of non-primitive values (a primitive can always be kept).
+   */
+  noteStore(container: object, value: unknown): void {
+    const watched = this.watched;
+    if (watched === null || value === null || (typeof value !== "object" && typeof value !== "function") || this.storesOverflow || !watched.has(container)) return;
+    if (this.stores.length >= MAX_RECORDED_STORES) {
+      this.storesOverflow = true;
+      this.stores = [];
+      return;
+    }
+    this.stores.push(value);
   }
 
   /** Start a fresh step budget (one per hook call). */
@@ -354,7 +462,7 @@ export class Interpreter {
     if (this.steps > this.budget) this.overBudget();
   }
 
-  private overBudget(): never {
+  overBudget(): never {
     throw new ScriptError(
       `The script ran too long (more than ${this.budget.toLocaleString("en-US")} steps in one call). Is there an endless loop?`,
       this.pos,
@@ -394,7 +502,57 @@ export class Interpreter {
   }
 
   evaluate(expr: A.Expr, scope: Scope): unknown {
-    return this.contained(() => this.eval(expr, scope));
+    return this.contained(() => {
+      const code = compiledScripts ? compiledFor(expr, true) : null;
+      return code !== null ? code(this, scope, NO_ARGS) : this.eval(expr, scope);
+    });
+  }
+
+  // ---- helpers for compiled code (compile.ts): each is a piece of exec / eval, factored out ----
+  // Compiled code also calls `pos`, `overBudget`, `exec`, `bind`, `assignPattern`, `setVar`,
+  // `evalUnary`, `evalAssign`, `binary`, `append`, `spreadItems`, `checkString`, `getProp`,
+  // `setProp`, `keysOf` and `call` directly (which is why they aren't private).
+
+  /** `eval` of an Ident that isn't bound. */
+  notDefined(id: A.Ident): never {
+    this.pos = id;
+    return this.fail(`"${id.name}" is not defined`);
+  }
+
+  /** A call of something that isn't a function (`evalChainPart`). */
+  notFunction(label: string, fn: unknown): never {
+    return this.fail(`${label} is not a function (it is ${describeType(fn)})`);
+  }
+
+  /** for...of: the items to walk (the array itself: walked live), as `execForEach`. */
+  forOfItems(iter: unknown): unknown[] {
+    if (Array.isArray(iter)) return iter;
+    if (typeof iter === "string") return Array.from(iter);
+    return this.fail(`for...of needs an array or a string, not ${describeType(iter)}. For an object use keys(obj), values(obj) or entries(obj).`);
+  }
+
+  /** A `for (let ...)` loop's fresh bindings for the next iteration, as `execFor`. */
+  nextIteration(iterScope: Scope, outer: Scope): Scope {
+    const next = new Scope(outer);
+    for (const [k, b] of iterScope.vars) next.vars.set(k, { ...b });
+    return next;
+  }
+
+  /**
+   * `call` of a built-in array / string method, given its table entry: what `call` does with the
+   * HostFn `getProp` would have made for it (that HostFn never reaches the script, so skipping it is
+   * unobservable). Built-ins are `pure`, so their arguments aren't screened.
+   */
+  callMethod(impl: MethodImpl, name: string, recv: unknown, args: unknown[]): unknown {
+    const at = this.pos;
+    try {
+      return (impl as (r: unknown, a: unknown[], info: CallInfo) => unknown)(recv, args, this.info);
+    } catch (err) {
+      if (err instanceof ScriptError) throw err;
+      throw new ScriptError(`${name}: ${err instanceof Error ? err.message : String(err)}`, at, !isLimitError(err));
+    } finally {
+      this.pos = at;
+    }
   }
 
   /** Call a script or host function (an entry point for hooks, and for callbacks from host functions). */
@@ -458,6 +616,13 @@ export class Interpreter {
     const scope = new Scope(fn.scope);
     this.depth++;
     try {
+      // The same work as below, as compiled JavaScript (compile.ts).
+      let code: CompiledCode | null = null;
+      if (compiledScripts) {
+        code = fn.code as CompiledCode | null | undefined ?? null;
+        if (fn.code === undefined) fn.code = code = compiledFor(f, false);
+      }
+      if (code !== null) return code(this, scope, args);
       const params = f.params;
       for (let i = 0; i < params.length; i++) this.bind(params[i], args[i], scope, "param");
       if (f.rest) this.bind(f.rest, args.slice(params.length), scope, "param");
@@ -481,7 +646,7 @@ export class Interpreter {
     return undefined;
   }
 
-  private exec(s: A.Stmt, scope: Scope): Signal {
+  exec(s: A.Stmt, scope: Scope): Signal {
     this.tick(s);
     switch (s.type) {
       case "Expr":
@@ -659,7 +824,7 @@ export class Interpreter {
   // ---- bindings ----
 
   /** Declare the names in `p` in `scope`. */
-  private bind(p: A.Pattern, value: unknown, scope: Scope, kind: BindingKind): void {
+  bind(p: A.Pattern, value: unknown, scope: Scope, kind: BindingKind): void {
     switch (p.type) {
       case "Ident": {
         const existing = scope.vars.get(p.name);
@@ -686,7 +851,7 @@ export class Interpreter {
   }
 
   /** Assign to existing variables / properties named in `p`. */
-  private assignPattern(p: A.Pattern, value: unknown, scope: Scope): void {
+  assignPattern(p: A.Pattern, value: unknown, scope: Scope): void {
     switch (p.type) {
       case "Ident":
         this.setVar(p, value, scope);
@@ -735,7 +900,7 @@ export class Interpreter {
     }
   }
 
-  private setVar(id: A.Ident, value: unknown, scope: Scope): void {
+  setVar(id: A.Ident, value: unknown, scope: Scope): void {
     const b = scope.lookup(id.name);
     this.pos = id;
     if (!b) this.fail(`"${id.name}" is not declared. Declare it first with let ${id.name} = ...`);
@@ -836,7 +1001,7 @@ export class Interpreter {
     }
   }
 
-  private evalUnary(e: A.Unary, scope: Scope): unknown {
+  evalUnary(e: A.Unary, scope: Scope): unknown {
     if (e.op === "typeof") {
       if (e.arg.type === "Ident" && !scope.lookup(e.arg.name)) return "undefined";
       return typeOf(this.eval(e.arg, scope));
@@ -855,7 +1020,7 @@ export class Interpreter {
     return toNum(v);
   }
 
-  private evalAssign(e: A.Assign, scope: Scope): unknown {
+  evalAssign(e: A.Assign, scope: Scope): unknown {
     if (e.op === "=") {
       const value = this.eval(e.value, scope);
       this.assignPattern(e.target, value, scope);
@@ -947,13 +1112,13 @@ export class Interpreter {
   }
 
   /** out.push(...items), counted against the budget and the array limit (no native spread of script arrays). */
-  private append(out: unknown[], items: readonly unknown[]): void {
+  append(out: unknown[], items: readonly unknown[]): void {
     this.checkLength(out.length + items.length);
     this.charge(items.length);
     for (let i = 0; i < items.length; i++) out.push(items[i]);
   }
 
-  private spreadItems(v: unknown): unknown[] {
+  spreadItems(v: unknown): unknown[] {
     if (Array.isArray(v)) return v;
     if (typeof v === "string") return Array.from(v);
     return this.fail(`Only arrays and strings can be spread with ..., not ${describeType(v)}`);
@@ -998,6 +1163,7 @@ export class Interpreter {
       this.checkLength(i + 1);
       if (i > obj.length) this.charge(i - obj.length);
       obj[i] = value;
+      if (this.watched !== null) this.noteStore(obj, value);
       return;
     }
     if (obj instanceof HostObject) {
@@ -1006,6 +1172,7 @@ export class Interpreter {
     }
     if (isPlainObject(obj)) {
       setOwn(obj, key, value);
+      if (this.watched !== null) this.noteStore(obj, value);
       return;
     }
     this.fail(`Can't set "${key}" on ${describeType(obj)}`);
@@ -1024,13 +1191,13 @@ export class Interpreter {
     if (n > MAX_ARRAY_LENGTH) this.fail(`Arrays are limited to ${MAX_ARRAY_LENGTH.toLocaleString("en-US")} items`, false);
   }
 
-  private checkString(s: string): void {
+  checkString(s: string): void {
     if (s.length > MAX_ARRAY_LENGTH) this.fail(`Strings are limited to ${MAX_ARRAY_LENGTH.toLocaleString("en-US")} characters`, false);
   }
 
   // ---- operators ----
 
-  private binary(op: A.BinaryOp, l: unknown, r: unknown, at: A.Pos): unknown {
+  binary(op: A.BinaryOp, l: unknown, r: unknown, at: A.Pos): unknown {
     switch (op) {
       case "+": {
         if (typeof l === "number" && typeof r === "number") return l + r;
@@ -1080,6 +1247,24 @@ export class Interpreter {
     }
   }
 }
+
+const NO_ARGS: unknown[] = [];
+
+/** What compiled code reaches besides the interpreter (`H` in compile.ts). */
+const CODEGEN_HELPERS = Object.freeze({
+  Scope,
+  Closure,
+  BREAK,
+  CONTINUE,
+  propKey,
+  toStr,
+  toNum,
+  typeOf,
+  newObject,
+  setOwn,
+  strictEquals,
+  isCallable,
+});
 
 /** Names every plain JS object inherits; never valid engine ids. */
 const INHERITED_NAMES = new Set(Object.getOwnPropertyNames(Object.prototype));

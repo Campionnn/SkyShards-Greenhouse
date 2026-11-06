@@ -453,6 +453,66 @@ describe("scripts: errors, pause, conditions", () => {
     const r = engine.run(start(withScripts(`let f = null; function onTick() { f = () => 1 }`)), 1);
     expect(r.state.scripts!.halt?.message).toMatch(/top level/);
   });
+
+  // save() between cycles of one run() call only checks what changed since the last save; these pin
+  // that it stops on exactly the cycle a full save (one run() call per cycle) would.
+  describe("an unkeepable value stops the run on the cycle it appears", () => {
+    /** halt of one long run() call vs one call per cycle (where every cycle ends in a real save). */
+    const both = (source: string, cycles: number) => {
+      const s0 = start(withScripts(source));
+      const long = engine.run(s0, cycles).state.scripts!.halt;
+      let s = s0;
+      for (let i = 0; i < cycles && !s.scripts!.halt; i++) s = engine.run(s, 1).state;
+      return { long, stepped: s.scripts!.halt };
+    };
+
+    it("too many objects: the global heap cap, reached through pushes into a kept array", () => {
+      const { long, stepped } = both(`let a = []; function onTick() { for (let i = 0; i < 10000; i++) a.push([]) }`, 30);
+      expect(long?.message).toMatch(/too many objects/);
+      expect(long).toEqual(stepped);
+      // 1 + 10,000 per cycle containers: the 20th onTick (cycle 19) passes 200,000.
+      expect(long?.cycle).toBe(19);
+    });
+
+    it("too many objects, spread over several variables and shared", () => {
+      const { long, stepped } = both(`let a = [], b = {}; shared.c = []; let n = 0;
+        function onTick() { n++; for (let i = 0; i < 4000; i++) { a.push({}); b["k" + n + "_" + i] = [i]; shared.c.push([[]]) } }`, 30);
+      expect(long?.message).toMatch(/too many objects/);
+      expect(long).toEqual(stepped);
+    });
+
+    it("a container changed while unreachable, then linked back in", () => {
+      const { long, stepped } = both(`let o = { a: [] }; let keep = { k: [] }; function onTick() {
+        if (cycle === 3) { o.saved = keep; keep = 0 }
+        if (cycle === 4) { const k = o.saved; delete o.saved; k.k.push(() => 1); keep = k }
+      }`, 10);
+      expect(long?.message).toMatch(/top level/);
+      expect(long).toEqual(stepped);
+      expect(long?.cycle).toBe(4);
+    });
+
+    it("garbage that is no longer reachable never counts", () => {
+      const { long, stepped } = both(`let a = []; function onTick() { a = []; for (let i = 0; i < 30000; i++) a.push({ x: [] }) }`, 25);
+      expect(long).toBeNull();
+      expect(stepped).toBeNull();
+    });
+
+    it("a function stored deep inside a kept structure, by assignment and by array methods", () => {
+      for (const store of ["o.a.b.c = () => 1", "o.a.list.push(() => 1)", "o.a.list.splice(0, 0, () => 1)", "o.a.list.unshift(() => 1)", "o.a.list.fill(() => 1)", "assign(o.a, { f: () => 1 })", "o.a.list[3] = [{ g: () => 1 }]", "o.a.b.c ??= () => 1"]) {
+        const { long, stepped } = both(`let o = { a: { b: {}, list: [1, 2] } }; function onTick() { if (cycle === 7) ${store} }`, 15);
+        expect(long?.message, store).toMatch(/top level/);
+        expect(long, store).toEqual(stepped);
+        expect(long?.cycle, store).toBe(7);
+      }
+    });
+
+    it("a container built before it is reachable, then linked in", () => {
+      const { long, stepped } = both(`let o = { a: [] }; function onTick() { if (cycle !== 6) return; const x = { y: [] }; x.y.push(plot.at); o.a.push(x) }`, 12);
+      expect(long?.message).toMatch(/the method/);
+      expect(long).toEqual(stepped);
+      expect(long?.cycle).toBe(6);
+    });
+  });
 });
 
 describe("scripts: bundled examples", () => {

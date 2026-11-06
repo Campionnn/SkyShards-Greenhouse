@@ -42,7 +42,7 @@ import { EVENT_HOOKS, SCRIPT_PHASES } from "./docs";
 import { compile, compileExpression, Interpreter, ScriptError, Scope, type Program } from "./interpreter";
 import { ScriptSyntaxError } from "./lexer";
 import { enabledScripts, forcedEffectsOf } from "./overrides";
-import { Decoder, Encoder, isPersistable, PersistError } from "./persist";
+import { Decoder, Encoder, MAX_HEAP_ENTRIES, PersistError, reachablePersistable, walkPersistable, type EncodeEnv } from "./persist";
 import { coreGlobals } from "./stdlib";
 import {
   GLOBAL_SCRIPT,
@@ -66,6 +66,8 @@ export const CONDITION_BUDGET = 200_000;
 const MAX_METRICS = 100;
 /** Message deliveries per cycle (stops two scripts answering each other forever). */
 const MAX_MESSAGES_PER_CYCLE = 1000;
+/** A declared top-level variable that isn't bound (yet): a placeholder in `ScriptRuntime.roots`. */
+const NO_BINDING = Symbol("no binding");
 const KNOWN_GROUND = ["farmland", "sand", "soul_sand", "mycelium", "netherrack", "end_stone"];
 
 export function emptyScriptsState(seed: number): ScriptsState {
@@ -127,6 +129,18 @@ export class ScriptRuntime {
   private readonly conditionScopes = new Map<number, Scope>();
   /** The view an exit condition is checked against (on-arrival checks look at the next step's targets). */
   private conditionView: TriggerView | null = null;
+  /**
+   * Between-cycles persistence check (see `save`): every container proven keepable since the last
+   * exact walk, closed under children (null: none yet), the roots as they were at the last check,
+   * and how big `checked` may grow before the next exact walk.
+   */
+  private checked: Set<object> | null = null;
+  private checkedRoots: unknown[] | null = null;
+  private checkedLimit = MAX_HEAP_ENTRIES;
+  private readonly encodeEnv: EncodeEnv = {
+    closureOwner: (c: Closure) => this.scripts.find((s) => s.scope === c.scope)?.key ?? null,
+    hostRef: (v: HostObject | HostFn) => (v instanceof HostObject ? v.ref() : null),
+  };
 
   private constructor(state: SimulationState, env: Env) {
     this.state = state;
@@ -209,6 +223,58 @@ export class ScriptRuntime {
         if (kind) inst.scope.vars.set(name, { value: decoder.decode(value), kind });
       }
     }
+    // What was just decoded was encoded by a successful save: keepable, and closed under children.
+    // Starting the between-cycles check from it keeps a run() call's first save incremental too.
+    const roots = this.roots();
+    const known = decoder.containers();
+    const ok = walkPersistable(roots.filter((r) => r !== NO_BINDING), known, this.encodeEnv, MAX_HEAP_ENTRIES);
+    this.setChecked(ok ? known : null, roots);
+  }
+
+  /**
+   * The values `save` keeps: `shared`, then every script's declared top-level variables in order
+   * (`NO_BINDING` for one that isn't bound, so positions line up from one save to the next).
+   */
+  private roots(): unknown[] {
+    const roots: unknown[] = [this.shared];
+    for (const inst of this.scripts) {
+      for (const name of inst.declared.keys()) {
+        const b = inst.scope.vars.get(name);
+        roots.push(b ? b.value : NO_BINDING);
+      }
+    }
+    return roots;
+  }
+
+  /** Start the between-cycles bookkeeping from an exact set of reachable containers (see `save`). */
+  private setChecked(containers: Set<object> | null, roots: unknown[]): void {
+    this.checked = containers;
+    this.checkedRoots = containers ? roots : null;
+    // Containers that stop being reachable stay in `checked` until the next exact walk; let it grow
+    // to twice the exact count (or 10,000 more) before redoing one, so it never holds much garbage.
+    const base = containers?.size ?? 0;
+    this.checkedLimit = Math.min(MAX_HEAP_ENTRIES, Math.max(2 * base, base + 10_000));
+    this.interp.watchStores(containers);
+  }
+
+  /**
+   * Cheap form of the between-cycles check: true only if everything the roots reach is in `checked`
+   * after walking just what changed since the last save (roots that now hold another value, and every
+   * array/object value stored into a checked container: the interpreter records those). Everything in
+   * `checked` was proven keepable and its children are in it too, and every later store into one of
+   * them was recorded, so a true here means the exact check would say true as well; and since
+   * `checked` holds at most MAX_HEAP_ENTRIES containers, the heap limit holds too. A false is only
+   * "maybe": the caller runs the exact check.
+   */
+  private quickCheck(roots: unknown[], env: EncodeEnv): boolean {
+    const checked = this.checked;
+    const before = this.checkedRoots;
+    const stores = this.interp.takeStores();
+    if (!checked || !before || !stores || before.length !== roots.length) return false;
+    const changed: unknown[] = stores;
+    for (let i = 0; i < roots.length; i++) if (roots[i] !== before[i] && roots[i] !== NO_BINDING) changed.push(roots[i]);
+    this.checkedRoots = roots;
+    return walkPersistable(changed, checked, env, this.checkedLimit);
   }
 
   /**
@@ -216,26 +282,29 @@ export class ScriptRuntime {
    * `full: false` (run() between two cycles of one call, where nothing reads the encoding before
    * the next save replaces it): only check that everything could be encoded and skip writing it;
    * if something couldn't, do the real save, which records the error exactly as always.
+   *
+   * The check is incremental (`quickCheck`): it walks only what changed since the last save, and
+   * falls back to the exact walk over everything (`reachablePersistable`) whenever it can't prove
+   * the answer, so an unkeepable value or one container too many stops the run on the same cycle.
    */
   save(full = true): void {
     const ss = this.scriptsState;
-    const encodeEnv = {
-      closureOwner: (c: Closure) => this.scripts.find((s) => s.scope === c.scope)?.key ?? null,
-      hostRef: (v: HostObject | HostFn) => (v instanceof HostObject ? v.ref() : null),
-    };
+    const encodeEnv = this.encodeEnv;
+    const roots = this.roots();
     if (!full) {
-      const roots: unknown[] = [this.shared];
-      for (const inst of this.scripts) {
-        for (const name of inst.declared.keys()) {
-          const b = inst.scope.vars.get(name);
-          if (b) roots.push(b.value);
-        }
+      if (this.quickCheck(roots, encodeEnv)) {
+        this.forgetGoneProtections();
+        return;
       }
-      if (isPersistable(roots, encodeEnv)) {
+      const reach = reachablePersistable(roots.filter((r) => r !== NO_BINDING), encodeEnv);
+      this.setChecked(reach, roots);
+      if (reach) {
         this.forgetGoneProtections();
         return;
       }
     }
+    // The runtime may keep running after a real save (initState's): start the bookkeeping over.
+    this.setChecked(null, roots);
     const enc = new Encoder(encodeEnv);
     const keep = (value: unknown, path: string, key: ScriptKey): EncodedValue => {
       try {

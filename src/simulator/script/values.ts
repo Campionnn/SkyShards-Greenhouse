@@ -9,6 +9,8 @@ import type { Scope } from "./interpreter";
 export class Closure {
   readonly func: Func;
   readonly scope: Scope;
+  /** The interpreter's compiled code for `func` (a cache, never persisted or compared; undefined: not looked up yet). */
+  code: unknown = undefined;
   constructor(func: Func, scope: Scope) {
     this.func = func;
     this.scope = scope;
@@ -23,6 +25,11 @@ export interface CallInfo {
   fail(message: string): never;
   /** Count `n` steps of host work against the step budget. */
   charge(n: number): void;
+  /**
+   * A host function stored `value` into the script array or object `container` (push, splice,
+   * assign...). Lets the runtime check only what changed between cycles (ScriptRuntime.save).
+   */
+  noteStore(container: object, value: unknown): void;
 }
 
 /** A function implemented by the engine (`log`, `Math.floor`, `plot.place`, array methods...). */
