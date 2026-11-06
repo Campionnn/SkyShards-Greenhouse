@@ -577,7 +577,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
         hasLockedPlacements={lockedPlacements.length > 0}
       />
 
-      {lists === "inline" && <ResultLists result={result} focus={focus} />}
+      {lists === "inline" && <ResultLists result={result} focus={focus} className="@container/lists sm:grid sm:grid-cols-2 sm:gap-x-6" />}
     </section>
   );
 };

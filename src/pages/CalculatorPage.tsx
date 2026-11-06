@@ -20,8 +20,7 @@ import { cn } from "../components/ui/cn";
 import { InfoHint } from "../components/ui/InfoHint";
 import { KitButton } from "../components/ui/kit";
 import { surface } from "../components/ui/surface";
-import { ResultFocusProvider, ResultLists } from "../components/calculator/ResultLists";
-import { useMedia } from "../components/flows/ranking/useMedia";
+import { ResultFocusProvider } from "../components/calculator/ResultLists";
 
 const setupError = (title: string, message: string, suggestion: string): SolveErrorInfo => ({
   kind: "invalid_request",
@@ -231,8 +230,6 @@ export const CalculatorPage: React.FC = () => {
   const unlockedCount = unlockedCells.size;
 
   const displayResult = result || previewResult;
-  // Two columns and up: the result lists live in the left rail; phones keep them under the grid.
-  const wide = useMedia("(min-width: 768px)");
 
   const solveButton = (className?: string, touch?: boolean) => (
     <KitButton
@@ -259,9 +256,9 @@ export const CalculatorPage: React.FC = () => {
     </KitButton>
   );
 
-  /** More settings: effect weights, unique crops, the local solver. */
+  /** More settings: effect weights, unique crops, the local solver. Open by default (it fills the rail). */
   const moreSettings = (
-    <details className="group/more border-t border-line pt-2">
+    <details open className="group/more border-t border-line pt-2">
       <summary className="focus-ring flex min-h-8 cursor-pointer list-none items-center gap-1 rounded-inner text-label uppercase text-fg-meta pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
         More settings <ChevronDown aria-hidden className="size-3.5 transition-transform duration-(--duration-ink) group-open/more:rotate-180" />
       </summary>
@@ -304,9 +301,6 @@ export const CalculatorPage: React.FC = () => {
             <div className="hidden space-y-4 md:block">
               <MutationTargets />
               {solveButton("w-full")}
-              <div className="border-t border-line pt-3">
-                {displayResult ? <ResultLists result={displayResult} /> : <p className="text-secondary text-fg-meta">Solve to see what to plant.</p>}
-              </div>
               {moreSettings}
             </div>
           </aside>
@@ -320,7 +314,7 @@ export const CalculatorPage: React.FC = () => {
               onClear={handleClearResults}
               onDismissError={handleDismissError}
               onRetry={error && error.kind !== "invalid_request" ? handleSolve : undefined}
-              lists={wide ? "none" : "inline"}
+              lists="inline"
             />
           </main>
 
