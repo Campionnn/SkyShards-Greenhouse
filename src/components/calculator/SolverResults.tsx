@@ -3,7 +3,7 @@ import { FlaskConical, Grid3X3, RotateCcw, Share2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { GRID_SIZE } from "../../constants";
 import { useGreenhouseData, useGridState, useLockedPlacements, useDesigner, useInfoModal } from "../../context";
-import { useGridPlacement, useFitCellSize, usePlacementFocus, focusKey, useTargetsVisible, useInputsVisible } from "../../hooks";
+import { useGridPlacement, useFitCellSize, focusKey, useTargetsVisible, useInputsVisible } from "../../hooks";
 import {
   getGridDimensions,
   simulateEffects,
@@ -24,20 +24,19 @@ import {
   MutationCell,
   EffectTooltip,
   GridVisibilityToggle,
-  FindOnGridHint,
-  focusItemClass,
   focusFade,
   FOCUS_TRANSITION,
 } from "../grid";
 import { LOCKED_CELL, UNLOCKED_CELL } from "../grid/gridCellStyles";
-import { CropImage } from "../shared";
 import { cn } from "../ui/cn";
-import { KitButton, KitLabel, Pill } from "../ui/kit";
+import { KitButton, Pill } from "../ui/kit";
 import { useToast } from "../ui/toastContext";
 import type { SolveResponse, CropPlacement, MutationResult } from "../../types/greenhouse";
 import type { SolveErrorInfo } from "../../services";
 import { SolverProgress } from "./SolverProgress";
-import { ResultSummary, MutationList, SolveErrorPanel } from "./ResultSummary";
+import { ResultSummary, SolveErrorPanel } from "./ResultSummary";
+import { ResultLists } from "./ResultLists";
+import { useResultFocus, useSharedResultFocus } from "./resultFocusContext";
 import type { SolveSession, SolveRunMeta } from "./solverStatus";
 
 interface SolverResultsProps {
@@ -50,6 +49,8 @@ interface SolverResultsProps {
   onClear?: () => void;
   onDismissError?: () => void;
   onRetry?: () => void;
+  /** "none": the Mutations / Crops to plant lists are rendered elsewhere (ResultLists, e.g. the left rail). */
+  lists?: "inline" | "none";
 }
 
 // A crop or mutation placement on the grid.
@@ -179,6 +180,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
   onClear,
   onDismissError,
   onRetry,
+  lists = "inline",
 }) => {
   const { getCropDef, getMutationDef } = useGreenhouseData();
   const { unlockedCells } = useGridState();
@@ -192,32 +194,12 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
   const [inputsVisible, setInputsVisible] = useInputsVisible();
   const [hoveredEffectItem, setHoveredEffectItem] = useState<PlacementItem | null>(null);
 
-  // The area to draw: the unlocked cells (plus anything placed outside them), so a 6x6 greenhouse
-  // gets large cells instead of a 10x10 grid of mostly locked ones.
-  const crop = useMemo(() => {
-    let r0 = GRID_SIZE, c0 = GRID_SIZE, r1 = -1, c1 = -1;
-    const take = (r: number, c: number, size = 1) => {
-      r0 = Math.min(r0, r); c0 = Math.min(c0, c); r1 = Math.max(r1, r + size - 1); c1 = Math.max(c1, c + size - 1);
-    };
-    for (const key of unlockedCells) {
-      const [r, c] = key.split(",").map(Number);
-      take(r, c);
-    }
-    for (const p of result?.placements || []) take(p.position[0], p.position[1], p.size);
-    for (const m of result?.mutations || []) take(m.position[0], m.position[1], m.size);
-    for (const l of lockedPlacements) take(l.position[0], l.position[1], l.size);
-    // Nothing unlocked: show the whole grid.
-    if (r1 < 0) return { r0: 0, c0: 0, rows: GRID_SIZE, cols: GRID_SIZE };
-    return { r0, c0, rows: r1 - r0 + 1, cols: c1 - c0 + 1 };
-  }, [unlockedCells, result, lockedPlacements]);
-
-  // Grid sizing: fit the column's width (and keep the grid on screen), never scroll sideways.
+  // Grid sizing: the whole 10x10 plot, fitted to the column's width, never scrolling sideways.
   const fitRef = useRef<HTMLDivElement>(null);
-  const { cellSize, gap } = useFitCellSize(fitRef, { max: 80, cells: Math.max(crop.cols, crop.rows), heightReserve: 330 });
+  const { cellSize, gap } = useFitCellSize(fitRef, { max: 64 });
   const gridRef = useRef<HTMLDivElement>(null);
   const { width: gridWidth, height: gridHeight } = getGridDimensions(cellSize, gap);
   const unit = cellSize + gap;
-  const view = { left: crop.c0 * unit, top: crop.r0 * unit, width: crop.cols * unit - gap, height: crop.rows * unit - gap };
 
   const handleSendToDesigner = useCallback(() => {
     const inputs: Array<{ id: string; name: string; position: [number, number]; size: number }> = [];
@@ -352,15 +334,10 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     return cells;
   }, [occupiedCells, result, lockedPlacements]);
 
-  // Hovering or clicking an entry in the Mutations / Crops to plant lists finds it on the grid.
-  const focusKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const p of result?.placements || []) keys.add(focusKey("input", p.crop));
-    for (const m of result?.mutations || []) keys.add(focusKey("target", m.mutation));
-    for (const l of lockedPlacements) keys.add(focusKey("input", l.crop));
-    return keys;
-  }, [result, lockedPlacements]);
-  const focus = usePlacementFocus(focusKeys);
+  // Hovering or clicking an entry in the Mutations / Crops to plant lists finds it on the grid. With
+  // the lists rendered elsewhere (ResultFocusProvider around both), the shared focus drives the grid.
+  const ownFocus = useResultFocus(result, lockedPlacements);
+  const focus = useSharedResultFocus() ?? ownFocus;
 
   // Effect propagation over the displayed layout (solver crops + mutations + locks).
   // Locked placements are also in result.placements for final results, so dedupe by position.
@@ -408,13 +385,11 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
 
   const renderGrid = () => (
     <div ref={fitRef} className="w-full min-w-0">
-      {/* The viewport shows the unlocked area; the full grid inside keeps its coordinates, so the
-          placement and drag maths (from the grid's on-screen box) are unchanged. */}
-      <div className="relative mx-auto overflow-hidden" style={{ width: view.width, height: view.height }} data-testid="solver-grid">
+      <div data-testid="solver-grid">
         <div
           ref={gridRef}
-          className="absolute select-none"
-          style={{ left: -view.left, top: -view.top, width: gridWidth, height: gridHeight, cursor: isPlacementMode ? "crosshair" : "default" }}
+          className="relative mx-auto select-none"
+          style={{ width: gridWidth, height: gridHeight, cursor: isPlacementMode ? "crosshair" : "default" }}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onMouseDown={handleMouseDown}
@@ -537,10 +512,8 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
               suppressed={hoveredEffects.suppressed}
               cellSize={cellSize}
               gap={gap}
-              gridWidth={view.left + view.width}
-              gridHeight={view.top + view.height}
-              boundsLeft={view.left}
-              boundsTop={view.top}
+              gridWidth={gridWidth}
+              gridHeight={gridHeight}
               note={hoveredEffects.item.locked ? "locked" : hoveredEffects.item.isMutation ? "target" : undefined}
             />
           )}
@@ -548,15 +521,6 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
       </div>
     </div>
   );
-
-  const placementCounts = new Map<string, { count: number; locked: number }>();
-  (result?.placements || []).forEach((p) => {
-    const e = placementCounts.get(p.crop) || { count: 0, locked: 0 };
-    e.count += 1;
-    if (p.locked) e.locked += 1;
-    placementCounts.set(p.crop, e);
-  });
-  const plantedCells = (result?.placements || []).reduce((n, p) => n + p.size * p.size, 0);
 
   const unlockedCount = unlockedCells.size;
   const hasLayout = hasResult || lockedPlacements.length > 0;
@@ -613,42 +577,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
         hasLockedPlacements={lockedPlacements.length > 0}
       />
 
-      {hasResult && (
-        <div className="grid min-w-0 gap-x-6 gap-y-4 @3xl:grid-cols-2">
-          <section className="min-w-0 space-y-1.5" aria-label="Mutations">
-            <KitLabel actions={<FindOnGridHint pinned={focus.pinned !== null} />}>Mutations</KitLabel>
-            <MutationList result={result} focus={focus} />
-          </section>
-          <section className="min-w-0 space-y-1.5" aria-label="Crops to plant">
-            <KitLabel actions={<span className="text-meta normal-case tabular-nums text-fg-meta">{plantedCells} cells</span>}>Crops to plant</KitLabel>
-            <div className="flex flex-wrap gap-1.5">
-              {Array.from(placementCounts.entries()).map(([cropId, { count, locked }]) => {
-                const cropDef = getCropDef(cropId);
-                const mutationDef = getMutationDef(cropId);
-                const displayName = cropDef?.name || mutationDef?.name || cropId.replace(/_/g, " ");
-                const key = focusKey("input", cropId);
-                const item = focus.itemProps(key, displayName);
-                return (
-                  <div
-                    key={cropId}
-                    {...item}
-                    className={cn("flex items-center gap-1.5 rounded-control border border-line bg-surface-well px-2 py-1", focusItemClass(focus, key))}
-                    title={locked ? `${item.title}. ${locked} of these are your locked placements.` : item.title}
-                  >
-                    <CropImage cropId={cropId} cropName={displayName} size="xs" showFallback={false} />
-                    <span className="text-secondary text-fg-body">{displayName}</span>
-                    <span className="text-secondary tabular-nums text-fg-meta">
-                      ×{count}
-                      {locked > 0 && <span> ({locked} locked)</span>}
-                    </span>
-                  </div>
-                );
-              })}
-              {placementCounts.size === 0 && <p className="py-2 text-secondary text-fg-meta">No crops placed</p>}
-            </div>
-          </section>
-        </div>
-      )}
+      {lists === "inline" && <ResultLists result={result} focus={focus} />}
     </section>
   );
 };

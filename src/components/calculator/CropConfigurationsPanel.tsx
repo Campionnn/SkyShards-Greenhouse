@@ -141,8 +141,8 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
   const status = [hasPriorities ? "priorities" : null, lockedPlacements.length > 0 ? `${lockedPlacements.length} locked` : null].filter(Boolean).join(" · ");
 
   return (
-    <section className={cn("flex min-w-0 flex-col gap-3", className)} aria-labelledby="priorities-title" data-testid="priorities-panel">
-      <header className="flex min-h-7 items-center gap-2">
+    <section className={cn("flex min-h-0 min-w-0 flex-col gap-3", className)} aria-labelledby="priorities-title" data-testid="priorities-panel">
+      <header className="flex min-h-7 shrink-0 items-center gap-2">
         {collapsible ? (
           <button type="button" id="priorities-title" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="focus-ring cursor-pointer rounded-inner text-left">
             <KitLabel>Priorities &amp; locks</KitLabel>
@@ -166,10 +166,10 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
 
       {open && (
         <>
-          <SearchFilterHeader searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Find a crop" filter={filter} onFilterChange={setFilter} />
+          <SearchFilterHeader className="shrink-0" searchTerm={searchTerm} onSearchChange={setSearchTerm} searchPlaceholder="Find a crop" filter={filter} onFilterChange={setFilter} />
 
           {hasPriorities && !priorityWarningDismissed && (
-            <div className="flex items-start gap-2 rounded-control border border-warn/30 bg-warn/10 p-2">
+            <div className="flex shrink-0 items-start gap-2 rounded-control border border-warn/30 bg-warn/10 p-2">
               <p className="flex-1 text-secondary text-warn">Priorities make cached solves less likely, so solving can take longer.</p>
               <IconButton aria-label="Dismiss" onClick={() => setPriorityWarningDismissed(true)}>
                 <X />
@@ -178,7 +178,7 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
           )}
 
           {lockedPlacements.length > 0 && (
-            <section className="space-y-1.5" aria-label="Locked placements">
+            <section className="shrink-0 space-y-1.5" aria-label="Locked placements">
               <KitLabel
                 actions={
                   <IconButton aria-label="Remove every lock" title="Remove every locked placement" onClick={clearLockedPlacements}>
@@ -213,9 +213,9 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
           )}
 
           {filteredCrops.length === 0 ? (
-            <p className="py-4 text-center text-secondary text-fg-meta">No crops match the filter.</p>
+            <p className="shrink-0 py-4 text-center text-secondary text-fg-meta">No crops match the filter.</p>
           ) : (
-            <ul className="space-y-0.5" aria-label="Crops">
+            <ul className="scrollbar-dark min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain md:-mr-1.5 md:pr-1.5" aria-label="Crops">
               {filteredCrops.map((crop) => (
                 <CropItemRow
                   key={crop.id}

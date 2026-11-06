@@ -20,6 +20,8 @@ import { cn } from "../components/ui/cn";
 import { InfoHint } from "../components/ui/InfoHint";
 import { KitButton } from "../components/ui/kit";
 import { surface } from "../components/ui/surface";
+import { ResultFocusProvider, ResultLists } from "../components/calculator/ResultLists";
+import { useMedia } from "../components/flows/ranking/useMedia";
 
 const setupError = (title: string, message: string, suggestion: string): SolveErrorInfo => ({
   kind: "invalid_request",
@@ -229,7 +231,8 @@ export const CalculatorPage: React.FC = () => {
   const unlockedCount = unlockedCells.size;
 
   const displayResult = result || previewResult;
-
+  // Two columns and up: the result lists live in the left rail; phones keep them under the grid.
+  const wide = useMedia("(min-width: 768px)");
 
   const solveButton = (className?: string, touch?: boolean) => (
     <KitButton
@@ -282,10 +285,11 @@ export const CalculatorPage: React.FC = () => {
           <span className="ml-auto">{cellsButton}</span>
         </header>
 
-        <div className="grid grid-cols-1 gap-5 @min-[48rem]:grid-cols-[15rem_minmax(0,1fr)] @min-[69rem]:grid-cols-[16rem_minmax(0,1fr)_17rem] @min-[69rem]:items-start">
+        <ResultFocusProvider result={displayResult}>
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-[15rem_minmax(0,1fr)] @min-[69rem]:grid-cols-[16rem_minmax(0,1fr)_17rem] @min-[69rem]:items-start">
           {/* Setup rail: sticky on desktop; on phones a fold under the result. */}
-          <aside aria-label="Setup" className="order-2 @min-[48rem]:sticky @min-[48rem]:top-4 @min-[48rem]:order-1 @min-[48rem]:self-start">
-            <details className={cn("group/setup @min-[48rem]:hidden", surface.card, "p-3")}>
+          <aside aria-label="Setup" className="order-2 md:sticky md:top-4 md:order-1 md:self-start">
+            <details className={cn("group/setup md:hidden", surface.card, "p-3")}>
               <summary className="focus-ring flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-inner text-body text-fg-body [&::-webkit-details-marker]:hidden">
                 <span className="min-w-0 flex-1 truncate">
                   Targets ({selectedMutations.length}) · settings
@@ -297,14 +301,17 @@ export const CalculatorPage: React.FC = () => {
                 {moreSettings}
               </div>
             </details>
-            <div className="hidden space-y-4 @min-[48rem]:block">
+            <div className="hidden space-y-4 md:block">
               <MutationTargets />
               {solveButton("w-full")}
+              <div className="border-t border-line pt-3">
+                {displayResult ? <ResultLists result={displayResult} /> : <p className="text-secondary text-fg-meta">Solve to see what to plant.</p>}
+              </div>
               {moreSettings}
             </div>
           </aside>
 
-          <main aria-label="Result" className="order-1 min-w-0 @min-[48rem]:order-2">
+          <main aria-label="Result" className="order-1 min-w-0 md:order-2">
             <SolverResults
               result={displayResult}
               error={error}
@@ -313,13 +320,20 @@ export const CalculatorPage: React.FC = () => {
               onClear={handleClearResults}
               onDismissError={handleDismissError}
               onRetry={error && error.kind !== "invalid_request" ? handleSolve : undefined}
+              lists={wide ? "none" : "inline"}
             />
           </main>
 
-          <aside aria-label="Priorities & locks" className="order-3 min-w-0 @min-[48rem]:col-start-2 @min-[69rem]:sticky @min-[69rem]:top-4 @min-[69rem]:col-start-3 @min-[69rem]:row-start-1">
-            <CropConfigurationsPanel />
+          {/* Priorities & locks: a fixed-height column whose list scrolls inside it, so scrolling the
+              crops never moves the page (or the grid). Sticky beside the result on wide screens. */}
+          <aside
+            aria-label="Priorities & locks"
+            className="order-3 flex max-h-[32rem] min-h-0 min-w-0 flex-col max-md:overflow-x-clip md:col-start-2 @min-[69rem]:sticky @min-[69rem]:top-4 @min-[69rem]:col-start-3 @min-[69rem]:row-start-1 @min-[69rem]:max-h-[calc(100dvh-2rem)]"
+          >
+            <CropConfigurationsPanel className="min-h-0 flex-1" />
           </aside>
         </div>
+        </ResultFocusProvider>
       </div>
 
       {/* Phone: Solve stays in reach. */}
