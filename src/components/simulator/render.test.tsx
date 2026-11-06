@@ -439,7 +439,7 @@ describe("simulator panels render", () => {
     expect(html).not.toMatch(/Show \d+ more|Show fewer/);
   });
 
-  it("inventory sections collapse: rare crops and other drops start collapsed; Dead Plants list under mutations", () => {
+  it("inventory sections: every section, rare crops and other drops included, starts expanded; Dead Plants list under mutations", () => {
     const data = defaultGameData();
     const inventory = { [data.mutationIds[0]]: 2, wheat: 4, dead_plant: 3, fermento: 1, cropie: 1 };
     const html = wrap(<InventoryTable state={startOf(singlePlot(layout(), { inventory }))} />).replace(/<!-- -->/g, "");
@@ -447,10 +447,11 @@ describe("simulator panels render", () => {
     expect(mut).toContain(">Dead Plant</span>");
     expect(html).toMatch(/aria-expanded="true"[^>]*data-section-toggle="mutation"/);
     expect(html).toMatch(/aria-expanded="true"[^>]*data-section-toggle="crop"/);
-    expect(html).toMatch(/aria-expanded="false"[^>]*data-section-toggle="rareCrop"/);
-    // Collapsed: the header (with its count) shows, the rows do not.
-    expect(html).not.toContain('data-section="rareCrop"');
-    expect(html).not.toContain(">Fermento</span>");
+    expect(html).toMatch(/aria-expanded="true"[^>]*data-section-toggle="rareCrop"/);
+    expect(html).not.toMatch(/aria-expanded="false"[^>]*data-section-toggle/);
+    // Expanded: the rows show.
+    expect(html).toContain('data-section="rareCrop"');
+    expect(html).toContain(">Fermento</span>");
   });
 
   it("normal profile: Bazaar money, prices, reserve and the run bar profit render from counts and quotes", () => {
