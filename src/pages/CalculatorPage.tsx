@@ -336,7 +336,7 @@ export const CalculatorPage: React.FC = () => {
             ]}
             className="shrink-0"
           />
-          <TabPanel idPrefix="calc-rail" value={railTab} className="scrollbar-dark mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pr-1">
+          <TabPanel idPrefix="calc-rail" value={railTab} className="scrollbar-dark mt-3 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
             {railTab === "targets" ? setup : <CropConfigurationsPanel className="min-h-0 flex-1" inFlow />}
           </TabPanel>
           {/* Solve stays under both tabs. */}
@@ -348,7 +348,7 @@ export const CalculatorPage: React.FC = () => {
   } else if (layout === "wide") {
     body = (
       <div className="grid grid-cols-[16rem_minmax(0,1fr)_17rem] gap-5">
-        <StickyRail label="Setup" innerClassName="scrollbar-dark overflow-y-auto overscroll-contain pr-1">
+        <StickyRail label="Setup" innerClassName="scrollbar-dark overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
           {setup}
         </StickyRail>
         {resultSection}

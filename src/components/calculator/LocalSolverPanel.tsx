@@ -146,10 +146,12 @@ export const LocalSolverPanel: React.FC = () => {
                 <RefreshCw className={probing ? "animate-spin motion-reduce:animate-none" : undefined} />
               </IconButton>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="flex flex-col gap-1 text-secondary text-fg-muted">
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+              <label className="flex min-w-0 flex-col gap-1 text-secondary text-fg-muted">
                 Port
                 <KitInput
+                  size={1}
+                  className="w-full min-w-0"
                   type="text"
                   inputMode="numeric"
                   value={portDraft}
@@ -159,9 +161,11 @@ export const LocalSolverPanel: React.FC = () => {
                   placeholder={String(DEFAULT_LOCAL_PORT)}
                 />
               </label>
-              <label className="flex flex-col gap-1 text-secondary text-fg-muted">
+              <label className="flex min-w-0 flex-col gap-1 text-secondary text-fg-muted">
                 Time limit (s)
                 <KitInput
+                  size={1}
+                  className="w-full min-w-0"
                   type="text"
                   inputMode="numeric"
                   value={limitDraft}
