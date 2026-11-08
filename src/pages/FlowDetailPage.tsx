@@ -11,6 +11,7 @@ import { DetailTabs } from "../components/flows/detail/DetailTabs";
 import { useIsPhone, useMinuteClock, useScrollPadding } from "../components/flows/detail/detailHooks";
 import { useDetailModel } from "../components/flows/detail/detailModel";
 import { tabFrom, type DetailTab } from "../components/flows/detail/detailText";
+import { EVERY } from "../leaderboard/tiers";
 import { SummaryStrip } from "../components/flows/detail/SummaryStrip";
 import { StatsDrawer } from "../components/flows/stats/StatsDrawer";
 import { PlayerImportPanel } from "../components/playerImport/PlayerImportBox";
@@ -180,15 +181,26 @@ const Badges: React.FC<{ stale: boolean; scripted: boolean; stall: string | null
     </span>
   ) : null;
 
-/** Copy link (F66): the API's /share/flow/ID page carries the Discord embed. */
-function useCopyLink(id: string) {
+/** `?every=` from the URL: one of the simulated frequencies, else null. */
+function everyFrom(raw: string | null): number | null {
+  const n = raw !== null && /^\d{1,2}$/.test(raw) ? Number(raw) : NaN;
+  return EVERY.includes(n) ? n : null;
+}
+
+/** The share link of what the viewer is looking at: board (and the starting-items switch), tier, frequency, tab. */
+function viewShareLink(id: string, viewer: Pick<FlowViewer, "board" | "kit" | "tier" | "every">, tab: DetailTab): string {
+  return flowShareLink(id, { board: viewer.board, kit: viewer.kit, tier: viewer.tier, every: viewer.every, tab });
+}
+
+/** Copy link (F66): the API's /share/flow/ID page carries the Discord embed, for the view in the link. */
+function useCopyLink(link: string, viewText: string) {
   const { toast } = useToast();
   return async () => {
     try {
-      await navigator.clipboard.writeText(flowShareLink(id));
-      toast({ title: "Link copied", description: "Paste it in Discord for an embed with the flow's stats.", variant: "success" });
+      await navigator.clipboard.writeText(link);
+      toast({ title: "Link copied", description: `Paste it in Discord for an embed with the flow's stats (${viewText}).`, variant: "success" });
     } catch {
-      toast({ title: "Could not copy", description: flowShareLink(id), variant: "warning" });
+      toast({ title: "Could not copy", description: link, variant: "warning" });
     }
   };
 }
@@ -338,6 +350,9 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
         if (on) q.set("kit", "1");
         else q.delete("kit");
       }),
+    // A share link's frequency wins over the saved one; picking one writes it back.
+    every: everyFrom(search.get("every")),
+    onEvery: (n) => setQuery((q) => (n === 1 ? q.delete("every") : q.set("every", String(n)))),
     // The Normal number sits next to the ironman ones, so its prices are needed on every board.
     bazaarAlways: true,
   });
@@ -393,7 +408,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
   const toggleLike = () => {
     likes.toggle(detail.id, !liked).catch((e: unknown) => toast({ title: "Could not save your like", description: e instanceof Error ? e.message : String(e), variant: "error" }));
   };
-  const copyLink = useCopyLink(detail.id);
+  const copyLink = useCopyLink(viewShareLink(detail.id, viewer, tab), `${CELL_KIND_LABEL[viewer.cellKind]}, ${TIER_LABEL[viewer.tier]} tier, online every ${viewer.every}`);
   // Report while logged out: log in and come back here with `report=1`, which opens the dialog once.
   const loginToReport = () => {
     const q = new URLSearchParams(location.search);

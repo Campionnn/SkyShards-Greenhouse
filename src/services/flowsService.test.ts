@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FlowDetail, FlowStatusResponse } from "../leaderboard/api";
 import { mockDetail, mockList, mockStatus } from "./flowsMock";
-import { clearFlowsCache, getFlow, getFlowSeeds, normalizeDetail, normalizeListEntries, normalizeResult, normalizeStatus } from "./flowsService";
+import { clearFlowsCache, flowShareLink, getFlow, getFlowSeeds, normalizeDetail, normalizeListEntries, normalizeResult, normalizeStatus } from "./flowsService";
+
+describe("flowShareLink", () => {
+  it("carries the view, leaving out the defaults (mirror of the API's share.view_query)", () => {
+    expect(flowShareLink("abc")).toBe("https://api.skyshards.com/share/flow/abc");
+    expect(flowShareLink("abc", { board: "ironman", kit: false, tier: "max", every: 1, tab: "need" })).toBe("https://api.skyshards.com/share/flow/abc?board=ironman");
+    expect(flowShareLink("abc", { board: "ironman", kit: true, tier: "high", every: 3, tab: "earn" })).toBe("https://api.skyshards.com/share/flow/abc?board=ironman&kit=1&tier=high&every=3&tab=earn");
+    expect(flowShareLink("abc", { board: "normal", kit: true, every: 12 })).toBe("https://api.skyshards.com/share/flow/abc?board=normal&every=12");
+  });
+});
 
 describe("normalizeDetail", () => {
   it("accepts flat seed rows (API shape) and nested ones, dropping failed runs", () => {
