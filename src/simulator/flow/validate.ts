@@ -26,7 +26,8 @@ export class ScenarioError extends Error {
 
 export const MAX_PLOTS = 3;
 
-function isKnownItem(data: GameData, item: string): boolean {
+/** An item the simulator knows: a crop or mutation, seeds, aloe fragments, rare drops and rare crops. */
+export function isKnownItem(data: GameData, item: string): boolean {
   return (
     !!kindDef(data, item) ||
     item === "seeds" ||

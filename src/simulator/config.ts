@@ -214,7 +214,7 @@ export interface SimConfig {
   setupFromStock?: boolean;
   /**
    * Set by the leaderboard rules (`ruleConfig`). Scripts can't use the debug APIs
-   * (`forceEffects`, `unforceEffects`, `resetForcedEffects`: they throw), and the scripts' `config`
+   * (`forceEffects`, `unforceEffects`, `resetForcedEffects` and `debug.*`: they throw), and the scripts' `config`
    * copy leaves out the credit settings (`allowMutationDebt`, `bootstrapDebt`, `setupFromStock`,
    * this flag), so a script can't branch on the board it is measured for. Absent = the simulator's
    * normal behaviour.

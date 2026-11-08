@@ -106,6 +106,10 @@ export function identifierUses(source: string, names: readonly string[]): { name
     throw err;
   }
   const out: { name: string; line: number; col: number }[] = [];
+  // A name the script declares itself (`let debug = true`, a parameter, a function...) is its own
+  // variable wherever it appears: the built-in is shadowed, so those uses aren't reported. (Rough on
+  // purpose: the runtime refuses the real built-ins anyway, so a miss here still fails, just later.)
+  const declared = new Set<string>();
   // Iterative walk: the parser bounds nesting, but keep it stack-safe anyway.
   const stack: unknown[] = [program.body];
   while (stack.length) {
@@ -116,6 +120,14 @@ export function identifierUses(source: string, names: readonly string[]): { name
       continue;
     }
     const n = node as A.Node;
+    if (n.type === "VarDecl") for (const d of n.decls) for (const v of patternNames(d.target)) declared.add(v);
+    else if (n.type === "FuncDecl") declared.add(n.name);
+    else if (n.type === "Func") {
+      if (n.name) declared.add(n.name);
+      for (const p of n.params) for (const v of patternNames(p)) declared.add(v);
+      if (n.rest) for (const v of patternNames(n.rest)) declared.add(v);
+    } else if (n.type === "ForEach" && n.kind !== null) for (const v of patternNames(n.target)) declared.add(v);
+    else if (n.type === "Try" && n.param) for (const v of patternNames(n.param)) declared.add(v);
     if (n.type === "Ident" && names.includes(n.name)) out.push({ name: n.name, line: n.line, col: n.col });
     // `a.forceEffects` is a property name, not the built-in.
     if (n.type === "Member" && !n.computed) {
@@ -124,7 +136,7 @@ export function identifierUses(source: string, names: readonly string[]): { name
     }
     for (const [k, v] of Object.entries(n)) if (k !== "line" && k !== "col" && k !== "type" && v && typeof v === "object") stack.push(v);
   }
-  return out.sort((a, b) => a.line - b.line || a.col - b.col);
+  return out.filter((u) => !declared.has(u.name)).sort((a, b) => a.line - b.line || a.col - b.col);
 }
 
 /** An error message for a broken exit-condition expression, or null. */

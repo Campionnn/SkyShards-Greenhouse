@@ -286,7 +286,7 @@ export const SettingsPanel: React.FC<{
           )}
           {settings.config.leaderboardRules === true && (
             <div className="rounded border border-amber-500/30 p-2 text-[11px] text-amber-200/90" data-testid="leaderboard-rules-note">
-              <span className="font-medium">Leaderboard rules:</span> the debug script APIs (forceEffects and friends) are off, and the credit settings are hidden from scripts.{" "}
+              <span className="font-medium">Leaderboard rules:</span> the debug script APIs (forceEffects and debug.*) are off, and the credit settings are hidden from scripts.{" "}
               <button
                 className="underline hover:text-amber-100"
                 onClick={() => {

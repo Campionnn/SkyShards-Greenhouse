@@ -75,8 +75,8 @@ export function tickPlot(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): 
   for (const phase of TICK_PHASES) phase.run(plot, ctx, scratch);
 }
 
-/** Latch effects the first time a plant is fully grown. */
-function latchIfReady(p: PlantState, plot: PlotState, ctx: CycleCtx): void {
+/** Latch effects the first time a plant is fully grown. (Exported for the scripts' `debug.setStage`.) */
+export function latchIfReady(p: PlantState, plot: PlotState, ctx: CycleCtx): void {
   if (p.lockedEffects !== null || p.isDeadPlant || p.origin === "placed" || p.stage < p.readyStage) return;
   // A shared frozen list (never changed in place; scripts get copies).
   p.lockedEffects = effectiveListShared(p.held) as string[];

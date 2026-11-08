@@ -89,7 +89,8 @@ describe("script sandbox", () => {
       function onTick() {
         const vals = { a: plot.constructor, b: plot.__proto__, c: inventory.constructor, d: inventory.__proto__, e: inventory.toString,
           f: inventory.hasOwnProperty, g: plot.get, h: plot.rt, i: plot.state, j: plot.plot, k: plot.plants.constructor, l: summary.__proto__,
-          m: stats.constructor, n: config.constructor, o: plot.policies.constructor, p: Math.constructor, q: JSON.__proto__ };
+          m: stats.constructor, n: config.constructor, o: plot.policies.constructor, p: Math.constructor, q: JSON.__proto__,
+          r: debug.constructor, s: debug.__proto__, t: debug.rt, u: debug.spawn.constructor };
         for (const k of keys(vals)) if (vals[k] !== undefined && vals[k] !== 0) leaks.push(k);
         const p = plot.at(4, 4);
         const pv = { p1: p.constructor, p2: p.__proto__, p3: p.rt, p4: p.find, p5: p.state };
@@ -105,6 +106,7 @@ describe("script sandbox", () => {
       `plot.place("toString", 0, 0)`, `plot.setPolicy({ constructor: "never" })`, `plot.check({ kind: "inventoryAtLeast", item: "constructor", qty: 0 })`,
       `plot.check({ kind: "group", match: "all", of: [{ kind: "fullyGrown", mutationId: "__proto__" }] })`, `metric("__proto__", 1)`,
       `plot.spawnedInStep("constructor")`, `plot.setLayout({ plants: [{ kind: "constructor", row: 0, col: 0 }] })`, `plot.all("valueOf")`, `plot.at(4, 4).hasEffect("constructor")`,
+      `debug.spawn(plot, "__proto__", 0, 0)`, `debug.give("constructor", 1)`, `debug.give("toString", 1)`,
     ];
     const s = engineRun(`let out = []; function onSession() { if (cycle > 0) return; ${tries.map((t) => `try { out.push(str(${t})) } catch (e) { out.push(e.message) }`).join("\n")} }`, 1);
     const out = inspectScriptVariables(s).find((v) => v.name === "out")?.value as string[];
