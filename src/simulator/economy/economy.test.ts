@@ -104,6 +104,17 @@ describe("per-crop fortune", () => {
     expect(itemFortune({ farmingFortune: 500 }, "wheat", null)).toBe(500);
   });
 
+  it("a tool's general Farming Fortune counts on every crop (and non-crops); its crop fortune only on its crops", () => {
+    const wart: FarmingToolStats = { name: "Wart Hoe", farmingFortune: 120, fortune: { nether_wart: 317 } };
+    const stats = { farmingFortune: 1000, cropFortune: { wheat: 85 }, tools: [wart] };
+    expect(itemFortune(stats, "nether_wart", wart)).toBe(1437);
+    expect(itemFortune(stats, "wheat", wart)).toBe(1205);
+    expect(itemFortune(stats, "chloronite", wart)).toBe(1120);
+    // Off its own crop the general part still decides: 120 general beats a 100-on-wheat-only hoe.
+    const weak: FarmingToolStats = { name: "Weak", fortune: { wheat: 100 } };
+    expect(bestTool({ wheat: 10 }, [weak, wart], price)).toBe(wart);
+  });
+
   it("bestTool picks the tool adding the most coins for the bundle; ties keep the first; no tools -> null", () => {
     expect(bestTool({ wheat: 10 }, [dicer, hoe], price)).toBe(hoe);
     expect(bestTool({ pumpkin: 34, melon: 160 }, [hoe, dicer], price)).toBe(dicer);

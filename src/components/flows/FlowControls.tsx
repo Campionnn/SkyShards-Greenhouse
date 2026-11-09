@@ -236,14 +236,17 @@ const CROP_LABEL: Record<FortuneCrop, string> = {
 
 const cropBonusCount = (s: ViewerStats) => FORTUNE_CROPS.filter((c) => (s.cropFortune[c] ?? 0) !== 0).length;
 
-/** A tool's highest per-crop fortunes, "Wheat 310 · Carrot 120 · +3". */
+/** A tool's general fortune and highest crop bonuses, "120 FF · Wheat +281 · +3". */
 function toolText(t: FarmingToolStats): string {
   const rows = FORTUNE_CROPS.map((c) => [c, t.fortune[c] ?? 0] as const)
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1]);
-  if (!rows.length) return "no crop fortune";
-  const shown = rows.slice(0, 2).map(([c, v]) => `${CROP_LABEL[c]} ${Math.round(v)}`);
-  return rows.length > 2 ? `${shown.join(" · ")} · +${rows.length - 2}` : shown.join(" · ");
+  const general = t.farmingFortune ? `${Math.round(t.farmingFortune)} FF` : "";
+  const sign = general ? "+" : "";
+  const shown = rows.slice(0, 2).map(([c, v]) => `${CROP_LABEL[c]} ${sign}${Math.round(v)}`);
+  if (rows.length > 2) shown.push(`+${rows.length - 2}`);
+  const parts = [general, ...shown].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "no fortune";
 }
 
 /** Crop-specific fortune and tools: a one-line summary with an Edit button; the 13 inputs and the tool list open in a modal. */

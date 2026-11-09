@@ -71,6 +71,12 @@ describe("per-crop fortune in a run", () => {
     expect(offCrop.state.inventory.wheat).toBe(plain.state.inventory.wheat);
   });
 
+  it("a tool's general Farming Fortune counts on every crop, not just its own", () => {
+    const viaCrop = run(wheatField({ cropFortune: { wheat: 100 } }));
+    const dicer = run(wheatField({ tools: [{ name: "Dicer", farmingFortune: 100, fortune: { melon: 500 } }] }));
+    expect(dicer.state.inventory).toEqual(viaCrop.state.inventory);
+  });
+
   it("empty crop fortune / tool list and zero crop values run exactly as without the fields", () => {
     for (const extra of [{ cropFortune: {} }, { tools: [] }, { cropFortune: { wheat: 0, melon: 0 } }] as Partial<PlayerStats>[]) {
       const r = run(wheatField(extra));

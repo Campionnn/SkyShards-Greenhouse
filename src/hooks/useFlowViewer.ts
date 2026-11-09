@@ -71,15 +71,16 @@ export function readCropFortune(raw: unknown): CropFortune {
   return out;
 }
 
-/** Tools: `{name: string, fortune: CropFortune}` entries; anything else is dropped. */
+/** Tools: `{name: string, farmingFortune?: number, fortune: CropFortune}` entries; anything else is dropped. */
 export function readTools(raw: unknown): FarmingToolStats[] {
   if (!Array.isArray(raw)) return [];
   const out: FarmingToolStats[] = [];
   for (const t of raw) {
     if (!t || typeof t !== "object") continue;
-    const { name, fortune } = t as { name?: unknown; fortune?: unknown };
+    const { name, fortune, farmingFortune } = t as { name?: unknown; fortune?: unknown; farmingFortune?: unknown };
     if (typeof name !== "string" || !name.trim()) continue;
-    out.push({ name: name.trim().slice(0, 80), fortune: readCropFortune(fortune) });
+    const general = typeof farmingFortune === "number" && Number.isFinite(farmingFortune) && farmingFortune > 0 ? farmingFortune : 0;
+    out.push({ name: name.trim().slice(0, 80), ...(general ? { farmingFortune: general } : {}), fortune: readCropFortune(fortune) });
   }
   return out;
 }

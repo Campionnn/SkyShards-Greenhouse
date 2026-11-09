@@ -211,7 +211,7 @@ const finiteOr0 = (v: number | undefined) => (typeof v === "number" && Number.is
 /** The per-crop terms as a comparable string (a missing crop and 0 are the same). */
 function perCropKey(s: YieldStats): string {
   const crops = (cf: CropFortune | undefined) => FORTUNE_CROPS.map((c) => finiteOr0(cf?.[c])).join(",");
-  return `${crops(s.cropFortune)};${(s.tools ?? []).map((t) => `${t.name}:${crops(t.fortune)}`).join("|")}`;
+  return `${crops(s.cropFortune)};${(s.tools ?? []).map((t) => `${t.name}:${finiteOr0(t.farmingFortune)}:${crops(t.fortune)}`).join("|")}`;
 }
 
 const BASE_YIELD_KEYS = ["farmingFortune", "plantYieldUpgrade", "evergreenChip", "overbloom", "armorSet"] as const;
