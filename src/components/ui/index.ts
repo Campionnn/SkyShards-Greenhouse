@@ -12,6 +12,7 @@ export { DialogFrame, ModalDialog } from "./ModalDialog";
 export * as kit from "./kit";
 export { Card, DisclosureCard, Fact, LinkButton } from "./Card";
 export { Dropdown, MenuItem, MenuLabel, MenuSeparator, Popover } from "./Popover";
+export { KitTooltip } from "./Hint";
 export { ContextMenuProvider } from "./ContextMenu";
 export { useContextMenu, type ContextMenuEntry } from "./contextMenuContext";
 export { surface } from "./surface";

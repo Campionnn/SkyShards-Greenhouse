@@ -1,244 +1,140 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
-import { LayoutTemplate, ClipboardCheck } from "lucide-react";
-import {
-  CropSelectionPalette,
-  DesignerActions,
-  DesignerGrid,
-  LayoutCropSummary,
-  LayoutHistoryControls,
-  MutationValidator,
-  Panel,
-  GridVisibilityToggle,
-} from "../components";
-import { useToast } from "../components/ui/toastContext";
-import { useDesigner, useGreenhouseData } from "../context";
-import { useFitCellSize, useTargetsVisible, useInputsVisible } from "../hooks";
-import { decodeDesign } from "../utilities";
-import { captureGridAsPng, aggregateCropInfo } from "../utilities/gridExport";
-import type { DesignerGridHandle } from "../components";
+/**
+ * The Designer (`/designer`): paint a greenhouse layout, check its targets, share or export it.
+ *
+ * Desktop (research/designer-v2, direction B + the judge's steals): the actions and Check in a sticky left
+ * rail, the grid as large as fits in the centre (with the pick status above and the summary below), the
+ * palette in a sticky right rail. Column widths come from the page's own width (designerFrame.ts). Phone:
+ * a top icon toolbar, the grid full width, and a bottom sheet with Palette | Check above the adhesion ad.
+ *
+ * The share-image renderer (SkyShards-API) loads this page at 1200×900 and drives it through the window
+ * hooks in useDesignerPageHooks.ts: the grid must render on first paint.
+ */
+import React, { useCallback, useRef, useState } from "react";
+import { DesignerActions, LayoutCropSummary, MutationValidator, CropSelectionPalette } from "../components/designer";
+import type { DesignerGridHandle } from "../components/designer";
+import { GridVisibilityToggle } from "../components/grid";
+import { useTargetsVisible, useInputsVisible } from "../hooks";
+import { useDesigner } from "../context";
+import { cn } from "../components/ui/cn";
+import { DesignerFacts, DesignerPageHint } from "../components/designer/page/DesignerHeader";
+import { GridStage, type GridGeometry } from "../components/designer/page/GridStage";
+import { StartCard } from "../components/designer/page/StartCard";
+import { DesignerPhone } from "../components/designer/page/DesignerPhone";
+import { COARSE_QUERY, frameFor, GRID_HEIGHT_RESERVE, PHONE_QUERY, useElementWidth, useFillViewport, useMediaQuery } from "../components/designer/page/designerFrame";
+import { useDesignerPageHooks } from "../components/designer/page/useDesignerPageHooks";
+import { useLastCalculatorLayout, type DesignerActionsApi } from "../components/designer/actionsModel";
+import { useCheckState } from "../components/designer/checkModel";
+import { CheckRing } from "../components/designer/CheckRing";
+import { PickStatus } from "../components/designer/PickStatus";
+
+const rule = <span aria-hidden className="block h-px shrink-0 bg-line" />;
 
 export const DesignerPage: React.FC = () => {
   const [showTargets, setShowTargets] = useTargetsVisible();
-  const [inputsVisible, setInputsVisible] = useInputsVisible();
+  const [showInputs, setShowInputs] = useInputsVisible();
   const gridRef = useRef<DesignerGridHandle>(null);
-  const [searchParams] = useSearchParams();
-  const { toast } = useToast();
-  const { inputPlacements, targetPlacements, loadFromSolverResult } = useDesigner();
-  const { getCropDef, getMutationDef, isLoading: isDataLoading } = useGreenhouseData();
-  const [hasLoadedFromUrl, setHasLoadedFromUrl] = useState(false);
-  
-  // Cells fit the available width; the grid never scrolls.
-  const fitRef = useRef<HTMLDivElement>(null);
-  // Same cap as the Calculator's grid, so wide screens get bigger cells.
-  const gridSize = useFitCellSize(fitRef, { max: 60 });
+  useDesignerPageHooks(gridRef, showTargets);
 
-  // Share-image export, called by the Playwright renderer via window.exportGrid.
-  const exportGridForShare = useCallback(async (): Promise<string> => {
-    if (!gridRef.current) {
-      throw new Error('Grid not available');
-    }
-    
-    const gridElement = gridRef.current.getGridElement();
-    if (!gridElement) {
-      throw new Error('Grid element not found');
-    }
-    
-    // Crop info for the watermark.
-    const inputCrops = aggregateCropInfo(
-      inputPlacements.map(p => {
-        const def = getCropDef(p.cropId) || getMutationDef(p.cropId);
-        return { cropId: p.cropId, cropName: def?.name || p.cropId.replace(/_/g, ' ') };
-      })
+  const { inputPlacements, targetPlacements, groundTiles, selectedCropForPlacement, selectedGround } = useDesigner();
+  const empty = inputPlacements.length + targetPlacements.length + groundTiles.length === 0;
+  const lastCalculator = useLastCalculatorLayout();
+  const [actionsApi, setActionsApi] = useState<DesignerActionsApi | null>(null);
+  const onActionsReady = useCallback((api: DesignerActionsApi) => setActionsApi(api), []);
+  const showStart = empty && !selectedCropForPlacement && !selectedGround;
+  // One Check state shared by the list (the rail or the sheet) and the ring on the grid.
+  const check = useCheckState();
+  /** What the stage draws over the grid: the Check ring, and on an empty layout the start card. */
+  const overlay = (where: string) => (geo: GridGeometry) => (
+    <>
+      <CheckRing check={check} cellSize={geo.cellSize} gap={geo.gap} offsetX={geo.x} offsetY={geo.y} />
+      {showStart && (
+        <StartCard
+          geo={geo}
+          where={where}
+          onLoad={() => actionsApi?.openLoad()}
+          lastCalculator={lastCalculator}
+          onLastCalculator={() => lastCalculator && actionsApi?.loadLayout(lastCalculator.layout, lastCalculator.name)}
+        />
+      )}
+    </>
+  );
+
+  const show = <GridVisibilityToggle inputsVisible={showInputs} onInputsVisibleChange={setShowInputs} targetsVisible={showTargets} onTargetsVisibleChange={setShowTargets} />;
+
+  const pageRef = useRef<HTMLDivElement>(null);
+  const width = useElementWidth(pageRef);
+  const phone = useMediaQuery(PHONE_QUERY);
+  const touch = useMediaQuery(COARSE_QUERY);
+  const f = frameFor(width || 902, touch);
+
+  const leftOuter = useRef<HTMLElement>(null);
+  const leftInner = useRef<HTMLDivElement>(null);
+  const rightOuter = useRef<HTMLElement>(null);
+  const rightInner = useRef<HTMLDivElement>(null);
+  useFillViewport(leftOuter, leftInner, "height");
+  useFillViewport(rightOuter, rightInner, "height");
+
+  if (phone) {
+    return (
+      <div ref={pageRef} className="w-full">
+        <DesignerPhone
+          gridRef={gridRef}
+          showInputs={showInputs}
+          showTargets={showTargets}
+          show={show}
+          check={check}
+          onActionsReady={onActionsReady}
+          overlay={overlay("below")}
+        />
+      </div>
     );
-    
-    // Target crops always count, even when hidden.
-    const targetCrops = aggregateCropInfo(
-      targetPlacements.map(p => {
-        const def = getMutationDef(p.cropId) || getCropDef(p.cropId);
-        return { cropId: p.cropId, cropName: def?.name || p.cropId.replace(/_/g, ' ') };
-      })
-    );
-    
-    const options = {
-      scale: 2, // Discord targets ~800px; larger images get heavily compressed.
-      includeWatermark: true,
-      watermarkUrl: "greenhouse.skyshards.com",
-      watermarkTitle: "Greenhouse Designer",
-      inputCrops,
-      targetCrops,
-      showTargets,
-    };
-    
-    const result = await captureGridAsPng(gridElement, options);
-    return result.dataUrl;
-  }, [gridRef, inputPlacements, targetPlacements, showTargets, getCropDef, getMutationDef]);
-  
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).exportGrid = exportGridForShare;
-    
-    return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (window as any).exportGrid;
-    };
-  }, [exportGridForShare]);
-  
-  // Layout load state, read by Playwright via window.layoutLoadState.
-  const [layoutLoadState, setLayoutLoadState] = useState<'pending' | 'loaded' | 'error' | 'no-layout'>('pending');
-  
-  const loadLayoutFromCode = useCallback(async (layoutCode: string) => {
-    if (!layoutCode) {
-      setLayoutLoadState('no-layout');
-      throw new Error('No layout code provided');
-    }
-    
-    setLayoutLoadState('pending');
-    
-    try {
-      const { inputs, targets, groundTiles } = decodeDesign(layoutCode);
-      
-      const crops = inputs.map(p => {
-        const cropDef = getCropDef(p.cropId);
-        const mutationDef = getMutationDef(p.cropId);
-        const displayName = cropDef?.name || mutationDef?.name || p.cropId.replace(/_/g, " ");
-        return {
-          id: p.cropId,
-          name: displayName,
-          position: p.position,
-          size: cropDef?.size || mutationDef?.size || 1,
-        };
-      });
-      
-      const mutations = targets.map(p => {
-        const mutationDef = getMutationDef(p.cropId);
-        const cropDef = getCropDef(p.cropId);
-        const displayName = mutationDef?.name || cropDef?.name || p.cropId.replace(/_/g, " ");
-        return {
-          id: p.cropId,
-          name: displayName,
-          position: p.position,
-          size: mutationDef?.size || cropDef?.size || 1,
-        };
-      });
-      
-      loadFromSolverResult(crops, mutations, groundTiles);
-      setLayoutLoadState('loaded');
-      
-      return { inputs: crops, targets: mutations };
-    } catch (err) {
-      setLayoutLoadState('error');
-      throw err;
-    }
-  }, [getCropDef, getMutationDef, loadFromSolverResult]);
-  
-  // Exposed for Playwright.
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).loadLayoutFromCode = loadLayoutFromCode;
-    
-    return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (window as any).loadLayoutFromCode;
-    };
-  }, [loadLayoutFromCode]);
-  
-  // Load the ?layout= share code once, after greenhouse data has loaded.
-  useEffect(() => {
-    if (isDataLoading || hasLoadedFromUrl) return;
-    
-    const layoutCode = searchParams.get("layout");
-    if (!layoutCode) {
-      setLayoutLoadState('no-layout');
-      setHasLoadedFromUrl(true);
-      return;
-    }
-    
-    loadLayoutFromCode(layoutCode)
-      .then(({ inputs, targets }) => {
-        setHasLoadedFromUrl(true);
-        toast({
-          title: "Layout loaded",
-          description: `Loaded ${inputs.length} inputs and ${targets.length} targets from shared link`,
-          variant: "success",
-          duration: 3000,
-        });
-      })
-      .catch((err) => {
-        setHasLoadedFromUrl(true);
-        toast({
-          title: "Failed to load layout",
-          description: err instanceof Error ? err.message : "Invalid layout code in URL",
-          variant: "error",
-          duration: 5000,
-        });
-      });
-  }, [searchParams, isDataLoading, hasLoadedFromUrl, loadLayoutFromCode, toast]);
-  
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).layoutLoadState = layoutLoadState;
-    
-    return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (window as any).layoutLoadState;
-    };
-  }, [layoutLoadState]);
-  
+  }
+
   return (
-    <div className="w-full py-3 sm:py-4">
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[300px_minmax(0,1fr)_380px] gap-4 lg:gap-6 lg:items-start">
-        {/* Actions and validation column: sticky on desktop, scrolls internally. */}
-        <div className="order-2 space-y-4 lg:col-start-1 lg:row-start-2 xl:row-start-1 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto scrollbar-dark xl:pr-1">
-          <Panel title="Layout" icon={<LayoutTemplate />}>
-            <DesignerActions gridRef={gridRef} showTargets={showTargets} />
-          </Panel>
+    <div ref={pageRef} className="w-full py-3">
+      <header className="mb-3 flex h-7 min-w-0 items-center gap-x-2">
+        <h1 className="shrink-0 text-hero text-fg">Designer</h1>
+        <DesignerPageHint />
+        <DesignerFacts className="ml-1" />
+      </header>
 
-          <Panel title="Mutation Status" icon={<ClipboardCheck />}>
-            <MutationValidator />
-          </Panel>
-        </div>
-
-        <div className="flex flex-col items-center order-1 min-w-0 lg:col-start-1 lg:row-start-1 xl:col-start-2">
-          <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4 w-full">
-            <div className="flex flex-col sm:flex-row items-center justify-between mb-4 gap-2">
-              <h3 className="text-sm font-medium text-slate-200">Greenhouse Designer</h3>
-              <div className="flex items-center gap-2 sm:gap-3">
-                <LayoutHistoryControls />
-              </div>
-            </div>
-            
-            <div className="mb-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">
-                  Grid Layout
-                </h4>
-                <GridVisibilityToggle
-                  targetsVisible={showTargets}
-                  onTargetsVisibleChange={setShowTargets}
-                  inputsVisible={inputsVisible}
-                  onInputsVisibleChange={setInputsVisible}
-                />
-              </div>
-              <div ref={fitRef} className="w-full flex flex-col items-center">
-                <DesignerGrid
-                  ref={gridRef}
-                  showTargets={showTargets}
-                  showInputs={inputsVisible}
-                  cellSize={gridSize.cellSize}
-                  gap={gridSize.gap}
-                />
-              </div>
-            </div>
-            
-            <LayoutCropSummary />
+      {/* At least a viewport tall, so both rails reach the bottom of the screen on a short layout. */}
+      <div className="grid min-h-[calc(100dvh-3rem)] items-start" style={{ gridTemplateColumns: `${f.left}px minmax(0, 1fr) ${f.right}px`, columnGap: f.gap }}>
+        {/* Left: the actions, then Check. Sticky; the Check rows scroll on their own. */}
+        <aside ref={leftOuter} aria-label="Layout tools" className="min-w-0 self-stretch contain-size">
+          <div ref={leftInner} className={cn("sticky top-4 flex min-h-0 flex-col gap-3 overflow-hidden rounded-container border border-line bg-surface-panel", f.narrow ? "p-1.5" : "p-2")}>
+            <DesignerActions gridRef={gridRef} showTargets={showTargets} variant="rail" railRef={leftInner} onReady={onActionsReady} className="shrink-0" />
+            {rule}
+            <MutationValidator check={check} fill className="min-h-0 flex-1" />
           </div>
-        </div>
-        
-        {/* Palette column with the Inputs/Targets switch, sticky like the left column. */}
-        <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 h-[500px] lg:h-[calc(100vh-2rem)] order-3 lg:col-start-2 lg:row-start-1 lg:row-span-2 xl:col-start-3 xl:row-span-1 lg:sticky lg:top-4 min-h-0">
-          <CropSelectionPalette className="h-full" />
-        </div>
+        </aside>
+
+        {/* Centre: what the next click does + Show, the grid, the summary. */}
+        <section aria-label="Grid" className="min-w-0">
+          <GridStage
+            gridRef={gridRef}
+            maxCell={f.maxCell}
+            heightReserve={GRID_HEIGHT_RESERVE}
+            showInputs={showInputs}
+            showTargets={showTargets}
+            above={
+              <div className="flex h-7 min-w-0 items-center gap-2">
+                <PickStatus where="in the palette" />
+                <span className="ml-auto" />
+                {show}
+              </div>
+            }
+            below={<LayoutCropSummary className="mt-3" />}
+            overlay={overlay("in the palette")}
+          />
+        </section>
+
+        {/* Right: the palette. Sticky, as tall as the visible column; only the tiles scroll. */}
+        <aside ref={rightOuter} aria-label="Palette" className="min-w-0 self-stretch contain-size">
+          <div ref={rightInner} className={cn("sticky top-4 flex min-h-0 flex-col overflow-hidden rounded-container border border-line bg-surface-panel", f.narrow ? "p-1.5" : "p-2")}>
+            <CropSelectionPalette className="min-h-0 flex-1" />
+          </div>
+        </aside>
       </div>
     </div>
   );

@@ -14,6 +14,7 @@ import { BARE_PLACEMENT_STYLE, FOCUS_RING, FOCUS_TRANSITION, REMOVE_HOVER_GLOW, 
 import { BareGround } from "../grid/BareGround";
 import { getGroundImagePath } from "../../types/greenhouse";
 import { CropImage } from "../shared";
+import { cn } from "../ui/cn";
 import type { DesignerPlacement } from "../../context";
 import { focusKey, type FocusVisual } from "../../hooks/usePlacementFocus";
 
@@ -29,7 +30,18 @@ interface DesignerGridProps {
   showTargets?: boolean;
   /** False: input crops draw only their ground. */
   showInputs?: boolean;
+  /**
+   * The one-line hint under the grid ("Left-click to place, …"). Default true for old call sites;
+   * the Designer page and the flow editor's layout workspace pass false and show the pick status
+   * above the grid instead.
+   */
+  hint?: boolean;
 }
+
+/** Invalid target: a 2px problem outline inside its box, drawn even when targets are hidden. */
+const INVALID_OUTLINE: React.CSSProperties = { outline: "2px solid var(--color-problem)", outlineOffset: -2 };
+/** Painted ground tiles: 2px corners, like the textures they stand for (as BareGround draws them). */
+const GROUND_TILE_RADIUS = 2;
 
 const StatusMessage: React.FC<{
   hoveredPlacementId: string | null;
@@ -37,35 +49,31 @@ const StatusMessage: React.FC<{
   hoverInfo: { cell: [number, number] } | null;
   selectedGround: string | null;
 }> = ({ hoveredPlacementId, isPlacementMode, hoverInfo, selectedGround }) => {
+  const box = "py-2 text-center text-secondary text-fg-meta";
   if (selectedGround) return (
-    <div className="text-center py-2 text-slate-500 text-sm">
+    <div className={box}>
       Paint {selectedGround.replace(/_/g, " ")} on bare cells; right-click to erase ground or remove a crop. Esc stops painting.
     </div>
   );
+  const place = <span className="font-semibold text-go-fg">Left-click to place</span>;
+  const remove = <span className="font-semibold text-problem">right-click to remove</span>;
   const getMessage = () => {
     if (hoveredPlacementId && isPlacementMode) {
       return (
         <span>
-          <span className="font-semibold text-emerald-400">Left-click to place</span>,{" "}
-          <span className="font-semibold text-red-400">right-click to remove</span>,{" "}
-          drag to move
+          {place}, {remove}, drag to move
         </span>
       );
     }
     if (hoveredPlacementId && !isPlacementMode) {
       return (
         <span>
-          <span className="font-semibold text-emerald-400">Drag to move</span>,{" "}
-          <span className="font-semibold text-red-400">right-click to remove</span>
+          <span className="font-semibold text-go-fg">Drag to move</span>, {remove}
         </span>
       );
     }
     if (isPlacementMode && hoverInfo) {
-      return (
-        <span>
-          <span className="font-semibold text-emerald-400">Left-click to place</span>, right-click to remove, drag to move
-        </span>
-      );
+      return <span>{place}, right-click to remove, drag to move</span>;
     }
     if (isPlacementMode) {
       return "Left-click to place, right-click to remove, drag to move";
@@ -73,11 +81,7 @@ const StatusMessage: React.FC<{
     return "Select a crop from the palette to begin placing";
   };
 
-  return (
-    <div className="text-center py-2 text-slate-500 text-sm">
-      {getMessage()}
-    </div>
-  );
+  return <div className={box}>{getMessage()}</div>;
 };
 
 interface DesignerPlacementCellProps {
@@ -151,7 +155,7 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
     ...(bare ? BARE_PLACEMENT_STYLE : {}),
     ...focusFade(shownFocus),
     boxShadow: shadows(shownFocus === "focused" && FOCUS_RING, isHovered ? REMOVE_HOVER_GLOW : glow),
-    ...(isInvalidTarget ? { outline: "2px solid #ef4444", outlineOffset: -2 } : {}),
+    ...(isInvalidTarget ? INVALID_OUTLINE : {}),
     zIndex: isDragging ? 20 : (isHovered && isInvalidTarget ? 30 : shownFocus === "focused" ? 12 : 10), // raised while its tooltip shows
     cursor: isDragging ? "grabbing" : (isPlacementMode ? "crosshair" : "grab"),
     ...(isDragging ? { opacity: 0.8 } : {}),
@@ -200,10 +204,10 @@ const DesignerPlacementCell: React.FC<DesignerPlacementCellProps> = ({
         />
       )}
       
-      {/* Trash icon on hover */}
+      {/* Trash badge on hover (left out of PNG / GIF exports) */}
       {isHovered && (
-        <div className="absolute top-0.5 right-0.5 bg-red-500 rounded-bl-md p-0.5" data-gif-exclude="true">
-          <Trash2 className="w-3 h-3 text-white" />
+        <div className="absolute top-0.5 right-0.5 rounded-inner bg-problem p-0.5" data-gif-exclude="true">
+          <Trash2 className="size-3 text-surface-page" />
         </div>
       )}
     </div>
@@ -251,10 +255,8 @@ const DesignerPlacementPreview: React.FC<DesignerPlacementPreviewProps> = ({
     overflow: "hidden",
     zIndex: 15,
     opacity: 0.7,
-    border: isValid ? "2px solid #22c55e" : "2px solid #ef4444",
-    boxShadow: isValid 
-      ? "0 0 12px rgba(34, 197, 94, 0.5)" 
-      : "0 0 12px rgba(239, 68, 68, 0.5)",
+    // A flat 2px edge in the role colour (no glow): go where it fits, problem where it doesn't.
+    border: `2px solid ${isValid ? "var(--color-go)" : "var(--color-problem)"}`,
     pointerEvents: "none",
   };
 
@@ -281,6 +283,7 @@ export const DesignerGrid = forwardRef<DesignerGridHandle, DesignerGridProps>(({
   gap = 2,
   showTargets = true,
   showInputs = true,
+  hint = true,
 }, ref) => {
   const gridRef = useRef<HTMLDivElement>(null);
   const { getCropDef, getMutationDef, mutations } = useGreenhouseData();
@@ -364,7 +367,7 @@ return (
       <div
         ref={gridRef}
         data-grid-container
-        className={`relative select-none ${className}`}
+        className={cn("relative select-none", className)}
         style={{
           width: gridWidth,
           height: gridHeight,
@@ -381,8 +384,8 @@ return (
       {groundTiles.map(({ ground, position: [row, col] }) => {
         const { top, left } = getCellPixelPosition(row, col, cellSize, gap);
         return <div key={`${row},${col}`} aria-label={`${ground.replace(/_/g, " ")} ground at row ${row + 1}, column ${col + 1}`}
-          className="absolute rounded-sm pointer-events-none"
-          style={{ top, left, width: cellSize, height: cellSize, backgroundImage: `url(${getGroundImagePath(ground)})`, backgroundSize: "cover" }} />;
+          className="pointer-events-none absolute"
+          style={{ top, left, width: cellSize, height: cellSize, backgroundImage: `url(${getGroundImagePath(ground)})`, backgroundSize: "cover", borderRadius: GROUND_TILE_RADIUS }} />;
       })}
       
       {inputPlacements.map((placement) => {
@@ -495,10 +498,10 @@ return (
         const { top, left } = getCellPixelPosition(row, col, cellSize, gap);
         return <div
           aria-label={`${selectedGround.replace(/_/g, " ")} ground preview at row ${row + 1}, column ${col + 1}`}
-          className="absolute rounded-sm pointer-events-none"
+          className="pointer-events-none absolute"
           style={{ top, left, width: cellSize, height: cellSize,
             backgroundImage: `url(${getGroundImagePath(selectedGround)})`, backgroundSize: "cover",
-            opacity: 0.7, zIndex: 15 }} />;
+            borderRadius: GROUND_TILE_RADIUS, opacity: 0.7, zIndex: 15 }} />;
       })()}
 
       {/* Placement preview, hidden while dragging */}
@@ -516,12 +519,14 @@ return (
       )}
       </div>
       
-      <StatusMessage
-        hoveredPlacementId={hoveredPlacementId}
-        selectedGround={selectedGround}
-        isPlacementMode={isPlacementMode}
-        hoverInfo={hoverInfo}
-      />
+      {hint && (
+        <StatusMessage
+          hoveredPlacementId={hoveredPlacementId}
+          selectedGround={selectedGround}
+          isPlacementMode={isPlacementMode}
+          hoverInfo={hoverInfo}
+        />
+      )}
     </>
   );
 });

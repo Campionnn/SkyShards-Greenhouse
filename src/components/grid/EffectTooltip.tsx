@@ -75,8 +75,9 @@ export const EffectTooltip: React.FC<EffectTooltipProps> = ({
         <CropImage cropId={id} cropName={name} size="xs" showFallback={false} />
         <div className="min-w-0">
           <div className="truncate text-body font-medium text-fg">{name}</div>
-          <div className="text-meta text-fg-meta">
-            ({position[0]}, {position[1]}){size > 1 ? ` · ${size}x${size}` : ""}{note ? ` · ${note}` : ""}
+          {/* 1-based, like Check and the ground cells' labels: "row 5, col 6 · 2x2 · target". */}
+          <div className="text-meta tabular-nums text-fg-meta">
+            row {position[0] + 1}, col {position[1] + 1}{size > 1 ? ` · ${size}x${size}` : ""}{note ? ` · ${note}` : ""}
           </div>
         </div>
       </div>

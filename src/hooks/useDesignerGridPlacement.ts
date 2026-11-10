@@ -76,18 +76,22 @@ export function useDesignerGridPlacement({
     window.addEventListener("mouseup", finish);
   }, [beginEdit, endEdit]);
 
-  // Escape deselects the crop or ground.
+  // Escape deselects the crop or ground. When it does, it's handled (preventDefault), so an outer
+  // Escape (the flow editor's layout workspace closing) skips this press.
+  // Capture phase: it runs before the workspace's own (bubbling) Escape, which skips a handled press.
+  // An Escape inside an open dialog (Save / Load) belongs to the dialog and is left alone.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSelectedCropForPlacement(null);
-        setSelectedGround(null);
-      }
+      if (e.key !== "Escape") return;
+      if (e.target instanceof Element && e.target.closest("dialog[open]")) return;
+      if (selectedCropForPlacement || selectedGround) e.preventDefault();
+      setSelectedCropForPlacement(null);
+      setSelectedGround(null);
     };
-    
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setSelectedCropForPlacement, setSelectedGround]);
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [selectedCropForPlacement, selectedGround, setSelectedCropForPlacement, setSelectedGround]);
 
   // Adapters to the core hook's callback interface.
   const handleAddPlacement = useCallback((

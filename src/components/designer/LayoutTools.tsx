@@ -1,231 +1,207 @@
 import React, { useCallback, useEffect, useState } from "react";
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  FlipHorizontal2,
-  FlipVertical2,
-  Redo2,
-  RotateCcw,
-  RotateCw,
-  Trash2,
-  Undo2,
-} from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Eraser, FlipHorizontal2, FlipVertical2, Redo2, RotateCcw, RotateCw, Trash2, Undo2 } from "lucide-react";
 import { useDesigner } from "../../context";
 import { useToast } from "../ui/toastContext";
+import { KitButton } from "../ui/kit";
+import { KitTooltip } from "../ui/Hint";
+import { MenuItem, MenuLabel, MenuSeparator, Popover } from "../ui/Popover";
+import { cn } from "../ui/cn";
 import { canNudge, describeTransform, type LayoutTransform } from "../../utilities";
+import { REDO_KEYS, UNDO_KEYS, useLayoutHistoryKeys } from "./actionsModel";
 
-// Whole-layout tools (nudge, rotate, mirror, clear) for the Designer page and
-// the simulator's stage editor. They act on the nearest DesignerProvider.
+// Whole-layout tools for the Designer page and the simulator's step layout editor (LayoutWorkspace):
+// Undo / Redo, the Transform toolbar (nudge, rotate, mirror) and the Clear menu. They act on the nearest
+// DesignerProvider. Looks: research/designer-v2 (the approved mockup's HistoryButtons, TransformBar and
+// ClearItems).
 
-/** One icon button inside a joined ToolGroup: the group draws the border and dividers. */
-const segmentButton =
-  "flex-1 min-w-0 flex items-center justify-center text-slate-300 hover:bg-slate-700/70 hover:text-slate-100 active:bg-slate-600/70 disabled:opacity-35 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors cursor-pointer focus-visible:outline-none focus-visible:bg-slate-700/70";
+/**
+ * A control's name, its shortcut (Kbd chips) and one line of hint, on hover and keyboard focus
+ * (the kit's KitTooltip). It wraps the control, so a disabled button still says why.
+ */
+export const ActionTip: React.FC<{ label: string; kbd?: string[]; hint?: string; side?: "right" | "bottom" | "top"; className?: string; children: React.ReactNode }> = ({
+  label,
+  kbd,
+  hint,
+  side = "right",
+  className,
+  children,
+}) => (
+  <KitTooltip label={label} kbd={kbd} hint={hint} side={side} className={className}>
+    {children}
+  </KitTooltip>
+);
 
-const clearButton =
-  "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 border border-slate-600/50 rounded-lg text-sm text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer";
+// ---- Undo / Redo ----------------------------------------------------------------------------------------
+
+/**
+ * Undo and Redo as two labelled buttons (the shortcut is in the tooltip). With `keys` (the default) it
+ * also owns Ctrl/⌘+Z, Ctrl/⌘+Shift+Z and Ctrl+Y; pass `keys={false}` where something else mounts
+ * `useLayoutHistoryKeys()`, so exactly one listener runs per provider.
+ */
+export const LayoutHistoryControls: React.FC<{ className?: string; keys?: boolean }> = ({ className, keys = true }) => {
+  const { undo, redo, canUndo, canRedo } = useDesigner();
+  useLayoutHistoryKeys(keys);
+  return (
+    <div role="group" aria-label="Undo and redo" className={cn("grid grid-cols-2 gap-1", className)}>
+      <ActionTip label="Undo" kbd={UNDO_KEYS}>
+        <KitButton aria-label="Undo" disabled={!canUndo} onClick={undo} className="w-full px-2">
+          <Undo2 /> Undo
+        </KitButton>
+      </ActionTip>
+      <ActionTip label="Redo" kbd={REDO_KEYS}>
+        <KitButton aria-label="Redo" disabled={!canRedo} onClick={redo} className="w-full px-2">
+          <Redo2 /> Redo
+        </KitButton>
+      </ActionTip>
+    </div>
+  );
+};
+
+// ---- Transform --------------------------------------------------------------------------------------------
 
 interface LayoutToolsProps {
   className?: string;
   /** Show a toast after each transform (off keeps rapid nudging quiet). */
   toastOnTransform?: boolean;
+  /** 44px segments (a phone popover). */
+  touch?: boolean;
 }
 
-const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const MOD = IS_MAC ? "⌘" : "Ctrl";
-
-/** Text fields keep the browser's native undo. */
-function isTextEntry(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
-}
-
-const historyButton =
-  "flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-slate-200 disabled:opacity-40 disabled:hover:bg-slate-700/30 disabled:hover:text-slate-300 disabled:cursor-not-allowed cursor-pointer";
-
-/** Undo/redo buttons and shortcuts (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y). Mount one per provider. */
-export const LayoutHistoryControls: React.FC<{ className?: string }> = ({ className = "" }) => {
-  const { undo, redo, canUndo, canRedo } = useDesigner();
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || isTextEntry(e.target)) return;
-      const key = e.key.toLowerCase();
-      const wantsRedo = (key === "z" && e.shiftKey) || (key === "y" && !e.shiftKey);
-      const wantsUndo = key === "z" && !e.shiftKey;
-      if (!wantsUndo && !wantsRedo) return;
-      e.preventDefault();
-      if (wantsRedo) redo();
-      else undo();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, redo]);
-
-  return (
-    <div className={`flex items-center gap-1.5 ${className}`} role="group" aria-label="Undo and redo">
-      <button type="button" className={historyButton} disabled={!canUndo} onClick={undo} title={`Undo (${MOD}+Z)`} aria-label="Undo">
-        <Undo2 className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Undo</span>
-      </button>
-      <button type="button" className={historyButton} disabled={!canRedo} onClick={redo} title={`Redo (${MOD}+Shift+Z)`} aria-label="Redo">
-        <Redo2 className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Redo</span>
-      </button>
-    </div>
-  );
-};
-
-/** Nudge pad (arrows), rotate 90 degrees either way, mirror on either axis. */
-export const LayoutTransformControls: React.FC<LayoutToolsProps> = ({ className = "", toastOnTransform = false }) => {
+/**
+ * Nudge, and rotate / mirror, as one joined toolbar of two rows of four (D11). Each segment has its name
+ * as aria-label and tooltip. Rotate and mirror are off on an empty layout; a nudge is off when something
+ * would leave the grid; a ground-only layout can always nudge, and tiles that fall off are dropped (D12).
+ */
+export const LayoutTransformControls: React.FC<LayoutToolsProps> = ({ className, toastOnTransform = false, touch }) => {
   const { inputPlacements, targetPlacements, groundTiles, transformLayout } = useDesigner();
   const { toast } = useToast();
   const pieces = [...inputPlacements, ...targetPlacements];
   const empty = pieces.length === 0 && groundTiles.length === 0;
-  // Ground-only layouts can always nudge (tiles that fall off are dropped).
   const nudgeOk = (dRow: number, dCol: number) => (pieces.length === 0 ? groundTiles.length > 0 : canNudge(pieces, dRow, dCol));
 
-  const apply = useCallback((t: LayoutTransform) => {
-    const result = transformLayout(t);
-    if (!result.success) {
-      toast({ title: "Can't do that", description: result.error, variant: "warning", duration: 2500 });
-      return;
-    }
-    if (result.droppedGround) {
-      toast({
-        title: describeTransform(t),
-        description: `${result.droppedGround} ground tile${result.droppedGround === 1 ? "" : "s"} moved off the grid and were removed`,
-        variant: "warning",
-        duration: 3000,
-      });
-    } else if (toastOnTransform) {
-      toast({ title: describeTransform(t), variant: "success", duration: 1500 });
-    }
-  }, [transformLayout, toast, toastOnTransform]);
-
-  const tool = (t: LayoutTransform, disabled: boolean, label: string, icon: React.ReactNode) => (
-    <button
-      key={label}
-      type="button"
-      className={segmentButton}
-      disabled={disabled}
-      onClick={() => apply(t)}
-      title={label}
-      aria-label={label}
-    >
-      {icon}
-    </button>
+  const apply = useCallback(
+    (t: LayoutTransform) => {
+      const result = transformLayout(t);
+      if (!result.success) {
+        toast({ title: "Can't do that", description: result.error, variant: "warning", duration: 2500 });
+        return;
+      }
+      if (result.droppedGround) {
+        toast({
+          title: describeTransform(t),
+          description: `${result.droppedGround} ground tile${result.droppedGround === 1 ? "" : "s"} moved off the grid and were removed`,
+          variant: "warning",
+          duration: 3000,
+        });
+      } else if (toastOnTransform) {
+        toast({ title: describeTransform(t), variant: "success", duration: 1500 });
+      }
+    },
+    [transformLayout, toast, toastOnTransform],
   );
-  const nudge = (dRow: number, dCol: number, dir: string, icon: React.ReactNode) =>
-    tool({ kind: "nudge", dRow, dCol }, !nudgeOk(dRow, dCol), `Nudge ${dir} one cell`, icon);
+
+  const seg = (t: LayoutTransform, off: boolean, label: string, icon: React.ReactNode) => (
+    <ActionTip key={label} label={label} hint={off && t.kind === "nudge" && pieces.length ? "Something would leave the grid" : undefined} className="min-w-0 flex-1">
+      <button
+        type="button"
+        aria-label={label}
+        disabled={off}
+        onClick={() => apply(t)}
+        className={cn(
+          "focus-ring-inset flex w-full min-w-0 cursor-pointer items-center justify-center text-fg-muted transition-colors duration-(--duration-hover) hover:bg-surface-hover hover:text-fg disabled:pointer-events-none disabled:opacity-40 [&>svg]:size-3.5",
+          touch ? "h-11" : "h-7 pointer-coarse:h-11",
+        )}
+      >
+        {icon}
+      </button>
+    </ActionTip>
+  );
+  const nudge = (dRow: number, dCol: number, dir: string, icon: React.ReactNode) => seg({ kind: "nudge", dRow, dCol }, !nudgeOk(dRow, dCol), `Nudge ${dir} one cell`, icon);
+  const row = "flex divide-x divide-line";
 
   return (
-    <div className={`flex flex-wrap gap-2 ${className}`}>
-      <ToolGroup caption="Nudge">
-        {nudge(0, -1, "left", <ArrowLeft className="w-4 h-4" />)}
-        {nudge(-1, 0, "up", <ArrowUp className="w-4 h-4" />)}
-        {nudge(1, 0, "down", <ArrowDown className="w-4 h-4" />)}
-        {nudge(0, 1, "right", <ArrowRight className="w-4 h-4" />)}
-      </ToolGroup>
-      <ToolGroup caption="Rotate / mirror">
-        {tool({ kind: "rotate", direction: "ccw" }, empty, "Rotate 90° counter-clockwise", <RotateCcw className="w-4 h-4" />)}
-        {tool({ kind: "rotate", direction: "cw" }, empty, "Rotate 90° clockwise", <RotateCw className="w-4 h-4" />)}
-        {tool({ kind: "mirror", axis: "horizontal" }, empty, "Mirror left to right", <FlipHorizontal2 className="w-4 h-4" />)}
-        {tool({ kind: "mirror", axis: "vertical" }, empty, "Mirror top to bottom", <FlipVertical2 className="w-4 h-4" />)}
-      </ToolGroup>
+    <div role="toolbar" aria-label="Transform" className={cn("divide-y divide-line overflow-hidden rounded-control border border-line-strong bg-surface-control", className)}>
+      <div role="group" aria-label="Nudge" className={row}>
+        {nudge(0, -1, "left", <ArrowLeft />)}
+        {nudge(-1, 0, "up", <ArrowUp />)}
+        {nudge(1, 0, "down", <ArrowDown />)}
+        {nudge(0, 1, "right", <ArrowRight />)}
+      </div>
+      <div role="group" aria-label="Rotate / mirror" className={row}>
+        {seg({ kind: "rotate", direction: "ccw" }, empty, "Rotate 90° counter-clockwise", <RotateCcw />)}
+        {seg({ kind: "rotate", direction: "cw" }, empty, "Rotate 90° clockwise", <RotateCw />)}
+        {seg({ kind: "mirror", axis: "horizontal" }, empty, "Mirror left to right", <FlipHorizontal2 />)}
+        {seg({ kind: "mirror", axis: "vertical" }, empty, "Mirror top to bottom", <FlipVertical2 />)}
+      </div>
     </div>
   );
 };
 
-/** A captioned row of joined icon buttons (one segmented control). */
-const ToolGroup: React.FC<{ caption: string; children: React.ReactNode }> = ({ caption, children }) => (
-  <div className="flex-1 min-w-[120px]" role="group" aria-label={caption}>
-    <div className="text-[10px] text-slate-500 mb-1 select-none">{caption}</div>
-    <div className="flex h-9 rounded-lg border border-slate-600/50 bg-slate-800/60 overflow-hidden divide-x divide-slate-600/50">{children}</div>
-  </div>
-);
+// ---- Clear ------------------------------------------------------------------------------------------------
 
-/** Clear inputs / targets / ground, and clear everything (click twice). */
-export const LayoutClearControls: React.FC<LayoutToolsProps> = ({ className = "" }) => {
-  const {
-    inputPlacements,
-    targetPlacements,
-    groundTiles,
-    clearInputPlacements,
-    clearTargetPlacements,
-    clearGroundTiles,
-    clearAllPlacements,
-    undo,
-  } = useDesigner();
+/**
+ * The Clear menu's items: Inputs / Targets / Ground with their counts, then Everything. Each clears at
+ * once as one undo step, with an Undo toast (D14, D15; Everything replaces the click-twice "All").
+ */
+export const ClearMenuItems: React.FC<{ close: () => void }> = ({ close }) => {
+  const { inputPlacements, targetPlacements, groundTiles, clearInputPlacements, clearTargetPlacements, clearGroundTiles, clearAllPlacements, undo } = useDesigner();
   const { toast } = useToast();
-  const [confirmAll, setConfirmAll] = useState(false);
-  // Clear toasts carry an Undo action.
-  const undoAction = { label: "Undo", onClick: () => { undo(); } };
-  const total = inputPlacements.length + targetPlacements.length + groundTiles.length;
-
-  const clearAll = () => {
-    if (!confirmAll) {
-      setConfirmAll(true);
-      return;
-    }
-    clearAllPlacements();
-    setConfirmAll(false);
-    toast({ title: "Layout cleared", variant: "success", duration: 4000, action: undoAction });
+  const run = (fn: () => void, title: string) => () => {
+    fn();
+    close();
+    toast({ title, variant: "success", duration: 4000, action: { label: "Undo", onClick: () => void undo() } });
   };
-
+  const total = inputPlacements.length + targetPlacements.length + groundTiles.length;
   return (
-    <div className={`flex flex-wrap gap-2 ${className}`}>
-      <button
-        type="button"
-        className={clearButton}
-        disabled={inputPlacements.length === 0}
-        title="Remove every input crop"
-        onClick={() => {
-          clearInputPlacements();
-          toast({ title: "Input placements cleared", variant: "success", duration: 4000, action: undoAction });
-        }}
-      >
-        <RotateCcw className="w-4 h-4" /> Inputs
-      </button>
-      <button
-        type="button"
-        className={clearButton}
-        disabled={targetPlacements.length === 0}
-        title="Remove every target mutation"
-        onClick={() => {
-          clearTargetPlacements();
-          toast({ title: "Target placements cleared", variant: "success", duration: 4000, action: undoAction });
-        }}
-      >
-        <RotateCcw className="w-4 h-4" /> Targets
-      </button>
-      <button
-        type="button"
-        className={clearButton}
-        disabled={groundTiles.length === 0}
-        title="Erase all painted ground tiles"
-        onClick={() => {
-          clearGroundTiles();
-          toast({ title: "Ground tiles cleared", variant: "success", duration: 4000, action: undoAction });
-        }}
-      >
-        <RotateCcw className="w-4 h-4" /> Ground
-      </button>
-      <button
-        type="button"
-        onClick={clearAll}
-        onBlur={() => setConfirmAll(false)}
-        disabled={total === 0}
-        className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-          confirmAll
-            ? "bg-red-500/80 text-white hover:bg-red-500 border-red-500"
-            : "bg-slate-800/60 border-slate-600/50 text-slate-300 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-300"
-        }`}
-        title={confirmAll ? "Click again to confirm" : "Clear everything (inputs, targets and ground)"}
-      >
-        <Trash2 className="w-4 h-4" /> {confirmAll ? "Confirm" : "All"}
-      </button>
-    </div>
+    <>
+      <MenuLabel>Clear</MenuLabel>
+      <MenuItem icon={<Eraser />} hint={`${inputPlacements.length} placed`} disabled={!inputPlacements.length} onSelect={run(clearInputPlacements, "Input placements cleared")}>
+        Inputs
+      </MenuItem>
+      <MenuItem icon={<Eraser />} hint={`${targetPlacements.length} placed`} disabled={!targetPlacements.length} onSelect={run(clearTargetPlacements, "Target placements cleared")}>
+        Targets
+      </MenuItem>
+      <MenuItem icon={<Eraser />} hint={`${groundTiles.length} painted`} disabled={!groundTiles.length} onSelect={run(clearGroundTiles, "Ground tiles cleared")}>
+        Ground
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 />} tone="danger" hint="Inputs, targets and ground · Undo brings it back" disabled={!total} onSelect={run(clearAllPlacements, "Layout cleared")}>
+        Everything
+      </MenuItem>
+    </>
+  );
+};
+
+/** "Clear ▾": a full-width button that opens the Clear menu. Disabled when the layout is empty. */
+export const LayoutClearControls: React.FC<LayoutToolsProps & { defaultOpen?: boolean }> = ({ className, defaultOpen }) => {
+  const { inputPlacements, targetPlacements, groundTiles } = useDesigner();
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const empty = inputPlacements.length + targetPlacements.length + groundTiles.length === 0;
+  // `#pop=clear` (screenshots): open once the button exists.
+  useEffect(() => {
+    if (defaultOpen && anchor) setOpen(true);
+  }, [defaultOpen, anchor]);
+  return (
+    <>
+      <ActionTip label="Clear" hint={empty ? "Nothing to clear" : "Inputs, targets, ground or everything"} className={cn("flex", className)}>
+        <KitButton
+          ref={setAnchor}
+          disabled={empty}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className={cn("w-full justify-between px-2", open && "bg-surface-hover text-fg")}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <Eraser className="size-3.5" /> Clear
+          </span>
+          <ChevronDown className={cn("size-3.5 text-fg-meta transition-transform duration-(--duration-ink)", open && "rotate-180")} />
+        </KitButton>
+      </ActionTip>
+      <Popover anchor={anchor} open={open && !empty} onClose={() => setOpen(false)} label="Clear" role="menu" width={260}>
+        <ClearMenuItems close={() => setOpen(false)} />
+      </Popover>
+    </>
   );
 };

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import { cn } from "./cn";
 import { IconButton, KitButton } from "./kit";
 import { surface } from "./surface";
-import { TOAST_MAX, ToastContext, toastDuration, type ToastAction, type ToastContextValue } from "./toastContext";
+import { openModalDialogs, TOAST_MAX, ToastContext, toastDuration, type ToastAction, type ToastContextValue } from "./toastContext";
 
 export type ToastVariant = "success" | "error" | "info" | "warning";
 
@@ -66,6 +67,54 @@ export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
+
+  // While a modal <dialog> is open it is in the browser's top layer, above everything in <body>,
+  // and the page behind it is inert: a toast there (an Undo while Load is open) could be neither
+  // seen nor clicked. So the stack renders inside the topmost open modal dialog, and moves back to
+  // the page when it closes. Same place on screen (position: fixed), same clocks and actions.
+  const [host, setHost] = useState<HTMLDialogElement | null>(null);
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined") return;
+    // Opening order (the last opened is on top); dialogs found on the first look keep DOM order.
+    let order: HTMLDialogElement[] = [];
+    const update = () => {
+      const open = openModalDialogs();
+      order = [...order.filter((d) => open.includes(d)), ...open.filter((d) => !order.includes(d))];
+      setHost(order[order.length - 1] ?? null);
+    };
+    update();
+    // A dialog opens or closes through its `open` attribute; one removed while open (unmounted) only
+    // shows up as a childList change, which matters only while a dialog is open. So on a busy page
+    // (the simulator) with no dialog open, node churn costs nothing here.
+    const mo = new MutationObserver((records) => {
+      if (order.length || records.some((r) => r.type === "attributes")) update();
+    });
+    mo.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["open"] });
+    return () => mo.disconnect();
+  }, []);
+  // The stack is remounted in its new place: nothing is hovered or focused in it any more, the toasts
+  // already on screen don't rise in again, and their time bars carry on where they were.
+  const [shownIn, setShownIn] = useState(host);
+  const [moves, setMoves] = useState({ count: 0, lastStamp: 0 });
+  if (shownIn !== host) {
+    setShownIn(host);
+    setHovered(false);
+    setFocused(false);
+    setMoves((m) => ({ count: m.count + 1, lastStamp: stampSeq }));
+  }
+  /** Time already spent by each time bar, read once per (showing, place) and kept: a style that changed on a running animation would jump. */
+  const barDelays = useRef<Map<string, number>>(new Map());
+  if (toasts.length === 0 && barDelays.current.size) barDelays.current.clear();
+  const elapsedOf = (t: Shown) => {
+    const key = `${t.stamp}:${moves.count}`;
+    let d = barDelays.current.get(key);
+    if (d === undefined) {
+      const c = clocks.current.get(t.id);
+      d = c ? Math.max(0, t.duration - c.remaining + (c.timer ? Date.now() - c.startedAt : 0)) : 0;
+      barDelays.current.set(key, d);
+    }
+    return d;
+  };
 
   const remove = useCallback((id: string) => {
     const c = clocks.current.get(id);
@@ -181,13 +230,12 @@ export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) =
 
   const value = useMemo<ToastContextValue>(() => ({ toast, dismiss, dismissAll }), [toast, dismiss, dismissAll]);
 
-  return (
-    <ToastContext.Provider value={value}>
-      {children}
-      {/* Phones: top, so the stack never covers a bottom action bar. md+: bottom-right, above the bottom ad.
-          Sized in vw, not with left+right insets: a page that overflows sideways widens the layout
-          viewport, and an inset-x box would grow with it (and keep the overflow). 100vw is the
-          initial containing block's width here (mobile viewport), so the stack always fits it. */}
+  // Phones: top, so the stack never covers a bottom action bar. md+: bottom-right, above the bottom ad.
+  // Sized in vw, not with left+right insets: a page that overflows sideways widens the layout
+  // viewport, and an inset-x box would grow with it (and keep the overflow). 100vw is the initial
+  // containing block's width here (mobile viewport), so the stack always fits it. Inside a modal
+  // dialog the same fixed box lands in the same place (the dialog has no transform).
+  const stack = (
       <section
         aria-label="Notifications"
         className="pointer-events-none fixed top-2 left-2 z-(--z-toast) flex w-[calc(100vw-1rem)] md:top-auto md:right-3 md:bottom-(--toast-bottom) md:left-auto md:w-[min(380px,calc(100vw-1.5rem))] md:justify-end"
@@ -217,21 +265,22 @@ export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) =
                 className={cn(
                   surface.raised,
                   "pointer-events-auto relative overflow-hidden py-2.5 pr-2 pl-3 transition-opacity duration-(--duration-pop) ease-snappy",
-                  out ? "opacity-0" : "kit-rise-in"
+                  out ? "opacity-0" : t.stamp > moves.lastStamp && "kit-rise-in"
                 )}
               >
-                <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 flex shrink-0 [&>svg]:h-4 [&>svg]:w-4" aria-hidden>
+                <div className="flex items-start gap-2.5 pointer-coarse:items-center">
+                  <span className="mt-0.5 flex shrink-0 pointer-coarse:mt-0 [&>svg]:h-4 [&>svg]:w-4" aria-hidden>
                     {v.icon}
                   </span>
                   <div className="min-w-0 flex-1 py-px">
                     <div className="text-body font-medium break-words text-fg">{t.title}</div>
                     {t.description && <div className="mt-0.5 text-secondary break-words whitespace-pre-wrap text-fg-muted">{t.description}</div>}
                   </div>
+                  {/* 44px on touch screens: the visible box, not only the hit area (the card clips overflow). */}
                   {t.action && (
                     <KitButton
                       variant="neutral"
-                      className="shrink-0"
+                      className="shrink-0 pointer-coarse:h-11 pointer-coarse:px-4 pointer-coarse:text-body"
                       onClick={() => {
                         t.action!.onClick();
                         dismiss(t.id);
@@ -240,18 +289,19 @@ export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) =
                       {t.action.label}
                     </KitButton>
                   )}
-                  <IconButton aria-label="Dismiss notification" title="Dismiss" className="shrink-0" onClick={() => dismiss(t.id)}>
+                  <IconButton aria-label="Dismiss notification" title="Dismiss" className="shrink-0 pointer-coarse:size-11" onClick={() => dismiss(t.id)}>
                     <X />
                   </IconButton>
                 </div>
                 {/* Time left. Hidden for reduced motion; pauses with the clock. */}
                 <div
-                  key={t.stamp}
+                  key={`${t.stamp}:${moves.count}`}
                   aria-hidden
                   className={cn("absolute bottom-0 left-0 h-0.5 w-full origin-left motion-reduce:hidden", v.bar)}
                   style={{
                     animationName: "toast-time-left",
                     animationDuration: `${t.duration}ms`,
+                    animationDelay: `-${elapsedOf(t)}ms`,
                     animationTimingFunction: "linear",
                     animationFillMode: "forwards",
                     animationPlayState: paused ? "paused" : "running",
@@ -262,6 +312,12 @@ export const ToastProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           })}
         </div>
       </section>
+  );
+
+  return (
+    <ToastContext.Provider value={value}>
+      {children}
+      {host ? createPortal(stack, host) : stack}
       <style>{"@keyframes toast-time-left { from { transform: scaleX(1); } to { transform: scaleX(0); } }"}</style>
     </ToastContext.Provider>
   );

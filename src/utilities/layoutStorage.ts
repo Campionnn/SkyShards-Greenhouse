@@ -7,7 +7,7 @@ function generateLayoutId(): string {
 }
 
 /** Shape check on the first entry only. */
-function isValidFormat(data: any): data is SavedLayout[] {
+function isValidFormat(data: unknown): data is SavedLayout[] {
   if (!Array.isArray(data)) return false;
   if (data.length === 0) return true;
   
@@ -98,6 +98,23 @@ export function renameLayout(id: string, newName: string): boolean {
     return true;
   } catch (error) {
     console.error('[Layout Storage] Error renaming layout:', error);
+    return false;
+  }
+}
+
+/**
+ * Puts a deleted layout back where it was (Delete → Undo): the same object (id, savedAt, modifiedAt)
+ * at the same index of the list, clamped to its end. False if a layout with that id is already there.
+ */
+export function restoreLayout(layout: SavedLayout, index: number): boolean {
+  try {
+    const layouts = loadLayouts();
+    if (layouts.some(l => l.id === layout.id)) return false;
+    layouts.splice(Math.min(Math.max(0, index), layouts.length), 0, layout);
+    saveLayouts(layouts);
+    return true;
+  } catch (error) {
+    console.error('[Layout Storage] Error restoring layout:', error);
     return false;
   }
 }

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "./cn";
 import { floatingLayers, focusablesIn, focusMenuItem, focusNextAfter, insideLayerAbove, MENU_ITEM, menuNavigate, menuRowClass } from "./contextMenuContext";
+import { placeBeside } from "./hintPosition";
 import { Portal } from "./Portal";
 import { surface } from "./surface";
 
@@ -20,6 +21,13 @@ import { surface } from "./surface";
 //   inside the popover, Escape closes and focuses the trigger.
 // - Closing while focus is inside puts it back on the trigger. Escape and outside presses belong to
 //   the topmost floating layer, so a menu opened inside a popover closes on its own.
+// - A control marked `data-autofocus` in the content takes the first focus (Share: the link field),
+//   unless `initialFocus` says otherwise. (`autoFocus` can't work: the panel is hidden until placed.)
+//
+// side="right" (a rail's popovers): the panel opens beside the anchor, or beside `beside` (the whole
+// rail) when given, its top level with the anchor but clamped so the bottom stays in the window, at
+// most the window's height less the margins (the body scrolls). Without room beside it (a phone) it
+// opens under the anchor, clamped the same way. It re-places when its content grows.
 
 export interface PopoverProps {
   anchor: HTMLElement | null;
@@ -27,6 +35,10 @@ export interface PopoverProps {
   onClose: () => void;
   /** Accessible name of the popover. */
   label: string;
+  /** "bottom" (default): under the anchor, flipping above. "right": beside the anchor / `beside`. */
+  side?: "bottom" | "right";
+  /** side="right": open beside this element (a rail) instead of the anchor, so it clears all of it. */
+  beside?: HTMLElement | null;
   align?: "start" | "end";
   width?: number;
   /** Height the content may grow to below its top (an item list that opens under a search box). */
@@ -63,6 +75,8 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({
   anchor,
   onClose,
   label,
+  side = "bottom",
+  beside,
   align = "start",
   width,
   reserve,
@@ -73,6 +87,7 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({
   children,
 }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const toSide = side === "right";
   const [pos, setPos] = useState<{ top: number; left: number; origin: string; maxHeight?: number } | null>(null);
   const closeRef = useRef(onClose);
   useLayoutEffect(() => {
@@ -92,6 +107,15 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({
     const h = Math.max(natural, reserve ?? 0);
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    if (toSide) {
+      const right = placeBeside(r, (beside ?? anchor).getBoundingClientRect(), { width: w, height: natural }, vw, vh, MARGIN);
+      if (right) return setPos(right);
+      // No room beside (a phone): under the anchor, clamped so the bottom stays on screen.
+      const maxHeight = Math.max(0, vh - MARGIN * 2);
+      const left = Math.min(Math.max(MARGIN, r.left), vw - w - MARGIN);
+      const top = Math.max(MARGIN, Math.min(r.bottom + 4, vh - MARGIN - Math.min(natural, maxHeight)));
+      return setPos({ top, left, maxHeight, origin: `${Math.round(Math.min(Math.max(r.left + r.width / 2 - left, 0), w))}px 0px` });
+    }
     let left = align === "end" ? r.right - w : r.left;
     left = Math.min(Math.max(MARGIN, left), vw - w - MARGIN);
     const below = vh - MARGIN - (r.bottom + 4);
@@ -111,9 +135,19 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({
     }
     const ox = Math.min(Math.max(r.left + Math.min(r.width / 2, 24) - left, 0), w);
     setPos({ top, left, maxHeight, origin: `${Math.round(ox)}px ${above ? "100%" : "0px"}` });
-  }, [anchor, align, reserve, role]);
+  }, [anchor, beside, toSide, align, reserve, role]);
 
   useLayoutEffect(() => place(), [place]);
+
+  // side="right" content changes height (an export preview renders): keep the bottom on screen.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!toSide || !el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => place());
+    ro.observe(el);
+    for (const child of el.children) ro.observe(child);
+    return () => ro.disconnect();
+  }, [toSide, place]);
 
   // One stack of floating layers; closing with focus inside returns it to the trigger. Layout
   // effect cleanup runs before React removes the panel, so focus is still readable here.
@@ -168,6 +202,8 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({
     }
     // Content that already moved focus inside (an autofocused search box) keeps it.
     if (el.contains(document.activeElement)) return;
+    const marked = initialFocus === "auto" ? el.querySelector<HTMLElement>("[data-autofocus]") : null;
+    if (marked) return void marked.focus({ preventScroll: true });
     const controls = focusablesIn(el);
     const pick = initialFocus === "first" || (initialFocus === "auto" && fromKeyboard) ? controls[0] : initialFocus === "last" ? controls[controls.length - 1] : null;
     (pick ?? el).focus({ preventScroll: true });
@@ -217,7 +253,13 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({
         // React events bubble through portals to the trigger's ancestors (an exit card's header);
         // a click inside the popover belongs to the popover only.
         onClick={(e) => e.stopPropagation()}
-        className={cn("kit-pop-in fixed outline-none", role === "menu" ? "z-(--z-menu)" : "z-(--z-popover)", !bare && `${surface.raised} p-1`, className)}
+        className={cn(
+          "kit-pop-in fixed outline-none",
+          role === "menu" ? "z-(--z-menu)" : "z-(--z-popover)",
+          !bare && `${surface.raised} p-1`,
+          toSide && "scrollbar-dark overflow-y-auto overscroll-contain",
+          className,
+        )}
         style={{
           top: pos?.top ?? 0,
           left: pos?.left ?? 0,
