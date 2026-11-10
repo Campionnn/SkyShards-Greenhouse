@@ -45,6 +45,16 @@ export const Popover: React.FC<PopoverProps> = (props) => {
   return props.open && props.anchor ? <PopoverBody {...props} anchor={props.anchor} /> : null;
 };
 
+/**
+ * Whether `node` is inside a modal <dialog> that doesn't contain the popover: one opened from the
+ * popover's content (the Player popover's "Import from Hypixel"). The dialog is portaled to <body>,
+ * so a press in it looks "outside" — closing the popover would unmount the dialog with it.
+ */
+const inDialogAbove = (popover: HTMLElement | null, node: Node | null) => {
+  const dialog = node instanceof Element ? node.closest("dialog[open]") : node?.parentElement?.closest("dialog[open]");
+  return !!dialog && !!popover && !dialog.contains(popover);
+};
+
 const MARGIN = 8;
 const MENU_MAX = 420;
 
@@ -131,12 +141,13 @@ const PopoverBody: React.FC<PopoverProps & { anchor: HTMLElement }> = ({
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       const el = ref.current;
-      if (!el || el.contains(t) || anchor.contains(t) || insideLayerAbove(el, t)) return;
+      if (!el || el.contains(t) || anchor.contains(t) || insideLayerAbove(el, t) || inDialogAbove(el, t)) return;
       closeRef.current();
     };
     const onKey = (e: KeyboardEvent) => {
       // One Escape closes the top popover, even when its content (an item search) also handled it.
-      if (e.key !== "Escape" || floatingLayers[floatingLayers.length - 1] !== ref.current) return;
+      // A modal opened from inside this popover owns its own Escape.
+      if (e.key !== "Escape" || floatingLayers[floatingLayers.length - 1] !== ref.current || inDialogAbove(ref.current, e.target as Node)) return;
       e.preventDefault();
       anchor.focus({ preventScroll: true });
       closeRef.current();
