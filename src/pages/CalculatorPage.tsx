@@ -361,7 +361,8 @@ export const CalculatorPage: React.FC = () => {
 
   return (
     <>
-      <div ref={pageRef} className="w-full py-3 max-md:pb-24 sm:py-4">
+      {/* Phone: room under the content for the Solve bar and the ad below it. */}
+      <div ref={pageRef} className="w-full py-3 max-md:pb-[calc(6rem+var(--ad-bottom,0px))] sm:py-4">
         <header className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-hero text-fg max-sm:text-title">Calculator</h1>
           <InfoHint title="How the Calculator works" width={320} label="How the Calculator works">
@@ -374,9 +375,14 @@ export const CalculatorPage: React.FC = () => {
         <ResultFocusProvider result={displayResult}>{body}</ResultFocusProvider>
       </div>
 
-      {/* Phone: Solve stays in reach. */}
+      {/* Phone: Solve stays in reach. It docks on top of Mediavine's adhesion ad (`--ad-bottom`,
+          useBottomAdInset in the site Layout) instead of under it, like the simulator's run bar; the
+          ad already covers the home-indicator area, so the safe-area padding shrinks by it. */}
       {layout === "phone" && (
-        <div className="fixed inset-x-0 bottom-0 z-(--z-bar) border-t border-line bg-surface-panel px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div
+          className="fixed inset-x-0 z-(--z-bar) border-t border-line bg-surface-panel px-3 pt-2"
+          style={{ bottom: "var(--ad-bottom, 0px)", paddingBottom: "max(0.5rem, calc(0.5rem + env(safe-area-inset-bottom, 0px) - var(--ad-bottom, 0px)))" }}
+        >
           {solveButton("w-full", true)}
         </div>
       )}
