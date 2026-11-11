@@ -149,6 +149,8 @@ export const LayoutWorkspace: React.FC<{
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || picking || e.defaultPrevented) return;
+      // A modal dialog on top (the item info dialog, Load…) owns this Escape.
+      if (document.querySelector("dialog[open]")) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       e.preventDefault();
