@@ -54,17 +54,19 @@ export const PaletteModeSwitch: React.FC<{ className?: string }> = ({ className 
   );
 };
 
-const Tile: React.FC<{ crop: CropDefinition; rarity?: string; selected: boolean; onClick: () => void; onContextMenu?: () => void }> = ({
-  crop,
-  rarity,
-  selected,
-  onClick,
-  onContextMenu,
-}) => (
+const Tile: React.FC<{
+  crop: CropDefinition;
+  rarity?: string;
+  selected: boolean;
+  onClick: () => void;
+  /** Right-click: place it as the other kind (see pickOther). `contextHint` says which, in the tooltip. */
+  onContextMenu?: () => void;
+  contextHint?: string;
+}> = ({ crop, rarity, selected, onClick, onContextMenu, contextHint }) => (
   <button
     type="button"
     aria-pressed={selected}
-    title={`${crop.size > 1 ? `${crop.name} (${crop.size}×${crop.size})` : crop.name}${onContextMenu ? ". Right-click to place as a target." : ""}`}
+    title={`${crop.size > 1 ? `${crop.name} (${crop.size}×${crop.size})` : crop.name}${contextHint ? `. ${contextHint}` : ""}`}
     onClick={onClick}
     onContextMenu={
       onContextMenu
@@ -214,9 +216,12 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
       onPicked?.();
     }
   };
-  // Right-click on a mutation picks it as a target in one go: switches to Targets and selects it (no toggle-off).
-  const pickTarget = (c: CropDefinition) => {
-    if (mode !== "targets") setMode("targets");
+  // Right-click on a mutation picks it as the other kind in one go: in Inputs it becomes a target, in Targets
+  // an input. It switches the mode and selects the mutation (no toggle-off).
+  const otherMode: DesignerMode = mode === "targets" ? "inputs" : "targets";
+  const contextHint = `Right-click to place as ${otherMode === "targets" ? "a target" : "an input"}.`;
+  const pickOther = (c: CropDefinition) => {
+    setMode(otherMode);
     if (selectedCropForPlacement?.id !== c.id) setSelectedCropForPlacement({ id: c.id, name: c.name, size: c.size, isMutation: true });
     onPicked?.();
   };
@@ -262,7 +267,7 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
                   <React.Fragment key={c.id}>
                     {/* A thin rule between rarities (D25). */}
                     {prev !== rarity && <span aria-hidden className="col-span-full my-1 h-px bg-line" />}
-                    <Tile crop={c} rarity={rarity} selected={selectedCropForPlacement?.id === c.id} onClick={() => pick(c)} onContextMenu={() => pickTarget(c)} />
+                    <Tile crop={c} rarity={rarity} selected={selectedCropForPlacement?.id === c.id} onClick={() => pick(c)} onContextMenu={() => pickOther(c)} contextHint={contextHint} />
                   </React.Fragment>
                 );
               })}
