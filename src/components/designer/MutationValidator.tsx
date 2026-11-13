@@ -6,6 +6,7 @@ import { CropImage, EffectChips } from "../shared";
 import { InfoHint } from "../ui/InfoHint";
 import { KitLabel } from "../ui/kit";
 import { cn } from "../ui/cn";
+import { requirementPlants } from "../../utilities/requirementLayout";
 import { at, useCheckState, type ActiveCheck, type CheckState, type TargetCheck } from "./checkModel";
 
 // "Check" (was Mutation Status, research/designer-v2): "x of y targets valid", one row per invalid target
@@ -19,14 +20,29 @@ const ItemIcon: React.FC<{ id: string; name: string; size: number }> = ({ id, na
   <CropImage cropId={id} cropName={name} size="custom" width={size} height={size} showFallback className="shrink-0" />
 );
 
-const Req: React.FC<{ id: string; have: number; needed: number; ok: boolean; recipe?: boolean }> = ({ id, have, needed, ok, recipe }) => {
+/**
+ * One requirement. have/needed are ring CELLS (the game counts cells): for a multi-cell ingredient the row
+ * says "3/6 cells", and the recipe form says plants ("×2": two 3×3 Snoozlings cover 6 cells).
+ */
+const Req: React.FC<{ target: string; id: string; have: number; needed: number; ok: boolean; recipe?: boolean }> = ({ target, id, have, needed, ok, recipe }) => {
   const { getCropDef, getMutationDef } = useGreenhouseData();
   const name = getCropDef(id)?.name || getMutationDef(id)?.name || id.replace(/_/g, " ");
+  const def = getMutationDef(target);
+  const sizeOf = (x: string) => getCropDef(x)?.size ?? getMutationDef(x)?.size ?? 1;
+  const plants = def ? (requirementPlants(sizeOf, def.size, def.requirements)[id] ?? needed) : needed;
+  const big = plants !== needed;
+  const title = recipe
+    ? big
+      ? `${plants} ${name} around each, covering ${needed} cells`
+      : `${needed} ${name} around each`
+    : big
+      ? `${name}: ${have} of the ${needed} cells around it (${plants} ${name} cover them)`
+      : `${name}: ${have} of ${needed} around it`;
   return (
-    <li className="flex min-w-0 items-center gap-1.5 text-secondary" title={recipe ? `${needed} ${name} around each` : `${name}: ${have} of ${needed} around it`}>
+    <li className="flex min-w-0 items-center gap-1.5 text-secondary" title={title}>
       <ItemIcon id={id} name={name} size={16} />
       <span className="min-w-0 flex-1 truncate text-fg-body">{name}</span>
-      <span className={cn("shrink-0 tabular-nums", ok ? "text-fg-muted" : "font-semibold text-problem")}>{recipe ? `×${needed}` : `${have}/${needed}`}</span>
+      <span className={cn("shrink-0 tabular-nums", ok ? "text-fg-muted" : "font-semibold text-problem")}>{recipe ? `×${plants}` : `${have}/${needed}${big ? " cells" : ""}`}</span>
     </li>
   );
 };
@@ -80,7 +96,7 @@ const CheckDetail: React.FC<{ active: ActiveCheck; className?: string }> = ({ ac
           <KitLabel className="mb-1">Missing</KitLabel>
           <ul className="space-y-1">
             {v.missingRequirements.map((r) => (
-              <Req key={r.crop} id={r.crop} have={r.have} needed={r.needed} ok={false} />
+              <Req key={r.crop} target={target.cropId} id={r.crop} have={r.have} needed={r.needed} ok={false} />
             ))}
           </ul>
         </div>
@@ -90,7 +106,7 @@ const CheckDetail: React.FC<{ active: ActiveCheck; className?: string }> = ({ ac
           <KitLabel className="mb-1">{many ? "Each has" : "Satisfied"}</KitLabel>
           <ul className="space-y-1">
             {v.satisfiedRequirements.map((r) => (
-              <Req key={r.crop} id={r.crop} have={r.have} needed={r.needed} ok recipe={many} />
+              <Req key={r.crop} target={target.cropId} id={r.crop} have={r.have} needed={r.needed} ok recipe={many} />
             ))}
           </ul>
         </div>

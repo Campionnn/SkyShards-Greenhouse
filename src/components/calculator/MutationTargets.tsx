@@ -12,6 +12,7 @@ import { InfoHint } from "../ui/InfoHint";
 import { LinkButton } from "../ui/Card";
 import { IconButton, KitInput, KitLabel, Segmented } from "../ui/kit";
 import { getRarityTextColor, getEffectName } from "../../utilities";
+import { requirementPlants } from "../../utilities/requirementLayout";
 import type { MutationDefinition } from "../../types/greenhouse";
 
 const Note: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -109,14 +110,15 @@ export const MutationTargets: React.FC<{ className?: string }> = ({ className })
               mutation && mutation.special === "all_positive_crop_effects" ? (
                 <>All effects: {mutation.positive_buffs.map((e) => getEffectName(e)).join(", ")}</>
               ) : mutation ? (
-                mutation.requirements.map((r, i) => {
+                mutation.requirements.map((r, i, all) => {
                   const reqMutation = getMutationDef(r.crop);
                   const name = getCropDef(r.crop)?.name || reqMutation?.name || r.crop.replace(/_/g, " ");
+                  const plants = requirementPlants((id) => getCropDef(id)?.size ?? getMutationDef(id)?.size ?? 1, mutation.size, all)[r.crop] ?? r.count;
                   return (
-                    <span key={r.crop}>
+                    <span key={r.crop} title={plants !== r.count ? `${plants} ${name} covering ${r.count} of the cells around it` : undefined}>
                       {i > 0 && ", "}
                       <span className={reqMutation ? getRarityTextColor(reqMutation.rarity) : undefined}>
-                        {r.count}× {name}
+                        {plants}× {name}
                       </span>
                     </span>
                   );

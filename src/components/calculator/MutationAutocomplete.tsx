@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Plus, X } from "lucide-react";
 import { debounce, getRarityTextColor } from "../../utilities";
+import { requirementPlants } from "../../utilities/requirementLayout";
 import { CropImage } from "../shared";
 import { cn } from "../ui/cn";
 import { IconButton, KitInput } from "../ui/kit";
@@ -24,6 +25,7 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
   className = "",
 }) => {
   const { getCropDef, getMutationDef } = useGreenhouseData();
+  const sizeOf = useCallback((id: string) => getCropDef(id)?.size ?? getMutationDef(id)?.size ?? 1, [getCropDef, getMutationDef]);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<MutationDefinition[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -222,12 +224,13 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className={cn("truncate text-body", getRarityTextColor(mutation.rarity))}>{mutation.name}</span>
                 <span className="truncate text-meta text-fg-meta">
-                  {mutation.requirements.map((r, i) => {
+                  {mutation.requirements.map((r, i, all) => {
                     const displayName = getCropDef(r.crop)?.name || getMutationDef(r.crop)?.name || formatName(r.crop);
+                    const plants = requirementPlants(sizeOf, mutation.size, all)[r.crop] ?? r.count;
                     return (
-                      <span key={r.crop}>
+                      <span key={r.crop} title={plants !== r.count ? `${plants} ${displayName} covering ${r.count} of the cells around it` : undefined}>
                         {i > 0 && ", "}
-                        {r.count}× {displayName}
+                        {plants}× {displayName}
                       </span>
                     );
                   })}
