@@ -54,12 +54,26 @@ export const PaletteModeSwitch: React.FC<{ className?: string }> = ({ className 
   );
 };
 
-const Tile: React.FC<{ crop: CropDefinition; rarity?: string; selected: boolean; onClick: () => void }> = ({ crop, rarity, selected, onClick }) => (
+const Tile: React.FC<{ crop: CropDefinition; rarity?: string; selected: boolean; onClick: () => void; onContextMenu?: () => void }> = ({
+  crop,
+  rarity,
+  selected,
+  onClick,
+  onContextMenu,
+}) => (
   <button
     type="button"
     aria-pressed={selected}
-    title={crop.size > 1 ? `${crop.name} (${crop.size}×${crop.size})` : crop.name}
+    title={`${crop.size > 1 ? `${crop.name} (${crop.size}×${crop.size})` : crop.name}${onContextMenu ? ". Right-click to place as a target." : ""}`}
     onClick={onClick}
+    onContextMenu={
+      onContextMenu
+        ? (e) => {
+            e.preventDefault();
+            onContextMenu();
+          }
+        : undefined
+    }
     className={cn(
       "focus-ring relative flex min-w-0 cursor-pointer flex-col items-center gap-0.5 rounded-control pt-1.5 pb-1 transition-colors duration-(--duration-hover)",
       selected ? "bg-select/10 ring-2 ring-select ring-inset" : "hover:bg-surface-hover",
@@ -185,7 +199,7 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
   const narrow = width < 2 * SWATCH_MIN + 4;
 
   const { crops, mutations } = useGreenhouseData();
-  const { selectedCropForPlacement, setSelectedCropForPlacement, mode } = useDesigner();
+  const { selectedCropForPlacement, setSelectedCropForPlacement, mode, setMode } = useDesigner();
   // Targets mode lists mutations only (D20).
   const additionalFilter = useMemo(() => (mode === "targets" ? (c: CropDefinition) => !!c.isMutation : undefined), [mode]);
   // `crops` arrives grouped by rarity (GreenhouseDataContext), so the separators line up.
@@ -199,6 +213,12 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
       setSelectedCropForPlacement({ id: c.id, name: c.name, size: c.size, isMutation: c.isMutation ?? false });
       onPicked?.();
     }
+  };
+  // Right-click on a mutation picks it as a target in one go: switches to Targets and selects it (no toggle-off).
+  const pickTarget = (c: CropDefinition) => {
+    if (mode !== "targets") setMode("targets");
+    if (selectedCropForPlacement?.id !== c.id) setSelectedCropForPlacement({ id: c.id, name: c.name, size: c.size, isMutation: true });
+    onPicked?.();
   };
   const cols = { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` };
 
@@ -242,7 +262,7 @@ export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ clas
                   <React.Fragment key={c.id}>
                     {/* A thin rule between rarities (D25). */}
                     {prev !== rarity && <span aria-hidden className="col-span-full my-1 h-px bg-line" />}
-                    <Tile crop={c} rarity={rarity} selected={selectedCropForPlacement?.id === c.id} onClick={() => pick(c)} />
+                    <Tile crop={c} rarity={rarity} selected={selectedCropForPlacement?.id === c.id} onClick={() => pick(c)} onContextMenu={() => pickTarget(c)} />
                   </React.Fragment>
                 );
               })}
