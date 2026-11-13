@@ -27,22 +27,25 @@ import { effectsGivenBy } from "../../utilities/effectSimulation";
 import { derivedSeed, intInclusive, nextFloat, seedRng } from "../rng";
 import { sanityCheck } from "../analysis/sanityCheck";
 import { newScratch, type CycleCtx, type Env, type TickScratch } from "../sim/context";
-import { wouldDecayWithin } from "../sim/decay";
+import { isKnownItem } from "../flow/validate";
+import { creditInputs, wouldDecayWithin } from "../sim/decay";
 import { effort, effortBreak, effortPut, effortWater } from "../sim/effort";
 import { destroyPlant } from "../sim/explosion";
 import { harvestPlant } from "../sim/harvest";
-import { spend } from "../sim/inventory";
+import { injectInto, spend } from "../sim/inventory";
 import { canBuy } from "../sim/market";
 import { applyStepLayout, markPickup, removeByPlayer } from "../sim/placement";
 import { runSessionPhase } from "../sim/player";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isDry, isFootprintFree, isFullyGrown, isHarvestable, isRoot, newPlant } from "../sim/plants";
 import type { PlantState, PlotState, SimulationState, TickEvent } from "../sim/state";
+import { bump, perPlot } from "../sim/summary";
+import { latchIfReady } from "../sim/tick";
 import type * as A from "./ast";
 import { EVENT_HOOKS, SCRIPT_PHASES } from "./docs";
 import { compile, compileExpression, Interpreter, ScriptError, Scope, type Program } from "./interpreter";
 import { ScriptSyntaxError } from "./lexer";
 import { enabledScripts, forcedEffectsOf } from "./overrides";
-import { Decoder, Encoder, isPersistable, PersistError } from "./persist";
+import { Decoder, Encoder, MAX_HEAP_ENTRIES, PersistError, reachablePersistable, walkPersistable, type EncodeEnv } from "./persist";
 import { coreGlobals } from "./stdlib";
 import {
   GLOBAL_SCRIPT,
@@ -56,7 +59,7 @@ import {
   type ScriptsState,
   type ScriptVarKind,
 } from "./types";
-import { Closure, display, fromData, HostFn, HostObject, isPlainObject, newObject, own, plain, setOwn, toNum, toStr, type CallInfo, type PlainObject } from "./values";
+import { Closure, display, fromData, HostFn, HostNamespace, HostObject, isPlainObject, newObject, own, plain, setOwn, toNum, toStr, type CallInfo, type PlainObject } from "./values";
 
 /** Steps one hook call may take. */
 export const HOOK_BUDGET = 2_000_000;
@@ -66,6 +69,8 @@ export const CONDITION_BUDGET = 200_000;
 const MAX_METRICS = 100;
 /** Message deliveries per cycle (stops two scripts answering each other forever). */
 const MAX_MESSAGES_PER_CYCLE = 1000;
+/** A declared top-level variable that isn't bound (yet): a placeholder in `ScriptRuntime.roots`. */
+const NO_BINDING = Symbol("no binding");
 const KNOWN_GROUND = ["farmland", "sand", "soul_sand", "mycelium", "netherrack", "end_stone"];
 
 export function emptyScriptsState(seed: number): ScriptsState {
@@ -127,6 +132,18 @@ export class ScriptRuntime {
   private readonly conditionScopes = new Map<number, Scope>();
   /** The view an exit condition is checked against (on-arrival checks look at the next step's targets). */
   private conditionView: TriggerView | null = null;
+  /**
+   * Between-cycles persistence check (see `save`): every container proven keepable since the last
+   * exact walk, closed under children (null: none yet), the roots as they were at the last check,
+   * and how big `checked` may grow before the next exact walk.
+   */
+  private checked: Set<object> | null = null;
+  private checkedRoots: unknown[] | null = null;
+  private checkedLimit = MAX_HEAP_ENTRIES;
+  private readonly encodeEnv: EncodeEnv = {
+    closureOwner: (c: Closure) => this.scripts.find((s) => s.scope === c.scope)?.key ?? null,
+    hostRef: (v: HostObject | HostFn) => (v instanceof HostObject ? v.ref() : null),
+  };
 
   private constructor(state: SimulationState, env: Env) {
     this.state = state;
@@ -209,6 +226,58 @@ export class ScriptRuntime {
         if (kind) inst.scope.vars.set(name, { value: decoder.decode(value), kind });
       }
     }
+    // What was just decoded was encoded by a successful save: keepable, and closed under children.
+    // Starting the between-cycles check from it keeps a run() call's first save incremental too.
+    const roots = this.roots();
+    const known = decoder.containers();
+    const ok = walkPersistable(roots.filter((r) => r !== NO_BINDING), known, this.encodeEnv, MAX_HEAP_ENTRIES);
+    this.setChecked(ok ? known : null, roots);
+  }
+
+  /**
+   * The values `save` keeps: `shared`, then every script's declared top-level variables in order
+   * (`NO_BINDING` for one that isn't bound, so positions line up from one save to the next).
+   */
+  private roots(): unknown[] {
+    const roots: unknown[] = [this.shared];
+    for (const inst of this.scripts) {
+      for (const name of inst.declared.keys()) {
+        const b = inst.scope.vars.get(name);
+        roots.push(b ? b.value : NO_BINDING);
+      }
+    }
+    return roots;
+  }
+
+  /** Start the between-cycles bookkeeping from an exact set of reachable containers (see `save`). */
+  private setChecked(containers: Set<object> | null, roots: unknown[]): void {
+    this.checked = containers;
+    this.checkedRoots = containers ? roots : null;
+    // Containers that stop being reachable stay in `checked` until the next exact walk; let it grow
+    // to twice the exact count (or 10,000 more) before redoing one, so it never holds much garbage.
+    const base = containers?.size ?? 0;
+    this.checkedLimit = Math.min(MAX_HEAP_ENTRIES, Math.max(2 * base, base + 10_000));
+    this.interp.watchStores(containers);
+  }
+
+  /**
+   * Cheap form of the between-cycles check: true only if everything the roots reach is in `checked`
+   * after walking just what changed since the last save (roots that now hold another value, and every
+   * array/object value stored into a checked container: the interpreter records those). Everything in
+   * `checked` was proven keepable and its children are in it too, and every later store into one of
+   * them was recorded, so a true here means the exact check would say true as well; and since
+   * `checked` holds at most MAX_HEAP_ENTRIES containers, the heap limit holds too. A false is only
+   * "maybe": the caller runs the exact check.
+   */
+  private quickCheck(roots: unknown[], env: EncodeEnv): boolean {
+    const checked = this.checked;
+    const before = this.checkedRoots;
+    const stores = this.interp.takeStores();
+    if (!checked || !before || !stores || before.length !== roots.length) return false;
+    const changed: unknown[] = stores;
+    for (let i = 0; i < roots.length; i++) if (roots[i] !== before[i] && roots[i] !== NO_BINDING) changed.push(roots[i]);
+    this.checkedRoots = roots;
+    return walkPersistable(changed, checked, env, this.checkedLimit);
   }
 
   /**
@@ -216,26 +285,29 @@ export class ScriptRuntime {
    * `full: false` (run() between two cycles of one call, where nothing reads the encoding before
    * the next save replaces it): only check that everything could be encoded and skip writing it;
    * if something couldn't, do the real save, which records the error exactly as always.
+   *
+   * The check is incremental (`quickCheck`): it walks only what changed since the last save, and
+   * falls back to the exact walk over everything (`reachablePersistable`) whenever it can't prove
+   * the answer, so an unkeepable value or one container too many stops the run on the same cycle.
    */
   save(full = true): void {
     const ss = this.scriptsState;
-    const encodeEnv = {
-      closureOwner: (c: Closure) => this.scripts.find((s) => s.scope === c.scope)?.key ?? null,
-      hostRef: (v: HostObject | HostFn) => (v instanceof HostObject ? v.ref() : null),
-    };
+    const encodeEnv = this.encodeEnv;
+    const roots = this.roots();
     if (!full) {
-      const roots: unknown[] = [this.shared];
-      for (const inst of this.scripts) {
-        for (const name of inst.declared.keys()) {
-          const b = inst.scope.vars.get(name);
-          if (b) roots.push(b.value);
-        }
+      if (this.quickCheck(roots, encodeEnv)) {
+        this.forgetGoneProtections();
+        return;
       }
-      if (isPersistable(roots, encodeEnv)) {
+      const reach = reachablePersistable(roots.filter((r) => r !== NO_BINDING), encodeEnv);
+      this.setChecked(reach, roots);
+      if (reach) {
         this.forgetGoneProtections();
         return;
       }
     }
+    // The runtime may keep running after a real save (initState's): start the bookkeeping over.
+    this.setChecked(null, roots);
     const enc = new Encoder(encodeEnv);
     const keep = (value: unknown, path: string, key: ScriptKey): EncodedValue => {
       try {
@@ -568,11 +640,7 @@ export class ScriptRuntime {
       if (!own(this.env.data.crops, id) && !own(this.env.data.mutations, id)) info.fail(`${what}: "${id}" isn't a crop or mutation id`);
       return id;
     };
-    const debugOnly = (info: CallInfo, what: string) => {
-      if (this.state.scenario.settings.config.leaderboardRules === true) {
-        info.fail(`${what} is a debugging tool and isn't allowed under the leaderboard rules. Place the real items instead (e.g. a Blastberry next to the plant, picked back up before the next tick).`);
-      }
-    };
+    const debugOnly = (info: CallInfo, what: string) => this.debugOnly(info, what, "Place the real items instead (e.g. a Blastberry next to the plant, picked back up before the next tick).");
     set("forceEffects", fn("forceEffects", (a, info) => {
       debugOnly(info, "forceEffects()");
       this.notInCondition(info, "forceEffects()");
@@ -610,6 +678,7 @@ export class ScriptRuntime {
       return true;
     }));
     live("forcedEffects", () => fromData(this.currentForced()));
+    set("debug", this.debugTools());
 
     live("online", () => this.ctx?.active ?? false);
     live("cycle", () => this.ctx?.cycle ?? this.state.cycle);
@@ -701,6 +770,125 @@ export class ScriptRuntime {
   /** Settings a script changes (hold, disable, policies, protect): any time, but never in a condition. */
   notInCondition(info: CallInfo, what: string): void {
     if (this.mode.condition) info.fail(`${what} can't be used in an exit condition: conditions only read`);
+  }
+
+  /** Debug tools: refused under the leaderboard rules (`config.leaderboardRules`). */
+  debugOnly(info: CallInfo, what: string, instead: string): void {
+    if (this.state.scenario.settings.config.leaderboardRules === true) {
+      info.fail(`${what} is a debugging tool and isn't allowed under the leaderboard rules. ${instead}`);
+    }
+  }
+
+  /**
+   * The `debug` namespace: change the plot in ways the game never would (spawn a mutation anywhere,
+   * set a growth stage or a decay timer, add items), for testing scripts and flows. Any time, online
+   * or not, but never in an exit condition, and refused under the leaderboard rules.
+   */
+  private debugTools(): HostNamespace {
+    const guard = (info: CallInfo, what: string) => {
+      this.debugOnly(info, `debug.${what}()`, "Remove it before submitting: the leaderboard measures what the flow does on its own.");
+      this.notInCondition(info, `debug.${what}()`);
+    };
+    const fn = (name: string, impl: (args: unknown[], info: CallInfo) => unknown) =>
+      new HostFn(`debug.${name}`, (a, info) => {
+        guard(info, name);
+        return impl(a, info);
+      });
+    const plotArg = (v: unknown, info: CallInfo, what: string): PlotState => {
+      const id = v instanceof PlotHost ? v.id : toNum(v);
+      const plot = this.state.plots.find((p) => p.id === id);
+      if (!plot) info.fail(`debug.${what} needs a plot first (plot, getPlot(id) or a plot id), like debug.${what}(plot, ...)`);
+      return plot!;
+    };
+    const plantArg = (v: unknown, info: CallInfo, what: string): { plot: PlotState; p: PlantState } | null => {
+      if (!(v instanceof PlantHost)) return info.fail(`debug.${what} needs a plant first (plot.at(row, col), e.plant, ...)`);
+      const plot = this.plotState(v.plotId);
+      const p = plot?.plants.find((q) => q.id === v.plantId);
+      return plot && p ? { plot, p } : null;
+    };
+    const stageArg = (v: unknown, info: CallInfo, what: string): number => {
+      const n = toNum(v);
+      if (!Number.isFinite(n)) info.fail(`debug.${what} needs a stage number`);
+      return Math.floor(n);
+    };
+    const scratch = (plot: PlotState) => this.scratchFor(plot.id);
+
+    /** Put `p` at `stage` (clamped to its stages), latching or unlatching full growth like the game. */
+    const applyStage = (plot: PlotState, p: PlantState, stage: number) => {
+      const ctx = this.cycleCtx;
+      p.stage = Math.max(0, Math.min(p.growthStages, stage));
+      // Soggybud's stage follows its water: give it the water for that stage, or the next tick undoes it.
+      if (p.kindId === "soggybud") p.water = Math.max(p.water, p.stage * ctx.config.soggybudWaterPerStage);
+      if (p.stage < p.readyStage) {
+        p.lockedEffects = null;
+        p.fullyGrownAtCycle = null;
+      } else {
+        ensureEffects(plot, scratch(plot)); // latch the effects it holds now
+        latchIfReady(p, plot, ctx);
+      }
+    };
+
+    return new HostNamespace("debug", {
+      spawn: fn("spawn", (a, info) => {
+        const plot = plotArg(a[0], info, "spawn");
+        const kind = toStr(a[1]);
+        const def = own(this.env.data.mutations, kind);
+        if (!def) info.fail(`debug.spawn: "${kind}" isn't a mutation id (only mutations spawn; use plot.place for crops)`);
+        const [row, col] = cellArg(info, a[2], a[3]);
+        if (!footprintFits(row, col, def!.size)) info.fail(`${def!.name} (${def!.size}x${def!.size}) doesn't fit at (${row}, ${col})`);
+        const stage = a[4] === undefined || a[4] === null ? null : stageArg(a[4], info, "spawn");
+        const ctx = this.cycleCtx;
+        const occ = buildOccupancy(plot);
+        if (!isFootprintFree(occ, row, col, def!.size)) return null;
+        // A natural spawn in every way (counted, credited, events, rival flag), minus the roll:
+        // no ground, requirements or chance check.
+        const p = newPlant(ctx.state, this.env.data, ctx.config, kind, row, col, "spawned", ctx.cycle);
+        const slot = plot.slots.find((s) => s.row === row && s.col === col);
+        p.isRival = !!slot && slot.mutationId !== kind;
+        insertPlant(plot, p);
+        creditInputs(plot, occ, p, def!, ctx, true);
+        bump(ctx.state.summary.spawned, kind);
+        perPlot(ctx.state.summary, plot.id).spawned += 1;
+        if (p.isRival) ctx.state.summary.rivals.spawned += 1;
+        ctx.emit(plot.id, { kind: "spawned", plantId: p.id, mutationId: kind, row, col, rival: p.isRival, slotTarget: slot?.mutationId ?? null });
+        applyStage(plot, p, stage ?? p.stage);
+        return this.plantHost(plot.id, p.id);
+      }),
+      setStage: fn("setStage", (a, info) => {
+        const stage = stageArg(a[1], info, "setStage");
+        const hit = plantArg(a[0], info, "setStage");
+        if (!hit) return false;
+        const { plot, p } = hit;
+        if (p.isDeadPlant || p.origin === "placed") info.fail("debug.setStage only works on growing plants (spawns and base crops), not placed items or Dead Plants");
+        applyStage(plot, p, stage);
+        return true;
+      }),
+      growUp: fn("growUp", (a, info) => {
+        const hit = plantArg(a[0], info, "growUp");
+        if (!hit) return false;
+        const { plot, p } = hit;
+        if (p.isDeadPlant || p.origin === "placed") info.fail("debug.growUp only works on growing plants (spawns and base crops), not placed items or Dead Plants");
+        applyStage(plot, p, Math.max(p.stage, p.readyStage));
+        return true;
+      }),
+      setDecay: fn("setDecay", (a, info) => {
+        const hit = plantArg(a[0], info, "setDecay");
+        const never = a[1] === null;
+        const cycles = never ? 0 : toNum(a[1]);
+        if (!never && !(Number.isFinite(cycles) && cycles >= 0)) info.fail("debug.setDecay needs a number of cycles (0 or more), or null for never");
+        if (!hit) return false;
+        hit.p.decaySecondsRemaining = never ? null : cycles * this.cycleCtx.cycleSeconds;
+        return true;
+      }),
+      give: fn("give", (a, info) => {
+        const item = toStr(a[0]);
+        if (!isKnownItem(this.env.data, item)) info.fail(`debug.give: "${item}" isn't an item the simulator knows about`);
+        const qty = a[1] === undefined ? 1 : toNum(a[1]);
+        if (!Number.isInteger(qty)) info.fail("debug.give needs a whole number of items (negative takes them away)");
+        injectInto(this.state, { [item]: qty });
+        return this.state.inventory[item] ?? 0;
+      }),
+    });
   }
 
   /** The forced effects in force now (a copy; script override, else the scenario setting). */
@@ -1318,8 +1506,8 @@ const PLANT_ACTIONS = ["break", "harvest", "destroy", "waterIt", "wake", "vacuum
 
 class PlantHost extends HostObject {
   private readonly rt: ScriptRuntime;
-  private readonly plotId: number;
-  private readonly plantId: number;
+  readonly plotId: number;
+  readonly plantId: number;
   constructor(rt: ScriptRuntime, plotId: number, plantId: number) {
     super();
     this.rt = rt;

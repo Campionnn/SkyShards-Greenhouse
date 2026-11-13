@@ -1,223 +1,280 @@
-import React, { useCallback } from "react";
-import { X, Layers, Target, Palette } from "lucide-react";
-import { useGreenhouseData, useDesigner } from "../../context";
-import { getRarityTextColor, getRarityBorderColor } from "../../utilities";
-import { CropImage, SearchFilterHeader } from "../shared";
-import { SegmentedControl } from "../ui";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ListFilter } from "lucide-react";
+import { useDesigner, useGreenhouseData, type DesignerMode } from "../../context";
+import { KitLabel, Segmented } from "../ui/kit";
+import { Dropdown, MenuItem } from "../ui/Popover";
+import { cn } from "../ui/cn";
+import { CropImage, CropSearchInput, SearchFilterHeader, defaultGetFilterColor } from "../shared";
 import { useCropFiltering } from "../../hooks/shared/useCropFiltering";
-import type { CropDefinition, MutationDefinition } from "../../types/greenhouse";
-import type { DesignerMode } from "../../context";
-import { GROUND_TYPES } from "../../utilities/designEncoding";
-import { getGroundImagePath } from "../../types/greenhouse";
+import { CROP_FILTER_OPTIONS } from "../../constants";
+import { getRarityTextColor, GROUND_TYPES, type GroundType } from "../../utilities";
+import { getGroundImagePath, type CropDefinition, type CropFilterCategory } from "../../types/greenhouse";
 
-interface CropSelectionPaletteProps {
-  className?: string;
-}
+// The Designer's palette (research/designer-v2; also the simulator flow editor's layout workspace and the
+// Designer's phone sheet): Inputs | Targets with counts, named ground swatches, search + filter, then the
+// tiles in Crops / Mutations groups. It fills its box (only the tiles scroll) and lays itself out from its
+// own width: as many tile columns as fit at 68px or more, ground swatches 3 / 2 / 1 per row.
+// Tile names wrap at spaces only (no hyphenation, never mid-word): 68px fits the longest one-word name,
+// "Witherbloom" (67px at 11px Inter). The size badge shows only on items bigger than 1×1; selection is the
+// select role (no yellow). What the next click does is said above the grid (PickStatus), not here.
 
-const PaletteTile: React.FC<{
-  crop: CropDefinition;
-  mutation?: MutationDefinition;
-  isSelected: boolean;
-  onClick: () => void;
-}> = ({ crop, mutation, isSelected, onClick }) => {
-  const rarityBorder = mutation ? getRarityBorderColor(mutation.rarity) : "border-slate-600/50";
-  const rarityText = mutation ? getRarityTextColor(mutation.rarity) : "text-white";
+const groundName = (g: string) => g.replace(/_/g, " ");
 
+/** Tiles are at least this wide (see above). */
+const MIN_TILE = 68;
+const TILE_GAP = 2;
+/** The tile list borrows 4px of the surrounding padding for its 6px scrollbar (every host pads ≥ 6px). */
+const SCROLL_BORROW = 4;
+const SCROLLBAR = 6;
+/** One ground swatch with its name beside the texture needs ~99px ("netherrack" is 57px at 11px). */
+const SWATCH_MIN = 99;
+
+/** Inputs | Targets with counts (D19). Switching to Targets drops a picked plain crop: it can't be a target (D20). */
+export const PaletteModeSwitch: React.FC<{ className?: string }> = ({ className }) => {
+  const { mode, setMode, inputPlacements, targetPlacements, selectedCropForPlacement, setSelectedCropForPlacement } = useDesigner();
+  const label = (name: string, n: number) => (
+    <span className="whitespace-nowrap">
+      {name} <span className="ml-0.5 tabular-nums text-fg-meta">{n}</span>
+    </span>
+  );
   return (
-    <button
-      onClick={onClick}
-      className={`
-        relative aspect-square rounded-lg border-2 transition-all duration-150 cursor-pointer
-        flex flex-col items-center justify-center p-1 gap-0.5
-        hover:scale-105 hover:z-10
-        ${isSelected
-          ? "ring-2 ring-yellow-400 border-yellow-400 bg-yellow-500/20"
-          : `${rarityBorder} bg-slate-800/60 hover:bg-slate-700/60`
-        }
-      `}
-      title={`${crop.name} (${crop.size}x${crop.size})`}
-    >
-      <CropImage
-        cropId={crop.id}
-        cropName={crop.name}
-        size="sm"
-        className="w-12 h-12"
-        fallbackClassName="text-xs text-slate-400"
-      />
-
-      {/* truncated */}
-      <span className={`text-[10px] leading-tight truncate w-full text-center ${rarityText}`}>
-        {crop.name}
-      </span>
-
-      <span className="absolute top-0.5 right-0.5 text-[9px] text-slate-400 bg-slate-900/80 px-1 rounded">
-        {crop.size}x{crop.size}
-      </span>
-    </button>
+    <Segmented<DesignerMode>
+      label="Place as"
+      value={mode}
+      onChange={(m) => {
+        setMode(m);
+        if (m === "targets" && selectedCropForPlacement && !selectedCropForPlacement.isMutation) setSelectedCropForPlacement(null);
+      }}
+      className={cn("[&>button]:flex-1 pointer-coarse:[&>button]:h-11", className)}
+      options={[
+        { value: "inputs", title: "Place crops and mutations that feed the targets", label: label("Inputs", inputPlacements.length) },
+        { value: "targets", title: "Place the mutation spots you want to check", label: label("Targets", targetPlacements.length) },
+      ]}
+    />
   );
 };
 
-/** Designer placement palette, with the Inputs/Targets switch above the tiles it filters. */
-export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ className = "" }) => {
+const Tile: React.FC<{
+  crop: CropDefinition;
+  rarity?: string;
+  selected: boolean;
+  onClick: () => void;
+  /** Right-click: place it as the other kind (see pickOther). `contextHint` says which, in the tooltip. */
+  onContextMenu?: () => void;
+  contextHint?: string;
+}> = ({ crop, rarity, selected, onClick, onContextMenu, contextHint }) => (
+  <button
+    type="button"
+    aria-pressed={selected}
+    title={`${crop.size > 1 ? `${crop.name} (${crop.size}×${crop.size})` : crop.name}${contextHint ? `. ${contextHint}` : ""}`}
+    onClick={onClick}
+    onContextMenu={
+      onContextMenu
+        ? (e) => {
+            e.preventDefault();
+            onContextMenu();
+          }
+        : undefined
+    }
+    className={cn(
+      "focus-ring relative flex min-w-0 cursor-pointer flex-col items-center gap-0.5 rounded-control pt-1.5 pb-1 transition-colors duration-(--duration-hover)",
+      selected ? "bg-select/10 ring-2 ring-select ring-inset" : "hover:bg-surface-hover",
+    )}
+  >
+    <CropImage cropId={crop.id} cropName={crop.name} size="custom" width={30} height={30} showFallback />
+    {/* Two lines, broken at spaces only; "Do-not-eat-shroom" breaks at its own hyphens. Rarity colour on the name only. */}
+    <span className={cn("line-clamp-2 w-full text-center text-meta hyphens-none", rarity ? getRarityTextColor(rarity) : "text-fg-body")}>{crop.name}</span>
+    {crop.size > 1 && <span className="absolute top-0.5 right-0.5 rounded-inner bg-surface-well px-1 text-meta tabular-nums text-fg-muted">{`${crop.size}×${crop.size}`}</span>}
+  </button>
+);
+
+/**
+ * Named ground swatches (D22): the texture with its name beside it, 3, 2 or 1 per row (whatever the width
+ * fits without cutting a name). Click toggles; picking ground drops the crop pick and back (the provider).
+ * The caption is the count only: painting is announced once, by the status above the grid.
+ */
+const GroundSwatches: React.FC<{ columns: 1 | 2 | 3; onPicked?: () => void }> = ({ columns, onPicked }) => {
+  const { groundTiles, selectedGround, setSelectedGround } = useDesigner();
+  const pick = (g: GroundType) => {
+    setSelectedGround(selectedGround === g ? null : g);
+    if (selectedGround !== g) onPicked?.();
+  };
+  const one = columns === 1;
+  return (
+    <div className="min-w-0">
+      <div className="mb-1.5 flex h-4 min-w-0 items-center justify-between gap-2">
+        <KitLabel>Ground</KitLabel>
+        <span className="min-w-0 truncate text-meta tabular-nums text-fg-meta">{groundTiles.length} painted</span>
+      </div>
+      <div className={cn("grid", columns === 3 ? "grid-cols-3 gap-1" : columns === 2 ? "grid-cols-2 gap-1" : "grid-cols-1 gap-0.5")}>
+        {GROUND_TYPES.map((g) => (
+          <button
+            key={g}
+            type="button"
+            aria-pressed={selectedGround === g}
+            title={`Paint ${groundName(g)} on bare cells. Right-click erases.`}
+            onClick={() => pick(g)}
+            className={cn(
+              "focus-ring flex min-w-0 cursor-pointer items-center rounded-control border pr-1.5 pl-1 text-meta transition-colors duration-(--duration-hover) pointer-coarse:h-11",
+              one ? "h-6 gap-1.5" : "h-8 gap-1.5",
+              selectedGround === g ? "border-select bg-select/10 text-select-fg" : "border-line bg-surface-control text-fg-body hover:border-line-control",
+            )}
+          >
+            <img src={getGroundImagePath(g)} alt="" className={cn("shrink-0 rounded-inner", one ? "size-4" : "size-6")} />
+            <span className="min-w-0 truncate">{groundName(g)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/** In a narrow rail: the search, and the filter as an icon-width menu button beside it (a dot when filtered). */
+const CompactSearch: React.FC<{ search: string; onSearch: (v: string) => void; filter: CropFilterCategory; onFilter: (v: CropFilterCategory) => void }> = ({
+  search,
+  onSearch,
+  filter,
+  onFilter,
+}) => {
+  const current = CROP_FILTER_OPTIONS.find((o) => o.value === filter)?.label ?? "All";
+  return (
+    <div className="flex min-w-0 shrink-0 gap-1">
+      <CropSearchInput value={search} onChange={onSearch} placeholder="Search..." className="flex-1 pointer-coarse:[&_input]:h-11" />
+      <Dropdown
+        label={`Filter: ${current}`}
+        title={`Filter: ${current}`}
+        look="plain"
+        chevron={false}
+        width={200}
+        align="end"
+        className="relative inline-flex size-8 shrink-0 items-center justify-center rounded-control border border-line-control bg-surface-well text-fg-muted transition-colors duration-(--duration-hover) hover:border-fg-meta hover:text-fg pointer-coarse:size-11"
+        button={
+          <>
+            <ListFilter aria-hidden className="size-3.5" />
+            {filter !== "all" && <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-select" />}
+          </>
+        }
+      >
+        {(close) =>
+          CROP_FILTER_OPTIONS.map((o) => (
+            <MenuItem
+              key={o.value}
+              checked={filter === o.value}
+              onSelect={() => {
+                onFilter(o.value);
+                close();
+              }}
+            >
+              <span className={defaultGetFilterColor(o.value)}>{o.label}</span>
+            </MenuItem>
+          ))
+        }
+      </Dropdown>
+    </div>
+  );
+};
+
+interface CropSelectionPaletteProps {
+  className?: string;
+  /** The Inputs | Targets switch on top (default). The phone sheet shows it in its peek row instead. */
+  showMode?: boolean;
+  /** After an item or a ground is picked (the phone sheet folds down). */
+  onPicked?: () => void;
+}
+
+/** The palette. Give it a box with a height (a flex column, or `h-full` in a sized box): only the tiles scroll. */
+export const CropSelectionPalette: React.FC<CropSelectionPaletteProps> = ({ className, showMode = true, onPicked }) => {
+  const root = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(212);
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const update = () => el.clientWidth > 0 && setWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const tileArea = width + SCROLL_BORROW - SCROLLBAR;
+  const columns = Math.max(2, Math.floor((tileArea + TILE_GAP) / (MIN_TILE + TILE_GAP)));
+  const groundColumns = width >= 3 * SWATCH_MIN + 8 ? 3 : width >= 2 * SWATCH_MIN + 4 ? 2 : 1;
+  const narrow = width < 2 * SWATCH_MIN + 4;
+
   const { crops, mutations } = useGreenhouseData();
-  const {
-    selectedCropForPlacement,
-    setSelectedCropForPlacement,
-    mode,
-    setMode,
-    inputPlacements,
-    targetPlacements,
-    groundTiles,
-    selectedGround,
-    setSelectedGround,
-  } = useDesigner();
-
-  // Targets mode lists mutations only.
-  const additionalFilter = mode === "targets" ? (crop: CropDefinition) => crop.isMutation ?? false : undefined;
-  // `crops` arrives grouped by rarity (GreenhouseDataContext), so the separators below line up.
-  const { searchTerm, setSearchTerm, filter, setFilter, filteredCrops, getMutationDef } = useCropFiltering({
-    crops,
-    mutations,
-    additionalFilter,
-  });
-
-  // Switching to targets clears a selected plain crop, which cannot be a target.
-  const handleModeChange = useCallback((newMode: DesignerMode) => {
-    setMode(newMode);
-    if (newMode === "targets" && selectedCropForPlacement && !selectedCropForPlacement.isMutation) {
-      setSelectedCropForPlacement(null);
+  const { selectedCropForPlacement, setSelectedCropForPlacement, mode, setMode } = useDesigner();
+  // Targets mode lists mutations only (D20).
+  const additionalFilter = useMemo(() => (mode === "targets" ? (c: CropDefinition) => !!c.isMutation : undefined), [mode]);
+  // `crops` arrives grouped by rarity (GreenhouseDataContext), so the separators line up.
+  const { searchTerm, setSearchTerm, filter, setFilter, filteredCrops, getMutationDef } = useCropFiltering({ crops, mutations, additionalFilter });
+  const plain = filteredCrops.filter((c) => !c.isMutation);
+  const muts = filteredCrops.filter((c) => c.isMutation);
+  // A second click on the picked tile drops it (D24).
+  const pick = (c: CropDefinition) => {
+    if (selectedCropForPlacement?.id === c.id) setSelectedCropForPlacement(null);
+    else {
+      setSelectedCropForPlacement({ id: c.id, name: c.name, size: c.size, isMutation: c.isMutation ?? false });
+      onPicked?.();
     }
-  }, [setMode, selectedCropForPlacement, setSelectedCropForPlacement]);
-
-  const handleTileClick = useCallback((crop: CropDefinition) => {
-    if (selectedCropForPlacement?.id === crop.id) {
-      setSelectedCropForPlacement(null);
-    } else {
-      setSelectedCropForPlacement({
-        id: crop.id,
-        name: crop.name,
-        size: crop.size,
-        isMutation: crop.isMutation ?? false,
-      });
-    }
-  }, [selectedCropForPlacement, setSelectedCropForPlacement]);
+  };
+  // Right-click on a mutation picks it as the other kind in one go: in Inputs it becomes a target, in Targets
+  // an input. It switches the mode and selects the mutation (no toggle-off).
+  const otherMode: DesignerMode = mode === "targets" ? "inputs" : "targets";
+  const contextHint = `Right-click to place as ${otherMode === "targets" ? "a target" : "an input"}.`;
+  const pickOther = (c: CropDefinition) => {
+    setMode(otherMode);
+    if (selectedCropForPlacement?.id !== c.id) setSelectedCropForPlacement({ id: c.id, name: c.name, size: c.size, isMutation: true });
+    onPicked?.();
+  };
+  const cols = { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` };
 
   return (
-    <div className={`flex flex-col h-full min-h-0 ${className}`}>
-      <div className="flex items-center justify-between gap-2 mb-3 flex-shrink-0 min-h-[24px]">
-        <div className="flex items-center gap-2 min-w-0">
-          <Palette className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-          <h3 className="text-sm font-medium text-slate-200 truncate">Palette</h3>
-        </div>
-        {selectedGround ? (
-          <button onClick={() => setSelectedGround(null)} className="text-xs text-yellow-400 hover:text-yellow-300 flex items-center gap-1 cursor-pointer" title="Stop painting (Esc)">
-            <X className="w-3 h-3" /> Painting {selectedGround.replace(/_/g, " ")}
-          </button>
-        ) : selectedCropForPlacement ? (
-          <button
-            onClick={() => setSelectedCropForPlacement(null)}
-            className="text-xs text-yellow-400 hover:text-yellow-300 flex items-center gap-1 cursor-pointer"
-            title="Stop placing (Esc)"
-          >
-            <X className="w-3 h-3" />
-            Placing {selectedCropForPlacement.name}
-          </button>
-        ) : (
-          <span className="text-xs text-slate-500">{filteredCrops.length} items</span>
-        )}
+    <div ref={root} className={cn("flex min-h-0 min-w-0 flex-col gap-2.5", className)}>
+      {showMode && <PaletteModeSwitch className={cn("flex w-full shrink-0", narrow && "[&>button]:px-1")} />}
+      <div className="shrink-0">
+        <GroundSwatches columns={groundColumns} onPicked={onPicked} />
       </div>
-
-      <SegmentedControl
-        className="mb-2 flex-shrink-0"
-        value={mode}
-        onChange={handleModeChange}
-        options={[
-          {
-            value: "inputs",
-            label: `Inputs (${inputPlacements.length})`,
-            icon: <Layers />,
-            tone: "emerald",
-            title: "Place crops and mutations that feed the targets",
-          },
-          {
-            value: "targets",
-            label: `Targets (${targetPlacements.length})`,
-            icon: <Target />,
-            tone: "purple",
-            title: "Place the mutation spots you want to check",
-          },
-        ]}
-      />
-      <p className="text-xs text-slate-500 mb-3 flex-shrink-0">
-        {mode === "inputs"
-          ? "Pick a crop or mutation below, then click grid cells to place it as an input."
-          : "Pick a mutation below, then click the grid to mark where it should spawn."}
-      </p>
-
-      {/* Ground paints bare cells only; placing over a tile clears it. */}
-      <div className="mb-3 flex-shrink-0">
-        <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-          <span>Ground · {groundTiles.length} painted</span>
-          <span>Right-click to erase</span>
-        </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          {GROUND_TYPES.map(ground => (
-            <button key={ground} type="button" onClick={() => setSelectedGround(selectedGround === ground ? null : ground)}
-              title={`Paint ${ground.replace(/_/g, " ")} on bare cells`}
-              className={`flex items-center gap-1.5 min-w-0 rounded-md border p-1 text-xs text-slate-200 cursor-pointer ${selectedGround === ground ? "border-yellow-400 ring-1 ring-yellow-400 bg-yellow-500/20" : "border-slate-600/50 bg-slate-800/60 hover:bg-slate-700/60"}`}>
-              <img src={getGroundImagePath(ground)} alt="" className="w-6 h-6 rounded-sm flex-shrink-0" />
-              <span className="truncate">{ground.replace(/_/g, " ")}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <SearchFilterHeader
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        filter={filter}
-        onFilterChange={setFilter}
-        className="mb-3 flex-shrink-0"
-      />
-
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-visible scrollbar-dark">
-        <div className="grid grid-cols-5 gap-1.5 p-1">
-          {filteredCrops.map((crop, index) => {
-            // Rarity separator before the first item of each rarity.
-            const prevMutation = index > 0 ? getMutationDef(filteredCrops[index - 1].id) : null;
-            const currMutation = getMutationDef(crop.id);
-            const showRaritySeparator = prevMutation && currMutation &&
-                                  prevMutation.rarity !== currMutation.rarity;
-
-            // Divider between the last crop and the first mutation.
-            const prevItem = index > 0 ? filteredCrops[index - 1] : null;
-            const showCropMutationDivider = prevItem && !prevItem.isMutation && crop.isMutation;
-
-            return (
-              <React.Fragment key={crop.id}>
-                {showCropMutationDivider && (
-                  <div className="col-span-5 border-t border-slate-600/50 my-2">
-                  </div>
-                )}
-                {showRaritySeparator && (
-                  <div className="col-span-5 border-t border-slate-600/50 my-1" />
-                )}
-                <PaletteTile
-                  crop={crop}
-                  mutation={currMutation}
-                  isSelected={selectedCropForPlacement?.id === crop.id}
-                  onClick={() => handleTileClick(crop)}
-                />
-              </React.Fragment>
-            );
-          })}
-        </div>
-
-        {filteredCrops.length === 0 && (
-          <div className="text-center text-slate-400 py-8 text-sm">
-            No items found
-          </div>
+      {narrow ? (
+        <CompactSearch search={searchTerm} onSearch={setSearchTerm} filter={filter} onFilter={setFilter} />
+      ) : (
+        <SearchFilterHeader
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          filter={filter}
+          onFilterChange={setFilter}
+          className="shrink-0 pointer-coarse:[&_button]:h-11 pointer-coarse:[&_input]:h-11"
+        />
+      )}
+      {/* The scrollbar sits in 4px of the host's padding (-mr-1), so the tiles keep their width without poking past it. */}
+      <div className="scrollbar-dark -mr-1 min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+        {plain.length > 0 && (
+          <section aria-label="Crops" className="mb-2">
+            <KitLabel className="mb-1">Crops</KitLabel>
+            <div className="grid gap-0.5" style={cols}>
+              {plain.map((c) => (
+                <Tile key={c.id} crop={c} selected={selectedCropForPlacement?.id === c.id} onClick={() => pick(c)} />
+              ))}
+            </div>
+          </section>
         )}
+        {muts.length > 0 && (
+          <section aria-label="Mutations">
+            <KitLabel className="mb-1">Mutations</KitLabel>
+            <div className="grid gap-0.5" style={cols}>
+              {muts.map((c, i) => {
+                const rarity = getMutationDef(c.id)?.rarity;
+                const prev = i > 0 ? getMutationDef(muts[i - 1].id)?.rarity : rarity;
+                return (
+                  <React.Fragment key={c.id}>
+                    {/* A thin rule between rarities (D25). */}
+                    {prev !== rarity && <span aria-hidden className="col-span-full my-1 h-px bg-line" />}
+                    <Tile crop={c} rarity={rarity} selected={selectedCropForPlacement?.id === c.id} onClick={() => pick(c)} onContextMenu={() => pickOther(c)} contextHint={contextHint} />
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </section>
+        )}
+        {filteredCrops.length === 0 && <p className="py-8 text-center text-secondary text-fg-meta">No items found</p>}
       </div>
     </div>
   );

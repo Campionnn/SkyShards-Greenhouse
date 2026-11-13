@@ -1,6 +1,10 @@
-import React, { useEffect, useRef } from "react";
-import { X, RotateCcw, CheckSquare } from "lucide-react";
+import React from "react";
+import { CheckSquare, RotateCcw } from "lucide-react";
 import { useGridState } from "../../context";
+import { KitButton, KitLabel } from "../ui/kit";
+import { DialogFrame, ModalDialog } from "../ui/ModalDialog";
+import { cn } from "../ui/cn";
+import { surface } from "../ui/surface";
 import { GridManager } from "./GridManager";
 import { ExpansionOptimizer } from "./ExpansionOptimizer";
 
@@ -9,138 +13,71 @@ interface GridManagerModalProps {
   onClose: () => void;
 }
 
+const Swatch: React.FC<{ className: string; children?: React.ReactNode }> = ({ className, children }) => (
+  <span aria-hidden className={cn("inline-grid size-4 place-items-center rounded-inner border text-meta font-bold", className)}>
+    {children}
+  </span>
+);
+
+/** "36 cells": paint the greenhouse's unlocked cells and find the best expansion order (a kit dialog). */
 export const GridManagerModal: React.FC<GridManagerModalProps> = ({ isOpen, onClose }) => {
   const { unlockedCells, selectAll, resetToDefault } = useGridState();
-  const modalRef = useRef<HTMLDivElement>(null);
-
-  const unlockedCount = unlockedCells.size;
-  const totalCells = 100;
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
-
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-      onClose();
-    }
-  };
-
   if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm overflow-y-auto"
-      onClick={handleBackdropClick}
-    >
-      <div
-        ref={modalRef}
-        className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] my-auto overflow-y-auto"
+    <ModalDialog labelledBy="grid-manager-title" onClose={onClose} maxWidth="max-w-4xl">
+      <DialogFrame
+        id="grid-manager-title"
+        title="Grid Manager"
+        onClose={onClose}
+        footer={
+          <KitButton variant="primary" size="md" onClick={onClose}>
+            Done
+          </KitButton>
+        }
       >
-        <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-700 px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold text-slate-100">Grid Manager</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-slate-200"
-            aria-label="Close modal"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-4 sm:p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 lg:gap-6">
-            <div>
-              <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-3 sm:p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-slate-300">
-                      <span className="font-medium text-emerald-400">{unlockedCount}</span>
-                      <span className="text-slate-500"> / {totalCells} cells unlocked</span>
-                    </span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={resetToDefault}
-                      className="px-3 py-1.5 bg-slate-600/50 hover:bg-slate-600/70 text-slate-300 font-medium rounded-md text-sm border border-slate-500/30 hover:border-slate-500/50 transition-colors duration-200 flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Reset</span>
-                    </button>
-                    <button
-                      onClick={selectAll}
-                      className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-medium rounded-md text-sm border border-emerald-500/20 hover:border-emerald-500/30 transition-colors duration-200 flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <CheckSquare className="w-3.5 h-3.5" />
-                      <span>Select All</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex justify-center">
-                  <GridManager size="md" isInteractive={true} />
-                </div>
-
-                <div className="flex flex-wrap items-center justify-center gap-4 mt-4 text-xs text-slate-400">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-4 h-4 rounded bg-emerald-500/50 border border-emerald-400/50" />
-                    <span>Unlocked</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-4 h-4 rounded bg-slate-700/50 border border-slate-600/30" />
-                    <span>Locked</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-4 h-4 rounded bg-yellow-500/30 border border-yellow-400/50 flex items-center justify-center text-[8px] font-bold text-yellow-300">1</div>
-                    <span>Expansion Step</span>
-                  </div>
-                </div>
-              </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_17rem] lg:gap-6">
+          <section className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-body text-fg-muted">
+                <b className="font-semibold tabular-nums text-fg">{unlockedCells.size}</b> / 100 cells unlocked
+              </span>
+              <span className="flex gap-1.5">
+                <KitButton onClick={resetToDefault}>
+                  <RotateCcw /> Reset
+                </KitButton>
+                <KitButton variant="accent" onClick={selectAll}>
+                  <CheckSquare /> Select all
+                </KitButton>
+              </span>
             </div>
-
-            <div className="space-y-4">
-              <ExpansionOptimizer />
-
-              <div className="bg-slate-800/40 border border-slate-600/30 rounded-lg p-4">
-                <h3 className="text-sm font-medium text-slate-200 mb-2">How it works</h3>
-                <ul className="text-xs text-slate-400 space-y-2">
-                  <li className="flex gap-2">
-                    <span className="text-emerald-400">1.</span>
-                    <span>Click cells to unlock or lock them, or click and drag to paint multiple cells at once</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="text-emerald-400">2.</span>
-                    <span>Use the Expansion Optimizer to find the best order to unlock remaining cells by maximum possible Gloomgourd spawns</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="text-emerald-400">3.</span>
-                    <span>Close this popup to return to the Calculator and solve for optimal crop placement</span>
-                  </li>
-                </ul>
-              </div>
+            <div className="flex justify-center">
+              <GridManager size="md" isInteractive />
             </div>
+            <div className="flex flex-wrap items-center justify-center gap-4 text-secondary text-fg-muted">
+              <span className="flex items-center gap-1.5">
+                <Swatch className="border-go bg-go" /> Unlocked
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Swatch className="border-line bg-surface-well" /> Locked
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Swatch className="border-coin bg-coin text-surface-page">1</Swatch> Expansion step
+              </span>
+            </div>
+          </section>
+          <div className="min-w-0 space-y-4">
+            <ExpansionOptimizer />
+            <section className={cn(surface.card, "space-y-2 p-3")}>
+              <KitLabel>How it works</KitLabel>
+              <ol className="list-decimal space-y-1.5 pl-4 text-secondary text-fg-body">
+                <li>Click cells to unlock or lock them, or click and drag to paint several at once.</li>
+                <li>The expansion optimizer finds the best order to unlock the rest, by the most Gloomgourd spawns possible.</li>
+                <li>Close this to go back to the Calculator and solve.</li>
+              </ol>
+            </section>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogFrame>
+    </ModalDialog>
   );
 };

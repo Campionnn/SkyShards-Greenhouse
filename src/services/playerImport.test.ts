@@ -74,6 +74,19 @@ describe("IMPORT_FIELDS", () => {
     expect(cleanTools([])).toBeNull();
     expect(cleanTools({ name: "x" })).toBeNull();
   });
+
+  it("cleans tools: takes the general / crop split when the server sends it", () => {
+    const raw = [
+      { name: "Wart Hoe", fortune: { nether_wart: 439 }, farmingFortune: 122, cropFortune: { nether_wart: 317, bogus: 1 } },
+      { name: "Generic", fortune: { wheat: 62.5 }, farmingFortune: 62.5, cropFortune: {} },
+      { name: "Bad split", fortune: { wheat: 5 }, farmingFortune: -3, cropFortune: { wheat: 1 } },
+    ];
+    expect(cleanTools(raw)).toEqual([
+      { name: "Wart Hoe", farmingFortune: 122, fortune: { nether_wart: 317 } },
+      { name: "Generic", farmingFortune: 62.5, fortune: {} },
+      { name: "Bad split", fortune: { wheat: 5 } },
+    ]);
+  });
 });
 
 describe("statsPatchFromImport", () => {

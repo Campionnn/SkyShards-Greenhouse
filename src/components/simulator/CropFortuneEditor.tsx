@@ -18,9 +18,11 @@ function cleanFortune(f: CropFortune): CropFortune {
   return out;
 }
 
-/** "Wheat 310, Carrot 120" for a collapsed tool row. */
-function fortuneSummary(f: CropFortune): string {
-  const parts = FORTUNE_CROPS.filter((c) => f[c]).map((c) => `${cropLabel(c)} ${f[c]}`);
+/** "Wheat 310, Carrot 120" for a collapsed tool row; "120 FF, Wheat +281" when it has general fortune. */
+function fortuneSummary(f: CropFortune, general = 0): string {
+  const sign = general ? "+" : "";
+  const parts = FORTUNE_CROPS.filter((c) => f[c]).map((c) => `${cropLabel(c)} ${sign}${f[c]}`);
+  if (general) parts.unshift(`${general} FF`);
   return parts.length ? parts.join(", ") : "no fortune set";
 }
 
@@ -78,12 +80,32 @@ const ToolRow: React.FC<{
         )}
       </div>
       {open ? (
-        <div className="mt-1.5">
+        <div className="mt-1.5 space-y-1.5">
+          <label className="flex items-center justify-between gap-2 text-[11px] text-slate-300">
+            <span>Farming Fortune (every crop)</span>
+            {onChange ? (
+              <NumberInput
+                className={`${inputClass} w-16 text-right flex-shrink-0`}
+                aria-label={`${tool.name || `Tool ${index + 1}`}: Farming Fortune`}
+                value={tool.farmingFortune ?? 0}
+                min={0}
+                max={5000}
+                onChange={(v) => {
+                  const next: FarmingToolStats = { ...tool, farmingFortune: v };
+                  if (!v) delete next.farmingFortune;
+                  onChange(next);
+                }}
+              />
+            ) : (
+              <span className="tabular-nums text-slate-200">{tool.farmingFortune ?? 0}</span>
+            )}
+          </label>
+          <div className="text-[11px] text-slate-500">Crop bonus on top</div>
           <CropFortuneGrid value={tool.fortune} label={tool.name || `Tool ${index + 1}`} onChange={onChange && ((fortune) => onChange({ ...tool, fortune }))} />
         </div>
       ) : (
-        <div className="mt-0.5 pl-7 text-[11px] text-slate-500 truncate" title={fortuneSummary(tool.fortune)}>
-          {fortuneSummary(tool.fortune)}
+        <div className="mt-0.5 pl-7 text-[11px] text-slate-500 truncate" title={fortuneSummary(tool.fortune, tool.farmingFortune)}>
+          {fortuneSummary(tool.fortune, tool.farmingFortune)}
         </div>
       )}
     </div>
@@ -180,8 +202,9 @@ export const CropFortuneEditor: React.FC<{
           <span className="flex items-center gap-1">
             Farming tools
             <InfoHint title="Farming tools" width={280}>
-              Each tool's Farming Fortune on each crop while held (its general and crop-specific fortune together). Every harvest uses the tool that makes that
-              harvest worth the most coins; ties go to the first listed. No tools: no tool term (put tool fortune in Farming Fortune instead).
+              Each tool's fortune while held: its Farming Fortune (reforge, gems, Harvesting, Cultivating, ...) counts on every crop, and its crop bonus (tool
+              level, Turbo, Dedication) only on that crop. Every harvest uses the tool that makes that harvest worth the most coins; ties go to the first
+              listed. No tools: no tool term (put tool fortune in Farming Fortune instead).
             </InfoHint>
           </span>
         </SectionLabel>

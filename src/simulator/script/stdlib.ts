@@ -82,6 +82,19 @@ export function arrayMethod(arr: unknown[], name: string): HostFn | undefined {
 
 type ArrayImpl = (arr: unknown[], args: unknown[], info: CallInfo) => unknown;
 
+/** A built-in method's implementation, called as `impl(receiver, args, info)`. */
+export type MethodImpl = ArrayImpl | StringImpl;
+
+/** The array method `name` itself (what `arrayMethod` wraps in a HostFn), or undefined. */
+export function arrayMethodImpl(name: string): ArrayImpl | undefined {
+  return ARRAY_METHODS[name];
+}
+
+/** The string method `name` itself (what `stringMethod` wraps in a HostFn), or undefined. */
+export function stringMethodImpl(name: string): StringImpl | undefined {
+  return STRING_METHODS[name];
+}
+
 const iterate = (arr: unknown[], args: unknown[], info: CallInfo, what: string) => {
   const f = callback3(args[0], info, what);
   info.charge(arr.length);
@@ -91,7 +104,10 @@ const iterate = (arr: unknown[], args: unknown[], info: CallInfo, what: string) 
 const ARRAY_METHODS: Record<string, ArrayImpl> = table<ArrayImpl>({
   push: (arr, args, info) => {
     if (arr.length + args.length > 1_000_000) info.fail("Arrays are limited to 1,000,000 items");
-    for (const a of args) arr.push(a);
+    for (const a of args) {
+      arr.push(a);
+      info.noteStore(arr, a);
+    }
     return arr.length;
   },
   pop: (arr) => arr.pop(),
@@ -103,7 +119,10 @@ const ARRAY_METHODS: Record<string, ArrayImpl> = table<ArrayImpl>({
     info.charge(arr.length);
     if (arr.length + args.length > 1_000_000) info.fail("Arrays are limited to 1,000,000 items");
     const rest = arr.splice(0);
-    for (const x of args) arr.push(x);
+    for (const x of args) {
+      arr.push(x);
+      info.noteStore(arr, x);
+    }
     for (const x of rest) arr.push(x);
     return arr.length;
   },
@@ -121,7 +140,10 @@ const ARRAY_METHODS: Record<string, ArrayImpl> = table<ArrayImpl>({
     if (arr.length + insert.length > 1_000_000) info.fail("Arrays are limited to 1,000,000 items");
     // Insert without spreading (a native spread of a big array overflows the stack).
     const tail = arr.splice(start);
-    for (const x of insert) arr.push(x);
+    for (const x of insert) {
+      arr.push(x);
+      info.noteStore(arr, x);
+    }
     for (const x of tail) arr.push(x);
     return removed;
   },
@@ -219,6 +241,7 @@ const ARRAY_METHODS: Record<string, ArrayImpl> = table<ArrayImpl>({
   },
   fill: (arr, args, info) => {
     info.charge(arr.length);
+    info.noteStore(arr, args[0]);
     return arr.fill(args[0], relIndex(args[1], arr.length, 0), relIndex(args[2], arr.length, arr.length));
   },
   // Extras that read well in greenhouse scripts.
@@ -448,7 +471,11 @@ export function coreGlobals(): Record<string, unknown> {
       if (!isPlainObject(target)) info.fail("assign needs one of your objects as its first argument");
       for (const src of a.slice(1)) {
         if (src === null || src === undefined) continue;
-        for (const k of keysOf(src, info)) setOwn(target as PlainObject, k, getKey(src, k));
+        for (const k of keysOf(src, info)) {
+          const v = getKey(src, k);
+          setOwn(target as PlainObject, k, v);
+          info.noteStore(target as PlainObject, v);
+        }
       }
       return target;
     }),

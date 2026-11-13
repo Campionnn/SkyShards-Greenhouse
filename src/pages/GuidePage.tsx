@@ -10,8 +10,10 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Backpack, Check, Compass, Download, FlaskConical, Loader2, PartyPopper, Pencil, Plus, RefreshCw, Settings2 } from "lucide-react";
-import { SegmentedControl } from "../components/ui/Panel";
+import { Check, FlaskConical, LoaderCircle, Pencil, Plus, RefreshCw, SkipForward, SlidersHorizontal } from "lucide-react";
+import { cn } from "../components/ui/cn";
+import { IconButton, KitButton, Segmented } from "../components/ui/kit";
+import { surface } from "../components/ui/surface";
 import { LocalStorageManager, type StoredGuideState } from "../utilities/localStorageManager";
 import type { SimulatorScenarioHandoff } from "../utilities/layoutHandoff";
 import {
@@ -69,8 +71,9 @@ import { ImportDialog } from "../components/guide/ImportDialog";
 import { ForecastStrip } from "../components/guide/ForecastStrip";
 import { SettingsDialog } from "../components/guide/SettingsDialog";
 import { FlowNeedsPanel } from "../components/guide/FlowNeeds";
-import { HowTo } from "../components/guide/HowTo";
-import { buttonClass, scheduleText, timeAgo, type Precision } from "../components/guide/format";
+import { HowTo, HowToHint } from "../components/guide/HowTo";
+import { scheduleText, timeAgo, type Precision } from "../components/guide/format";
+import { liveSkipped, loadSkipped, saveSkipped, type SkippedPlots } from "../components/guide/skipped";
 import "../components/guide/guide.css";
 
 const guideEnv = createGuideEnv();
@@ -109,9 +112,8 @@ const COUNT_WORDS: Record<number, string> = { 1: "one", 2: "two", 3: "three" };
 
 /** Which flow the Guide follows: every plot unlocked, or only Plots 1 and 2. Each keeps its own saved progress. */
 const VariantSwitch: React.FC<{ value: FlowVariant; onChange: (variant: FlowVariant) => void }> = ({ value, onChange }) => (
-  <SegmentedControl<FlowVariant>
-    size="xs"
-    nowrap
+  <Segmented<FlowVariant>
+    label="Flow version"
     value={value}
     onChange={onChange}
     options={FLOW_VARIANT_ORDER.map((v) => ({
@@ -142,6 +144,17 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
   const [precision, setPrecision] = useState<Precision>("quick");
   const [open, setOpen] = useState<Open>(null);
   const navigate = useNavigate();
+  // Plots skipped this visit and what each still needs (the saved state can't tell a skip from a confirm).
+  const [skippedStore, setSkippedStore] = useState<SkippedPlots>(() => loadSkipped(variant));
+  const setSkipped = useCallback(
+    (fn: (s: SkippedPlots) => SkippedPlots) =>
+      setSkippedStore((s) => {
+        const next = fn(s);
+        saveSkipped(variant, next);
+        return next;
+      }),
+    [variant]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -307,8 +320,10 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
 
   if (loadError) {
     return (
-      <div className="mx-auto max-w-3xl space-y-3 px-4 py-10">
-        <p className="rounded-lg border border-red-700 bg-red-950/40 p-4 text-sm text-red-200">{loadError}</p>
+      <div className="mx-auto max-w-3xl space-y-3 py-10">
+        <p className="rounded-container border border-problem/30 bg-problem/10 p-4 text-body text-problem" role="alert">
+          {loadError}
+        </p>
         <div className="flex justify-center">
           <VariantSwitch value={variant} onChange={onVariant} />
         </div>
@@ -318,7 +333,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
   if (!flow || !catalog || !state) {
     return (
       <div className="flex items-center justify-center py-12" role="status" aria-label="Loading">
-        <Loader2 className="h-6 w-6 animate-spin text-emerald-400" aria-hidden />
+        <LoaderCircle className="size-6 animate-spin text-fg-meta motion-reduce:animate-none" aria-hidden />
       </div>
     );
   }
@@ -335,6 +350,16 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
   const lastImport = state.lastImport?.appliedAt !== undefined ? state.lastImport : undefined;
   const confirmedSinceImport = lastImport ? Object.keys(state.confirmations).filter((id) => Object.keys(state.confirmations[Number(id)].delta).length > 0).length : 0;
   const checked = catalog.plots.filter((id) => state.plots[id]?.acted);
+  const skipped = liveSkipped(skippedStore, (id) => !!state.plots[id]?.acted && !!state.confirmations[id]);
+  /** "7 Dead Plant", "7 Dead Plant and 2 Fermento" (what a supplies card was short of). */
+  const needText = (outcome: PlotOutcome | null) => (outcome?.supplyBlock?.need ?? []).map((b) => `${b.count} ${itemName(data, b.item)}`).join(" and ");
+  const simulatorHandoff = () =>
+    navigate("/simulator", {
+      state: {
+        incomingScenario: { scenario: simulatorScenario(flow, toInput(state)), name: plotCount === 2 ? "the two-plot Rose Dragon flow" : "the Rose Dragon flow" },
+      } satisfies SimulatorScenarioHandoff,
+    });
+  const simulatorTitle = `Load all ${plotsWord} plots' flows and scripts into the Simulator, starting from your farms and what you own now`;
   // What the plots grew since last visit: the farms they stood on before this visit's confirmations
   // (empty farmland grows Lonelilies), then the farms they're on now.
   const harvestable = catalog.plots.flatMap((id) => {
@@ -348,162 +373,32 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
       }
     });
   });
+  const schedule = scheduleText(state.checkEvery, state.settings.activity);
 
   return (
-    <div className="guide-root w-full space-y-4 overflow-x-clip py-3 sm:py-4">
-      {/* Same header row as the Simulator: icon, small title, info hint, one action on the right. */}
-      <header className="flex flex-wrap items-center gap-2">
-        <Compass className="h-4 w-4 text-emerald-400" aria-hidden />
-        <h1 className="text-sm font-medium text-slate-200">Rose Dragon Guide</h1>
+    <div className="guide-root @container w-full space-y-3 overflow-x-clip py-3 sm:py-4">
+      {/* Title, how-to hint, flow version; the Simulator hand-off and "how you play" on the right. */}
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="text-hero text-fg">Rose Dragon Guide</h1>
+        <HowToHint plotCount={plotCount} loginOrder={loginOrder(catalog.plots)} />
         <VariantSwitch value={variant} onChange={onVariant} />
-        <button
-          type="button"
-          className={`${buttonClass.neutral} ml-auto`}
-          onClick={() =>
-            navigate("/simulator", {
-              state: {
-                incomingScenario: { scenario: simulatorScenario(flow, toInput(state)), name: plotCount === 2 ? "the two-plot Rose Dragon flow" : "the Rose Dragon flow" },
-              } satisfies SimulatorScenarioHandoff,
-            })
-          }
-          title={`Load all ${plotsWord} plots' flows and scripts into the Simulator, starting from your farms and what you own now`}
-        >
-          <FlaskConical className="h-3.5 w-3.5" /> <span>Simulator</span>
-        </button>
-        <button
-          type="button"
-          className={buttonClass.neutral}
-          onClick={() => setOpen({ kind: "settings" })}
-          aria-label="How you play: schedule and stats"
-          title="When you're online, your stats and the forecast precision"
-        >
-          <Settings2 className="h-3.5 w-3.5" /> <span>Online {scheduleText(state.checkEvery, state.settings.activity)}</span>
-        </button>
+        <span className="ml-auto flex flex-wrap items-center gap-1.5">
+          <KitButton variant="ghost" size="md" className="max-sm:hidden" onClick={simulatorHandoff} title={simulatorTitle}>
+            <FlaskConical /> Simulator
+          </KitButton>
+          <IconButton variant="ghost" size="md" className="sm:hidden" onClick={simulatorHandoff} title={simulatorTitle} aria-label="Open in the Simulator">
+            <FlaskConical />
+          </IconButton>
+          <KitButton size="md" onClick={() => setOpen({ kind: "settings" })} aria-label={`How you play: online ${schedule}, your stats, forecast precision`} title="When you're online, your stats and the forecast precision">
+            <SlidersHorizontal /> {state.checkEvery !== null ? `Every ${Number.isInteger(state.checkEvery) ? state.checkEvery : state.checkEvery.toFixed(1)} h` : schedule}
+          </KitButton>
+        </span>
       </header>
 
       <HowTo plotCount={plotCount} loginOrder={loginOrder(catalog.plots)} />
 
-      {/* What you own: one panel. Empty, it asks for a first entry; afterwards its main action is
-          the thing you do every visit (add a harvest), with editing the totals as the alternative. */}
-      {tracked === 0 ? (
-        <section className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3" aria-label="What you own">
-          <Backpack className="hidden h-4 w-4 shrink-0 text-emerald-400 sm:block" aria-hidden />
-          <div className="min-w-0 flex-1 basis-64">
-            <h2 className="text-sm font-medium text-emerald-200">Start by entering what you own</h2>
-            <p className="text-xs text-slate-400">
-              The plan depends on your stock: the Dead Plants and Fermento you've farmed, and any mutations you already have. Until then, the cards below only use
-              farms that cost nothing.
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
-            <button type="button" className={buttonClass.secondary} onClick={() => setOpen({ kind: "import" })} title="Count what's in your sacks, ender chest and backpacks">
-              <Download className="h-4 w-4" /> Import from Hypixel
-            </button>
-            <button type="button" className={buttonClass.primary} onClick={() => setOpen({ kind: "inventory", mode: "set" })}>
-              <Backpack className="h-4 w-4" /> Enter what I own
-            </button>
-          </div>
-        </section>
-      ) : (
-        <section className="flex flex-col gap-3 rounded-lg border border-slate-600/30 bg-slate-800/40 px-4 py-3 sm:flex-row sm:items-center" aria-label="What you own">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <Backpack className="h-4 w-4 text-emerald-400" aria-hidden />
-            <h2 className="text-sm font-medium text-slate-200">What you own</h2>
-            <span className="text-xs text-slate-400">
-              <span className={goalState.legendaries.owned === goalState.legendaries.total ? "text-emerald-300" : "text-slate-300"}>
-                {goalState.legendaries.owned}/{goalState.legendaries.total}
-              </span>{" "}
-              Rose Dragon legendaries
-              {goalState.others.total > 0 && (
-                <>
-                  {" · "}
-                  <span
-                    className={goalState.others.owned === goalState.others.total ? "text-emerald-300" : "text-slate-300"}
-                    title={
-                      goalState.others.missing.length
-                        ? `Still missing one of: ${goalState.others.missing.map((g) => itemName(data, g.item)).join(", ")}`
-                        : "You have one of every other mutation"
-                    }
-                  >
-                    {goalState.others.owned}/{goalState.others.total}
-                  </span>{" "}
-                  one of each other mutation
-                </>
-              )}{" "}
-              · {tracked} item{tracked === 1 ? "" : "s"} tracked
-            </span>
-            {lastImport && (
-              <span
-                className="basis-full text-[11px] text-slate-500 sm:basis-auto"
-                title={`Last Hypixel import: ${new Date(lastImport.appliedAt ?? lastImport.fetchedAt).toLocaleString()}${lastImport.profileName ? ` (${lastImport.username}, ${lastImport.profileName})` : ""}`}
-              >
-                Imported from Hypixel {timeAgo(lastImport.appliedAt ?? lastImport.fetchedAt)}
-                {confirmedSinceImport > 0 && ` · ${confirmedSinceImport} plot${confirmedSinceImport === 1 ? "" : "s"} confirmed since`}
-              </span>
-            )}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 [&>button]:flex-1 sm:[&>button]:flex-none">
-            <button
-              type="button"
-              className={buttonClass.secondary}
-              onClick={() => setOpen({ kind: "import" })}
-              title={
-                lastImport
-                  ? `Look ${lastImport.username} up again and see what changed since ${timeAgo(lastImport.appliedAt ?? lastImport.fetchedAt)}`
-                  : "Set your totals from your sacks, ender chest and backpacks"
-              }
-            >
-              {lastImport ? <RefreshCw className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />} {lastImport ? "Import again" : "Import"}
-            </button>
-            <button
-              type="button"
-              className={buttonClass.secondary}
-              onClick={() => setOpen({ kind: "inventory", mode: "set" })}
-              title="Correct the totals in your inventory"
-            >
-              <Pencil className="h-3.5 w-3.5" /> Edit totals
-            </button>
-            {!done && (
-              <button
-                type="button"
-                className={buttonClass.primary}
-                onClick={() => setOpen({ kind: "inventory", mode: "add" })}
-                title="Type what you just harvested; it's added to what you have"
-              >
-                <Plus className="h-4 w-4" /> Add a harvest
-              </button>
-            )}
-          </div>
-        </section>
-      )}
-
-      {done ? (
-        <section className="flex flex-col items-center gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-4 py-8 text-center" aria-label="Done">
-          <PartyPopper className="h-8 w-8 text-yellow-300" aria-hidden />
-          <h2 className="text-lg font-semibold text-yellow-200">You have everything for the Rose Dragon.</h2>
-          <p className="max-w-xl text-sm text-slate-300">
-            Every legendary ingredient is in your inventory ({goalState.legendaries.items.map((g) => `${g.count}× ${itemName(data, g.item)}`).join(", ")})
-            {goalState.others.total > 0 ? ", plus one of every other mutation" : ""}. Your plots are free for
-            whatever comes next.
-          </p>
-        </section>
-      ) : (
-        <ForecastStrip
-          forecast={forecast}
-          plan={plan}
-          progress={progress}
-          error={forecastError}
-          catalog={catalog}
-          data={data}
-          outcomes={outcomes}
-          onOpenSettings={() => setOpen({ kind: "settings" })}
-        />
-      )}
-
-      {!done && needs && <FlowNeedsPanel needs={needs} catalog={catalog} data={data} />}
-
       {(problems.length > 0 || decideError) && (
-        <div className="rounded-lg border border-red-700/70 bg-red-950/30 p-3 text-sm text-red-200" role="alert">
+        <div className="rounded-container border border-problem/30 bg-problem/10 p-3 text-body text-problem" role="alert">
           {problems.map((p) => (
             <p key={p}>{p}</p>
           ))}
@@ -511,62 +406,154 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         </div>
       )}
 
-      {!done && allActed(state) && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
-          <div>
-            <p className="text-sm font-medium text-emerald-200">All {plotsWord} plots are done for this visit.</p>
-            <p className="text-xs text-slate-400">Next time you're online, harvest, then start the next check-in and add what you got.</p>
+      {/* The status panel: the forecast (or Done), the whole flow, and what you own with its actions. */}
+      <section className={cn(surface.card, "space-y-2 px-4 py-3")} aria-label="Status">
+        {done ? (
+          <div aria-label="Done" className="space-y-1">
+            <h2 className="text-hero text-fg">You have everything for the Rose Dragon.</h2>
+            <p className="text-body text-fg-body">
+              Every legendary ingredient is in your inventory ({goalState.legendaries.items.map((g) => `${g.count}× ${itemName(data, g.item)}`).join(", ")})
+              {goalState.others.total > 0 ? ", plus one of every other mutation" : ""}. Your plots are free for whatever comes next.
+            </p>
           </div>
-          <button
-            type="button"
-            className={buttonClass.primary}
+        ) : (
+          <ForecastStrip forecast={forecast} plan={plan} progress={progress} error={forecastError} catalog={catalog} data={data} outcomes={outcomes} onOpenSettings={() => setOpen({ kind: "settings" })} />
+        )}
+        {/* One row while the column is 800px or more (1366 and 1024 windows): whole flow, then the stock (shrinks and truncates), then its fixed actions. */}
+        <div className="flex flex-nowrap items-center gap-x-5 gap-y-2 border-t border-line pt-2 @max-[50rem]:flex-wrap">
+          {!done && needs && <FlowNeedsPanel needs={needs} catalog={catalog} data={data} className="max-w-full shrink-0 @max-[50rem]:shrink" />}
+          {tracked === 0 ? (
+            <section className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2" aria-label="What you own">
+              <span className="min-w-0 flex-1 basis-64 text-secondary text-fg-muted">
+                <b className="font-semibold text-fg">Start by entering what you own.</b> Until then, the cards only use farms that cost nothing.
+              </span>
+              <span className="flex shrink-0 flex-wrap items-center gap-1.5">
+                <KitButton size="md" onClick={() => setOpen({ kind: "import" })} title="Count what's in your sacks, ender chest and backpacks">
+                  <RefreshCw /> Import from Hypixel
+                </KitButton>
+                <KitButton variant="primary" size="md" onClick={() => setOpen({ kind: "inventory", mode: "set" })}>
+                  <Pencil /> Enter what I own
+                </KitButton>
+              </span>
+            </section>
+          ) : (
+            <section className="flex min-w-0 flex-1 items-center gap-x-3 gap-y-2 @max-[50rem]:basis-full @max-[50rem]:flex-wrap" aria-label="What you own">
+              <span
+                className="min-w-0 flex-1 truncate text-secondary tabular-nums text-fg-muted @max-[50rem]:basis-full @max-[50rem]:whitespace-normal"
+                title={`${goalState.legendaries.owned}/${goalState.legendaries.total} Rose Dragon legendaries · ${goalState.others.owned}/${goalState.others.total} one of each other mutation · ${tracked} items tracked`}
+              >
+                <b className="font-semibold text-fg">
+                  {goalState.legendaries.owned}/{goalState.legendaries.total}
+                </b>{" "}
+                legendaries
+                {goalState.others.total > 0 && (
+                  <>
+                    {" · "}
+                    <b
+                      className="font-semibold text-fg"
+                      title={goalState.others.missing.length ? `Still missing one of: ${goalState.others.missing.map((g) => itemName(data, g.item)).join(", ")}` : "You have one of every other mutation"}
+                    >
+                      {goalState.others.owned}/{goalState.others.total}
+                    </b>{" "}
+                    one of each
+                  </>
+                )}{" "}
+                · {tracked} tracked
+                {lastImport && (
+                  <span
+                    className="text-fg-meta"
+                    title={`Last Hypixel import: ${new Date(lastImport.appliedAt ?? lastImport.fetchedAt).toLocaleString()}${lastImport.profileName ? ` (${lastImport.username}, ${lastImport.profileName})` : ""}`}
+                  >
+                    {" "}
+                    · imported {timeAgo(lastImport.appliedAt ?? lastImport.fetchedAt)}
+                    {confirmedSinceImport > 0 && `, ${confirmedSinceImport} plot${confirmedSinceImport === 1 ? "" : "s"} confirmed since`}
+                  </span>
+                )}
+              </span>
+              <span className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">
+                <KitButton
+                  size="md"
+                  onClick={() => setOpen({ kind: "import" })}
+                  title={lastImport ? `Look ${lastImport.username} up again and see what changed since ${timeAgo(lastImport.appliedAt ?? lastImport.fetchedAt)}` : "Set your totals from your sacks, ender chest and backpacks"}
+                >
+                  <RefreshCw /> {lastImport ? "Import again" : "Import"}
+                </KitButton>
+                <KitButton variant="ghost" size="md" onClick={() => setOpen({ kind: "inventory", mode: "set" })} title="Correct the totals in your inventory">
+                  <Pencil /> Edit
+                </KitButton>
+                {!done && (
+                  <KitButton size="md" onClick={() => setOpen({ kind: "inventory", mode: "add" })} title="Type what you just harvested; it's added to what you have">
+                    <Plus /> Add harvest
+                  </KitButton>
+                )}
+              </span>
+            </section>
+          )}
+        </div>
+      </section>
+
+      {!done && allActed(state) && (
+        <section className={cn(surface.card, "flex flex-wrap items-center justify-between gap-3 px-4 py-3")} aria-label="This visit">
+          <p className="text-body text-fg-body">
+            <b className="font-semibold text-fg">
+              {Object.keys(skipped).length > 0 ? `All ${plotsWord} plots are done or skipped for this visit.` : `All ${plotsWord} plots are done for this visit.`}
+            </b>{" "}
+            Next time you're online, harvest, then press Next check-in.
+          </p>
+          <KitButton
+            variant="primary"
+            size="md"
             onClick={() => {
               commit(startNewCheckIn);
+              setSkipped(() => ({}));
               setOpen({ kind: "inventory", mode: "add" });
             }}
           >
-            <RefreshCw className="h-4 w-4" /> I'm back: next check-in
-          </button>
+            <RefreshCw /> Next check-in
+          </KitButton>
         </section>
       )}
 
+      {/* The one progress element: this visit, plot by plot. */}
       {!done && !allActed(state) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1 text-xs text-slate-400" aria-label="This visit">
-          <span className="font-medium text-slate-300">This visit</span>
+        <ol className="flex min-w-0 flex-wrap items-center gap-1" aria-label="This visit">
           {catalog.plots.map((id, i) => {
-            const isDone = checked.includes(id);
+            const isSkipped = id in skipped;
+            const isDone = checked.includes(id) && !isSkipped;
             return (
-              <React.Fragment key={id}>
-                {i > 0 && <span className="text-slate-600">→</span>}
+              <li key={id} className="flex items-center gap-1">
+                {i > 0 && <span aria-hidden className="h-px w-3 bg-line-control" />}
                 <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${
-                    isDone
-                      ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                      : id === nextPlot
-                        ? "border-emerald-500/50 text-emerald-200"
-                        : "border-slate-600/40 text-slate-400"
-                  }`}
+                  aria-current={id === nextPlot ? "step" : undefined}
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1 rounded-control border px-2 text-secondary",
+                    isDone || isSkipped ? "border-line text-fg-meta" : id === nextPlot ? "border-select/60 bg-select/10 text-select-fg" : "border-line-strong text-fg-muted",
+                    isSkipped && "border-dashed",
+                  )}
                 >
-                  {isDone && <Check className="h-3 w-3" />}Plot {id}
+                  {isDone && <Check aria-hidden className="size-3" />}
+                  {isSkipped && <SkipForward aria-hidden className="size-3" />}Plot {id}
+                  {isSkipped && <span className="sr-only"> (skipped)</span>}
                 </span>
-              </React.Fragment>
+              </li>
             );
           })}
-          <span>
-            {checked.length} of {plotCount} done.{" "}
-            {nextPlot !== undefined && (checked.length === 0 ? `Start with Plot ${nextPlot}, then press its button.` : `Next: Plot ${nextPlot}. Press each plot's button once you've done it.`)}
-          </span>
-        </div>
+          <li className="ml-2 text-secondary tabular-nums text-fg-meta">
+            {checked.length - Object.keys(skipped).length} of {plotCount} done
+            {Object.keys(skipped).length > 0 && ` · ${Object.keys(skipped).length} skipped`}
+            {nextPlot !== undefined && checked.length > 0 ? ` · next: Plot ${nextPlot}` : ""}
+          </li>
+        </ol>
       )}
 
       {!done && (
-        <div className={`grid min-w-0 gap-3 ${plotCount === 2 ? "lg:grid-cols-2" : "lg:grid-cols-3"} ${stale ? "opacity-80 transition-opacity motion-reduce:transition-none" : ""}`}>
+        <div className={cn("grid min-w-0 grid-cols-1 gap-3", plotCount === 2 ? "@min-[52rem]:grid-cols-2" : "@min-[52rem]:grid-cols-3", stale && "opacity-80 transition-opacity motion-reduce:transition-none")}>
           {catalog.plots.map((plotId) => {
             const plot = state.plots[plotId];
             const outcome = outcomeFor(plotId);
             if (!plot.acted && !outcome) {
               return (
-                <div key={plotId} className="flex min-h-48 items-center justify-center rounded-lg border border-slate-600/30 bg-slate-800/40 text-xs text-slate-400">
+                <div key={plotId} className={cn(surface.card, "flex min-h-48 items-center justify-center text-secondary text-fg-meta")}>
                   Working out Plot {plotId}…
                 </div>
               );
@@ -586,9 +573,28 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
                 earlier={earlier}
                 zombudPerHarvest={perHarvest}
                 canUndo={!!state.confirmations[plotId]}
-                onConfirm={(extras) => outcome && commit((s) => confirmPlot(s, outcome, extras))}
-                onSkip={() => commit((s) => skipPlot(s, plotId))}
-                onUndo={() => commit((s) => undoPlot(s, plotId))}
+                onConfirm={(extras) => {
+                  if (!outcome) return;
+                  commit((s) => confirmPlot(s, outcome, extras));
+                  setSkipped((s) => {
+                    const next = { ...s };
+                    delete next[plotId];
+                    return next;
+                  });
+                }}
+                onSkip={() => {
+                  const need = needText(outcome);
+                  commit((s) => skipPlot(s, plotId));
+                  setSkipped((s) => ({ ...s, [plotId]: need }));
+                }}
+                onUndo={() => {
+                  commit((s) => undoPlot(s, plotId));
+                  setSkipped((s) => {
+                    const next = { ...s };
+                    delete next[plotId];
+                    return next;
+                  });
+                }}
                 onPickFarm={() => setOpen({ kind: "farm", plotId })}
                 onDevourerRefresh={(on) =>
                   commit((s) => setFacts(s, plotId, { ...(s.plots[plotId].facts ?? emptyFacts()), devourerRefresh: on }))
@@ -598,6 +604,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
                 inventory={state.inventory}
                 visitPlots={catalog.plots}
                 checked={checked}
+                skipped={plot.acted ? skipped[plotId] : undefined}
               />
             );
           })}
@@ -636,6 +643,7 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
         onPrecision={setPrecision}
         onReset={() => {
           LocalStorageManager.clearGuideState(variant);
+          setSkipped(() => ({}));
           latest.current = null;
           setState(initialState(flow, guideDefaultSettings()));
           setOpen(null);
@@ -651,6 +659,11 @@ const GuideBoard: React.FC<{ variant: FlowVariant; onVariant: (variant: FlowVari
           data={data}
           onPick={(farm) => {
             commit((s) => setFarm(s, open.plotId, farm));
+            setSkipped((s) => {
+              const next = { ...s };
+              delete next[open.plotId];
+              return next;
+            });
             setOpen(null);
           }}
           onClose={() => setOpen(null)}

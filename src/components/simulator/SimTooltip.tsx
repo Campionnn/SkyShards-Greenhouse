@@ -21,6 +21,7 @@ import {
 } from "../../simulator";
 import { effectiveEffects, effectsGivenBy, getCellPixelPosition, getEffectName, sortEffects } from "../../utilities";
 import { getRarityTextColor } from "../../utilities/rarity";
+import { requirementPlants } from "../../utilities/requirementLayout";
 import { CropImage, EffectChips } from "../shared";
 import { formatCount, formatDuration, formatRemaining, kindData, nameOf, plantIconOf } from "./format";
 import { GridMarkersSection } from "./markers";
@@ -35,6 +36,17 @@ export type TooltipTarget =
   | { kind: "missing"; item: string; row: number; col: number }
   /** Sanity Check on an empty (non-slot) cell: which mutations could spawn here. */
   | { kind: "check"; row: number; col: number; result: SanityCheckResult };
+
+/** "2x Snoozling (6 cells), 6x Thunderling": plants, and the ring cells a multi-cell ingredient fills. */
+function needsText(m: MutationDef): string {
+  const plants = requirementPlants((id) => kindData(id)?.size ?? 1, m.size, m.requirements);
+  return m.requirements
+    .map((r) => {
+      const p = plants[r.crop] ?? r.count;
+      return `${p}x ${nameOf(r.crop)}${p !== r.count ? ` (${r.count} cells)` : ""}`;
+    })
+    .join(", ");
+}
 
 const WIDTH = 280;
 const EST_HEIGHT = 300;
@@ -225,7 +237,7 @@ export const SimTooltip: React.FC<{
           </p>
           {m && m.requirements.length > 0 && (
             <p className="text-slate-400">
-              Needs {m.requirements.map((r) => `${r.count}x ${nameOf(r.crop)}`).join(", ")} in the 8 surrounding cells.
+              Needs {needsText(m)} in the {4 * m.size + 4} surrounding cells.
             </p>
           )}
           {target.ineligibleCycles > 0 && (

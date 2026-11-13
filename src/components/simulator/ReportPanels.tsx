@@ -93,9 +93,9 @@ export const MoneyPanel: React.FC<{
     {
       label: "Rare crops",
       get: (s) => s.revenue.rareCrops ?? 0,
-      hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and mutations' own Ethereal Vine. Overbloom raises the chance for both. Harvest yield does not scale either (the Advanced \"Legacy: yield scales mutation items\" setting brings back the old yield-scaled Ethereal Vine count). Wiki NPC prices (override in Advanced).",
+      hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and mutations' own Ethereal Vine. Overbloom raises the chance for both; the armor drops are also scaled by the harvested plant's loot multiplier (patch notes, Aug 20). Harvest yield does not scale either (the Advanced \"Legacy: yield scales mutation items\" setting brings back the old yield-scaled Ethereal Vine count). Wiki NPC prices (override in Advanced).",
     },
-    { label: "Harvest Bounty", get: (s) => s.revenue.rareDrops, hint: "Bonus Drops rolls (not boosted by Overbloom). Wiki NPC prices; chips and Iridium are not NPC-sellable." },
+    { label: "Harvest Bounty", get: (s) => s.revenue.rareDrops, hint: "Bonus Drops rolls (not boosted by Overbloom). Wiki NPC prices (Evergreen and Synthesis Chips sell for 150,000); Iridium is not NPC-sellable." },
     {
       label: "Mutation items",
       get: (s) => s.revenue.mutationItems,

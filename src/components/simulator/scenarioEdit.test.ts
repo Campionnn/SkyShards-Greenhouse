@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultSettings, migrateScenario, type Scenario } from "../../simulator";
+import { DEFAULT_CONFIG, defaultSettings, migrateScenario, type Scenario } from "../../simulator";
 import { REMOVED_CONFIG } from "../../simulator/migrate";
 import { engine, LAYOUT_A_CODE, LAYOUT_B_CODE } from "../../simulator/testHelpers";
 import { decodeDesign } from "../../utilities/designEncoding";
@@ -306,6 +306,16 @@ describe("flow export / import", () => {
     const up = migrateScenario(saved);
     expect(up.settings.config).toMatchObject({ waterLossMin: 2, waterLossMax: 3 });
     expect(withPlots(LAYOUT_A_CODE).settings.config).toMatchObject({ waterLossMin: 18, waterLossMax: 22 });
+  });
+
+  it("a save from before the loot multipliers: the old capRareCropChance (off) is dropped, so the new capRareCrops default (on) applies", () => {
+    const saved = withPlots(LAYOUT_A_CODE);
+    const config = { ...saved.settings.config, capRareCropChance: false } as Record<string, unknown>;
+    delete config.capRareCrops;
+    (saved.settings.config as unknown as Record<string, unknown>) = config;
+    const up = migrateScenario(saved);
+    expect(up.settings.config).not.toHaveProperty("capRareCropChance");
+    expect({ ...DEFAULT_CONFIG, ...up.settings.config }.capRareCrops).toBe(true);
   });
 
   it("a save from before auto aloe harvest: the old default 14 becomes auto, another stage stays fixed", () => {

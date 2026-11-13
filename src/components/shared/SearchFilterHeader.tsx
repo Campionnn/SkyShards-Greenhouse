@@ -3,16 +3,17 @@ import { CropSearchInput } from "./CropSearchInput";
 import { CropFilterDropdown, type FilterOption } from "./CropFilterDropdown";
 import { CROP_FILTER_OPTIONS } from "../../constants";
 import type { CropFilterCategory } from "../../types/greenhouse";
+import { cn } from "../ui/cn";
 
 export interface SearchFilterHeaderProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
-  
+
   filter: CropFilterCategory;
   onFilterChange: (value: CropFilterCategory) => void;
   filterOptions?: FilterOption[];
-  
+
   className?: string;
   searchClassName?: string;
   filterClassName?: string;
@@ -26,21 +27,14 @@ export const SearchFilterHeader: React.FC<SearchFilterHeaderProps> = ({
   filter,
   onFilterChange,
   filterOptions = [...CROP_FILTER_OPTIONS],
-  className = "",
-  searchClassName = "",
-  filterClassName = "",
+  className,
+  searchClassName,
+  filterClassName,
 }) => {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  
   return (
-    <div className={`flex gap-2 ${className}`}>
-      <CropSearchInput
-        value={searchTerm}
-        onChange={onSearchChange}
-        placeholder={searchPlaceholder}
-        className={`flex-1 ${searchClassName}`}
-      />
-      
+    <div className={cn("flex min-w-0 gap-1.5", className)}>
+      <CropSearchInput value={searchTerm} onChange={onSearchChange} placeholder={searchPlaceholder} className={cn("flex-1", searchClassName)} />
       <CropFilterDropdown
         value={filter}
         onChange={onFilterChange}

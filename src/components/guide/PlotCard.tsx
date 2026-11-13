@@ -1,10 +1,11 @@
 /**
- * One plot's column on the dashboard: what to do (the confirm button sits at the top of the card,
- * so it never moves when the sections below open, close or change), where the plot is now, where
- * it should go (as a real picture), what that costs and what to do while there.
+ * One plot's column on the dashboard, top to bottom: the header, the confirm button(s) (first, so
+ * they never move when the sections below open, close or change), the instruction (its reason in a
+ * hint), the destination farm as a large picture (where the plot is now under it), then what to do
+ * and what the farm is working towards.
  */
 import React, { useState } from "react";
-import { ArrowRight, Check, ChevronRight, ExternalLink, MapPin, Minus, Package, Plus, SkipForward, Undo2 } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, ExternalLink, Minus, Plus, SkipForward, Undo2 } from "lucide-react";
 import type { GameData } from "../../simulator/data/types";
 import {
   GENERAL_TIPS,
@@ -21,19 +22,25 @@ import {
   type ScriptKnobs,
   type Verb,
 } from "../../guide";
+import { LinkButton } from "../ui/Card";
+import { cn } from "../ui/cn";
+import { InfoHint } from "../ui/InfoHint";
+import { IconButton, KitButton, KitLabel, Pill, type Tone } from "../ui/kit";
+import { surface } from "../ui/surface";
 import { FarmPicture } from "./FarmPicture";
 import { WorkingTowards } from "./FlowNeeds";
 import { ItemChip } from "./primitives";
-import { buttonClass } from "./format";
+import { confirmHintText, confirmLabel } from "./format";
 
-const VERB_STYLE: Record<Verb, { badge: string; label: string }> = {
-  switch: { badge: "border-blue-500/30 bg-blue-500/15 text-blue-300", label: "Switch" },
-  stay: { badge: "border-emerald-500/30 bg-emerald-500/15 text-emerald-300", label: "Keep" },
-  rebuild: { badge: "border-amber-500/30 bg-amber-500/15 text-amber-300", label: "Rebuild" },
-  clear: { badge: "border-slate-500/30 bg-slate-500/15 text-slate-300", label: "Clear" },
-  wait: { badge: "border-slate-500/30 bg-slate-500/15 text-slate-400", label: "Wait" },
-  supplies: { badge: "border-amber-500/30 bg-amber-500/15 text-amber-300", label: "Needs supplies" },
-  done: { badge: "border-yellow-500/30 bg-yellow-500/15 text-yellow-300", label: "Done" },
+/** One badge style (the kit's Pill); colour only where it means something. */
+const VERB_BADGE: Record<Verb, { label: string; tone: Tone }> = {
+  switch: { label: "Switch", tone: "neutral" },
+  stay: { label: "Keep", tone: "neutral" },
+  rebuild: { label: "Rebuild", tone: "warn" },
+  clear: { label: "Clear", tone: "neutral" },
+  wait: { label: "Wait", tone: "neutral" },
+  supplies: { label: "Needs supplies", tone: "warn" },
+  done: { label: "Done", tone: "neutral" },
 };
 
 function tally(kinds: string[]): ItemCount[] {
@@ -72,6 +79,8 @@ export interface PlotCardProps {
   /** Plots in this visit (login order) and which of them are already checked, for "waiting on" lines. */
   visitPlots?: number[];
   checked?: number[];
+  /** The plot was skipped this visit (not done): what it still needs, e.g. "7 Dead Plant". */
+  skipped?: string;
 }
 
 /** "Plot 2", "Plots 2 and 3". */
@@ -84,34 +93,82 @@ function freeLabel(free: ItemCount[]): string {
   return [crops ? `${crops} base crop${crops === 1 ? "" : "s"}` : "", fire ? `${fire} fire` : ""].filter(Boolean).join(" and ");
 }
 
-const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div>
-    <h4 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">{title}</h4>
+/** A step on the card: a short label (with its explanation in a hint) over its content. */
+const Section: React.FC<{ title: string; hint?: React.ReactNode; hintTitle?: string; children: React.ReactNode }> = ({ title, hint, hintTitle, children }) => (
+  <section className="space-y-1.5">
+    <KitLabel
+      actions={
+        hint ? (
+          <InfoHint title={hintTitle ?? title} label={`About: ${title}`} width={280}>
+            {hint}
+          </InfoHint>
+        ) : undefined
+      }
+    >
+      {title}
+    </KitLabel>
     {children}
+  </section>
+);
+
+const Chips: React.FC<{ items: ItemCount[]; name: (id: string) => string; tone?: React.ComponentProps<typeof ItemChip>["tone"]; compact?: boolean }> = ({ items, name, tone, compact }) => (
+  <div className="flex flex-wrap gap-1">
+    {items.map((s) => (
+      <ItemChip key={s.item} id={s.item} name={name(s.item)} count={s.count} tone={tone} compact={compact} />
+    ))}
   </div>
 );
 
 /** A collapsible section; the confirm button is above it, so opening it never moves the button. */
 const Fold: React.FC<{ title: React.ReactNode; children: React.ReactNode }> = ({ title, children }) => (
   <details className="group">
-    <summary className="flex min-h-8 cursor-pointer select-none list-none items-center gap-1 text-xs font-medium uppercase tracking-wide text-slate-400 hover:text-slate-200 [&::-webkit-details-marker]:hidden">
-      <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden />
+    <summary className="focus-ring flex min-h-8 cursor-pointer list-none items-center gap-1 rounded-inner text-secondary font-medium text-fg-muted select-none transition-colors duration-(--duration-hover) hover:text-fg [&::-webkit-details-marker]:hidden">
+      <ChevronRight aria-hidden className="size-3.5 transition-transform duration-(--duration-ink) group-open:rotate-90 motion-reduce:transition-none" />
       {title}
     </summary>
-    <div className="mt-1.5">{children}</div>
+    <div className="pt-1.5">{children}</div>
   </details>
 );
 
-const CARD = "flex min-w-0 flex-col gap-4 rounded-lg border bg-slate-800/40 p-4";
+const TipList: React.FC<{ tips: readonly string[] }> = ({ tips }) => (
+  <ul className="list-disc space-y-1 pl-4 text-secondary text-fg-body">
+    {tips.map((t) => (
+      <li key={t}>{t}</li>
+    ))}
+  </ul>
+);
 
 const CardHeader: React.FC<{ plotId: number; next?: boolean; badge: React.ReactNode }> = ({ plotId, next, badge }) => (
-  <header className="flex min-h-6 flex-wrap items-center justify-between gap-2">
-    <div className="flex items-center gap-2">
-      <h2 className="text-sm font-medium text-slate-200">Plot {plotId}</h2>
-      {next && <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] font-medium text-emerald-300">Next up</span>}
-    </div>
+  <header className="flex min-h-6 flex-wrap items-center gap-2">
+    <h2 className="text-title text-fg">Plot {plotId}</h2>
     {badge}
+    {next && (
+      <Pill strong className="ml-auto bg-select/15 text-select-fg">
+        <ArrowRight aria-hidden /> Next up
+      </Pill>
+    )}
   </header>
+);
+
+/** The destination's name and its Designer link. */
+const FarmLine: React.FC<{ name: string; detail?: string; moving: boolean; code?: string }> = ({ name, detail, moving, code }) => (
+  <div className="flex min-w-0 items-center gap-1.5 text-secondary">
+    {moving && <ArrowRight aria-hidden className="size-3.5 shrink-0 text-fg-meta" />}
+    <span className="truncate font-medium text-fg-body" title={detail ? `${name} · ${detail}` : name}>
+      {name}
+    </span>
+    {code && (
+      <a
+        className="hit-area focus-ring ml-auto inline-flex shrink-0 items-center gap-1 rounded-inner text-meta text-fg-meta transition-colors duration-(--duration-hover) hover:text-fg"
+        href={`/designer?layout=${encodeURIComponent(code)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`Open ${name} in the Designer (new tab). It replaces the layout you have there.`}
+      >
+        <ExternalLink aria-hidden className="size-3" /> Designer
+      </a>
+    )}
+  </div>
 );
 
 export const PlotCard: React.FC<PlotCardProps> = ({
@@ -135,6 +192,7 @@ export const PlotCard: React.FC<PlotCardProps> = ({
   inventory = {},
   visitPlots = [],
   checked = [],
+  skipped,
 }) => {
   const name = (id: string) => itemName(data, id);
   const current = farmOf(catalog, plotId, plot.farm);
@@ -143,32 +201,43 @@ export const PlotCard: React.FC<PlotCardProps> = ({
   const othersLeft = visitPlots.filter((id) => id !== plotId && !checked.includes(id));
 
   if (!outcome) {
+    // Waiting on other plots: say which. Once every plot is through, the page's banner carries the
+    // "Next check-in" instruction, so the cards don't repeat it.
+    const waitingLine = othersLeft.length
+      ? `Waiting on ${plotList(othersLeft)}. This card stays as it is until the next visit: do ${othersLeft.length === 1 ? "that plot" : "those plots"} and press ${othersLeft.length === 1 ? "its" : "their"} button too.`
+      : null;
     return (
-      <article className={`${CARD} border-emerald-500/30`} aria-label={`Plot ${plotId}`}>
+      <article className={cn(surface.card, "flex min-w-0 flex-col gap-3 p-3")} aria-label={`Plot ${plotId}`}>
         <CardHeader
           plotId={plotId}
           badge={
-            <span className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-300">
-              <Check className="h-3 w-3" /> Done this visit
-            </span>
+            skipped !== undefined ? (
+              <Pill>
+                <SkipForward aria-hidden /> Skipped
+              </Pill>
+            ) : (
+              <Pill>
+                <Check aria-hidden /> Done this visit
+              </Pill>
+            )
           }
         />
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
-          <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-200">
-            <Check className="h-4 w-4 shrink-0" /> Plot {plotId} is set up on {current.name}
-          </p>
-          <p className="mt-0.5 text-xs text-slate-300">
-            {othersLeft.length
-              ? `Waiting on ${plotList(othersLeft)}. This card stays as it is until the next visit: do ${othersLeft.length === 1 ? "that plot" : "those plots"} and press ${othersLeft.length === 1 ? "its" : "their"} button too.`
-              : "Every plot is done for this visit. Next time you're online, harvest and press \"I'm back\"."}
-          </p>
+        <div className="space-y-0.5">
+          {skipped !== undefined ? (
+            <p className="text-title text-fg">{skipped ? `Skipped this visit · still needs ${skipped}` : "Skipped this visit"}</p>
+          ) : (
+            <p className="flex items-center gap-1.5 text-title text-fg">
+              <Check aria-hidden className="size-4 shrink-0 text-fg-muted" /> Plot {plotId} is set up on {current.name}
+            </p>
+          )}
+          {waitingLine && <p className="text-secondary text-fg-muted">{waitingLine}</p>}
         </div>
         {canUndo && (
-          <button type="button" className={buttonClass.secondary} onClick={onUndo}>
-            <Undo2 className="h-4 w-4" /> Undo, I didn't do this
-          </button>
+          <KitButton size="md" className="self-start" onClick={onUndo}>
+            <Undo2 /> {skipped !== undefined ? "Undo skip" : "Undo, I didn't do this"}
+          </KitButton>
         )}
-        <FarmPicture layout={current.layout} nameOf={name} data={data} maxCell={26} facts={plot.facts} />
+        <FarmPicture layout={current.layout} nameOf={name} data={data} maxCell={30} facts={plot.facts} />
         {needs && current.products.length > 0 && <WorkingTowards products={current.products.map((p) => p.item)} needs={needs} inventory={inventory} data={data} />}
       </article>
     );
@@ -176,7 +245,7 @@ export const PlotCard: React.FC<PlotCardProps> = ({
 
   const target = farmOf(catalog, plotId, outcome.to);
   const ex = explain(outcome, catalog, data);
-  const style = VERB_STYLE[ex.verb];
+  const badge = VERB_BADGE[ex.verb];
   const moving = outcome.from !== outcome.to && ex.verb !== "supplies";
   const free = tally(outcome.placedCells.filter((c) => !c.paid).map((c) => c.kind));
   const tips = target.kind === "farm" ? farmTips(target.products.map((p) => p.item), target.cost.map((c) => c.item), knobs) : [];
@@ -189,161 +258,138 @@ export const PlotCard: React.FC<PlotCardProps> = ({
   const spentTotal = outcome.spent.reduce((s, x) => s + x.count, 0);
   const spentWord = spentTotal > 0 ? (outcome.spent.length === 1 ? `the ${spentTotal} ${name(outcome.spent[0].item)}` : `the ${spentTotal} items it places`) : "";
   const towards = ex.verb !== "done" ? target.products.map((p) => p.item) : [];
+  const label = confirmLabel(ex.verb, plotId, target.name);
+  const hint = confirmHintText(visitPlots.length, spentWord);
 
   return (
-    <article className={`${CARD} ${next ? "border-emerald-500/40" : "border-slate-600/30"}`} aria-label={`Plot ${plotId}`}>
-      <CardHeader plotId={plotId} next={next} badge={<span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${style.badge}`}>{style.label}</span>} />
+    <article
+      className={cn(surface.card, "flex min-w-0 flex-col gap-3 p-3", next && "border-select/70 ring-1 ring-select/40")}
+      aria-label={`Plot ${plotId}`}
+      aria-current={next ? "step" : undefined}
+    >
+      <CardHeader plotId={plotId} next={next} badge={<Pill tone={badge.tone}>{badge.label}</Pill>} />
 
       {/* The action, first: the same place on every card, whatever opens, closes or changes below. */}
-      <div className="flex flex-col gap-2">
-        {ex.verb === "supplies" ? (
-          <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
-            <button type="button" className={`${buttonClass.primary} flex-1`} onClick={onOpenInventory}>
-              <Package className="h-4 w-4" /> I have more now
-            </button>
-            <button type="button" className={`${buttonClass.secondary} flex-1`} onClick={onSkip}>
-              <SkipForward className="h-4 w-4" /> Skip Plot {plotId} for now
-            </button>
-          </div>
-        ) : ex.verb === "done" ? null : (
-          <>
-            <button type="button" className={buttonClass.primary} onClick={() => onConfirm(showZombuds ? { zombudHarvests: zombuds, zombudPerHarvest } : {})}>
-              <Check className="h-4 w-4 shrink-0" />
-              <span className="min-w-0">{ex.verb === "stay" || ex.verb === "wait" ? `Done with Plot ${plotId}` : `Did it: Plot ${plotId} is on ${target.name}`}</span>
-            </button>
-            <p className="text-[11px] leading-snug text-slate-500">
-              Do it in the game first, then press.
-              {visitPlots.length > 1 && ` Each plot has its own button: press all ${visitPlots.length} to finish this visit.`}
-              {spentWord && ` Pressing takes ${spentWord} off what you own.`}
-            </p>
-          </>
-        )}
-        <div>
-          <p className="text-sm font-semibold text-slate-100">{ex.headline}</p>
-          {ex.reason && <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{ex.reason}</p>}
+      {ex.verb === "supplies" ? (
+        <div className="flex flex-wrap gap-2">
+          <KitButton size="md" className="min-w-32 flex-1" onClick={onOpenInventory} aria-label={`Add supplies for Plot ${plotId}`}>
+            <Plus /> Add supplies
+          </KitButton>
+          <KitButton size="md" className="min-w-32 flex-1" onClick={onSkip} aria-label={`Skip Plot ${plotId} for now`}>
+            <SkipForward /> Skip for now
+          </KitButton>
         </div>
+      ) : ex.verb === "done" ? null : (
+        <div className="flex items-center gap-2" data-testid="plot-confirm">
+          <KitButton
+            // One primary on the page: the next plot's confirm. Later plots can still be confirmed.
+            variant={next ? "primary" : "neutral"}
+            size="md"
+            className="flex-1"
+            aria-label={label.aria}
+            aria-describedby={`plot-${plotId}-confirm-hint`}
+            onClick={() => onConfirm(showZombuds ? { zombudHarvests: zombuds, zombudPerHarvest } : {})}
+          >
+            <Check /> {label.text}
+          </KitButton>
+          <span id={`plot-${plotId}-confirm-hint`} className="sr-only">
+            {hint}
+          </span>
+          <InfoHint title="Do it in the game first" label={`About Plot ${plotId}'s button`} width={280}>
+            <p>{hint}</p>
+          </InfoHint>
+        </div>
+      )}
+
+      <div className="flex min-w-0 items-start gap-1.5">
+        <h3 className="min-w-0 text-title text-fg">{ex.headline}</h3>
+        {ex.reason && (
+          <InfoHint title="Why" label={`Why: ${ex.headline}`} width={300} className="mt-0.5">
+            <p>{ex.reason}</p>
+          </InfoHint>
+        )}
       </div>
 
-      {/* Where it is -> where it goes */}
-      <div className="min-w-0 rounded-lg border border-slate-600/30 bg-slate-900/40 p-2">
-        <div className="mb-1 flex min-w-0 items-start justify-between gap-2">
-          <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-sm">
-            {moving && <ArrowRight className="h-3.5 w-3.5 shrink-0 self-center text-emerald-400" aria-hidden />}
-            <span className="font-medium text-slate-100">{target.name}</span>
-            {target.detail && <span className="text-xs text-slate-500">· {target.detail}</span>}
-          </p>
-          {target.code && target.kind === "farm" && (
-            <a
-              className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-slate-400 transition-colors hover:bg-slate-700/60 hover:text-slate-200"
-              href={`/designer?layout=${encodeURIComponent(target.code)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={`Open ${target.name} in the Designer (new tab). It replaces the layout you have there.`}
-            >
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Designer
-            </a>
-          )}
-        </div>
+      {/* Where it goes, large, with where it is now under it. */}
+      <div className="min-w-0 space-y-1.5">
+        <FarmLine name={target.name} detail={target.detail} moving={moving} code={target.code && target.kind === "farm" ? target.code : undefined} />
         <FarmPicture layout={target.layout} nameOf={name} data={data} maxCell={34} highlight={outcome.placedCells.filter((c) => c.paid)} facts={moving ? undefined : plot.facts} />
         {target.products.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs text-slate-500">
-            Grows:
+          <div className="flex flex-wrap items-center gap-1 text-meta text-fg-meta">
+            Grows
             {target.products.map((p) => (
               <ItemChip key={p.item} id={p.item} name={name(p.item)} compact tone="muted" />
             ))}
           </div>
         )}
-        <button
-          type="button"
-          onClick={onPickFarm}
-          className="mt-1.5 flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs text-slate-400 transition-colors hover:bg-slate-700/60 hover:text-slate-200"
-          title={`Not on ${current.name}? Pick the farm Plot ${plotId} is on`}
-        >
-          <MapPin className="h-3.5 w-3.5 shrink-0" />
+        <div className="flex min-w-0 items-center gap-2 text-meta text-fg-meta">
           <span className="min-w-0 truncate">
             {moving ? "Now on " : "On "}
-            <span className="text-slate-300">{current.name}</span>
+            <span className="text-fg-body">{current.name}</span>
           </span>
-          <span className="ml-auto shrink-0 text-slate-500 underline-offset-2 hover:underline">Not right?</span>
-        </button>
+          <LinkButton className="ml-auto shrink-0 text-meta" onClick={onPickFarm} aria-label={`Wrong farm? Pick the farm Plot ${plotId} is on (now ${current.name})`}>
+            Wrong farm?
+          </LinkButton>
+        </div>
       </div>
 
       {/* What to do */}
       <div className="flex flex-col gap-3">
         {moving && outcome.from !== "hub" && outcome.from !== "supplies" && (
           <Section title="First, clear the old farm">
-            <p className="text-xs text-slate-300">Harvest anything fully grown on {current.name}, then break the rest. Plants already in the right spot for the new farm can stay.</p>
+            <p className="text-secondary text-fg-body">Harvest anything fully grown on {current.name}, then break the rest. Plants already in the right spot for the new farm can stay.</p>
           </Section>
         )}
         {harvestNow.length > 0 && (
-          <Section title="Harvest now">
-            <div className="flex flex-wrap gap-1">
-              {harvestNow.map((s) => (
-                <ItemChip key={s.item} id={s.item} name={name(s.item)} count={s.count} tone="gain" />
-              ))}
-            </div>
-            <p className="mt-1 text-[11px] text-slate-500">
-              {outcome.selfFunded.length
-                ? `Some of this goes straight back onto the plot. When you add your harvest under What you own, count only what's left after placing.`
-                : `The counts are plants, not drops. Drops are random, so add what you actually got under What you own.`}
-            </p>
+          <Section
+            title="Harvest now"
+            hint={
+              outcome.selfFunded.length
+                ? "Some of this goes straight back onto the plot. When you add your harvest under What you own, count only what's left after placing."
+                : "The counts are plants, not drops. Drops are random, so add what you actually got under What you own."
+            }
+          >
+            <Chips items={harvestNow} name={name} tone="gain" />
           </Section>
         )}
         {outcome.spent.length > 0 && (
-          <Section title={moving ? "Place from your inventory" : "Re-place from your inventory"}>
-            <div className="flex flex-wrap gap-1">
-              {outcome.spent.map((s) => (
-                <ItemChip key={s.item} id={s.item} name={name(s.item)} count={s.count} tone="cost" />
-              ))}
-            </div>
-            <p className="mt-1 text-[11px] text-slate-500">These have a gold corner on the picture. Confirming takes them off your stock.</p>
+          <Section title={moving ? "Place from your inventory" : "Re-place from your inventory"} hint="These have a gold corner on the picture. Confirming takes them off your stock.">
+            <Chips items={outcome.spent} name={name} tone="cost" />
           </Section>
         )}
         {outcome.short.length > 0 && (
-          <Section title="Can't afford yet">
-            <div className="flex flex-wrap gap-1">
-              {outcome.short.map((s) => (
-                <ItemChip key={s.item} id={s.item} name={name(s.item)} count={s.count} tone="warn" />
-              ))}
-            </div>
-            <p className="mt-1 text-[11px] text-slate-500">Leave those cells empty for now. They stay marked missing, so the Guide asks again next visit.</p>
+          <Section title="Can't afford yet" hint="Leave those cells empty for now. They stay marked missing, so the Guide asks again next visit.">
+            <Chips items={outcome.short} name={name} tone="warn" />
           </Section>
         )}
         {showZombuds && (
-          <Section title="Zombuds harvested this visit">
+          <Section
+            title="Zombuds harvested this visit"
+            hint={`Each harvest gives ${zombudPerHarvest} Zombuds and uses the ${zombudPerHarvest} Dead Plants around it, which you then put back.`}
+          >
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center rounded-md border border-slate-600/40 bg-slate-900/60">
-                <button
-                  type="button"
-                  className="flex h-9 w-9 cursor-pointer items-center justify-center text-slate-300 transition-colors hover:bg-slate-700/60 disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => setZombuds(Math.max(0, zombuds - 1))}
-                  disabled={zombuds === 0}
-                  aria-label="One fewer Zombud harvested"
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <span className="w-8 text-center text-sm tabular-nums text-slate-100" aria-live="polite">
+              <div className={cn(surface.well, "inline-flex items-center p-0.5")}>
+                <IconButton size="md" onClick={() => setZombuds(Math.max(0, zombuds - 1))} disabled={zombuds === 0} aria-label="One fewer Zombud harvested">
+                  <Minus />
+                </IconButton>
+                <span className="w-8 text-center text-body tabular-nums text-fg" aria-live="polite">
                   {zombuds}
                 </span>
-                <button
-                  type="button"
-                  className="flex h-9 w-9 cursor-pointer items-center justify-center text-slate-300 transition-colors hover:bg-slate-700/60"
-                  onClick={() => setZombuds(zombuds + 1)}
-                  aria-label="One more Zombud harvested"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
+                <IconButton size="md" onClick={() => setZombuds(zombuds + 1)} aria-label="One more Zombud harvested">
+                  <Plus />
+                </IconButton>
               </div>
-              <span className="min-w-0 flex-1 text-xs text-slate-400">
-                Each harvest gives {zombudPerHarvest} Zombuds and uses the {zombudPerHarvest} Dead Plants around it, which you then put back.
-                {zombuds > 0 && ` Confirming adds ${zombuds * zombudPerHarvest} Zombuds and takes ${zombuds * zombudPerHarvest} Dead Plants.`}
-              </span>
+              {zombuds > 0 && (
+                <span className="min-w-0 flex-1 text-secondary text-fg-muted">
+                  Confirming adds {zombuds * zombudPerHarvest} Zombuds and takes {zombuds * zombudPerHarvest} Dead Plants.
+                </span>
+              )}
             </div>
           </Section>
         )}
         {devourerFarm && (
-          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-slate-600/30 bg-slate-900/40 p-2 text-xs text-slate-300">
-            <input type="checkbox" className="mt-0.5 accent-emerald-500" checked={!!plot.facts?.devourerRefresh} onChange={(e) => onDevourerRefresh(e.target.checked)} />
+          <label className={cn(surface.well, "flex cursor-pointer items-start gap-2 p-2 text-secondary text-fg-body")}>
+            <input type="checkbox" className="focus-ring mt-0.5 size-3.5 shrink-0 cursor-pointer accent-go" checked={!!plot.facts?.devourerRefresh} onChange={(e) => onDevourerRefresh(e.target.checked)} />
             <span>A Devourer was harvested here, or one of the farm's plants decayed, since it was built. The farm then has to be rebuilt.</span>
           </label>
         )}
@@ -356,7 +402,7 @@ export const PlotCard: React.FC<PlotCardProps> = ({
             data={data}
             footnote={
               before.length > 0 && (
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 text-meta text-fg-meta">
                   Counts are after {before.map((e) => `Plot ${e.plotId}`).join(" and ")} {before.length === 1 ? "places its" : "place their"} items this visit.
                 </p>
               )
@@ -368,9 +414,9 @@ export const PlotCard: React.FC<PlotCardProps> = ({
             <Section title="Working towards">
               <ul className="space-y-1">
                 {waiting.slice(0, 6).map((w) => (
-                  <li key={w.item} className="flex items-center justify-between gap-2 text-xs text-slate-300">
+                  <li key={w.item} className="flex items-center justify-between gap-2 text-secondary text-fg-body">
                     <span className="truncate">{name(w.item)}</span>
-                    <span className="tabular-nums text-slate-400">
+                    <span className="tabular-nums text-fg-muted">
                       {w.have}/{w.target}
                     </span>
                   </li>
@@ -381,29 +427,17 @@ export const PlotCard: React.FC<PlotCardProps> = ({
         )}
         {tips.length > 0 && (
           <Section title="While you're here">
-            <ul className="list-disc space-y-1 pl-4 text-xs text-slate-300">
-              {tips.map((t) => (
-                <li key={t}>{t}</li>
-              ))}
-            </ul>
+            <TipList tips={tips} />
           </Section>
         )}
         {free.length > 0 && (
           <Fold title={`Plant for free · ${freeLabel(free)}`}>
-            <div className="flex flex-wrap gap-1">
-              {free.map((s) => (
-                <ItemChip key={s.item} id={s.item} name={name(s.item)} count={s.count} compact />
-              ))}
-            </div>
+            <Chips items={free} name={name} compact />
           </Fold>
         )}
         {target.kind === "farm" && (
           <Fold title="Every visit">
-            <ul className="list-disc space-y-1 pl-4 text-xs text-slate-300">
-              {GENERAL_TIPS.map((t) => (
-                <li key={t}>{t}</li>
-              ))}
-            </ul>
+            <TipList tips={GENERAL_TIPS} />
           </Fold>
         )}
       </div>

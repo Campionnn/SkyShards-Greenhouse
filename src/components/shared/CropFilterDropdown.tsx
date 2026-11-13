@@ -1,7 +1,9 @@
-import React, { useRef, useEffect } from "react";
+import React, { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { getRarityTextColor } from "../../utilities";
 import type { CropFilterCategory } from "../../types/greenhouse";
+import { defaultGetFilterColor } from "./cropFilterColor";
+import { cn } from "../ui/cn";
+import { MenuItem, Popover } from "../ui/Popover";
 
 export interface FilterOption {
   value: CropFilterCategory;
@@ -19,72 +21,39 @@ export interface CropFilterDropdownProps {
   className?: string;
 }
 
-/** Rarity colour for rarity filters, default text colour otherwise. */
-export const defaultGetFilterColor = (value: CropFilterCategory): string => {
-  if (value === "common" || value === "uncommon" || value === "rare" || value === "epic" || value === "legendary") {
-    return getRarityTextColor(value);
-  }
-  return "text-slate-300";
-};
 
-/** Crop filter dropdown shared by the Calculator and Designer. */
-export const CropFilterDropdown: React.FC<CropFilterDropdownProps> = ({
-  value,
-  onChange,
-  options,
-  isOpen,
-  onToggle,
-  onClose,
-  getFilterColor = defaultGetFilterColor,
-  className = "",
-}) => {
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [isOpen, onClose]);
-  
-  const currentLabel = options.find(opt => opt.value === value)?.label || "All";
-  
+/** Crop filter dropdown shared by the Calculator and Designer: a field trigger and a kit menu. */
+export const CropFilterDropdown: React.FC<CropFilterDropdownProps> = ({ value, onChange, options, isOpen, onToggle, onClose, getFilterColor = defaultGetFilterColor, className }) => {
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const currentLabel = options.find((opt) => opt.value === value)?.label || "All";
   return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
+    <div className={cn("relative shrink-0", className)}>
       <button
+        ref={setAnchor}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-label={`Filter: ${currentLabel}`}
         onClick={onToggle}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700/50 border border-slate-600/30 rounded-md text-sm text-slate-200 hover:bg-slate-700/70 transition-colors"
+        className="focus-ring inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-control border border-line-control bg-surface-well pr-2 pl-2.5 text-body text-fg transition-colors duration-(--duration-hover) hover:border-fg-meta"
       >
-        <span>{currentLabel}</span>
-        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        <span className="max-w-28 truncate">{currentLabel}</span>
+        <ChevronDown aria-hidden className={cn("size-3.5 text-fg-meta transition-transform duration-(--duration-ink)", isOpen && "rotate-180")} />
       </button>
-      
-      {isOpen && (
-        <ul className="absolute right-0 z-50 mt-1 min-w-[180px] bg-slate-800 border border-slate-600/50 rounded-md shadow-xl max-h-60 overflow-y-auto scrollbar-dark">
-          {options.map((option) => (
-            <li
-              key={option.value}
-              onClick={() => {
-                onChange(option.value);
-                onClose();
-              }}
-              className={`px-3 py-2 cursor-pointer transition-colors ${
-                value === option.value
-                  ? "bg-emerald-600/30 text-slate-100"
-                  : "hover:bg-slate-700/50"
-              }`}
-            >
-              <span className={getFilterColor(option.value)}>{option.label}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <Popover anchor={anchor} open={isOpen} onClose={onClose} label="Filter" role="menu" width={200} align="end" className="max-h-72 overflow-y-auto overscroll-contain scrollbar-dark">
+        {options.map((option) => (
+          <MenuItem
+            key={option.value}
+            checked={value === option.value}
+            onSelect={() => {
+              onChange(option.value);
+              onClose();
+            }}
+          >
+            <span className={getFilterColor(option.value)}>{option.label}</span>
+          </MenuItem>
+        ))}
+      </Popover>
     </div>
   );
 };

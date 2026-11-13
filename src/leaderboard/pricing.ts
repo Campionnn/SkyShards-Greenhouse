@@ -1,9 +1,9 @@
 import type { GameData, ItemId } from "../simulator/data/types";
 import { bazaarBuyPrice, bazaarSellPrice, DEFAULT_BAZAAR_PRICING, isBazaarItem, type BazaarPricing, type BazaarQuote } from "../simulator/economy/bazaar";
-import { RARE_DROP_ITEMS } from "../simulator/economy/bounty";
+import { ETHEREAL_VINE_BY_RARITY, RARE_DROP_ITEMS } from "../simulator/economy/bounty";
 import { bestTool, FORTUNE_CROPS, hasPerCropFortune, itemFortune, type CropFortune, type FarmingToolStats } from "../simulator/economy/fortune";
 import { defaultNpcPrice } from "../simulator/economy/prices";
-import { ARMOR_SET_DROPS, overbloomMultiplier, RARE_CROP_ITEMS, type ArmorSet } from "../simulator/economy/rareCrops";
+import { ARMOR_SET_DROPS, GREENHOUSE_RARE_CROP_CHANCE, overbloomMultiplier, RARE_CROP_ITEMS, type ArmorSet } from "../simulator/economy/rareCrops";
 import { farmingFortuneMultiplier } from "../simulator/economy/yield";
 import type { PlayerStats } from "../simulator/sim/state";
 import type { PerDay, RunResult } from "./result";
@@ -105,21 +105,39 @@ function yieldScaler(data: GameData, viewer: YieldStats, server: YieldStats, opt
   const evergreen = (1 + viewer.evergreenChip) / (1 + server.evergreenChip);
   const crops = ff * yieldSum * evergreen;
   const rest = yieldSum * evergreen;
-  const bloom = overbloomMultiplier(viewer.overbloom) / overbloomMultiplier(server.overbloom);
+  const bloomViewer = overbloomMultiplier(viewer.overbloom);
+  const bloomServer = overbloomMultiplier(server.overbloom);
+  const bloom = bloomViewer / bloomServer;
   const viewerDrops = ARMOR_SET_DROPS[viewer.armorSet as ArmorSet] ?? [];
   const serverDrops = ARMOR_SET_DROPS[server.armorSet as ArmorSet] ?? [];
   // Without any per-crop term, one multiplier covers every crop item (the old path, byte for byte).
   const perCrop = hasPerCropFortune(viewer) || hasPerCropFortune(server);
   const price = opts.price ?? ((item: ItemId) => defaultNpcPrice(data, item));
 
-  /** Factor of an item that isn't a crop-bundle item (tools don't matter), else null. */
-  const otherFactor = (item: ItemId): number | null => {
+  /**
+   * Viewer / server expected drops per harvest for one rare-crop roll at base chance `base`
+   * (before Overbloom). The engine caps a roll at one item (`capRareCrops`, on under the
+   * leaderboard rules), so a chance already past 100% on the server doesn't shrink linearly.
+   */
+  const rollRatio = (base: number): number => {
+    const server = Math.min(1, base * bloomServer);
+    return server > 0 ? Math.min(1, base * bloomViewer) / server : bloom;
+  };
+
+  /**
+   * Factor of an item that isn't a crop-bundle item (tools don't matter), else null. `source`: the
+   * plant kind that dropped it, when known; its loot multiplier and rarity set the rare-crop
+   * chances. Unknown: the plain Overbloom ratio.
+   */
+  const otherFactor = (item: ItemId, source?: string): number | null => {
     if (isCropBundleItem(data, item)) return null;
-    if (item === "ethereal_vine") return bloom;
+    const kind = source !== undefined ? (data.mutations[source] ?? data.crops[source]) : undefined;
+    if (item === "ethereal_vine") return kind?.kind === "mutation" ? rollRatio(ETHEREAL_VINE_BY_RARITY[kind.rarity]) : bloom;
     if (RARE_CROP_ITEMS.includes(item)) {
       // Armor rare crops: the server's set rolled them; the viewer's set may not.
       if (!serverDrops.includes(item)) return 1; // came from elsewhere (e.g. a cleared Fermento item), keep
-      return viewerDrops.includes(item) ? bloom : 0;
+      if (!viewerDrops.includes(item)) return 0;
+      return kind ? rollRatio(GREENHOUSE_RARE_CROP_CHANCE[item] * kind.multiplier) : bloom;
     }
     return 1;
   };
@@ -129,7 +147,7 @@ function yieldScaler(data: GameData, viewer: YieldStats, server: YieldStats, opt
   const itemTool = (stats: YieldStats, item: ItemId) => bestTool({ [item]: 1 }, stats.tools, () => 1);
 
   /** One source's drops scaled, its crop bundle harvested with the best tool for it. */
-  const scaleSource = (items: Readonly<PerDay>): PerDay => {
+  const scaleSource = (items: Readonly<PerDay>, source: string): PerDay => {
     let viewerTool: FarmingToolStats | null = null;
     let serverTool: FarmingToolStats | null = null;
     if (perCrop) {
@@ -141,19 +159,21 @@ function yieldScaler(data: GameData, viewer: YieldStats, server: YieldStats, opt
     }
     const out: PerDay = {};
     for (const [item, n] of Object.entries(items)) {
-      const v = n * (otherFactor(item) ?? cropFactor(item, viewerTool, serverTool));
+      const v = n * (otherFactor(item, source) ?? cropFactor(item, viewerTool, serverTool));
       if (v > 0) out[item] = v;
     }
     return out;
   };
 
-  // Per-source tools: each crop item's factor is the drop-weighted mean over the sources that dropped it.
+  // Per source: each crop item's factor (tools) and each rare crop's factor (the source's loot
+  // multiplier and rarity) is the drop-weighted mean over the sources that dropped it.
   const weighted = new Map<ItemId, { raw: number; scaled: number }>();
-  if (perCrop && opts.bySource) {
-    for (const items of Object.values(opts.bySource)) {
-      const scaled = scaleSource(items);
+  if (opts.bySource) {
+    for (const [source, items] of Object.entries(opts.bySource)) {
+      const scaled = scaleSource(items, source);
       for (const [item, n] of Object.entries(items)) {
-        if (!isCropBundleItem(data, item) || !(n > 0)) continue;
+        const bySourceItem = (perCrop && isCropBundleItem(data, item)) || RARE_CROP_ITEMS.includes(item);
+        if (!bySourceItem || !(n > 0)) continue;
         const w = weighted.get(item) ?? { raw: 0, scaled: 0 };
         w.raw += n;
         w.scaled += scaled[item] ?? 0;
@@ -163,7 +183,10 @@ function yieldScaler(data: GameData, viewer: YieldStats, server: YieldStats, opt
   }
   const itemFactor = (item: ItemId): number => {
     const other = otherFactor(item);
-    if (other !== null) return other;
+    if (other !== null) {
+      const w = RARE_CROP_ITEMS.includes(item) ? weighted.get(item) : undefined;
+      return w && w.raw > 0 ? w.scaled / w.raw : other;
+    }
     if (!perCrop) return crops;
     const w = weighted.get(item);
     if (w && w.raw > 0) return w.scaled / w.raw;
@@ -202,7 +225,7 @@ export function scaleResult(data: GameData, r: RunResult, viewer: YieldStats, se
   return {
     ...r,
     produced: scaleBy(r.produced, itemFactor),
-    ...(r.bySource ? { bySource: Object.fromEntries(Object.entries(r.bySource).map(([k, items]) => [k, scaleSource(items)])) } : {}),
+    ...(r.bySource ? { bySource: Object.fromEntries(Object.entries(r.bySource).map(([k, items]) => [k, scaleSource(items, k)])) } : {}),
   };
 }
 
@@ -211,7 +234,7 @@ const finiteOr0 = (v: number | undefined) => (typeof v === "number" && Number.is
 /** The per-crop terms as a comparable string (a missing crop and 0 are the same). */
 function perCropKey(s: YieldStats): string {
   const crops = (cf: CropFortune | undefined) => FORTUNE_CROPS.map((c) => finiteOr0(cf?.[c])).join(",");
-  return `${crops(s.cropFortune)};${(s.tools ?? []).map((t) => `${t.name}:${crops(t.fortune)}`).join("|")}`;
+  return `${crops(s.cropFortune)};${(s.tools ?? []).map((t) => `${t.name}:${finiteOr0(t.farmingFortune)}:${crops(t.fortune)}`).join("|")}`;
 }
 
 const BASE_YIELD_KEYS = ["farmingFortune", "plantYieldUpgrade", "evergreenChip", "overbloom", "armorSet"] as const;

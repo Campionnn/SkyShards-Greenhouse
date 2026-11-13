@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Search, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { debounce, getRarityTextColor } from "../../utilities";
+import { requirementPlants } from "../../utilities/requirementLayout";
 import { CropImage } from "../shared";
+import { cn } from "../ui/cn";
+import { IconButton, KitInput } from "../ui/kit";
+import { surface } from "../ui/surface";
 import { useGreenhouseData } from "../../context";
 import type { MutationDefinition } from "../../types/greenhouse";
 
@@ -21,6 +25,7 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
   className = "",
 }) => {
   const { getCropDef, getMutationDef } = useGreenhouseData();
+  const sizeOf = useCallback((id: string) => getCropDef(id)?.size ?? getMutationDef(id)?.size ?? 1, [getCropDef, getMutationDef]);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<MutationDefinition[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -178,12 +183,10 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
   const formatName = (name: string) => name.replace(/_/g, " ");
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={cn("relative", className)}>
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <Search className="h-4 w-4 text-slate-400" />
-        </div>
-        <input
+        <Plus aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-meta" />
+        <KitInput
           ref={inputRef}
           type="text"
           value={query}
@@ -191,76 +194,55 @@ export const MutationAutocomplete: React.FC<MutationAutocompleteProps> = ({
           onKeyDown={handleKeyDown}
           onFocus={handleInputFocus}
           placeholder={placeholder}
-          className="w-full pl-10 pr-10 py-2 bg-slate-700/50 border border-slate-600/30 rounded-md text-sm text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 hover:bg-slate-700/70 transition-colors"
+          aria-label={placeholder}
+          role="combobox"
+          aria-expanded={isOpen && suggestions.length > 0 && !isSelecting}
+          aria-autocomplete="list"
+          className="w-full pr-8 pl-8"
           autoComplete="off"
           spellCheck={false}
         />
         {query && (
-          <button
-            onClick={handleClear}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-            title="Clear"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <IconButton size="sm" aria-label="Clear" className="absolute top-1/2 right-1 -translate-y-1/2" onClick={handleClear}>
+            <X />
+          </IconButton>
         )}
       </div>
 
       {isOpen && suggestions.length > 0 && !isSelecting && (
-        <ul
-          ref={listRef}
-          className="absolute z-50 mt-1 w-full bg-slate-800 border border-slate-600/50 rounded-md shadow-xl max-h-60 overflow-y-auto scrollbar-dark"
-        >
+        <ul ref={listRef} role="listbox" className={cn(surface.raised, "scrollbar-dark absolute z-(--z-popover) mt-1 max-h-60 w-full overflow-y-auto p-1")}>
           {suggestions.map((mutation, index) => (
             <li
               key={mutation.id}
+              role="option"
+              aria-selected={index === focusedIndex}
               onClick={() => handleSelect(mutation)}
               onMouseEnter={() => setFocusedIndex(index)}
-              className={`px-3 py-2 cursor-pointer transition-colors ${
-                index === focusedIndex
-                  ? "bg-emerald-600/30 text-slate-100"
-                  : "text-slate-300 hover:bg-slate-700/50"
-              }`}
+              className={cn("flex cursor-pointer items-center gap-2 rounded-inner px-2 py-1.5 transition-colors duration-(--duration-hover)", index === focusedIndex ? "bg-surface-hover" : "")}
             >
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
-                  <CropImage
-                    cropId={mutation.id}
-                    cropName={mutation.name}
-                    size="xs"
-                    showFallback={false}
-                  />
-                </div>
-                <div className="flex flex-col flex-1">
-                  <span className={`font-medium ${getRarityTextColor(mutation.rarity)}`}>
-                    {mutation.name}
-                  </span>
-                  <span className="text-xs text-slate-400 mt-0.5">
-                    Requires:{" "}
-                    {mutation.requirements.map((r, i) => {
-                      const reqCropDef = getCropDef(r.crop);
-                      const reqMutationDef = getMutationDef(r.crop);
-                      const displayName = reqCropDef?.name || reqMutationDef?.name || formatName(r.crop);
-                      
-                      return (
-                        <span key={r.crop}>
-                          {i > 0 && ", "}
-                          {r.count}x {displayName}
-                        </span>
-                      );
-                    })}
-                  </span>
-                </div>
-              </div>
+              <CropImage cropId={mutation.id} cropName={mutation.name} size="xs" showFallback={false} />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className={cn("truncate text-body", getRarityTextColor(mutation.rarity))}>{mutation.name}</span>
+                <span className="truncate text-meta text-fg-meta">
+                  {mutation.requirements.map((r, i, all) => {
+                    const displayName = getCropDef(r.crop)?.name || getMutationDef(r.crop)?.name || formatName(r.crop);
+                    const plants = requirementPlants(sizeOf, mutation.size, all)[r.crop] ?? r.count;
+                    return (
+                      <span key={r.crop} title={plants !== r.count ? `${plants} ${displayName} covering ${r.count} of the cells around it` : undefined}>
+                        {i > 0 && ", "}
+                        {plants}× {displayName}
+                      </span>
+                    );
+                  })}
+                </span>
+              </span>
             </li>
           ))}
         </ul>
       )}
 
       {isOpen && suggestions.length === 0 && query.length > 0 && !isSelecting && (
-        <div className="absolute z-50 mt-1 w-full bg-slate-800 border border-slate-600/50 rounded-md shadow-xl p-3 text-sm text-slate-400 text-center">
-          No mutations found
-        </div>
+        <div className={cn(surface.raised, "absolute z-(--z-popover) mt-1 w-full p-3 text-center text-secondary text-fg-meta")}>No mutations found</div>
       )}
     </div>
   );

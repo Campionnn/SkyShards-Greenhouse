@@ -359,6 +359,21 @@ describe("pricing", () => {
     expect(yieldStatsDiffer({ ...YIELD_STATS, evergreenChip: 0 })).toBe(true);
   });
 
+  it("scales armor rare crops per source with that kind's loot multiplier and the 100% cap", () => {
+    const server = { ...YIELD_STATS, armorSet: "fermento" as const, overbloom: 186 };
+    const viewer = { ...server, overbloom: 0 };
+    // Stoplight Petal (25): Cropie 20% x 25 is past 100% at either Overbloom, so a capped roll stays 1.
+    // Ashwreath (0.15): Cropie 3% x 2.86 = 8.58% -> 3%, i.e. / 2.86.
+    const bySource = { stoplight_petal: { cropie: 10, stoplight_petal: 10 }, ashwreath: { cropie: 2.86 } };
+    const r = { produced: { cropie: 12.86, stoplight_petal: 10 }, bySource } as unknown as Parameters<typeof scaleResult>[1];
+    const out = scaleResult(engine.data, r, viewer, server);
+    expect(out.bySource!.stoplight_petal.cropie).toBeCloseTo(10);
+    expect(out.bySource!.ashwreath.cropie).toBeCloseTo(1);
+    expect(out.produced.cropie).toBeCloseTo(11);
+    // Without bySource: the plain Overbloom ratio.
+    expect(scaleProduced(engine.data, { cropie: 2.86 }, viewer, server).cropie).toBeCloseTo(1);
+  });
+
   it("scales per crop: crop bonus, best tool per source, mutation items untouched", () => {
     const ff = YIELD_STATS.farmingFortune;
     const m = (x: number) => 1 + x / 100;

@@ -106,11 +106,14 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
     }
   }
   // Rare crops: Ethereal Vine (spawned mutations), then armor-set drops, one roll
-  // each, chance boosted by Overbloom. Used as rolled; only the legacy setting
-  // yield-scales the Ethereal Vine count like a mutation item. Roll order matters for RNG.
+  // each, chance boosted by Overbloom. The armor drops are also scaled by the kind's
+  // loot multiplier (August 20 patch: Ashwreath 0.15 x Cropie 20%); Ethereal Vine is not.
+  // Used as rolled; only the legacy setting yield-scales the Ethereal Vine count like a
+  // mutation item. Roll order matters for RNG.
   const rareCrops: Record<string, number> = {};
   const bloom = overbloomMultiplier(ctx.stats.overbloom);
-  const cap = ctx.config.capRareCropChance;
+  // Missing (a config saved before the key existed) = the default, on.
+  const cap = ctx.config.capRareCrops !== false;
   const rollRare = (item: string, baseChance: number, applyYieldScaling: boolean) => {
     const dropped = rollRareCount(rng, baseChance * bloom, cap);
     if (dropped <= 0) return;
@@ -123,7 +126,7 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
     if (n > 0) bump(rareCrops, item, n);
   };
   if (isMutation && p.origin === "spawned") rollRare("ethereal_vine", ETHEREAL_VINE_BY_RARITY[data.mutations[p.kindId].rarity], !!ctx.config.legacyMutationYield);
-  for (const item of armorRareCrops(ctx.stats.armorSet, ctx.config.armorRareCropBug)) rollRare(item, GREENHOUSE_RARE_CROP_CHANCE[item], false);
+  for (const item of armorRareCrops(ctx.stats.armorSet, ctx.config.armorRareCropBug)) rollRare(item, GREENHOUSE_RARE_CROP_CHANCE[item] * def.multiplier, false);
   for (const item in rareDrops) drops[item] = (drops[item] ?? 0) + rareDrops[item];
   for (const item in rareCrops) drops[item] = (drops[item] ?? 0) + rareCrops[item];
 

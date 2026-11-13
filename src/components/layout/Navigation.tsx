@@ -145,7 +145,8 @@ export const Navigation: React.FC = () => {
       </div>
 
       {open && (
-        <div id="site-menu" style={{ top: sheetTop }} className="kit-fade-in fixed inset-x-0 bottom-0 overflow-y-auto overscroll-contain bg-surface-page px-3 py-2 lg:hidden">
+        // Scrolls inside; its last links scroll clear of Mediavine's adhesion ad (`--ad-bottom`).
+        <div id="site-menu" style={{ top: sheetTop, paddingBottom: "calc(0.5rem + var(--ad-bottom, 0px))" }} className="kit-fade-in fixed inset-x-0 bottom-0 overflow-y-auto overscroll-contain bg-surface-page px-3 pt-2 lg:hidden">
           <nav aria-label="Main" className="flex flex-col">
             {NAV_ITEMS.map(({ path, label }) => {
               const current = isCurrent(path);

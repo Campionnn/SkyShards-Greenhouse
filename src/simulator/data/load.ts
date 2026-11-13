@@ -49,9 +49,12 @@ export function loadGameData(json: unknown): GameData {
       minimumMutations: c.minimum_mutations,
       positiveBuffs: c.positive_buffs,
       negativeBuffs: c.negative_buffs,
+      multiplier: c.multiplier ?? 1,
       drops: c.drops,
       sellPrice: c.sell_price,
     };
+    // A harvestable crop rolls armor Rare Crops, so it must say how much they are scaled.
+    if (c.growth_stages !== null && c.multiplier === undefined) issues.push(`crops.${id}.multiplier: required for a harvestable crop`);
   }
 
   const mutations: Record<string, MutationDef> = {};
@@ -73,6 +76,7 @@ export function loadGameData(json: unknown): GameData {
       positiveBuffs: m.positive_buffs,
       negativeBuffs: m.negative_buffs,
       requiresWatering: m.requires_watering,
+      multiplier: m.multiplier,
       drops: m.drops,
       spawnWeight: m.spawn_weight,
       special: m.special ?? null,

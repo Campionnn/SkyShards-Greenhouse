@@ -183,7 +183,8 @@ export const SettingsPanel: React.FC<{
                 Farming armor (4/4)
                 <InfoHint title="Farming armor" width={280}>
                   In the Greenhouse, every harvested crop or mutation rolls the set's Rare Crops: Tater: Cropie 20%. Cropie: Squash 12%. Squash: Fermento 2.8%.
-                  Fermento and Helianthus combine all the lower tiers and add Helianthus 1.6%. Chances x (1 + Overbloom/100).
+                  Fermento and Helianthus combine all the lower tiers and add Helianthus 1.6%. Chances x the plant's loot multiplier (Ashwreath 0.15, Wheat
+                  0.18, Snoozling 21) x (1 + Overbloom/100), at most one of each per harvest.
                 </InfoHint>
               </span>
             }
@@ -286,7 +287,7 @@ export const SettingsPanel: React.FC<{
           )}
           {settings.config.leaderboardRules === true && (
             <div className="rounded border border-amber-500/30 p-2 text-[11px] text-amber-200/90" data-testid="leaderboard-rules-note">
-              <span className="font-medium">Leaderboard rules:</span> the debug script APIs (forceEffects and friends) are off, and the credit settings are hidden from scripts.{" "}
+              <span className="font-medium">Leaderboard rules:</span> the debug script APIs (forceEffects and debug.*) are off, and the credit settings are hidden from scripts.{" "}
               <button
                 className="underline hover:text-amber-100"
                 onClick={() => {

@@ -190,7 +190,7 @@ export interface PlayerStats {
   /** Bioanalysis: 0.05 Talisman, 0.10 Ring, 0.15 Artifact. Scales the spawn pool's mutation arm (`applyMutationChanceBonus`). */
   mutationChanceBonus: number;
   miningFortune: number;
-  /** Uncapped. Rare Crop chances x (1 + overbloom / 100): armor Rare Crops and Ethereal Vine, not Harvest Bounty. */
+  /** Rare Crop chances x (1 + overbloom / 100): armor Rare Crops and Ethereal Vine, not Harvest Bounty. Each roll is capped at 100% by `capRareCrops` (default). */
   overbloom: number;
   /** Farming armor, assumed 4/4 pieces; its tiered bonus rolls Rare Crops on every harvest. */
   armorSet: ArmorSet;

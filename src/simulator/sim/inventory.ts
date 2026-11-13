@@ -169,6 +169,12 @@ export function refundPlacement(state: SimulationState, item: ItemId, replacemen
  */
 export function injectItems(input: SimulationState, items: Record<ItemId, number>): SimulationState {
   const state = cloneState(input);
+  injectInto(state, items);
+  return state;
+}
+
+/** `injectItems` on a working state, in place (the scripts' `debug.give`). */
+export function injectInto(state: SimulationState, items: Record<ItemId, number>): void {
   for (const [item, raw] of Object.entries(items)) {
     const qty = Math.trunc(raw);
     if (!Number.isFinite(qty) || qty === 0) continue;
@@ -181,7 +187,6 @@ export function injectItems(input: SimulationState, items: Record<ItemId, number
     closeLoanIfRepaid(state, item, row);
   }
   convertAloeFragments(state);
-  return state;
 }
 
 /** Close a plot's open debt episodes (called on layout change). */

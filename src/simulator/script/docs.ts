@@ -100,12 +100,25 @@ export const API: ApiSection[] = [
     title: "Debug: forced effects",
     prefix: "",
     intro:
-      "For debugging and testing. Every plant of a kind always holds the forced effects on top of what its neighbours give it (held only, never given or relayed). They start as the Advanced setting; a script's changes apply to every plot at once and last until changed again. Not allowed in exit conditions, and not allowed under the leaderboard rules (the flow is refused at submit and the functions stop the script with an error).",
+      "For debugging and testing. Every plant of a kind always holds the forced effects on top of what its neighbours give it (held only, never given or relayed). They start as the Advanced setting; a script's changes apply to every plot at once and last until changed again. Not allowed in exit conditions, and not allowed under the leaderboard rules (the flow is refused at submit and the functions stop the script with an error). More debug tools are under debug.",
     entries: [
       { name: "forceEffects", signature: 'forceEffects(kind, effects)', description: 'Force effects on every plant of a kind, replacing what was forced on it: forceEffects("all_in_aloe", ["immunity", "improved_harvest_boost"]). An empty list turns it off for that kind.' },
       { name: "unforceEffects", signature: "unforceEffects(...kinds)", description: "Stop forcing effects on these kinds; with no kinds, turn every forced effect off." },
       { name: "resetForcedEffects", signature: "resetForcedEffects()", description: "Drop the script's changes: back to the forced effects in the Advanced settings." },
       { name: "forcedEffects", signature: "forcedEffects", description: 'A copy of what is forced now: { all_in_aloe: ["immunity", ...] }.' },
+    ],
+  },
+  {
+    title: "Debug: change the plot",
+    prefix: "debug.",
+    intro:
+      "For testing scripts and flows: change the plot in ways the game never would. They work any time (online or not) but never in exit conditions, and they aren't allowed under the leaderboard rules (the flow is refused at submit and the functions stop the script with an error).",
+    entries: [
+      { name: "spawn", signature: "debug.spawn(plot, mutation, row, col, stage?)", description: 'Spawn a mutation at the anchor cell as if it spawned naturally (counted as a spawn, credits its neighbours, fires onSpawn, a rival on another target) without the ground, requirement or chance checks: debug.spawn(plot, "chorus_fruit", 5, 5). It starts at stage 1 unless you give a stage. Returns the plant, or null when the cell is taken.' },
+      { name: "setStage", signature: "debug.setStage(plant, stage)", description: "Set a growing plant's growth stage (clamped to 0..growthStages). Reaching its fully grown stage latches the effects it holds now, like growing there; going below unlatches it." },
+      { name: "growUp", signature: "debug.growUp(plant)", description: "Make a growing plant fully grown now (debug.setStage to its fully grown stage, never backwards)." },
+      { name: "setDecay", signature: "debug.setDecay(plant, cycles)", description: "Set its decay timer to that many cycles at today's cycle length (0: decays at the next tick if its minimum mutations are met), or null for never." },
+      { name: "give", signature: "debug.give(item, qty = 1)", description: "Add items to the inventory (negative takes them away, never below 0). Counted as added, not produced, like Add items. Returns the new stock." },
     ],
   },
   {

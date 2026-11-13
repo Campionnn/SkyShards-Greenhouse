@@ -23,13 +23,13 @@ const SECTIONS: { key: ItemCategory; title: string; hint: string }[] = [
   {
     key: "rareCrop",
     title: "Rare crops",
-    hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and a harvested mutation's own Ethereal Vine. Their chances are multiplied by (1 + Overbloom/100).",
+    hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and a harvested mutation's own Ethereal Vine. Their chances are multiplied by (1 + Overbloom/100); the armor drops also by the harvested plant's loot multiplier.",
   },
   { key: "other", title: "Other drops", hint: "Harvest Bounty drops from plants holding Bonus Drops (not affected by Overbloom) and anything else." },
 ];
 
-/** Sections that start collapsed. */
-const COLLAPSED_BY_DEFAULT: Partial<Record<ItemCategory, boolean>> = { rareCrop: true, other: true };
+/** Sections that start collapsed (none: every section starts expanded; the header toggles it). */
+const COLLAPSED_BY_DEFAULT: Partial<Record<ItemCategory, boolean>> = {};
 
 /** The section a row is listed under: Dead Plants sit with the mutations (they are placed like them). */
 const sectionOf = (r: ItemRow): ItemCategory => (r.id === "dead_plant" ? "mutation" : r.category);

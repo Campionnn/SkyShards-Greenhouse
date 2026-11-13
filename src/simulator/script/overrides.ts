@@ -34,8 +34,11 @@ export function forcedEffectsOf(state: SimulationState): Readonly<Record<string,
   return forced && Object.keys(forced).length ? forced : undefined;
 }
 
-/** The debug script APIs the leaderboard rules refuse (`config.leaderboardRules`). */
-export const DEBUG_SCRIPT_APIS: readonly string[] = ["forceEffects", "unforceEffects", "resetForcedEffects"];
+/**
+ * The debug script APIs the leaderboard rules refuse (`config.leaderboardRules`): the forced-effect
+ * functions and the `debug` namespace (debug.spawn, debug.setStage...).
+ */
+export const DEBUG_SCRIPT_APIS: readonly string[] = ["forceEffects", "unforceEffects", "resetForcedEffects", "debug"];
 
 const runs = (s: ScriptDef | undefined): boolean => !!s && s.enabled !== false && s.source.trim().length > 0;
 

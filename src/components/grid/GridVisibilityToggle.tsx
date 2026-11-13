@@ -1,45 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
-
-const GROUP = "flex rounded-md border border-slate-600/40 bg-slate-800/60 p-0.5";
-const SEGMENT = "flex items-center gap-1 px-1.5 py-0.5 text-xs rounded transition-colors cursor-pointer";
-const ACTIVE = { emerald: "bg-emerald-500/20 text-emerald-200", cyan: "bg-cyan-500/20 text-cyan-200" } as const;
-
-/** "Label: Shown | Hidden". */
-const VisibilitySwitch: React.FC<{
-  label: string;
-  what: string;
-  visible: boolean;
-  onChange: (visible: boolean) => void;
-  tone: keyof typeof ACTIVE;
-}> = ({ label, what, visible, onChange, tone }) => (
-  <div className="flex items-center gap-1.5">
-    <span className="text-[11px] text-slate-500 hidden sm:inline">{label}</span>
-    <div className={GROUP} role="radiogroup" aria-label={`Whether ${what} are drawn`}>
-      {([true, false] as const).map((shown) => {
-        const active = visible === shown;
-        return (
-          <button
-            key={String(shown)}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            title={shown ? `Draw the ${what}` : `Hide the ${what}; only their ground shows`}
-            onClick={() => onChange(shown)}
-            className={`${SEGMENT} ${active ? ACTIVE[tone] : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/60"}`}
-          >
-            {shown ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{shown ? "Shown" : "Hidden"}</span>
-          </button>
-        );
-      })}
-    </div>
-  </div>
-);
+import { cn } from "../ui/cn";
+import { Popover } from "../ui/Popover";
+import { Switch } from "../ui/kit";
 
 /**
- * Grid header switches: "Inputs: Shown | Hidden" and "Targets: Shown | Hidden". A hidden
- * placement shows only its ground, so with both hidden the grid shows just the ground.
+ * What the grid draws: one compact "Show" control that opens two switches, "Input crops" and
+ * "Target mutations". A hidden placement shows only its ground, so with both off the grid shows
+ * just the ground. Props are the same as the old pair of Shown / Hidden segments.
  */
 export const GridVisibilityToggle: React.FC<{
   inputsVisible: boolean;
@@ -47,9 +15,34 @@ export const GridVisibilityToggle: React.FC<{
   targetsVisible: boolean;
   onTargetsVisibleChange: (visible: boolean) => void;
   className?: string;
-}> = ({ inputsVisible, onInputsVisibleChange, targetsVisible, onTargetsVisibleChange, className = "" }) => (
-  <div className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 ${className}`}>
-    <VisibilitySwitch label="Inputs" what="input crops" visible={inputsVisible} onChange={onInputsVisibleChange} tone="emerald" />
-    <VisibilitySwitch label="Targets" what="target mutations" visible={targetsVisible} onChange={onTargetsVisibleChange} tone="cyan" />
-  </div>
-);
+}> = ({ inputsVisible, onInputsVisibleChange, targetsVisible, onTargetsVisibleChange, className }) => {
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const all = inputsVisible && targetsVisible;
+  const summary = all ? "All" : inputsVisible ? "Inputs" : targetsVisible ? "Targets" : "Ground only";
+  return (
+    <div className={cn("flex items-center", className)}>
+      <button
+        ref={setAnchor}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`Show on the grid: ${summary}`}
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "hit-area focus-ring inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-control px-2 text-secondary transition-colors duration-(--duration-hover) hover:bg-surface-hover",
+          all ? "text-fg-muted hover:text-fg" : "text-warn",
+        )}
+        title="Which placements the grid draws"
+      >
+        {all ? <Eye aria-hidden className="size-3.5" /> : <EyeOff aria-hidden className="size-3.5" />}
+        Show <span className="font-semibold">{summary}</span>
+      </button>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="Show on the grid" align="end" width={220} className="space-y-2 p-3">
+        <Switch checked={inputsVisible} onChange={onInputsVisibleChange} label="Inputs" showLabel className="w-full justify-between" labelSide="start" />
+        <Switch checked={targetsVisible} onChange={onTargetsVisibleChange} label="Targets" showLabel className="w-full justify-between" labelSide="start" />
+        <p className="text-meta text-fg-meta">Hidden ones show only their ground.</p>
+      </Popover>
+    </div>
+  );
+};

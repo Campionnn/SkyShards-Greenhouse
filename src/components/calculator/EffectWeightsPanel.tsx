@@ -1,14 +1,16 @@
 import React, { useMemo, useState, useCallback } from "react";
-import { Sparkles, RotateCcw, ChevronDown, ChevronUp, Minus, Plus, AlertTriangle, X } from "lucide-react";
+import { ChevronDown, Minus, Plus, X } from "lucide-react";
 import { useGreenhouseData } from "../../context";
-import { Panel } from "../ui";
+import { cn } from "../ui/cn";
+import { InfoHint } from "../ui/InfoHint";
+import { LinkButton } from "../ui/Card";
+import { IconButton, KitInput } from "../ui/kit";
 import {
   EFFECT_IDS,
   getEffectName,
   getEffectDescriptionText,
   isNegativeEffect,
 } from "../../utilities";
-
 const STEP = 0.1;
 const LIMIT = 100;
 
@@ -41,7 +43,6 @@ export const EffectWeightsPanel: React.FC = () => {
     effectWeightsAreDefault,
   } = useGreenhouseData();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [collapsed, setCollapsed] = useState(() => Object.values(effectWeights).every((v) => v === 0));
   const [cacheWarningDismissed, setCacheWarningDismissed] = useState(false);
 
   const activeCount = useMemo(
@@ -92,133 +93,77 @@ export const EffectWeightsPanel: React.FC = () => {
     setDrafts({});
   }, [resetEffectWeights]);
 
+
   return (
-    <Panel
-      title="Effect Weights"
-      icon={<Sparkles />}
-      actions={
-        <>
-          {activeCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              {activeCount} active
-            </span>
-          )}
-          {!effectWeightsAreDefault && (
-            <button
-              onClick={handleReset}
-              className="p-1 hover:bg-slate-600/50 rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-              title="Reset effect weights to defaults"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          )}
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            className="p-1 hover:bg-slate-600/50 rounded text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-            title={collapsed ? "Show effect weights" : "Hide effect weights"}
-            aria-expanded={!collapsed}
-          >
-            {collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-          </button>
-        </>
-      }
-      description={
-        collapsed
-          ? undefined
-          : "How much each effect on a spawned target is worth, in mutation spots: 0.3 makes a spot with that effect count as 1.3 spots. Use negatives for unwanted effects."
-      }
-    >
-      {!collapsed && (
-        <>
-          {/* Dismissible cache warning (per session), like the crop priorities one. The server only
-              caches solves with the default weights, so any other weighting starts from scratch. */}
-          {!effectWeightsAreDefault && !cacheWarningDismissed && (
-            <div className="flex items-start gap-2 p-2 mb-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
-              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-300/90 flex-1">
-                Non-default effect weights reduce solver cache efficiency and may increase solve times.
-              </p>
-              <button
-                onClick={() => setCacheWarningDismissed(true)}
-                className="p-0.5 hover:bg-amber-500/20 rounded text-amber-400/70 hover:text-amber-400 transition-colors"
-                title="Dismiss"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-          <div className="grid grid-cols-1 gap-y-0.5">
-            {EFFECT_IDS.map((effectId) => {
-              const negative = isNegativeEffect(effectId);
-              const value = effectWeights[effectId] ?? 0;
-              const draft = drafts[effectId];
-              const shown = draft !== undefined ? draft : formatWeight(value);
-              const invalid = draft !== undefined && parseWeight(draft) === null;
-              const borderClass = invalid
-                ? "border-amber-500/60 focus:border-amber-400"
-                : value > 0
-                  ? "border-emerald-500/40 focus:border-emerald-500/70"
-                  : value < 0
-                    ? "border-rose-500/40 focus:border-rose-500/70"
-                    : "border-slate-600/30 focus:border-blue-500/50";
-              return (
-                // A div, not a <label>: a wrapping label would bind clicks on the row to the first
-                // button ("-"). Only the name is a label, pointing at the input.
-                <div
-                  key={effectId}
-                  className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 min-w-0 ${
-                    value !== 0 ? "bg-slate-700/40" : ""
-                  }`}
-                  title={getEffectDescriptionText(effectId)}
-                >
-                  <label
-                    htmlFor={`effect-weight-${effectId}`}
-                    className={`flex-1 min-w-0 self-stretch flex items-center text-xs cursor-text ${negative ? "text-rose-300/90" : "text-slate-300"}`}
-                  >
-                    <span className="truncate">{getEffectName(effectId)}</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => nudge(effectId, -STEP)}
-                    className="p-0.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-600/50 cursor-pointer flex-shrink-0"
-                    title="Decrease by 0.1"
-                    aria-label={`Decrease ${getEffectName(effectId)} weight`}
-                    tabIndex={-1}
-                  >
-                    <Minus className="w-3 h-3" />
-                  </button>
-                  <input
-                    id={`effect-weight-${effectId}`}
-                    type="text"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={shown}
-                    placeholder="0"
-                    onChange={(e) => handleChange(effectId, e.target.value)}
-                    onBlur={() => handleBlur(effectId)}
-                    onKeyDown={(e) => handleKeyDown(effectId, e)}
-                    onFocus={(e) => e.target.select()}
-                    aria-label={`${getEffectName(effectId)} weight`}
-                    aria-invalid={invalid || undefined}
-                    className={`w-14 px-1.5 py-0.5 bg-slate-700/50 border rounded text-xs text-right text-slate-200 placeholder-slate-500 focus:outline-none ${borderClass}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => nudge(effectId, STEP)}
-                    className="p-0.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-600/50 cursor-pointer flex-shrink-0"
-                    title="Increase by 0.1"
-                    aria-label={`Increase ${getEffectName(effectId)} weight`}
-                    tabIndex={-1}
-                  >
-                    <Plus className="w-3 h-3" />
-                  </button>
-                </div>
-              );
-            })}
+    <details className="group/ew" open={activeCount > 0 || undefined}>
+      <summary className="focus-ring flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-inner text-body text-fg-body pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          Effect weights
+          <InfoHint title="Effect weights">
+            How much each effect on a spawned target is worth, in mutation spots: 0.3 makes a spot with that effect count as 1.3 spots. Use negatives for unwanted effects.
+            Arrow keys step 0.1 (Shift: 1).
+          </InfoHint>
+        </span>
+        <span className="text-secondary tabular-nums text-fg-meta">{activeCount > 0 ? `${activeCount} set` : "none"}</span>
+        <ChevronDown aria-hidden className="size-3.5 text-fg-meta transition-transform duration-(--duration-ink) group-open/ew:rotate-180" />
+      </summary>
+      <div className="space-y-2 pt-1">
+        {/* Dismissible cache warning (per session). The server only caches solves with the default
+            weights, so any other weighting starts from scratch. */}
+        {!effectWeightsAreDefault && !cacheWarningDismissed && (
+          <div className="flex items-start gap-1.5 text-secondary text-warn" role="note">
+            <span className="flex-1">Changed weights skip the solver cache, so solves can take longer.</span>
+            <IconButton size="sm" aria-label="Dismiss" onClick={() => setCacheWarningDismissed(true)}>
+              <X />
+            </IconButton>
           </div>
-        </>
-      )}
-    </Panel>
+        )}
+        <ul className="space-y-0.5">
+          {EFFECT_IDS.map((effectId) => {
+            const negative = isNegativeEffect(effectId);
+            const value = effectWeights[effectId] ?? 0;
+            const draft = drafts[effectId];
+            const shown = draft !== undefined ? draft : formatWeight(value);
+            const invalid = draft !== undefined && parseWeight(draft) === null;
+            return (
+              // A div row, not a <label>: a wrapping label would bind clicks on the row to the first
+              // button ("-"). Only the name is a label, pointing at the input.
+              <li key={effectId} className="flex min-w-0 items-center gap-1" title={getEffectDescriptionText(effectId)}>
+                <label htmlFor={`effect-weight-${effectId}`} className={cn("flex min-w-0 flex-1 cursor-text items-center self-stretch text-secondary", negative ? "text-problem" : value !== 0 ? "text-fg" : "text-fg-muted")}>
+                  <span className="truncate">{getEffectName(effectId)}</span>
+                </label>
+                <IconButton size="sm" tabIndex={-1} aria-label={`Decrease ${getEffectName(effectId)} weight`} title="Decrease by 0.1" onClick={() => nudge(effectId, -STEP)}>
+                  <Minus />
+                </IconButton>
+                <KitInput
+                  id={`effect-weight-${effectId}`}
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={shown}
+                  placeholder="0"
+                  onChange={(e) => handleChange(effectId, e.target.value)}
+                  onBlur={() => handleBlur(effectId)}
+                  onKeyDown={(e) => handleKeyDown(effectId, e)}
+                  onFocus={(e) => e.target.select()}
+                  aria-label={`${getEffectName(effectId)} weight`}
+                  invalid={invalid}
+                  className="h-7 w-14 text-right tabular-nums"
+                />
+                <IconButton size="sm" tabIndex={-1} aria-label={`Increase ${getEffectName(effectId)} weight`} title="Increase by 0.1" onClick={() => nudge(effectId, STEP)}>
+                  <Plus />
+                </IconButton>
+              </li>
+            );
+          })}
+        </ul>
+        {!effectWeightsAreDefault && (
+          <LinkButton className="text-meta" onClick={handleReset} title="Reset effect weights to defaults">
+            Reset weights
+          </LinkButton>
+        )}
+      </div>
+    </details>
   );
 };

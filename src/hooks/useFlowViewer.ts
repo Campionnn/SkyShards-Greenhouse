@@ -71,15 +71,16 @@ export function readCropFortune(raw: unknown): CropFortune {
   return out;
 }
 
-/** Tools: `{name: string, fortune: CropFortune}` entries; anything else is dropped. */
+/** Tools: `{name: string, farmingFortune?: number, fortune: CropFortune}` entries; anything else is dropped. */
 export function readTools(raw: unknown): FarmingToolStats[] {
   if (!Array.isArray(raw)) return [];
   const out: FarmingToolStats[] = [];
   for (const t of raw) {
     if (!t || typeof t !== "object") continue;
-    const { name, fortune } = t as { name?: unknown; fortune?: unknown };
+    const { name, fortune, farmingFortune } = t as { name?: unknown; fortune?: unknown; farmingFortune?: unknown };
     if (typeof name !== "string" || !name.trim()) continue;
-    out.push({ name: name.trim().slice(0, 80), fortune: readCropFortune(fortune) });
+    const general = typeof farmingFortune === "number" && Number.isFinite(farmingFortune) && farmingFortune > 0 ? farmingFortune : 0;
+    out.push({ name: name.trim().slice(0, 80), ...(general ? { farmingFortune: general } : {}), fortune: readCropFortune(fortune) });
   }
   return out;
 }
@@ -179,6 +180,10 @@ export interface FlowViewerOptions {
   kit?: boolean;
   /** Called when the viewer flips the switch (the page writes it to its URL). */
   onKit?: (on: boolean) => void;
+  /** The login frequency from the page's URL (`?every=`, e.g. from a share link); shown instead of the saved one, not saved until picked. */
+  every?: number | null;
+  /** Called when the viewer picks a frequency (the page writes it to its URL). */
+  onEvery?: (n: number) => void;
   /** Fetch Bazaar prices on any board (the detail page shows the Normal number next to the others). */
   bazaarAlways?: boolean;
 }
@@ -189,7 +194,7 @@ export interface FlowViewerOptions {
  * (ironman → Ironman, normal → Normal). The starting-items switch is the URL's (off by default).
  */
 export function useFlowViewer(opts: FlowViewerOptions = {}): FlowViewer {
-  const { available, board: urlBoard, onBoard, kit: urlKit, onKit, bazaarAlways = false } = opts;
+  const { available, board: urlBoard, onBoard, kit: urlKit, onKit, every: urlEvery, onEvery, bazaarAlways = false } = opts;
   const [profile, setProfile] = useProfileMode();
   const [{ stats }, setLoaded] = useState(loadViewerStats);
   const hasSimulatorStats = useMemo(() => statsFromSimulator() !== null, []);
@@ -230,8 +235,11 @@ export function useFlowViewer(opts: FlowViewerOptions = {}): FlowViewer {
     setStats: (patch) => setLoaded((cur) => ({ stats: readViewerStats({ ...cur.stats, ...patch }), source: "saved" })),
     resetStats: (to) => setLoaded({ stats: (to === "simulator" && statsFromSimulator()) || defaultViewerStats(), source: "saved" }),
     hasSimulatorStats,
-    setEvery: (every) => setLoaded((cur) => ({ stats: readViewerStats({ ...cur.stats, every }), source: "saved" })),
-    every: nearestEvery(stats.every),
+    setEvery: (every) => {
+      setLoaded((cur) => ({ stats: readViewerStats({ ...cur.stats, every }), source: "saved" }));
+      onEvery?.(every);
+    },
+    every: nearestEvery(urlEvery ?? stats.every),
     snap,
     tier: snap.tier,
     viewerStats,

@@ -74,8 +74,10 @@ const DrawerBody: React.FC<{ viewer: FlowViewer; onClose: () => void; footer?: R
           onKeyDown={onKeyDown}
           className={cn(
             "absolute flex flex-col border-line-strong bg-surface-panel outline-none",
-            phone ? "kit-rise-in inset-x-0 bottom-0 max-h-[90dvh] rounded-t-container border-t" : "sim-drawer-in inset-y-0 right-0 w-[min(460px,100%)] border-l",
+            // Phone: a bottom sheet docked above Mediavine's adhesion ad (`--ad-bottom`), so its footer stays tappable.
+            phone ? "kit-rise-in inset-x-0 max-h-[calc(90dvh-var(--ad-bottom,0px))] rounded-t-container border-t" : "sim-drawer-in inset-y-0 right-0 w-[min(460px,100%)] border-l",
           )}
+          style={phone ? { bottom: "var(--ad-bottom, 0px)" } : undefined}
         >
           <header className="flex items-center gap-2 border-b border-line py-3 pr-3 pl-4">
             <h2 id="stats-drawer-title" className="shrink-0 text-title text-fg">

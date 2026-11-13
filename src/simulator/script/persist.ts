@@ -135,7 +135,30 @@ export class Encoder {
  * on the cycle it appears (a false here means: do the real save, which reports it).
  */
 export function isPersistable(roots: readonly unknown[], env: EncodeEnv): boolean {
+  return reachablePersistable(roots, env) !== null;
+}
+
+/**
+ * `isPersistable`, returning every container the roots reach (exactly the containers the encoder
+ * would give a heap entry), or null when something can't be kept or there are too many.
+ */
+export function reachablePersistable(roots: readonly unknown[], env: EncodeEnv): Set<object> | null {
   const seen = new Set<object>();
+  return walkPersistable(roots, seen, env, MAX_HEAP_ENTRIES) ? seen : null;
+}
+
+/**
+ * Walk everything `values` reach and check it can be kept, stopping at containers already in
+ * `known` (treated as checked) and adding every new container to it. False as soon as something
+ * can't be kept or `known` would grow past `limit` (`known` is then partly filled: discard it).
+ *
+ * Used incrementally between cycles (ScriptRuntime.save): if `known` holds every container reachable
+ * at the last check, closed under children, and `values` are every root that changed plus every value
+ * stored into an array or object since, then everything reachable now is in `known` afterwards and
+ * was checked. A false is only "maybe": the caller then runs the exact check (`reachablePersistable`).
+ */
+export function walkPersistable(values: readonly unknown[], known: Set<object>, env: EncodeEnv, limit: number): boolean {
+  const seen = known;
   const stack: object[] = [];
   /** One value: false = can't be kept. Containers seen for the first time go on the stack. */
   const visit = (v: unknown): boolean => {
@@ -143,7 +166,7 @@ export function isPersistable(roots: readonly unknown[], env: EncodeEnv): boolea
     if (v === null) return true;
     if (seen.has(v)) return true;
     if (Array.isArray(v) || isPlainObject(v)) {
-      if (seen.size >= MAX_HEAP_ENTRIES) return false;
+      if (seen.size >= limit) return false;
       seen.add(v);
       stack.push(v);
       return true;
@@ -152,7 +175,7 @@ export function isPersistable(roots: readonly unknown[], env: EncodeEnv): boolea
     if (v instanceof HostObject || v instanceof HostFn) return env.hostRef(v) !== null;
     return false;
   };
-  for (const root of roots) {
+  for (const root of values) {
     if (!visit(root)) return false;
     while (stack.length) {
       const c = stack.pop()!;
@@ -182,6 +205,13 @@ export class Decoder {
   constructor(heap: HeapEntry[], env: DecodeEnv) {
     this.heap = heap;
     this.env = env;
+  }
+
+  /** Every container decoded so far (one per heap entry reached). */
+  containers(): Set<object> {
+    const out = new Set<object>();
+    for (const m of this.made) if (m !== undefined) out.add(m as object);
+    return out;
   }
 
   decode(e: EncodedValue): unknown {

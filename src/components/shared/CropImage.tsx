@@ -109,7 +109,7 @@ export const CropImage: React.FC<CropImageProps> = ({
     maxWidth: "100%",
     maxHeight: "100%",
     objectFit: "contain",
-    ...(applyPixelated && { imageRendering: "pixelated" as any }),
+    ...(applyPixelated && { imageRendering: "pixelated" as React.CSSProperties["imageRendering"] }),
     ...(shouldGlow && { filter: CROP_IMAGE_GLOW_FILTER }),
   };
   
@@ -125,7 +125,7 @@ export const CropImage: React.FC<CropImageProps> = ({
         style={containerStyle}
         onClick={onClick}
       >
-        <span className={`text-xs font-medium text-slate-400 ${fallbackClassName}`}>
+        <span className={`text-meta font-medium text-fg-muted ${fallbackClassName}`}>
           {fallbackText ?? cropName?.slice(0, 2).toUpperCase() ?? "??"}
         </span>
       </div>

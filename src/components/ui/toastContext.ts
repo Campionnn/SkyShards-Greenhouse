@@ -37,6 +37,21 @@ export const TOAST_ACTION_MIN_MS = 10000;
 /** At most this many toasts at once; the oldest goes first. */
 export const TOAST_MAX = 3;
 
+/**
+ * The modal `<dialog>`s open right now (in the browser's top layer), in document order. The toast
+ * stack renders inside the topmost one, so a toast (an Undo) shown while a modal is open can be seen
+ * and clicked. A non-modal `dialog.show()` is not in the top layer and is skipped.
+ */
+export function openModalDialogs(root: ParentNode = document): HTMLDialogElement[] {
+  return [...root.querySelectorAll<HTMLDialogElement>("dialog[open]")].filter((d) => {
+    try {
+      return d.matches(":modal");
+    } catch {
+      return true;
+    }
+  });
+}
+
 /** Effective time on screen for a toast. */
 export function toastDuration(opts: { duration?: number; action?: ToastAction }): number {
   const asked = opts.duration ?? TOAST_MIN_MS;

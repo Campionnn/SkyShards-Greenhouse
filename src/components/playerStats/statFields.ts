@@ -109,7 +109,7 @@ export const STAT_FIELDS: Record<NumericStatKey, StatFieldDef> = {
   farmingFortune: { key: "farmingFortune", kind: "number", label: "Farming Fortune", min: 0, max: 4000, step: 10, hint: "Wiki theoretical maximum: 3059.2." },
   plantYieldUpgrade: { key: "plantYieldUpgrade", kind: "select", label: "Plant Yield upgrade", options: PLANT_YIELD_OPTIONS, hint: "Greenhouse upgrade, +2% per tier." },
   evergreenChip: { key: "evergreenChip", kind: "chip", label: "Evergreen Chip", chip: EVERGREEN_CHIP, hint: "More base crops from Greenhouse harvests: +2% / +2.5% / +3% per level (Rare / Epic / Legendary)." },
-  overbloom: { key: "overbloom", kind: "number", label: "Overbloom", min: 0, max: 1000, step: 1, hint: "Rare Crop chance × (1 + Overbloom/100)." },
+  overbloom: { key: "overbloom", kind: "number", label: "Overbloom", min: 0, max: 1000, step: 1, hint: "Rare Crop chance × (1 + Overbloom/100), capped at 100% per roll." },
   startTimeOfDay: { key: "startTimeOfDay", kind: "number", label: "Start time of day", min: 0, max: 24, step: 0.5 },
 };
 

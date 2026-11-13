@@ -319,11 +319,40 @@ export function flowLink(id: string): string {
   return `${origin}/flows/${id}`;
 }
 
+/** The view a share link carries (the detail page's `?board=&kit=1&tier=&every=&tab=`). */
+export interface FlowShareView {
+  board?: Board | null;
+  /** Ironman board: with the starting items. */
+  kit?: boolean;
+  /** Stat tier of the embed's numbers (default max). */
+  tier?: TierId;
+  /** Online every N cycles (default 1). */
+  every?: number;
+  /** The detail tab the link opens on (default the first). */
+  tab?: string | null;
+}
+
+/** The share view as a query string ("" for the default view); the API's share.view_query mirrors it. */
+export function flowShareQuery(view: FlowShareView = {}): string {
+  const q = new URLSearchParams();
+  if (view.board) {
+    q.set("board", view.board);
+    if (view.board === "ironman" && view.kit) q.set("kit", "1");
+  }
+  if (view.tier && view.tier !== "max") q.set("tier", view.tier);
+  if (view.every && Math.round(view.every) !== 1) q.set("every", String(Math.round(view.every)));
+  if (view.tab && view.tab !== "need") q.set("tab", view.tab);
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
 /**
  * The link to paste into Discord etc.: the API's `/share/flow/ID` page carries the Open Graph tags
- * (title, coins/day, author, plots, cycles) and redirects people to `/flows/ID`. The SPA page itself
- * has no per-flow meta tags, so pasting `flowLink` gives a generic embed.
+ * (title, the board numbers, author, plots, cycles) and redirects people to `/flows/ID`. The SPA
+ * page itself has no per-flow meta tags, so pasting `flowLink` gives a generic embed. With a
+ * `view`, the embed's numbers are that tier's at that frequency, the board's number is marked, and
+ * the redirect opens the page on the same board, frequency and tab.
  */
-export function flowShareLink(id: string): string {
-  return `${SHARE_BASE_URL}/flow/${encodeURIComponent(id)}`;
+export function flowShareLink(id: string, view?: FlowShareView): string {
+  return `${SHARE_BASE_URL}/flow/${encodeURIComponent(id)}${flowShareQuery(view)}`;
 }

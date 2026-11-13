@@ -23,9 +23,9 @@ import {
 import { FarmPicture } from "./FarmPicture";
 import { PlotCard } from "./PlotCard";
 import { ForecastStrip } from "./ForecastStrip";
-import { ImportDialog } from "./ImportDialog";
+import { ImportDialog, ImportPanel } from "./ImportDialog";
 import { FlowNeedsPanel } from "./FlowNeeds";
-import { HowTo } from "./HowTo";
+import { HowTo, HowToHint } from "./HowTo";
 import { formatDuration, scheduleText, timeAgo } from "./format";
 
 // Server-render the Guide's panels against real decisions (no browser, no workers).
@@ -66,6 +66,13 @@ const card = (plotId: number, overrides: Partial<Parameters<typeof PlotCard>[0]>
     />
   ));
 
+/** Whether the button whose aria-label starts with `label` is the kit's primary (go-filled) button. */
+const isPrimary = (html: string, label: string) => {
+  const tag = html.match(new RegExp(`<button[^>]*aria-label="${label}[^>]*>`))?.[0];
+  if (!tag) throw new Error(`no button labelled ${label}`);
+  return /\bbg-go\b/.test(tag);
+};
+
 describe("FarmPicture", () => {
   it("draws the real crops, ground and target cells of a layout", () => {
     const html = renderToString(<FarmPicture layout={farmOf(catalog, 1, "glasscorn").layout} nameOf={(id) => id} cellSize={20} />);
@@ -93,13 +100,18 @@ describe("PlotCard", () => {
     expect(html).toContain("Switch to Commons farm");
     expect(html).toContain("Place from your inventory");
     expect(html).toContain("Dead Plant");
-    expect(html).toContain("Did it: Plot 1 is on Commons farm");
+    // A short label; the accessible name still says which plot and farm.
+    expect(html).toMatch(/aria-label="Did it: Plot 1 is on Commons farm"[^>]*>.{0,400}Did it<\/button>/s);
     expect(html.replace(/<[^>]+>/g, "")).toContain("Now on Empty farmland");
-    expect(html).toContain("Not right?");
-    // The confirm button comes before the farm picture, so it never moves when sections below change.
+    expect(html).toContain("Wrong farm?");
+    expect(html).not.toContain("Not right?");
+    // The confirm button comes before the instruction and the farm picture, so it never moves when sections below change.
+    expect(html.indexOf("Did it: Plot 1")).toBeLessThan(html.indexOf("Switch to Commons farm"));
     expect(html.indexOf("Did it: Plot 1")).toBeLessThan(html.indexOf("Place from your inventory"));
     expect(html.indexOf("Did it: Plot 1")).toBeLessThan(html.indexOf("data:image/png;base64"));
     expect(html).not.toContain("What's on the plot");
+    // Dead Plants and Fermento are farmed, never bought.
+    expect(html.replace(/<[^>]+>/g, " ")).not.toMatch(/\b(buy|bought|bazaar|shopping)\b/i);
   });
 
   it("shows progress bars and tips when keeping a farm", () => {
@@ -108,7 +120,7 @@ describe("PlotCard", () => {
     const html = card(2, { plot: jelly.plots[2], outcome: plot2 });
     expect(html).toContain("Magic Jellybean");
     if (plot2.action === "stay") {
-      expect(html).toContain("Done with Plot 2");
+      expect(html).toMatch(/aria-label="Done with Plot 2"[^>]*>.{0,400}Done<\/button>/s);
       expect(html).toContain("stage 12");
     }
   });
@@ -123,14 +135,52 @@ describe("PlotCard", () => {
     const waiting = card(1, { outcome: null, plot: { farm: "commons", acted: true }, visitPlots: [1, 2, 3], checked: [1] });
     expect(waiting).toContain("Plot 1 is set up on Commons farm");
     expect(waiting).toContain("Waiting on Plots 2 and 3");
+    // With every plot through, the page's banner says what to do next: the cards don't repeat it,
+    // and never name the old "I'm back" button.
     const last = card(3, { outcome: null, plot: { farm: "commons", acted: true }, visitPlots: [1, 2, 3], checked: [1, 2, 3] });
-    expect(last).toContain("Every plot is done for this visit");
+    expect(last).toContain("Plot 3 is set up on Commons farm");
+    expect(last).not.toContain("Every plot is done for this visit");
+    expect(last).not.toContain("I'm back");
+  });
+
+  it("shows a skipped plot as skipped, with what it still needs, never as done", () => {
+    const html = card(3, { outcome: null, plot: { farm: "hub", acted: true }, canUndo: true, skipped: "7 Dead Plant", visitPlots: [1, 2, 3], checked: [3] });
+    expect(html).toContain("Skipped this visit · still needs 7 Dead Plant");
+    expect(html).not.toContain("Done this visit");
+    expect(html).not.toContain("is set up on");
+    expect(html).toContain("Undo skip");
+    expect(html).toContain("Waiting on Plots 1 and 2");
+  });
+
+  it("makes only the next plot's confirm the primary (go) button", () => {
+    expect(isPrimary(card(1, { next: true }), "Did it: Plot 1")).toBe(true);
+    expect(isPrimary(card(1, { next: false }), "Did it: Plot 1")).toBe(false);
+    expect(card(1, { next: false })).toContain('aria-label="Did it: Plot 1 is on Commons farm"');
+    // The next plot is marked by a Next up pill and the select ring.
+    expect(card(1, { next: true })).toContain("ring-select");
+    expect(card(1, { next: false })).not.toContain("Next up");
   });
 
   it("tells you to press every plot's button", () => {
     const html = card(1, { visitPlots: [1, 2, 3] });
     expect(html).toContain("press all 3 to finish this visit");
     expect(html).toContain("Pressing takes the 8 Dead Plant off");
+    // The hint is beside the button (an InfoHint) and describes it for screen readers.
+    expect(html).toContain('aria-describedby="plot-1-confirm-hint"');
+    expect(html).toContain("About Plot 1's button");
+  });
+
+  it("a plot short of supplies offers Add supplies and Skip for now, named per plot", () => {
+    const o1 = outcomes.find((o) => o.plotId === 1)!;
+    const html = card(1, { outcome: { ...o1, to: "supplies" } });
+    expect(html).toContain("Add supplies");
+    expect(html).toContain('aria-label="Add supplies for Plot 1"');
+    expect(html).toContain('aria-label="Skip Plot 1 for now"');
+    expect(html).toContain("Skip for now");
+    expect(html).not.toContain("I have more now");
+    expect(html.indexOf("Add supplies")).toBeLessThan(html.indexOf("data:image/png;base64"));
+    // Secondary: only a confirm is ever the page's primary button.
+    expect(isPrimary(html, "Add supplies for Plot 1")).toBe(false);
   });
 
   it("shows what a farm is working towards, with whole-flow totals, even on a switch", () => {
@@ -153,10 +203,13 @@ describe("FlowNeedsPanel", () => {
   it("sums the whole flow, and says so while it is still simulating", () => {
     const ready = flowNeeds({ gloomgourd: 60, choconut: 150 }, [needsRun({ gloomgourd: 30, choconut: 100 })], catalog, { gloomgourd: 10 }, {}, 16);
     const html = text(renderToString(<FlowNeedsPanel needs={ready} catalog={catalog} data={data} />));
-    expect(html).toMatch(/of ~210 mutations covered/);
-    expect(html).toContain("items done");
+    // Compact on the status row; the full sentence is for screen readers and the title.
+    expect(html).toMatch(/Whole flow <b[^>]*>\d+<\/b><span[^>]*>\/~210<\/span>/);
+    expect(html).toMatch(/mutations covered, \d+ of \d+ items done/);
+    expect(html).toContain("Every item");
+    expect(html).toContain('role="meter"');
     const pending = text(renderToString(<FlowNeedsPanel needs={flowNeeds(null, null, catalog, {}, {})} catalog={catalog} data={data} />));
-    expect(pending).toContain("Simulating the whole flow");
+    expect(pending).toContain("counting every mutation it uses");
   });
 });
 
@@ -165,7 +218,11 @@ describe("HowTo", () => {
     const html = text(renderToString(<HowTo plotCount={3} loginOrder="Plot 1, then 2, then 3" />));
     expect(html).toContain("How to use this guide");
     expect(html).toContain("Press the button on all 3 cards");
+    expect(html).toContain("Plot 1, then 2, then 3");
+    expect(html).toContain("Got it");
     expect(html).not.toMatch(/\b(buy|bought|bazaar|shopping)\b/i);
+    // The title's "?" carries the same steps (InfoHints render their content when opened).
+    expect(text(renderToString(<HowToHint plotCount={2} loginOrder="Plot 1, then 2" />))).toContain('aria-label="How to use this guide"');
   });
 });
 
@@ -203,17 +260,19 @@ describe("ForecastStrip", () => {
 
 describe("ImportDialog", () => {
   it("asks for a username and names where it looks, never shopping words", () => {
-    const html = text(renderToString(<ImportDialog open inventory={state.inventory} catalog={catalog} data={data} onApply={noop} onClose={noop} />));
+    // ModalDialog portals into <body> (nothing on the server), so the panel inside it is rendered directly.
+    const html = text(renderToString(<ImportPanel open inventory={state.inventory} catalog={catalog} data={data} onApply={noop} onClose={noop} />));
     expect(html).toContain("Import from Hypixel");
     expect(html).toContain("Minecraft username");
     expect(html).toMatch(/sacks, ender chest, backpacks/);
+    expect(html).toContain("sets them as your totals");
     expect(html).not.toMatch(/\b(buy|bought|bazaar|shopping)\b/i);
     expect(renderToString(<ImportDialog open={false} inventory={state.inventory} catalog={catalog} data={data} onApply={noop} onClose={noop} />)).toBe("");
   });
 
   it("opens as Import again for the same player after a first import", () => {
     const lastImport = { username: "Ke5o", profileId: "p1", profileName: "Apple", fetchedAt: Date.now() - 600_000, appliedAt: Date.now() - 600_000, items: {} };
-    const html = text(renderToString(<ImportDialog open inventory={state.inventory} catalog={catalog} data={data} lastImport={lastImport} onApply={noop} onClose={noop} />));
+    const html = text(renderToString(<ImportPanel open inventory={state.inventory} catalog={catalog} data={data} lastImport={lastImport} onApply={noop} onClose={noop} />));
     expect(html).toContain("Import again from Hypixel");
     expect(html).toContain('value="Ke5o"');
   });

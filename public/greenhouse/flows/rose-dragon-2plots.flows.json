@@ -421,7 +421,7 @@
             "id": "pt",
             "label": "Phantomleaf + Timestalk",
             "layout": {
-              "code": "MzTVMbTQMUysMczSMcyu0SMEkpKSkpOTk4CsRMckp2QnMAsIkhMT9YgEAA"
+              "code": "MzTVMbTQMUysMczSMcyuMSAEkpKSkpOTk4CsRMckp2QnMAsIkhMTDYgEAA"
             },
             "exits": [
               {
@@ -625,7 +625,7 @@
             "id": "glasscorn",
             "label": "Glasscorn",
             "layout": {
-              "code": "q9QxtKwxTK_RowAkAQGU5agHZSWCEZgFBBAWAA"
+              "code": "q9QxtKwxTK8xoAAkAQGU5agHZSXq6SVCWUAAYQEA"
             },
             "exits": [
               {
@@ -829,7 +829,7 @@
             "id": "pt-glasscorn",
             "label": "Phantomleaf + Timestalk + Glasscorn (both farms at once)",
             "layout": {
-              "code": "MzTVMbTQMUzUqdQxtKwxzNIxzNYxTK_RIwSSkpKSk5OTgKxExySnZCcwCwiSExNTgQCiKNVZD8pKASMwCwggLAA"
+              "code": "MzTVMbTQMUzUqdQxtKwxzNIxzNYxTK8xIASSkpKSk5OTgKxExySnZCcwCwiSExNTgQCiKNVZD8pK0dNLgbKAAMICAA"
             },
             "exits": [
               {
@@ -1033,7 +1033,7 @@
             "id": "shellfruit",
             "label": "Shellfruit (blast Turtlellini): place them",
             "layout": {
-              "code": "M0zWKa-p0QOCRDAEgqREMEQRowIAAA"
+              "code": "M0zWKa-pMQCCRDAEgqREMEQRowIAAA"
             },
             "exits": [
               {
@@ -1238,7 +1238,7 @@
             "id": "shellfruit-cheese",
             "label": "Shellfruit (blast Turtlellini): place them (Cheesebite corner kept standing)",
             "layout": {
-              "code": "M0zWKddJ1ympqajRA4JEMASCpEQwRBFDBikpySkpEJZjsiOUlZyckowuBlcHBgA"
+              "code": "M0zWKddJ1ympqagxAIJEMASCpEQwRBFDBikpySkpEJZjsiOUlZyckowuBlcHBgA"
             },
             "exits": [
               {
@@ -1443,7 +1443,7 @@
             "id": "chorus",
             "label": "Chorus Fruit",
             "layout": {
-              "code": "q9QxNKwxNK3RIxMkJiZBWUmOSXCxRLgYjJWYlKQHAA"
+              "code": "q9QxNKwxNK0xIBMkJiZBWUmOSXCxRLgYjJWYlGQAAA"
             },
             "exits": [
               {
@@ -1647,7 +1647,7 @@
             "id": "plantboy",
             "label": "PlantBoy Advance",
             "layout": {
-              "code": "MzTWMUyqMTSrSQICPTBIctRLhLL0YCBRjxoAAA"
+              "code": "MzTWMUyqMTSrSQICAzBIctRL1NMDs_RAAMRKhLOgFAqLWAAA"
             },
             "exits": [
               {
@@ -1851,7 +1851,7 @@
             "id": "petal",
             "label": "Stoplight Petal",
             "layout": {
-              "code": "MzTSMTSuMUys0dNLBCMoAaUck4AYSCeBhSAkEnCEqgUrdkxC4mAFAA"
+              "code": "PUuJEQAgCFqo47AmaBSbo-GDPk4FEaOWaDNykgmXGSCQHn2otYqEsQ8XVj23Oj_OUi6fyRPmxwI"
             },
             "exits": [
               {
@@ -2055,7 +2055,7 @@
             "id": "puffer",
             "label": "Puffercloud",
             "layout": {
-              "code": "q9IxNK4xNK_RIwckJiaCMZDlmKSn5whmwQkwcExEqAUA"
+              "code": "q9IxNK4xNK8xIAckJiaCMZDlmKSn5whmJerp6YHFDAz0oGJQtQA"
             },
             "exits": [
               {
@@ -2259,7 +2259,7 @@
             "id": "plantboy-puffer",
             "label": "PlantBoy + Puffercloud (both farms at once)",
             "layout": {
-              "code": "MzTWMUzSqaoxNNMxNK9JAgI9MEhy1EuEsvRgIFEPK0hOTgZjIMsJqMQJzIITYOCUjFALAA"
+              "code": "PYrRCcAwCAUXElEKzXfcJL4tSoaPmqQH4sE7fUidvqkvaZseSOGdB3MZJ2njt_O2AZA8EVgkVoYabmI4eXQL"
             },
             "exits": [
               {
@@ -2463,7 +2463,7 @@
             "id": "snoozling",
             "label": "Snoozling",
             "layout": {
-              "code": "PYzBCYBQDEMXKgFxAkdJ01w8eVBPDm-_ooUXCn3pHkesccZ2TfNliaRkeAGyMQSAGJs7qxGKlVlZhNrh4PHy996GTFc_Hbdvbg"
+              "code": "RYwxDoBQCEMvRAjGE3iUUro4OajTP7yoiZK8psMrux222mnbmOYhEgCp0OKejYLuDr-bOqthFCqzshBsBzePl5_3Liio-injvws"
             },
             "exits": [
               {
@@ -2667,7 +2667,7 @@
             "id": "startlevine",
             "label": "Startlevine",
             "layout": {
-              "code": "q9AprzG0rElMTNSDgCRHOCspCcpKRIjB1ZEOAA"
+              "code": "q9AprzG0rElMTDSAgCRHOCspCcpKRIjB1ZEOAA"
             },
             "exits": [
               {
@@ -2871,7 +2871,7 @@
             "id": "rares-startlevine",
             "label": "Chloronite + Do-not-eat Shroom + Startlevine (both farms at once)",
             "layout": {
-              "code": "LYo7DoAwDEMvFFliZGw5SdIkG2JA4qcenqRgD7aevdNKB2100dlvemiau5kB4MbwxTJLg7uDCzPDfhbr-LX4ASIqgpRWrV9LFh5M0tmSqOAF"
+              "code": "LYo7DoAwDEMvlMGMjC0nSZpkQwxI_NTDkxTswdazd1rpoI0uOvtND01zNzMA3Bi-WGZpcHdwYWbYz2IdvxY_QERFkNKq9WvJwoNJOlsSFbw"
             },
             "exits": [
               {
@@ -3075,7 +3075,7 @@
             "id": "blast-cheese",
             "label": "Blastberry + Cheesebite + Turtlellini",
             "layout": {
-              "code": "TYtJCoAwEAQ_NAwE_ECSl8zSox4FQQ95vCQuWKemqJ5poY1W2ilN7aCTkjVmd-eOR9Rn1Yi4l79udIAAqqaKIgWaLStEINb5ua8bzws"
+              "code": "TYtJCoAwEAQ_NIcJ-IEkL5mlRz0Kgh7yeElcsE5NUT3TQhuttFOa2kEnJWvM7s4dj6jPqhFxL3_d6AABVE0VRQo0W1aIQKzzc183nhc"
             },
             "exits": [
               {
@@ -3279,7 +3279,7 @@
             "id": "blast-cheese-cheese",
             "label": "Cheesebite focus (the farm's Cheesebite corner only)",
             "layout": {
-              "code": "S9cpqamo0SMFJCUlJiVBWI6JjlBWYmJSIroYXB0YAAA"
+              "code": "S9cpqamoMSAFJCUlJiVBWI6JjlBWYmJSIroYXB0YAAA"
             },
             "exits": [
               {
@@ -3483,7 +3483,7 @@
             "id": "jelly",
             "label": "Magic Jellybean",
             "layout": {
-              "code": "M9MprTE0rNFDBomJSYmJEJZjkmMihlgiVCwJKJaEoS4Rqg4DAAA"
+              "code": "M9MprTE0rDFABomJSYmJEJZjkmMihlgiVCwJKJaEoS4Rqg4DAAA"
             },
             "exits": [
               {
@@ -3687,7 +3687,7 @@
             "id": "rares",
             "label": "Chloronite + Do-not-eat Shroom",
             "layout": {
-              "code": "K9bJ1SnTya-p1Kmq0QODxOREGO2YDGE5JiYixCAsPb1ksLqkpJSkJDA_xSnFCcICiQEhWCwJBEEskEhKkh4A"
+              "code": "K9bJ1SnTya-p1KmqMQCDxOREGO2YDGE5JiYixCAsA4NksLqkpJSkJDA_xSnFCcICiQEhWCwJBEEskEhKkgEA"
             },
             "exits": [
               {
@@ -3891,7 +3891,7 @@
             "id": "soggybud",
             "label": "Soggybud (Plot 1 batch)",
             "layout": {
-              "code": "M9HJrjE0qdEjGSQigCMUJCYmJUERkhgcAAA"
+              "code": "M9HJrjE0qTEgGSQigCMUJCYmJUERkhgcAAA"
             },
             "exits": [
               {
@@ -4095,7 +4095,7 @@
             "id": "cream",
             "label": "Creambloom + Chocoberry",
             "layout": {
-              "code": "y9TJrinUKanRQ4CkRDBIStJLdEx0AkLHRL1EqGAiTMwJVSwJCMFiYJ1gMYhOR6gYUDAJAA"
+              "code": "y9TJrinUKakxQICkRDBISjJIdEx0AkLHRINEqGAiTMwJVSwJCMFiYJ1gMYhOR6gYUDAJAA"
             },
             "exits": [
               {
@@ -4299,7 +4299,7 @@
             "id": "dusk",
             "label": "Duskbloom + Thornshade",
             "layout": {
-              "code": "PcqxDcAwCETRhRA74E3uABcpkiqpPHwMiiJ0xX-C4hJyyCnXuuVZgUQQpMJosDQoM5iMyG34rAX7UbvdpztKfMzhWt2ns_q33gs"
+              "code": "PcqxDcAwCETRhShYAW9yB7hIkVRJ5eFjUBShK_4TFJeQQ0651i3PCiSCIBVGg6VBmcFkRG7DZy3Yj9rtPt1R4mMO1-o-ndW_9V4"
             },
             "exits": [
               {
@@ -4503,7 +4503,7 @@
             "id": "coal",
             "label": "Coalroot + Cindershade",
             "layout": {
-              "code": "y9DJ1SmoKdIprtFDgKSkxOTk5MSkJL0kp0THZMdEpyS9xMTEZCBMTEQSQ1WXCFeXDFeXiKoOAA"
+              "code": "y9DJ1SmoKdIprjFAgKSkxOTk5MSkJIMkp0THZMdEpySDxMTEZCBMTEQSQ1WXCFeXDFeXiKoOAA"
             },
             "exits": [
               {
@@ -4911,7 +4911,7 @@
             "id": "commons",
             "label": "Commons farm",
             "layout": {
-              "code": "FYhJEsMgDAQ_NKXKvhwBg_UNTGwjYZI8wI-P0nOYrn7iigMybrjjhCMWPDDjgvOu-EDwRscXFW0ncs757KcwDKW48jKbF4ve-2CN1lhzmIJI_GOWUqpx1UYqRtTRZo25mTUR3rr9qNSZWUmVfg"
+              "code": "FYjLFcMgDAQb2oPyT46AwWoDE9tIhCQFuHjLs4edNy_cQMi444EzTljwxIwrLpviB8EXHX9UtI3IOeezn8IwlOLK22xeLHrvgzVaY81hCiLxwCylVOOqjVSMqKPNGnMzayL86fajUmdmJVXaAQ"
             },
             "exits": [
               {
@@ -5115,7 +5115,7 @@
             "id": "noct-flesh",
             "label": "Noctilume + Fleshtrap",
             "layout": {
-              "code": "K9Ip1cmpMTTQMTSq0UOApKSkZCAGsZz0kp30wCw9vWQwqZeclJwMxBDZJLgsBOmBJIHSIGMSHZMdE8EGJoIAkAYA"
+              "code": "K9Ip1cmpMTTQMTSqMUCApKSkZCAGsZz0kp30wCw9vWQ9MCs5KTkZiCGySXDZJIgsSBIoDTIm0THZMRFsYCIIAGkA"
             },
             "exits": [
               {
@@ -5319,7 +5319,7 @@
             "id": "thunder",
             "label": "Thunderling",
             "layout": {
-              "code": "MzTSMTSpMUyq0QOBRD0ISEoCYoiAY5JjEkwwKREupocqppcEFwMKJEF1oAMA"
+              "code": "VczBDQAgCEPRhUwDxgUcxT8Hw6uoB3uBvCb1WryFE7YzlMdA4kCn57cAsk-TPjOe2QI4M7pzLxM"
             },
             "exits": [
               {
@@ -5523,7 +5523,7 @@
             "id": "zombud",
             "label": "Zombud",
             "layout": {
-              "code": "S9Mp0jE0qDFMqdGjDCQmJiUmQViOyY6JEFZScmIisiIA"
+              "code": "S9Mp0jE0qDFMqTGgDCQmJiUmQViOyY6JEFZScmIisiIA"
             },
             "exits": [
               {
@@ -6354,7 +6354,7 @@
             "id": "devourer",
             "label": "Devourer: keep inputs while growing",
             "layout": {
-              "code": "PcbJDYAwDADBhlYR5go8KcUmhLOEFI_E4XmNJCQiNERqWnoqOgbGIrmoanjMOtm7ZPZtCb_sW32bb_cdvtN33Q"
+              "code": "PcbJDYAwDATAhlaWzRV4UoqdEM4SUjwRRJ7XSIIECHoEdBgwgTFixlIkF1Ulrijqav-SWdtG1bfMDe2-w3f6Lt_te14"
             },
             "policies": {
               "replaceDecayed": false
@@ -6619,7 +6619,7 @@
             "id": "aloe",
             "label": "All-in Aloe (4 around one PlantBoy)",
             "layout": {
-              "code": "PYvZDYAwDEMXsiLCUeCzo4RS7hE6PEmlxlKcJ8tmBgcwBszoMSKgw4QFa-FcqCk57U7Z6dATEfXTfjS6SOJGFt7VLXy0FmvxbQP6fg"
+              "code": "PYtbDoAwCAQvtCHgo-pnj4K1vo_QwwsmLQnsZLKIQAIEPSZ0GBDAGDFjKZIL10mNtka50W6rqnYPz-h0ssaVXF7miFzeVot_8akP_H4"
             },
             "exits": [
               {
@@ -6823,7 +6823,7 @@
             "id": "aloe-1",
             "label": "All-in Aloe (1, when Jellybeans are short)",
             "layout": {
-              "code": "MzTUMTTTMdQx1jHXMdIx0THTMdAx1bHQsawxTK3Rg4FkOCsFzkqFs9KAODExEUimg1iOIFYGECfpgViZcHVZcFY2nJUDAA"
+              "code": "PctJDoBACETRC1VI49Dq0qOgtvMR-vDCwiL55C1AFZqhaDGgQYeMhB4jpqqlpn9WaqMKtXtm5vsIzaHTWyR0eSJxd_Pjod4P"
             },
             "exits": [
               {
@@ -7027,7 +7027,7 @@
             "id": "zombud",
             "label": "Zombud",
             "layout": {
-              "code": "Pco5DoAwEEPRC1mjDDtljjJJCHtDncNDCmzpS69wxgN1ULQY0aDDAIceE-aiqci_RC1UplZqo_Yvs2BBjiofvclZFaKZXPzdLw"
+              "code": "Pco5EoAwDEPRC6mQ2SlzFDsh7A11Dg8psGb-zCuU8UAIQYsRDToMIHpMmIukwn_Jtbiya3Vtrv1L1dR4VIUYlGeVRVVe_rtf"
             },
             "exits": [
               {
@@ -7231,7 +7231,7 @@
             "id": "thunder",
             "label": "Thunderling",
             "layout": {
-              "code": "PYvJCcAwEAMbEiLrONfTpXhzHyW4-HhNYsHAMCBxEA9BiwEOHj0adBgxJdFEW8zMGdUMFwtBg3JliRq5fY3caztMSjvNot0v_rurPS8"
+              "code": "PczZDYAwDAPQhazIKfdnR2m4jxE6PA0C_JPoSbYGaA1FhQ4BNVoQDXoMWS3Tk4QcyzUTMU4O0aJxJguYJVleE1l_27zx2O5fKsrD56TM8eSX6wY"
             },
             "exits": [
               {
@@ -7435,7 +7435,7 @@
             "id": "noct-flesh",
             "label": "Noctilume + Fleshtrap",
             "layout": {
-              "code": "NYlBDoJQEEMv1LzwQUSXcBNmUBFwQ-KOwztjQtPXNHm7vtpU1KhTrYuuqtTqpvtRKpX64MyEmXnAAxvwAeMZ4MS-cHMPmNNmeaf9dyFlaFYYe-9H2OJl4PMD"
+              "code": "NYk7DoNQDAQvtLLmEfIr4SbY-Yc0SHQcHrvIaEdaaRatmtV00Fmdep2EjrroujXUuo0_N9w9Uu74aDGa88DNwvI9CY9IeVWt8a5a40PFzHxhGmKYYM5XwG8H"
             },
             "exits": [
               {
@@ -7639,7 +7639,7 @@
             "id": "chorus",
             "label": "Chorus Fruit",
             "layout": {
-              "code": "PcbLDYAwDATRhlYIAwlwTCl2IHwbQErx4AM7c3kPRCDoMaLDgIgWARPmKqE2f5laqJUq1Ebt1GGqZq7TkiZ1XWrfrvsF"
+              "code": "Pca5EYAwDETRhjawAHOELkXC2FwNMOPiQQH7f_IeiEDQY0KHASMCImYsTWILfyuVqY0qVKV26jBVM9dpSZO6LrVv1_0C"
             },
             "exits": [
               {
@@ -8047,7 +8047,7 @@
             "id": "rares",
             "label": "Chloronite + Do-not-eat Shroom",
             "layout": {
-              "code": "PcpLCoNAEIThCxWF8ZHH0rlJ93QSNY5ZBISIh7dH0K7Nx0__kDDjiwsq3FCixhUFGtzxWP9YVh73PPUiVU2VfLuCBVdHmppH7V1hr0Nu_mn2IaNIlBhHVyt5iZTcRKYN"
+              "code": "PcpLCsJAEIThC9WijFHj0rlJPzTPMYtAQJnD2yNo1-bjpzdk7FhxwBEXNGhxBnFCh2t54V34u_tfD1LVVck-lDyFBtLVI-oYSt861Raf7jNpIiZmS-gmdZmU2kSeHw"
             },
             "exits": [
               {
@@ -8251,7 +8251,7 @@
             "id": "jelly",
             "label": "Magic Jellybean",
             "layout": {
-              "code": "M9Mp1THUMdYx1zHSMdEx0DHVsdCxrDE0rNGDgWS9xMSkxEQgK0Uv0THJEcRKhYulwcXS4WKJcLEMuFgm3LwsOCsbAA"
+              "code": "Pcw5FoAgFEPRDaX4X3EqWUpw1pqOxYOFSfXOLTIiw9FjQocAw4AZS3Ev9m81MpGtNmNM8atddshOGWWX7Nbfo3or"
             },
             "exits": [
               {
@@ -8455,7 +8455,7 @@
             "id": "coal",
             "label": "Coalroot + Cindershade",
             "layout": {
-              "code": "PcpHDoAwEEPRC1mIXpbkJuOhhBIJwTaHJ0Ei9u7pWzhcKFChQ4kaLXI06DH4G4_P_k2kqKqQM42M4YaLyGciazSNZkMngcgt2Z66I9mZOvcC"
+              "code": "Pco5DoAwEEPRC7kIO5TkJp6whCUSgjaHJ0Fi7O7pewRcKFChQ4kaLQwa9BjijSeaf5MInXMUmcVyTLeykJ-RazaXzaeOiUQ2tV27Q-3ULrw"
             },
             "exits": [
               {
@@ -8659,7 +8659,7 @@
             "id": "dusk",
             "label": "Duskbloom + Thornshade",
             "layout": {
-              "code": "JYpLDsJADEMvZI34f5bDTewkAxRo2dBVD09g9GTLtiwYHANGTFhjiyM22OGAFfY44bx8MC_WmpmlrnZpndu__3QXgyGKA6uSqHqEO5PwZ9_SX_0X1FiKqleWMmWiK9P7Cw"
+              "code": "JYpBEoJQDEMvlEUFFVl-b9K0_SoguNEVh7f6500ySSaEwTFhxYYDegzocMQZghMuGPc3PrvVamapm11r4_7vPz2ooUGlTlqYROEc7pqEL21Lf7ZfKFcRFi8qsmVSZ6bXFw"
             },
             "exits": [
               {
@@ -8863,7 +8863,7 @@
             "id": "cream",
             "label": "Creambloom + Chocoberry",
             "layout": {
-              "code": "y9TJ1jHUMdYx1zHSMdEx0zHQMdWx0LGsKdQpqUmEgeREp0THJEcgmQLkJQFhYmIqXCwNri4dyIPADLhYJlCNIxhnJYH0glC2HgzkAAA"
+              "code": "y9TJ1jHUMdYx1zHSMdEx0zHQMdWx0LGsKdQpqUmEgeREp0THJEcgmQLkJQFhYmIqXCwNri4dyIPADLhYJlCNIxhnJYH0glC2AQzkAAA"
             },
             "exits": [
               {
@@ -9067,7 +9067,7 @@
             "id": "commons",
             "label": "Commons farm",
             "layout": {
-              "code": "FclZFoMgEETRDdXpk3n4BMF2G6AgjWCyABefzt-tVyecccEVN9zxwBMvvBGQkI8CQcWGjh0ffA8_e5ccEUUfvVuc7mUcraUmUcpachbTjMz_JkadmHnrTb1ulac-6RuYu0prttmqhjCIijqp6g8"
+              "code": "FcnJAcMgDETRhuag7MkRDJbbABuMWJIU4OKj3N78IZxwxgVX3HDHA0-8EJCQjwJBRcPAGx98D796lxwRRR-925zubZ6tpS5Ryl5yFtONrP8mRp2YuY2u3lvlZSz6Buah0ppttqopTKKiQar6Aw"
             },
             "exits": [
               {
@@ -9271,7 +9271,7 @@
             "id": "blast-cheese-cheese",
             "label": "Cheesebite focus (the farm's Cheesebite corner only)",
             "layout": {
-              "code": "S9cp0THUMdYx1zHSMdEx0zHQMdWx0LGsqajRg4FkOCsFzkqFs9JARFJSYlJSOpjlmOiYlAFmJSYmJWbCxbLg6rLhenMA"
+              "code": "S9cp0THUMdYx1zHSMdEx0zHQMdWx0LGsqagxgIFkOCsFzkqFs9JARFJSYlJSOpjlmOiYlAFmJSYmJWbCxbLg6rLhenMA"
             },
             "exits": [
               {
@@ -9475,7 +9475,7 @@
             "id": "snoozling",
             "label": "Snoozling",
             "layout": {
-              "code": "NYw5EsJQDEMvpPEQwlpyFFsWCWEtIFUOj38RzTxVT_rihwkzPujQ44gtdjhggz1OOC9dv4h0d1JXXcyi0EAz80KjqrPgLT0jMtInluONe_OieQ-tiyflyjrly9a8_w"
+              "code": "NYw7EsJQDAMvpPEkBAKUHMWWRSB8C6DK4fEroplVtdIHX8z44Y0eA_bYYIsRHXY44Lj0wyLS3UmddTKLQhPNzAtdVJ0Fr-kZkZE-sxxv3JoXzbtrXTwoV9Ypn92a1x8"
             },
             "exits": [
               {
@@ -9679,7 +9679,7 @@
             "id": "puffer",
             "label": "Puffercloud",
             "layout": {
-              "code": "PcvJDYAwDETRhkYjTIDAkVLMvlWAUjwJSvx9eYfxC3EQOHjUaNChQoseQxAfNMXYrGO8pEUn8tfK0qZFe16RR_4kT9tdptv0fA"
+              "code": "PcvLEYAgDIThhnYyi6jo0VIivrUCh-IFB_hz-Q6bF8bCwMKhQYseRIcBYzAuaIoxr1O8pEVnkV8rRSSBmxbteUUe-ZM8Wbqq7qrnAw"
             },
             "exits": [
               {
@@ -9883,7 +9883,7 @@
             "id": "plantboy",
             "label": "PlantBoy Advance",
             "layout": {
-              "code": "PcjLDYAgEADRhiYbVxT1aCng_1MCxYsadk4vow6NKI6OmgZPRUvPkNSnmJO3KY4SPs3_yC2haC2QzbSbDtNpukz3Aw"
+              "code": "PcbJDYAwDAXRhr4sm0CAI6XEYYcSUjyOUDyXeRIgCkHAiA49IhgDJsxFYlGLa1kXSkSmValm2lLT_s86XCe3LtftelzvBw"
             },
             "exits": [
               {
@@ -10087,7 +10087,7 @@
             "id": "startlevine",
             "label": "Startlevine",
             "layout": {
-              "code": "q9Ap1zHUMdYx1zHSMdEx0zHQMdWx0LGsMbSsSUxM1AOD5CRHKCslKSkJwkpNhImlJcHUpevBQAaclQlnZcFZ2XBWDgA"
+              "code": "q9Ap1zHUMdYx1zHSMdEx0zHQMdWx0LGsMbSsSUxMNACD5CRHKCslKSkJwkpNhImlJcHUpRvAQAaclQlnZcFZ2XBWDgA"
             },
             "exits": [
               {
@@ -10291,7 +10291,7 @@
             "id": "shellfruit",
             "label": "Shellfruit (blast Turtlellini): place them",
             "layout": {
-              "code": "PchJCoAwAEPRC32CdfY4tc66d9PDCwWTv3kkJF4CDQM1LT0VHSNTzpJiKUlzLC3-Vv3brN06rNO6rNt6Pg"
+              "code": "Pcg5DoAwAAPBD23hcPOcEMLd0-TxSJGwtxk5JF4CLSMNHQOiZ2IuRVKsJWmJtdVf1r_N2q3DOq3Luq3nAw"
             },
             "exits": [
               {
@@ -10496,7 +10496,7 @@
             "id": "glasscorn",
             "label": "Glasscorn",
             "layout": {
-              "code": "PcbJDYAwDATAhlYW5s6TUpwA4WoAKcUTgth5zQ11UDQYUKNFjwodRrikMflMXsFP8m02EStbLCtb5Re5jdu5gzu56wE"
+              "code": "PcZLDoAgDAXAC700rR-UpUcpKvi7gAmHFzF2VnNDPAQtBjTo4MDoMcJnSTkU_JrDRN8WJdK6VYu6yL9k22y77bCdtusB"
             },
             "exits": [
               {
@@ -10700,7 +10700,7 @@
             "id": "pt",
             "label": "Phantomleaf + Timestalk",
             "layout": {
-              "code": "Pcq5EYAwDAXRhv5oEGAwIe5EEqcNHbh4nKCNXrAcwBEsYAyY0WPEhA4BEUvlDC6V_jbX7jqIVNXM9CSSVZMlvZpaJnL7l13F9bjeDw"
+              "code": "Pcq7AYAgDEXRhV6RqCiWskkS_IFuwPDSmFud4nIAR7CAMWLBgAkzCAERa-MCro3-smt3HUSqamZ6EsmmyZJeXT0Tuf0rrup6XO8H"
             },
             "exits": [
               {

@@ -14,14 +14,15 @@ export const BareGround: React.FC<{ ground: string; size: number; cellSize: numb
       tiles.push(
         <div
           key={`${r},${c}`}
-          className="absolute rounded-sm"
-          style={{ top: r * (cellSize + gap), left: c * (cellSize + gap), width: cellSize, height: cellSize, backgroundImage: url, backgroundSize: "cover" }}
-        />
+          className="absolute"
+          // A ground tile: 2px corners, like the textures it stands for (not a control radius).
+          style={{ top: r * (cellSize + gap), left: c * (cellSize + gap), width: cellSize, height: cellSize, backgroundImage: url, backgroundSize: "cover", borderRadius: 2 }}
+        />,
       );
     }
   }
   return (
-    <div aria-hidden className="absolute inset-0 pointer-events-none">
+    <div aria-hidden className="pointer-events-none absolute inset-0">
       {tiles}
     </div>
   );

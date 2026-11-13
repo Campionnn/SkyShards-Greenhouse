@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from "react";
-import { CheckCircle2, AlertTriangle, Grid3X3, RotateCcw, Paintbrush, Info, Loader2, FlaskConical, Share2 } from "lucide-react";
+import { FlaskConical, Grid3X3, RotateCcw, Share2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { GRID_SIZE } from "../../constants";
 import { useGreenhouseData, useGridState, useLockedPlacements, useDesigner, useInfoModal } from "../../context";
-import { useGridPlacement, useFitCellSize, usePlacementFocus, focusKey, useTargetsVisible, useInputsVisible } from "../../hooks";
+import { useGridPlacement, useFitCellSize, focusKey, useTargetsVisible, useInputsVisible } from "../../hooks";
 import {
   getGridDimensions,
   simulateEffects,
@@ -24,18 +24,19 @@ import {
   MutationCell,
   EffectTooltip,
   GridVisibilityToggle,
-  FindOnGridHint,
-  focusItemClass,
   focusFade,
   FOCUS_TRANSITION,
 } from "../grid";
-import { CropImage } from "../shared";
-import { SectionLabel } from "../ui";
+import { LOCKED_CELL, UNLOCKED_CELL } from "../grid/gridCellStyles";
+import { cn } from "../ui/cn";
+import { KitButton, Pill } from "../ui/kit";
 import { useToast } from "../ui/toastContext";
 import type { SolveResponse, CropPlacement, MutationResult } from "../../types/greenhouse";
 import type { SolveErrorInfo } from "../../services";
 import { SolverProgress } from "./SolverProgress";
-import { ResultSummary, MutationList, SolveErrorPanel } from "./ResultSummary";
+import { ResultSummary, SolveErrorPanel } from "./ResultSummary";
+import { ResultLists } from "./ResultLists";
+import { useResultFocus, useSharedResultFocus } from "./resultFocusContext";
 import type { SolveSession, SolveRunMeta } from "./solverStatus";
 
 interface SolverResultsProps {
@@ -48,6 +49,8 @@ interface SolverResultsProps {
   onClear?: () => void;
   onDismissError?: () => void;
   onRetry?: () => void;
+  /** "none": the Mutations / Crops to plant lists are rendered elsewhere (ResultLists, e.g. the left rail). */
+  lists?: "inline" | "none";
 }
 
 // A crop or mutation placement on the grid.
@@ -119,9 +122,6 @@ function processMutationsToItems(
   });
 }
 
-const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = "" }) => (
-  <div className={`bg-slate-800/40 border border-slate-600/30 rounded-lg p-4 flex-1 ${className}`}>{children}</div>
-);
 
 const StatusMessage: React.FC<{
   hoveredPlacementId: string | null;
@@ -134,8 +134,8 @@ const StatusMessage: React.FC<{
     if (hoveredPlacementId && isPlacementMode) {
       return (
         <span>
-          <span className="font-semibold text-emerald-400">Click to place crops</span>,{" "}
-          <span className="font-semibold text-red-400">right-click to remove</span>
+          <span className="font-semibold text-fg">Click to place crops</span>,{" "}
+          <span className="font-semibold text-fg">right-click to remove</span>
           {!hasResult && <>, Esc to stop placing</>}
         </span>
       );
@@ -143,14 +143,14 @@ const StatusMessage: React.FC<{
     if (hoveredPlacementId && !isPlacementMode) {
       return (
         <span>
-          Drag to move, <span className="font-semibold text-red-400">right-click to remove</span>
+          Drag to move, <span className="font-semibold text-fg">right-click to remove</span>
         </span>
       );
     }
     if (isPlacementMode && hoverInfo) {
       return (
         <span>
-          <span className="font-semibold text-emerald-400">Click to place crops</span>, right-click to remove
+          <span className="font-semibold text-fg">Click to place crops</span>, right-click to remove
           {!hasResult && <>, Esc to stop placing</>}
         </span>
       );
@@ -165,10 +165,11 @@ const StatusMessage: React.FC<{
     }
     return hasResult
       ? ""
-      : "Configure your targets and click \"Solve\" to find the optimal crop placement";
+      : "Add targets and press Solve to find the best layout for your cells";
   };
 
-  return <div className="text-center py-2 text-slate-500 text-sm">{getMessage()}</div>;
+  const message = getMessage();
+  return message ? <p className="py-1.5 text-center text-secondary text-fg-meta">{message}</p> : null;
 };
 
 export const SolverResults: React.FC<SolverResultsProps> = ({
@@ -179,6 +180,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
   onClear,
   onDismissError,
   onRetry,
+  lists = "inline",
 }) => {
   const { getCropDef, getMutationDef } = useGreenhouseData();
   const { unlockedCells } = useGridState();
@@ -192,11 +194,12 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
   const [inputsVisible, setInputsVisible] = useInputsVisible();
   const [hoveredEffectItem, setHoveredEffectItem] = useState<PlacementItem | null>(null);
 
-  // Grid sizing: fit the available width, never scroll.
+  // Grid sizing: the whole 10x10 plot, fitted to the column's width, never scrolling sideways.
   const fitRef = useRef<HTMLDivElement>(null);
-  const { cellSize, gap } = useFitCellSize(fitRef, { max: 60 });
+  const { cellSize, gap } = useFitCellSize(fitRef, { max: 64 });
   const gridRef = useRef<HTMLDivElement>(null);
   const { width: gridWidth, height: gridHeight } = getGridDimensions(cellSize, gap);
+  const unit = cellSize + gap;
 
   const handleSendToDesigner = useCallback(() => {
     const inputs: Array<{ id: string; name: string; position: [number, number]; size: number }> = [];
@@ -331,15 +334,10 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     return cells;
   }, [occupiedCells, result, lockedPlacements]);
 
-  // Hovering or clicking an entry in the Mutations / Crops to plant lists finds it on the grid.
-  const focusKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const p of result?.placements || []) keys.add(focusKey("input", p.crop));
-    for (const m of result?.mutations || []) keys.add(focusKey("target", m.mutation));
-    for (const l of lockedPlacements) keys.add(focusKey("input", l.crop));
-    return keys;
-  }, [result, lockedPlacements]);
-  const focus = usePlacementFocus(focusKeys);
+  // Hovering or clicking an entry in the Mutations / Crops to plant lists finds it on the grid. With
+  // the lists rendered elsewhere (ResultFocusProvider around both), the shared focus drives the grid.
+  const ownFocus = useResultFocus(result, lockedPlacements);
+  const focus = useSharedResultFocus() ?? ownFocus;
 
   // Effect propagation over the displayed layout (solver crops + mutations + locks).
   // Locked placements are also in result.placements for final results, so dedupe by position.
@@ -380,254 +378,196 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
     return { item, ...effectInfoFor(item.id, [item.startRow, item.startCol], item.size, !!item.isMutation) };
   }, [hoveredEffectItem, hoveredPlacementId, lockedPlacements, getCropDef, getMutationDef, effectInfoFor, dragState]);
 
+
   const hasResult = !!result;
   const isSolving = !!session;
   const isFinal = hasResult && !isSolving && result.status !== "SOLVING";
 
   const renderGrid = () => (
-    <div ref={fitRef} className="w-full">
-      <div
-        ref={gridRef}
-        className="relative select-none mx-auto"
-        style={{ width: gridWidth, height: gridHeight, cursor: isPlacementMode ? "crosshair" : "default" }}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        onMouseDown={handleMouseDown}
-        onContextMenu={handleContextMenu}
-        onMouseUp={handleMouseUp}
-      >
-        {hasResult ? (
-          Array.from({ length: GRID_SIZE }).flatMap((_, rowIndex) =>
-            Array.from({ length: GRID_SIZE }).map((_, colIndex) => {
-              const key = `${rowIndex},${colIndex}`;
-              if (coveredCells.has(key)) return null;
-              const isUnlocked = unlockedCells.has(key);
-              return (
-                <div
-                  key={key}
-                  style={{
-                    position: "absolute",
-                    top: rowIndex * (cellSize + gap),
-                    left: colIndex * (cellSize + gap),
-                    width: cellSize,
-                    height: cellSize,
-                    // Empty unlocked cells fade with everything else while a list entry is shown.
-                    ...(isUnlocked && focus.active ? focusFade("dimmed") : {}),
-                    transition: FOCUS_TRANSITION,
-                  }}
-                  className={`rounded ${isUnlocked ? "bg-emerald-600/40 border border-emerald-500/30" : "bg-slate-700/30 border border-slate-600/20"}`}
-                />
-              );
-            })
-          )
-        ) : (
-          <GridBackground cellSize={cellSize} gap={gap} unlockedCells={unlockedCells} />
-        )}
+    <div ref={fitRef} className="w-full min-w-0">
+      <div data-testid="solver-grid">
+        <div
+          ref={gridRef}
+          className="relative mx-auto select-none"
+          style={{ width: gridWidth, height: gridHeight, cursor: isPlacementMode ? "crosshair" : "default" }}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          onMouseDown={handleMouseDown}
+          onContextMenu={handleContextMenu}
+          onMouseUp={handleMouseUp}
+        >
+          {hasResult ? (
+            Array.from({ length: GRID_SIZE }).flatMap((_, rowIndex) =>
+              Array.from({ length: GRID_SIZE }).map((_, colIndex) => {
+                const key = `${rowIndex},${colIndex}`;
+                if (coveredCells.has(key)) return null;
+                const isUnlocked = unlockedCells.has(key);
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      position: "absolute",
+                      top: rowIndex * unit,
+                      left: colIndex * unit,
+                      width: cellSize,
+                      height: cellSize,
+                      // Empty unlocked cells fade with everything else while a list entry is shown.
+                      ...(isUnlocked && focus.active ? focusFade("dimmed") : {}),
+                      transition: FOCUS_TRANSITION,
+                    }}
+                    className={cn("rounded-inner", isUnlocked ? UNLOCKED_CELL.green : LOCKED_CELL)}
+                  />
+                );
+              }),
+            )
+          ) : (
+            <GridBackground cellSize={cellSize} gap={gap} unlockedCells={unlockedCells} />
+          )}
 
-        {cropItems.map((item, index) => (
-          <CropCell
-            key={`${item.id}-${item.startRow}-${item.startCol}-${index}`}
-            id={item.id}
-            name={item.name}
-            position={[item.startRow, item.startCol]}
-            size={item.size}
-            groundType={groundOf(item.id)}
-            cellSize={cellSize}
-            gap={gap}
-            isLocked={item.locked}
-            onClick={() => openInfo(item.id)}
-            title=""
-            onMouseEnter={() => setHoveredEffectItem(item)}
-            onMouseLeave={() => setHoveredEffectItem(null)}
-            focus={focus.visualFor(focusKey("input", item.id))}
-            hidden={!inputsVisible}
-          />
-        ))}
-
-        {mutationItems.map((item, index) => (
-          <MutationCell
-            key={`mutation-${item.id}-${item.startRow}-${item.startCol}-${index}`}
-            id={item.id}
-            name={item.name}
-            position={[item.startRow, item.startCol]}
-            size={item.size}
-            groundType={groundOf(item.id)}
-            cellSize={cellSize}
-            gap={gap}
-            hidden={!targetsVisible}
-            onClick={() => openInfo(item.id)}
-            title=""
-            onMouseEnter={() => setHoveredEffectItem(item)}
-            onMouseLeave={() => setHoveredEffectItem(null)}
-            focus={focus.visualFor(focusKey("target", item.id))}
-          />
-        ))}
-
-        {lockedPlacements.map((placement) => {
-          const isBeingDragged = dragState?.placementId === placement.id && dragState?.isDragging;
-          const isHovered = hoveredPlacementId === placement.id && !isBeingDragged && !isPlacementMode;
-          const displayPlacement = isBeingDragged ? { ...placement, position: dragState.currentPosition } : placement;
-          return (
-            <LockedPlacementCell
-              key={placement.id}
-              placement={displayPlacement}
+          {cropItems.map((item, index) => (
+            <CropCell
+              key={`${item.id}-${item.startRow}-${item.startCol}-${index}`}
+              id={item.id}
+              name={item.name}
+              position={[item.startRow, item.startCol]}
+              size={item.size}
+              groundType={groundOf(item.id)}
               cellSize={cellSize}
               gap={gap}
-              isDragging={isBeingDragged}
-              isHovered={isHovered}
-              isPlacementMode={isPlacementMode}
-              onMouseDown={(e) => handlePlacementMouseDown(placement.id, e)}
-              onMouseEnter={() => setHoveredPlacementId(placement.id)}
-              onMouseLeave={() => setHoveredPlacementId(null)}
-              onClick={() => openInfo(placement.crop)}
-              onCancelDrag={cancelDrag}
-              focus={focus.visualFor(focusKey("input", placement.crop))}
+              isLocked={item.locked}
+              onClick={() => openInfo(item.id)}
+              title=""
+              onMouseEnter={() => setHoveredEffectItem(item)}
+              onMouseLeave={() => setHoveredEffectItem(null)}
+              focus={focus.visualFor(focusKey("input", item.id))}
               hidden={!inputsVisible}
             />
-          );
-        })}
+          ))}
 
-        {dragState?.isDragging && dragValidation && (
-          <DragValidationOverlay
-            position={dragState.currentPosition}
-            size={lockedPlacements.find(p => p.id === dragState.placementId)?.size ?? 1}
-            cellSize={cellSize}
-            gap={gap}
-            isValid={dragValidation.valid}
-          />
-        )}
+          {mutationItems.map((item, index) => (
+            <MutationCell
+              key={`mutation-${item.id}-${item.startRow}-${item.startCol}-${index}`}
+              id={item.id}
+              name={item.name}
+              position={[item.startRow, item.startCol]}
+              size={item.size}
+              groundType={groundOf(item.id)}
+              cellSize={cellSize}
+              gap={gap}
+              hidden={!targetsVisible}
+              onClick={() => openInfo(item.id)}
+              title=""
+              onMouseEnter={() => setHoveredEffectItem(item)}
+              onMouseLeave={() => setHoveredEffectItem(null)}
+              focus={focus.visualFor(focusKey("target", item.id))}
+            />
+          ))}
 
-        {previewPosition && selectedCropForPlacement && !dragState && !paintState && (
-          <PlacementPreview
-            position={previewPosition}
-            crop={selectedCropForPlacement}
-            isValid={previewValidation?.valid ?? false}
-            cellSize={cellSize}
-            gap={gap}
-          />
-        )}
+          {lockedPlacements.map((placement) => {
+            const isBeingDragged = dragState?.placementId === placement.id && dragState?.isDragging;
+            const isHovered = hoveredPlacementId === placement.id && !isBeingDragged && !isPlacementMode;
+            const displayPlacement = isBeingDragged ? { ...placement, position: dragState.currentPosition } : placement;
+            return (
+              <LockedPlacementCell
+                key={placement.id}
+                placement={displayPlacement}
+                cellSize={cellSize}
+                gap={gap}
+                isDragging={isBeingDragged}
+                isHovered={isHovered}
+                isPlacementMode={isPlacementMode}
+                onMouseDown={(e) => handlePlacementMouseDown(placement.id, e)}
+                onMouseEnter={() => setHoveredPlacementId(placement.id)}
+                onMouseLeave={() => setHoveredPlacementId(null)}
+                onClick={() => openInfo(placement.crop)}
+                onCancelDrag={cancelDrag}
+                focus={focus.visualFor(focusKey("input", placement.crop))}
+                hidden={!inputsVisible}
+              />
+            );
+          })}
 
-        {hoveredEffects && !isPlacementMode && (
-          <EffectTooltip
-            id={hoveredEffects.item.id}
-            name={hoveredEffects.item.name}
-            position={[hoveredEffects.item.startRow, hoveredEffects.item.startCol]}
-            size={hoveredEffects.item.size}
-            has={hoveredEffects.has}
-            gives={hoveredEffects.gives}
-            suppressed={hoveredEffects.suppressed}
-            cellSize={cellSize}
-            gap={gap}
-            gridWidth={gridWidth}
-            gridHeight={gridHeight}
-            note={hoveredEffects.item.locked ? "locked" : hoveredEffects.item.isMutation ? "target" : undefined}
-          />
-        )}
+          {dragState?.isDragging && dragValidation && (
+            <DragValidationOverlay
+              position={dragState.currentPosition}
+              size={lockedPlacements.find((p) => p.id === dragState.placementId)?.size ?? 1}
+              cellSize={cellSize}
+              gap={gap}
+              isValid={dragValidation.valid}
+            />
+          )}
+
+          {previewPosition && selectedCropForPlacement && !dragState && !paintState && (
+            <PlacementPreview position={previewPosition} crop={selectedCropForPlacement} isValid={previewValidation?.valid ?? false} cellSize={cellSize} gap={gap} />
+          )}
+
+          {hoveredEffects && !isPlacementMode && (
+            <EffectTooltip
+              id={hoveredEffects.item.id}
+              name={hoveredEffects.item.name}
+              position={[hoveredEffects.item.startRow, hoveredEffects.item.startCol]}
+              size={hoveredEffects.item.size}
+              has={hoveredEffects.has}
+              gives={hoveredEffects.gives}
+              suppressed={hoveredEffects.suppressed}
+              cellSize={cellSize}
+              gap={gap}
+              gridWidth={gridWidth}
+              gridHeight={gridHeight}
+              note={hoveredEffects.item.locked ? "locked" : hoveredEffects.item.isMutation ? "target" : undefined}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
 
-  const placementCounts = new Map<string, { count: number; locked: number }>();
-  (result?.placements || []).forEach((p) => {
-    const e = placementCounts.get(p.crop) || { count: 0, locked: 0 };
-    e.count += 1;
-    if (p.locked) e.locked += 1;
-    placementCounts.set(p.crop, e);
-  });
-
-  let headerIcon: React.ReactNode = <Grid3X3 className="w-4 h-4 text-emerald-400" />;
-  let headerText = "Solution";
-  if (isSolving) {
-    headerIcon = <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />;
-    headerText = hasResult ? "Best layout so far" : "Solving";
-  } else if (error && !hasResult) {
-    headerIcon = <AlertTriangle className="w-4 h-4 text-amber-400" />;
-    headerText = error.kind === "no_solution" || error.kind === "infeasible_unique" ? "No solution" : "Solve failed";
-  } else if (hasResult) {
-    headerIcon =
-      result.status === "OPTIMAL" ? (
-        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-      ) : result.status === "CANCELLED" ? (
-        <AlertTriangle className="w-4 h-4 text-amber-400" />
-      ) : (
-        <Info className="w-4 h-4 text-sky-400" />
-      );
-    headerText = result.status === "OPTIMAL" ? "Optimal solution" : result.status === "CANCELLED" ? "Partial solution" : "Solution";
-  }
-
   const unlockedCount = unlockedCells.size;
+  const hasLayout = hasResult || lockedPlacements.length > 0;
 
   return (
-    <Card>
-      <div className="flex items-center gap-2 mb-3 min-h-[24px]">
-        {headerIcon}
-        <h3 className="text-sm font-medium text-slate-200">{headerText}</h3>
-        <div className="ml-auto flex items-center gap-2">
-          {(hasResult || lockedPlacements.length > 0) && !isSolving && (
-            <>
-              <button
-                onClick={handleSendToDesigner}
-                className="px-2 py-1 text-xs bg-purple-500/40 hover:bg-purple-500/60 border border-purple-500/30 rounded text-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
-                title="Open this layout in the Designer"
-              >
-                <Paintbrush className="w-3 h-3" />
-                Designer
-              </button>
-              <button
-                onClick={handleSendToSimulator}
-                className="px-2 py-1 text-xs bg-amber-500/30 hover:bg-amber-500/50 border border-amber-500/30 rounded text-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
-                title="Run this layout in the Simulator"
-              >
-                <FlaskConical className="w-3 h-3" />
-                Simulate
-              </button>
-              <button
-                onClick={handleCopyShareLink}
-                className="px-2 py-1 text-xs bg-sky-500/30 hover:bg-sky-500/50 border border-sky-500/30 rounded text-slate-100 transition-colors flex items-center gap-1 cursor-pointer"
-                title="Copy a share link to this layout"
-              >
-                <Share2 className="w-3 h-3" />
-                Share
-              </button>
-            </>
-          )}
-          {(hasResult || error) && !isSolving && onClear && (
-            <button
-              onClick={onClear}
-              className="px-2 py-1 text-xs bg-slate-600/50 hover:bg-slate-600/70 border border-slate-600/30 rounded text-slate-300 transition-colors flex items-center gap-1 cursor-pointer"
-              title="Clear results"
-            >
-              <RotateCcw className="w-3 h-3" />
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
-
+    <section className="@container flex min-w-0 flex-col gap-3" aria-label="Result" data-testid="solver-results">
       {/* Live status while solving */}
       {session && <SolverProgress session={session} />}
 
       {/* Failure / no solution */}
       {error && !isSolving && <SolveErrorPanel error={error} onDismiss={onDismissError} onRetry={onRetry} />}
 
-      {/* Final result status + stats */}
+      {/* The verdict (score, status, stats), then what you can do with the layout. */}
       {isFinal && <ResultSummary result={result} meta={runMeta ?? null} unlockedCount={unlockedCount} />}
-
-      <SectionLabel
-        actions={
-          hasResult || lockedPlacements.length > 0 ? (
+      {(hasLayout || ((hasResult || error) && onClear)) && (
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          {isSolving && hasResult && <Pill tone="neutral">Best layout so far</Pill>}
+          {hasLayout && !isSolving && (
+            <>
+              <KitButton variant="ghost" onClick={handleSendToDesigner} title="Open this layout in the Designer">
+                <Grid3X3 /> Designer
+              </KitButton>
+              <KitButton variant="ghost" onClick={handleSendToSimulator} title="Run this layout in the Simulator">
+                <FlaskConical /> Simulate
+              </KitButton>
+              <KitButton variant="ghost" onClick={handleCopyShareLink} title="Copy a share link to this layout">
+                <Share2 /> Share
+              </KitButton>
+            </>
+          )}
+          {(hasResult || error) && !isSolving && onClear && (
+            <KitButton variant="ghost" onClick={onClear} title="Clear the result" aria-label="Clear the result">
+              <RotateCcw /> Clear
+            </KitButton>
+          )}
+          {hasLayout && (
             <GridVisibilityToggle
               targetsVisible={targetsVisible}
               onTargetsVisibleChange={setTargetsVisible}
               inputsVisible={inputsVisible}
               onInputsVisibleChange={setInputsVisible}
-              className="justify-end"
+              className="ml-auto"
             />
-          ) : undefined
-        }
-      >
-        {isSolving && hasResult ? "Layout (live preview)" : "Layout"}
-      </SectionLabel>
+          )}
+        </div>
+      )}
+
       {renderGrid()}
       <StatusMessage
         hoveredPlacementId={hoveredPlacementId}
@@ -637,43 +577,7 @@ export const SolverResults: React.FC<SolverResultsProps> = ({
         hasLockedPlacements={lockedPlacements.length > 0}
       />
 
-      {hasResult && (
-        <div className="mb-4">
-          <SectionLabel actions={<FindOnGridHint pinned={focus.pinned !== null} />}>Mutations</SectionLabel>
-          <MutationList result={result} focus={focus} />
-        </div>
-      )}
-
-      {hasResult && (
-        <div className="mb-1">
-          <SectionLabel>Crops to plant</SectionLabel>
-          <div className="flex flex-wrap gap-2">
-            {Array.from(placementCounts.entries()).map(([cropId, { count, locked }]) => {
-              const cropDef = getCropDef(cropId);
-              const mutationDef = getMutationDef(cropId);
-              const displayName = cropDef?.name || mutationDef?.name || cropId.replace(/_/g, " ");
-              const key = focusKey("input", cropId);
-              const item = focus.itemProps(key, displayName);
-              return (
-                <div
-                  key={cropId}
-                  {...item}
-                  className={`flex items-center gap-2 bg-slate-700/30 rounded-md px-2 py-1 ${focusItemClass(focus, key)}`}
-                  title={locked ? `${item.title}. ${locked} of these are your locked placements.` : item.title}
-                >
-                  <CropImage cropId={cropId} cropName={displayName} size="xs" showFallback={false} />
-                  <span className="text-xs text-slate-300">{displayName}</span>
-                  <span className="text-xs text-slate-500 tabular-nums">
-                    x{count}
-                    {locked > 0 && <span className="text-slate-600"> ({locked} locked)</span>}
-                  </span>
-                </div>
-              );
-            })}
-            {placementCounts.size === 0 && <div className="text-center py-2 text-xs text-slate-500">No crops placed</div>}
-          </div>
-        </div>
-      )}
-    </Card>
+      {lists === "inline" && <ResultLists result={result} focus={focus} className="@container/lists sm:grid sm:grid-cols-2 sm:gap-x-6" />}
+    </section>
   );
 };

@@ -267,15 +267,26 @@ export function cleanCropFortune(raw: unknown): CropFortune | null {
   return Object.keys(out).length ? out : null;
 }
 
-/** Farming tools: a name and a cleaned per-crop fortune. Tools without a name are dropped. */
+/**
+ * Farming tools: a name, the tool's general Farming Fortune (every crop while held) and its
+ * crop-specific fortune. Servers that send the split (`farmingFortune` + `cropFortune`) get it;
+ * older ones only sent `fortune` (both parts, on the tool's own crops), which is kept as is.
+ * Tools without a name are dropped.
+ */
 export function cleanTools(raw: unknown): FarmingToolStats[] | null {
   if (!Array.isArray(raw)) return null;
   const out: FarmingToolStats[] = [];
   for (const t of raw) {
     if (!t || typeof t !== "object") continue;
-    const { name, fortune } = t as { name?: unknown; fortune?: unknown };
+    const { name, fortune, farmingFortune, cropFortune } = t as { name?: unknown; fortune?: unknown; farmingFortune?: unknown; cropFortune?: unknown };
     if (typeof name !== "string" || !name.trim()) continue;
-    out.push({ name: name.trim().slice(0, 80), fortune: cleanCropFortune(fortune) ?? {} });
+    const label = name.trim().slice(0, 80);
+    if (finite(farmingFortune) && farmingFortune >= 0) {
+      const general = round(clamp(farmingFortune, 0, 10000));
+      out.push({ name: label, ...(general > 0 ? { farmingFortune: general } : {}), fortune: cleanCropFortune(cropFortune) ?? {} });
+    } else {
+      out.push({ name: label, fortune: cleanCropFortune(fortune) ?? {} });
+    }
   }
   return out.length ? out : null;
 }

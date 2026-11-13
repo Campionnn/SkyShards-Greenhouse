@@ -401,6 +401,12 @@ describe("leaderboard pages render", () => {
     expect(v).toContain("no starting items needed");
   });
 
+  it("/flows/:id opens on a share link's frequency (?every=), ignoring values that weren't simulated", async () => {
+    const detail = normalizeDetail((await mockDetail("mockChloro01"))!);
+    expect(detailAt(detail, "/flows/mockChloro01?board=ironman&every=4")).toMatch(/role="radio" aria-checked="true"[^>]*data-every="4"/);
+    expect(detailAt(detail, "/flows/mockChloro01?board=ironman&every=5")).toMatch(/role="radio" aria-checked="true"[^>]*data-every="1"/);
+  });
+
   it("/flows/:id keeps the ranking's query in the back link and the starting-items switch in Open in simulator", async () => {
     const detail = normalizeDetail((await mockDetail("mockAloe0002"))!);
     const plain = detailAt(detail, "/flows/mockAloe0002?board=ironman&kit=1");

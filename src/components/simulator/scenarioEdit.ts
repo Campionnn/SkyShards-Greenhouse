@@ -285,7 +285,12 @@ function readFortuneFields(raw: Record<string, unknown>): Pick<PlayerStats, "cro
     if (!Array.isArray(raw.tools)) throw new Error("Player settings: tools must be a list.");
     out.tools = raw.tools.map((tool, i): FarmingToolStats => {
       if (!isRecord(tool) || typeof tool.name !== "string") throw new Error(`Player settings: tools[${i}] needs a name.`);
-      return { name: tool.name, fortune: readCropFortune(tool.fortune, `Player settings: tools[${i}].fortune`) };
+      const out: FarmingToolStats = { name: tool.name, fortune: readCropFortune(tool.fortune, `Player settings: tools[${i}].fortune`) };
+      if ("farmingFortune" in tool) {
+        if (!finiteNumber(tool.farmingFortune)) throw new Error(`Player settings: tools[${i}] has an invalid farmingFortune.`);
+        out.farmingFortune = tool.farmingFortune;
+      }
+      return out;
     });
   }
   return out;

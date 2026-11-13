@@ -46,6 +46,8 @@ function completionSource(kind: "plot" | "controller") {
   const hooks: Completion[] = HOOKS.map((h) => ({ label: h.name, detail: h.signature, info: h.when, type: "keyword", apply: `function ${h.signature} {\n  \n}` }));
   const plotMembers = members["plot."] ?? [];
   const plantMembers = members["p."] ?? [];
+  const debugMembers = members["debug."] ?? [];
+  if (debugMembers.length) globals.push({ label: "debug", detail: "debug.spawn / setStage / ...", info: "Debug tools that change the plot (not allowed on the leaderboard).", type: "variable" });
   return (ctx: CompletionContext) => {
     // Inside a string: game ids ("chorus_fruit").
     const str = ctx.matchBefore(/["'`][a-z_]*$/);
@@ -60,6 +62,7 @@ function completionSource(kind: "plot" | "controller") {
     if (member) {
       const dot = member.text.lastIndexOf(".");
       const obj = member.text.slice(0, dot).split(".").pop() ?? "";
+      if (obj === "debug") return { from: member.from + dot + 1, options: debugMembers, validFor: /^[\w$]*$/ };
       const isPlot = /^(plot|p\d|plot\d|other|getPlot\(.*\)|plots\[.*\])$/i.test(obj) || /plot/i.test(obj);
       const isPlant = /^(p|q|plant|seed|it|x|e)$/.test(obj) || /plant/i.test(obj);
       const options = isPlot && !isPlant ? plotMembers : isPlant ? plantMembers : [...plotMembers, ...plantMembers];

@@ -2,32 +2,36 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { CropImage } from "../shared/CropImage";
+import { cn } from "../ui/cn";
+import { IconButton, KitButton } from "../ui/kit";
 import { PortalHost } from "../ui/Portal";
-import { inputClass } from "./format";
+
+const CHIP_TONE = {
+  default: "border-line-strong bg-surface-control text-fg-body",
+  cost: "border-coin/30 bg-coin/10 text-fg",
+  gain: "border-go/30 bg-go/10 text-fg",
+  warn: "border-problem/30 bg-problem/10 text-fg",
+  muted: "border-line bg-surface-well text-fg-muted",
+} as const;
 
 /** An item icon with a count: "[icon] 7× Dead Plant". */
-export const ItemChip: React.FC<{ id: string; name: string; count?: number; tone?: "default" | "cost" | "gain" | "warn" | "muted"; compact?: boolean }> = ({
+export const ItemChip: React.FC<{ id: string; name: string; count?: number; tone?: keyof typeof CHIP_TONE; compact?: boolean; className?: string }> = ({
   id,
   name,
   count,
   tone = "default",
   compact = false,
-}) => {
-  const tones = {
-    default: "border-slate-600/40 bg-slate-700/40 text-slate-200",
-    cost: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-    gain: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-    warn: "border-red-500/30 bg-red-500/10 text-red-200",
-    muted: "border-slate-600/30 bg-slate-800/40 text-slate-400",
-  } as const;
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-md border ${tones[tone]} ${compact ? "px-1 py-0.5 text-[11px]" : "px-1.5 py-0.5 text-xs"}`} title={name}>
-      <CropImage cropId={id} cropName={name} width={compact ? 14 : 18} height={compact ? 14 : 18} showFallback={false} />
-      {count !== undefined && <span className="font-semibold tabular-nums">{count.toLocaleString("en-US")}×</span>}
-      <span className="truncate">{name}</span>
-    </span>
-  );
-};
+  className,
+}) => (
+  <span
+    className={cn("inline-flex min-w-0 items-center gap-1 rounded-inner border", CHIP_TONE[tone], compact ? "px-1 py-px text-meta" : "px-1.5 py-0.5 text-secondary", className)}
+    title={name}
+  >
+    <CropImage cropId={id} cropName={name} width={compact ? 14 : 18} height={compact ? 14 : 18} showFallback={false} />
+    {count !== undefined && <span className="font-semibold tabular-nums">{count.toLocaleString("en-US")}×</span>}
+    <span className="truncate">{name}</span>
+  </span>
+);
 
 /**
  * A native modal dialog in the app's modal style (Save / Load layout, Export flows): Escape closes
@@ -62,7 +66,7 @@ export const Dialog: React.FC<{
   return (
     <dialog
       ref={ref}
-      className={`guide-dialog ${size === "md" ? "guide-dialog-md" : ""}`}
+      className={cn("guide-dialog", size === "md" && "guide-dialog-md")}
       aria-label={title}
       onCancel={(event) => {
         event.preventDefault();
@@ -75,16 +79,16 @@ export const Dialog: React.FC<{
     >
       {open && (
         <PortalHost container={host}>
-        <div className="guide-root flex h-full max-h-[inherit] flex-col overflow-hidden border-slate-700 bg-slate-900 text-slate-200 shadow-2xl sm:rounded-xl sm:border">
-          <header className="flex items-center justify-between gap-3 border-b border-slate-700 px-4 py-3 sm:px-6 sm:py-4">
-            <h2 className="text-base font-semibold text-slate-100 sm:text-lg">{title}</h2>
-            <button type="button" onClick={onClose} className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200" aria-label="Close">
-              <X className="h-5 w-5" />
-            </button>
-          </header>
-          <div className="scrollbar-dark min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">{children}</div>
-          {footer && <footer className="guide-safe-bottom border-t border-slate-700 px-4 pt-3 sm:px-6">{footer}</footer>}
-        </div>
+          <div className="guide-root kit-fade-in flex h-full max-h-[inherit] flex-col overflow-hidden border-line-strong bg-surface-panel text-body text-fg-body shadow-raised sm:rounded-container sm:border">
+            <header className="flex items-center justify-between gap-3 border-b border-line py-3 pr-3 pl-4 sm:pl-6">
+              <h2 className="text-title text-fg">{title}</h2>
+              <IconButton size="md" onClick={onClose} aria-label="Close" title="Close (Esc)">
+                <X />
+              </IconButton>
+            </header>
+            <div className="scrollbar-dark min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">{children}</div>
+            {footer && <footer className="guide-safe-bottom border-t border-line px-4 pt-3 sm:px-6">{footer}</footer>}
+          </div>
         </PortalHost>
       )}
     </dialog>
@@ -108,7 +112,7 @@ export const NumberField: React.FC<{
   /** Round to a whole number on commit. */
   integer?: boolean;
   className?: string;
-}> = ({ value, onChange, label, min = 0, max, step = 1, live = false, integer = false, className = "" }) => {
+}> = ({ value, onChange, label, min = 0, max, step = 1, live = false, integer = false, className }) => {
   const shown = Number.isFinite(value) && value !== 0 ? String(value) : "";
   const [draft, setDraft] = useState<string | null>(null);
   const parse = (raw: string): number | null => {
@@ -153,7 +157,10 @@ export const NumberField: React.FC<{
           onChange(next);
         }
       }}
-      className={`${inputClass} w-20 text-right tabular-nums ${className}`}
+      className={cn(
+        "focus-ring h-8 w-20 min-w-0 rounded-control border border-line-control bg-surface-well px-2.5 text-right text-body tabular-nums text-fg placeholder:text-fg-meta transition-colors duration-(--duration-hover) hover:border-fg-meta",
+        className,
+      )}
     />
   );
 };
@@ -168,7 +175,7 @@ export const ConfirmButton: React.FC<{ onConfirm: () => void; children: React.Re
   children,
   confirmLabel = "Click again to confirm",
   title,
-  className = "",
+  className,
 }) => {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
@@ -176,9 +183,11 @@ export const ConfirmButton: React.FC<{ onConfirm: () => void; children: React.Re
     const timer = setTimeout(() => setArmed(false), 4000);
     return () => clearTimeout(timer);
   }, [armed]);
+  // The kit's danger button; armed, its border firms up and the label asks for the second click.
   return (
-    <button
-      type="button"
+    <KitButton
+      variant="danger"
+      size="md"
       onClick={() => {
         if (!armed) return setArmed(true);
         setArmed(false);
@@ -187,11 +196,9 @@ export const ConfirmButton: React.FC<{ onConfirm: () => void; children: React.Re
       onBlur={() => setArmed(false)}
       title={armed ? "Click again to confirm" : title}
       aria-live="polite"
-      className={`inline-flex min-h-9 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
-        armed ? "border-red-500 bg-red-500/80 text-white hover:bg-red-500" : "border-slate-600/50 bg-slate-800/60 text-slate-300 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
-      } ${className}`}
+      className={cn(armed && "border-problem", className)}
     >
       {armed ? confirmLabel : children}
-    </button>
+    </KitButton>
   );
 };

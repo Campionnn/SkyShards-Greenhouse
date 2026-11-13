@@ -1,5 +1,6 @@
 import React, { useRef } from "react";
 import { useGridState } from "../../context";
+import { cn } from "../ui/cn";
 
 // The expansion API reports expected gloomgourd spawns per tick; each
 // gloomgourd spot spawns at 0.3/tick (weight 30 of a 100 pool), so dividing
@@ -50,9 +51,9 @@ export const GridCell: React.FC<GridCellProps> = ({
   }
   
   const sizeClasses = {
-    sm: "w-6 h-6 text-[8px]",
-    md: "w-full aspect-square min-w-0 text-xs",
-    lg: "w-12 h-12 text-sm",
+    sm: "size-6 text-meta",
+    md: "w-full aspect-square min-w-0 text-secondary",
+    lg: "size-12 text-body",
   };
   
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -102,13 +103,13 @@ export const GridCell: React.FC<GridCellProps> = ({
     }
   };
   
-  let cellClasses = `${sizeClasses[size]} border flex items-center justify-center transition-all duration-150 relative`;
+  let cellClasses = cn(sizeClasses[size], "relative flex items-center justify-center rounded-inner border transition-colors duration-(--duration-hover)");
   const cellStyle: React.CSSProperties = {};
   
   if (isUnlocked) {
-    cellClasses += " bg-emerald-600 border-emerald-500 text-white";
+    cellClasses += " bg-go border-go text-on-go";
     if (isInteractive) {
-      cellClasses += " hover:bg-emerald-500 cursor-pointer";
+      cellClasses += " hover:bg-go-hover cursor-pointer";
     }
   } else if (expansionStep && hasExpansionOverlay) {
     const totalSteps = expansionSteps.length;
@@ -118,23 +119,24 @@ export const GridCell: React.FC<GridCellProps> = ({
     if (totalSteps > 1) {
       lightness = maxLight - ((expansionStep.order - 1) / (totalSteps - 1)) * (maxLight - minLight);
     }
-    cellStyle.backgroundColor = `hsl(45, 100%, ${lightness}%)`;
-    cellClasses += " border-yellow-500 text-slate-900 font-bold";
+    // The expansion path in coin gold: step 1 brightest, later steps fainter.
+    cellStyle.opacity = 0.55 + ((lightness - minLight) / (maxLight - minLight)) * 0.45;
+    cellClasses += " bg-coin border-coin text-surface-page font-bold";
     if (isInteractive && expansionStep.order === 1) {
       cellClasses += " cursor-pointer hover:brightness-110";
     } else if (isInteractive) {
       cellClasses += " cursor-not-allowed";
     }
   } else if (isExpandable) {
-    cellClasses += " bg-slate-700/50 border-slate-600 text-slate-400";
+    cellClasses += " bg-surface-hover border-line-control text-fg-muted";
     if (isInteractive) {
-      cellClasses += " hover:bg-slate-600/50 hover:border-emerald-500/50 cursor-pointer";
+      cellClasses += " hover:bg-surface-control hover:border-go/60 cursor-pointer";
     }
   } else {
     // Locked, not adjacent to an unlocked cell.
-    cellClasses += " bg-slate-800/30 border-slate-700/50 text-slate-600";
+    cellClasses += " bg-surface-well border-line text-fg-meta";
     if (isInteractive) {
-      cellClasses += " hover:bg-slate-700/40 hover:border-slate-600/70 cursor-pointer";
+      cellClasses += " hover:bg-surface-hover hover:border-line-control cursor-pointer";
     }
   }
   
@@ -149,13 +151,13 @@ export const GridCell: React.FC<GridCellProps> = ({
     >
       {expansionStep && hasExpansionOverlay ? (
         <>
-          <span className="font-bold text-sm">{expansionStep.order}</span>
-          <span className="absolute bottom-0.5 right-0.5 text-[8px] font-medium">
+          <span className="text-body font-bold">{expansionStep.order}</span>
+          <span className="absolute right-0.5 bottom-0 text-meta leading-none font-medium">
             +{toGloomgourdSpots(expansionStep.gloomgourd_gain)}
           </span>
         </>
       ) : showCoordinates ? (
-        <span className="text-[8px] opacity-60">{row},{col}</span>
+        <span className="text-meta opacity-60">{row},{col}</span>
       ) : null}
     </div>
   );

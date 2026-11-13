@@ -26,9 +26,15 @@ export type FortuneCrop = (typeof FORTUNE_CROPS)[number];
 /** Crop-specific fortune per crop, on top of the general value. A missing crop is 0. */
 export type CropFortune = Partial<Record<FortuneCrop, number>>;
 
-/** One farming tool: the Farming Fortune it adds to each crop's drops while held (missing = 0). */
+/**
+ * One farming tool, while held: `farmingFortune` is its general Farming Fortune (reforge, Farming
+ * for Dummies, gems, Harvesting, Cultivating) and counts on every crop; `fortune[c]` is its
+ * crop-specific fortune (tool level, Turbo, Dedication) on its own crops (missing = 0). Tools saved
+ * before `farmingFortune` existed carry both parts in `fortune` and no general term.
+ */
 export interface FarmingToolStats {
   name: string;
+  farmingFortune?: number;
   fortune: CropFortune;
 }
 
@@ -56,16 +62,24 @@ export interface FortuneStats {
 
 const num = (v: number | undefined): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-/** Total Farming Fortune on one drop item: general + crop-specific + the held tool's. Non-crops get the general value. */
+/** The held tool's fortune on one crop: its general Farming Fortune + its crop-specific fortune there. */
+export function toolFortune(tool: FarmingToolStats, crop: FortuneCrop): number {
+  return num(tool.farmingFortune) + num(tool.fortune[crop]);
+}
+
+/**
+ * Total Farming Fortune on one drop item: general + crop-specific + the held tool's (its general
+ * part on every crop, its crop part on its own crops). Non-crops get the general values only.
+ */
 export function itemFortune(stats: FortuneStats, item: ItemId, tool: FarmingToolStats | null): number {
   const crop = fortuneCropOf(item);
-  if (!crop) return stats.farmingFortune;
-  return stats.farmingFortune + num(stats.cropFortune?.[crop]) + (tool ? num(tool.fortune[crop]) : 0);
+  if (!crop) return stats.farmingFortune + (tool ? num(tool.farmingFortune) : 0);
+  return stats.farmingFortune + num(stats.cropFortune?.[crop]) + (tool ? toolFortune(tool, crop) : 0);
 }
 
 /**
  * The tool a harvest of `drops` (a crop bundle before fortune) is made with: the one adding the
- * most coins, `Σ qty × price × toolFortune[crop]` (fortune is linear in the drop count). Ties and
+ * most coins, `Σ qty × price × toolFortune(tool, crop)` (fortune is linear in the drop count). Ties and
  * an all-zero gain keep the first listed tool; no tools → null. Deterministic, no RNG.
  */
 export function bestTool(drops: Readonly<Record<string, number>>, tools: readonly FarmingToolStats[] | undefined, price: (item: ItemId) => number): FarmingToolStats | null {
@@ -76,7 +90,7 @@ export function bestTool(drops: Readonly<Record<string, number>>, tools: readonl
     let gain = 0;
     for (const item in drops) {
       const crop = fortuneCropOf(item);
-      if (crop) gain += drops[item] * price(item) * num(tool.fortune[crop]);
+      if (crop) gain += drops[item] * price(item) * toolFortune(tool, crop);
     }
     if (gain > bestGain) {
       best = tool;

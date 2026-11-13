@@ -3,6 +3,9 @@ import { CropImage } from "../shared";
 import { EffectChips } from "../shared";
 import { getEffectName, sortEffects } from "../../utilities";
 import { calculateCropImageDimensions, getCellPixelPosition } from "../../utilities";
+import { cn } from "../ui/cn";
+import { KitLabel } from "../ui/kit";
+import { surface } from "../ui/surface";
 
 export interface EffectTooltipProps {
   id: string;
@@ -20,6 +23,9 @@ export interface EffectTooltipProps {
   note?: string;
   /** Explains an empty "Gives" (a target slot gives nothing). */
   givesNote?: string;
+  /** Left / top edge of the visible area in grid pixels (a grid cropped to its unlocked cells). Default 0. */
+  boundsLeft?: number;
+  boundsTop?: number;
 }
 
 const TOOLTIP_WIDTH = 248;
@@ -45,6 +51,8 @@ export const EffectTooltip: React.FC<EffectTooltipProps> = ({
   gridHeight,
   note,
   givesNote,
+  boundsLeft = 0,
+  boundsTop = 0,
 }) => {
   const { totalWidth } = calculateCropImageDimensions(size, cellSize, gap);
   const { top, left } = getCellPixelPosition(position[0], position[1], cellSize, gap);
@@ -52,40 +60,41 @@ export const EffectTooltip: React.FC<EffectTooltipProps> = ({
   let x = left + totalWidth + OFFSET;
   if (x + TOOLTIP_WIDTH > gridWidth) {
     x = left - OFFSET - TOOLTIP_WIDTH;
-    if (x < 0) x = Math.max(0, gridWidth - TOOLTIP_WIDTH);
+    if (x < boundsLeft) x = Math.max(boundsLeft, gridWidth - TOOLTIP_WIDTH);
   }
-  const y = Math.max(0, Math.min(top, gridHeight - TOOLTIP_EST_HEIGHT));
+  const y = Math.max(boundsTop, Math.min(top, gridHeight - TOOLTIP_EST_HEIGHT));
   const suppressedList = suppressed ? sortEffects(suppressed) : [];
 
   return (
     <div
-      className="absolute z-50 pointer-events-none bg-slate-900/95 border border-slate-600/60 rounded-lg shadow-xl p-3 backdrop-blur-sm"
+      className={cn(surface.raised, "pointer-events-none absolute z-(--z-tooltip) p-3")}
       style={{ top: y, left: x, width: TOOLTIP_WIDTH }}
       role="tooltip"
     >
       <div className="flex items-center gap-2 mb-2">
         <CropImage cropId={id} cropName={name} size="xs" showFallback={false} />
         <div className="min-w-0">
-          <div className="text-sm text-slate-100 truncate">{name}</div>
-          <div className="text-[11px] text-slate-500">
-            ({position[0]}, {position[1]}){size > 1 ? ` · ${size}x${size}` : ""}{note ? ` · ${note}` : ""}
+          <div className="truncate text-body font-medium text-fg">{name}</div>
+          {/* 1-based, like Check and the ground cells' labels: "row 5, col 6 · 2x2 · target". */}
+          <div className="text-meta tabular-nums text-fg-meta">
+            row {position[0] + 1}, col {position[1] + 1}{size > 1 ? ` · ${size}x${size}` : ""}{note ? ` · ${note}` : ""}
           </div>
         </div>
       </div>
       <div className="space-y-1.5">
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-0.5">Has</div>
+          <KitLabel className="mb-0.5">Has</KitLabel>
           <EffectChips effects={has} variant="has" emptyText="nothing" />
           {suppressedList.length > 0 && (
-            <div className="mt-1 text-[11px] text-slate-500">
+            <div className="mt-1 text-meta text-fg-meta">
               cancelled: {suppressedList.map(getEffectName).join(", ")}
             </div>
           )}
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-0.5">Gives</div>
+          <KitLabel className="mb-0.5">Gives</KitLabel>
           <EffectChips effects={gives} variant="gives" emptyText="nothing" />
-          {givesNote && <div className="mt-1 text-[11px] text-slate-500">{givesNote}</div>}
+          {givesNote && <div className="mt-1 text-meta text-fg-meta">{givesNote}</div>}
         </div>
       </div>
     </div>

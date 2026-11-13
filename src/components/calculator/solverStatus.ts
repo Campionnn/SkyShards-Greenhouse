@@ -138,13 +138,14 @@ export function cacheInfo(kind: string | undefined | null): CacheInfo | null {
   );
 }
 
-export const TONE_BADGE: Record<Tone, string> = {
-  emerald: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300",
-  sky: "bg-sky-500/15 border-sky-500/40 text-sky-300",
-  amber: "bg-amber-500/15 border-amber-500/40 text-amber-300",
-  rose: "bg-rose-500/15 border-rose-500/40 text-rose-300",
-  slate: "bg-slate-600/30 border-slate-500/40 text-slate-300",
-  violet: "bg-violet-500/15 border-violet-500/40 text-violet-300",
+/** Status tone → the kit Pill tone. Results are data, so Optimal/Feasible stay neutral; only "stopped early" warns and errors are problems. */
+export const TONE_PILL: Record<Tone, "neutral" | "warn" | "problem"> = {
+  emerald: "neutral",
+  sky: "neutral",
+  amber: "warn",
+  rose: "problem",
+  slate: "neutral",
+  violet: "neutral",
 };
 
 // ---------------------------------------------------------------------------
