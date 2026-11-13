@@ -5,35 +5,64 @@ import { getGroundImagePath } from "../../types/greenhouse";
 import { Pill } from "../ui/kit";
 import { cn } from "../ui/cn";
 import { surface } from "../ui/surface";
-import { itemOf, kindOf, nameOf, pictureCaption, pictureKind, recipeOf, ringLayout, ringSentence, usedInOf, type WikiLookup } from "./articleModel";
+import { itemOf, kindOf, nameOf, needTitle, pictureCaption, pictureKind, recipeOf, requirementLayout, ringSentence, usedInOf, type WikiLookup } from "./articleModel";
 import { IconTile, ItemIcon } from "./ItemIcon";
 import { ItemLink } from "./ItemLink";
 
 /**
- * The static requirement picture (decisions.md G2): the target in the middle of a (size+2)² grid, the crops
- * the recipe needs on the ring around it (exact counts), each on its own ground texture. Lonelily: an empty
- * ring (✕). Godseed: a dashed "any crops" ring. No server call, no spinner, no error state.
+ * The static requirement picture (decisions.md G2): the target, and around it the crops the recipe needs
+ * (exact counts of ring cells), each on its own ground texture. A multi-cell ingredient is drawn once at its
+ * real size, sticking out of the ring, so Plantboy Advance shows the 2 Snoozling it takes, not 6
+ * (requirementLayout). Lonelily: an empty ring (✕). Godseed: a dashed "any crops" ring. No server call.
  */
-export const RingPicture: React.FC<{ data: GreenhouseDataJSON; id: string; cell: number }> = ({ data, id, cell }) => {
+export const RingPicture: React.FC<{ data: GreenhouseDataJSON; id: string; cell: number }> = ({ data, id, cell: wanted }) => {
   const item = itemOf(data, id);
   const kind = pictureKind(data, id);
   if (!item || !kind) return null;
   const recipe = recipeOf(data, id);
-  const n = item.size + 2;
   const gap = 2;
-  const ring = ringLayout(item.size, kind === "ring" ? recipe.needs : []);
+  const layout = requirementLayout(data, item.size, kind === "ring" ? recipe.needs : []);
+  const ring = layout.ring;
+  // Big ingredients sticking out make the picture bigger than the ring: up to 1.6× the ring's size, then
+  // smaller cells.
+  const longest = Math.max(layout.rows, layout.cols);
+  const budget = Math.round(1.6 * (wanted * (item.size + 2) + gap * (item.size + 1)));
+  const cell = Math.min(wanted, Math.max(14, Math.floor((budget - gap * (longest - 1)) / longest)));
   const span = (k: number) => k * cell + (k - 1) * gap;
+  const pos = (k: number) => 4 + k * (cell + gap);
   const label =
-    kind === "ring" ? ringSentence(data, id, recipe.needs) : kind === "empty-ring" ? `${item.name} with every cell around it empty` : `${item.name} with crops around it that give all of its effects`;
+    kind === "ring"
+      ? ringSentence(data, id, recipe.needs)
+      : kind === "empty-ring"
+        ? `${item.name} with every cell around it empty`
+        : `${item.name} with crops around it that give all of its effects`;
+  const t = layout.target;
   return (
-    <div role="img" aria-label={label} className="relative shrink-0 rounded-control border border-line bg-surface-well" style={{ width: span(n) + 10, height: span(n) + 10 }}>
+    <div role="img" aria-label={label} className="relative shrink-0 rounded-control border border-line bg-surface-well" style={{ width: span(layout.cols) + 10, height: span(layout.rows) + 10 }}>
+      {layout.bigs.map((b) => (
+        <span
+          key={`big-${b.row}-${b.col}`}
+          title={`${nameOf(data, b.id)}: covers ${b.ringCells} of the cells around it`}
+          className="absolute grid place-items-center overflow-hidden rounded-inner"
+          style={{
+            left: pos(b.col),
+            top: pos(b.row),
+            width: span(b.size),
+            height: span(b.size),
+            backgroundImage: `url(${getGroundImagePath(itemOf(data, b.id)?.ground ?? "farmland")})`,
+            backgroundSize: `${cell}px ${cell}px`,
+          }}
+        >
+          <ItemIcon id={b.id} name={nameOf(data, b.id)} size={Math.round(span(b.size) * 0.8)} />
+        </span>
+      ))}
       {ring.map((c) => (
         <span
           key={`${c.row}-${c.col}`}
           className={cn("absolute grid place-items-center overflow-hidden rounded-inner", !c.id && (kind === "any-ring" ? "border border-dashed border-line-control" : "bg-surface-hover/60"))}
           style={{
-            left: 4 + c.col * (cell + gap),
-            top: 4 + c.row * (cell + gap),
+            left: pos(c.col),
+            top: pos(c.row),
             width: cell,
             height: cell,
             backgroundImage: c.id ? `url(${getGroundImagePath(itemOf(data, c.id)?.ground ?? "farmland")})` : undefined,
@@ -46,7 +75,7 @@ export const RingPicture: React.FC<{ data: GreenhouseDataJSON; id: string; cell:
       ))}
       <span
         className="absolute grid place-items-center overflow-hidden rounded-inner ring-2 ring-select ring-inset"
-        style={{ left: 4 + cell + gap, top: 4 + cell + gap, width: span(item.size), height: span(item.size), backgroundImage: `url(${getGroundImagePath(item.ground)})`, backgroundSize: "cover" }}
+        style={{ left: pos(t.col), top: pos(t.row), width: span(item.size), height: span(item.size), backgroundImage: `url(${getGroundImagePath(item.ground)})`, backgroundSize: "cover" }}
       >
         <ItemIcon id={id} name={item.name} size={Math.round(span(item.size) * 0.8)} />
       </span>
@@ -148,7 +177,7 @@ export const RecipeBand: React.FC<{ wiki: WikiLookup; id: string; compact?: bool
               {recipe.needs.map((n) => (
                 <li key={n.id}>
                   {n.count != null ? (
-                    <BandRow data={data} id={n.id} count={`×${n.count}`} countTitle={`${n.count} ${nameOf(data, n.id)} around it`} />
+                    <BandRow data={data} id={n.id} count={`×${n.count}`} countTitle={needTitle(data, n)} />
                   ) : (
                     <BandRow data={data} id={n.id} count={<Pill title="Not placed around it: the rule below uses it">special</Pill>} />
                   )}

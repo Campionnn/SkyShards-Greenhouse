@@ -72,8 +72,14 @@ export const groupTitleOf = (key: string) => (key === "base-crops" ? "Base crops
 
 export interface Need {
   id: string;
-  /** null: a special ingredient (Shellfruit's Turtlellini and Blastberry), not placed around it. */
+  /**
+   * How many plants it takes; null: a special ingredient (Shellfruit's Turtlellini and Blastberry), not
+   * placed around it. Differs from `cells` for a multi-cell ingredient: Plantboy Advance needs 6 ring cells
+   * of Snoozling, which 2 Snoozlings (3×3) cover.
+   */
   count: number | null;
+  /** How many of the cells around it it must fill (data.json's count; the game counts cells). */
+  cells: number | null;
 }
 
 export interface Recipe {
@@ -89,9 +95,17 @@ export function recipeOf(src: DataSource, id: string): Recipe {
   const m = data.mutations[id];
   if (!m) return { needs: [], note: null, special: null };
   const source = getRecipeSource(data, id);
-  const needs: Need[] = m.requirements.map((r) => ({ id: r.crop, count: r.count }));
-  for (const extra of source.ingredients) if (!needs.some((n) => n.id === extra)) needs.push({ id: extra, count: null });
+  const raw: Need[] = m.requirements.map((r) => ({ id: r.crop, count: r.count, cells: r.count }));
+  const plants = raw.length ? requirementLayout(data, m.size, raw).plants : {};
+  const needs: Need[] = raw.map((n) => ({ ...n, count: plants[n.id] ?? n.cells }));
+  for (const extra of source.ingredients) if (!needs.some((n) => n.id === extra)) needs.push({ id: extra, count: null, cells: null });
   return { needs, note: source.note, special: m.special ?? null };
+}
+
+/** "×2" for plants; for a multi-cell ingredient also the cells they fill, for a tooltip. */
+export function needTitle(src: DataSource, n: Need, around = "around it"): string {
+  const name = nameOf(src, n.id);
+  return n.cells != null && n.count !== n.cells ? `${n.count} ${name}, covering ${n.cells} of the cells ${around}` : `${n.count} ${name} ${around}`;
 }
 
 /** A short form of the special rule (index cards). */
@@ -118,7 +132,7 @@ export interface UsedIn {
 
 /** The mutations that need `id`, sorted by name (buildUsedInMap), each with how many of it they need. */
 export function usedInOf(w: WikiLookup, id: string): UsedIn[] {
-  return (w.usedIn.get(id) ?? []).map((m) => ({ id: m, count: w.data.mutations[m]?.requirements.find((r) => r.crop === id)?.count ?? null }));
+  return (w.usedIn.get(id) ?? []).map((m) => ({ id: m, count: recipeOf(w, m).needs.find((n) => n.id === id)?.count ?? null }));
 }
 
 // ---- The static requirement picture ---------------------------------------------------------------------
@@ -140,30 +154,200 @@ export function ringCells(size: number): { row: number; col: number }[] {
   return cells;
 }
 
-/**
- * Exactly as many of each need as the recipe says, on the ring. A full ring fills clockwise; a part-full one
- * spreads out, side middles before corners (Ashwreath's 2 + 2 read as left/right + top/bottom, like the
- * Hypixel wiki's drawings). An ingredient bigger than 1×1 is drawn in one ring cell.
- */
-export function ringLayout(size: number, needs: Need[]): RingCell[] {
-  const cells = ringCells(size);
-  const ids: string[] = [];
-  for (const n of needs) for (let i = 0; i < (n.count ?? 0); i++) ids.push(n.id);
+/** A multi-cell ingredient in the picture: its whole footprint, and how many ring cells it covers. */
+export interface BigPiece {
+  row: number;
+  col: number;
+  size: number;
+  id: string;
+  ringCells: number;
+}
+
+/** The requirement picture, in its own box (0-based rows/cols): the target, the ring, the big ingredients. */
+export interface RequirementLayout {
+  rows: number;
+  cols: number;
+  target: { row: number; col: number; size: number };
+  /** The ring cells no big ingredient covers: a 1×1 ingredient, or empty. */
+  ring: RingCell[];
+  /** Multi-cell ingredients, each drawn once at its full size. */
+  bigs: BigPiece[];
+  /** How many plants of each ingredient the picture uses (a 3×3 covering 3 ring cells counts once). */
+  plants: Record<string, number>;
+}
+
+/** Ring cell indexes, side middles before corners (Ashwreath's 2 + 2 read as left/right + top/bottom, like the Hypixel wiki). */
+function spreadOrder(size: number): number[] {
   const n = size + 2;
   const mid = (n - 1) / 2;
-  const order = cells
+  return ringCells(size)
     .map((c, i) => ({ i, d: Math.min(Math.abs(c.row - mid), Math.abs(c.col - mid)), side: c.col === 0 ? 0 : c.col === n - 1 ? 1 : c.row === 0 ? 2 : 3 }))
     .sort((a, b) => a.d - b.d || a.side - b.side || a.i - b.i)
     .map((x) => x.i);
-  const slots = ids.length >= cells.length ? cells.map((_, i) => i) : order;
-  const at = new Map<number, string>();
-  ids.forEach((id, k) => at.set(slots[k], id));
-  return cells.map((c, i) => ({ ...c, id: at.get(i) ?? null }));
 }
 
-/** "Chloronite with 6 Coalroot and 2 Thornshade around it": the picture's accessible name. */
+/** One plant of a multi-cell ingredient: its top-left, its cells, how many ring cells it covers. */
+interface Spot {
+  row: number;
+  col: number;
+  cells: string[];
+  ring: number;
+}
+
+const cellKey = (r: number, c: number) => `${r},${c}`;
+const overlaps = (a: Spot, used: Set<string>) => a.cells.some((k) => used.has(k));
+
+/**
+ * The sets of s×s plants (not overlapping each other or the target) that cover exactly `count` ring cells,
+ * with the fewest plants and one more (so two big needs can still fit together). Coordinates: the ring is
+ * rows/cols 0..n-1 with the target inside; plants may stick out of it.
+ */
+function spotSets(targetSize: number, s: number, count: number): Spot[][] {
+  const n = targetSize + 2;
+  const ring = new Set(ringCells(targetSize).map((c) => cellKey(c.row, c.col)));
+  const spots: Spot[] = [];
+  for (let r = 1 - s; r <= n - 1; r++)
+    for (let c = 1 - s; c <= n - 1; c++) {
+      const cells: string[] = [];
+      let hit = 0;
+      let inTarget = false;
+      for (let dr = 0; dr < s; dr++)
+        for (let dc = 0; dc < s; dc++) {
+          const rr = r + dr;
+          const cc = c + dc;
+          if (rr >= 1 && rr <= targetSize && cc >= 1 && cc <= targetSize) inTarget = true;
+          cells.push(cellKey(rr, cc));
+          if (ring.has(cellKey(rr, cc))) hit++;
+        }
+      if (!inTarget && hit > 0 && hit <= count) spots.push({ row: r, col: c, cells, ring: hit });
+    }
+  const out: Spot[][] = [];
+  let fewest = Infinity;
+  for (let k = 1; k <= count && k <= fewest + 1; k++) {
+    const walk = (from: number, left: number, chosen: Spot[], used: Set<string>) => {
+      if (chosen.length === k) {
+        if (left === 0) out.push([...chosen]);
+        return;
+      }
+      for (let i = from; i < spots.length; i++) {
+        const p = spots[i];
+        if (p.ring > left || overlaps(p, used)) continue;
+        chosen.push(p);
+        walk(i + 1, left - p.ring, chosen, new Set([...used, ...p.cells]));
+        chosen.pop();
+      }
+    };
+    const before = out.length;
+    walk(0, count, [], new Set());
+    if (out.length > before && fewest === Infinity) fewest = k;
+  }
+  return out;
+}
+
+const layoutCache = new Map<string, RequirementLayout>();
+
+/**
+ * The requirement picture. A recipe count is ring CELLS (the game, and the simulator's ring count): a 3×3
+ * Snoozling whose edge lies along one side fills 3 of them. So a 1×1 need takes one ring cell each (a full
+ * ring fills clockwise, a part-full one spreads out), and a bigger need is drawn at its real size, sticking
+ * out of the ring, with as few plants as cover its count: Plantboy Advance's 6 Snoozling cells are two
+ * Snoozlings. Ties go to the more compact, squarer, more centred picture (within the 10×10 greenhouse).
+ */
+export function requirementLayout(src: DataSource, targetSize: number, needs: Need[]): RequirementLayout {
+  const cellsOf = (x: Need) => x.cells ?? 0;
+  const cacheKey = `${targetSize}|${needs.map((x) => `${x.id}:${x.cells}`).join(",")}`;
+  const cached = layoutCache.get(cacheKey);
+  if (cached) return cached;
+  const data = dataOf(src);
+  const sizeOf = (id: string) => data.mutations[id]?.size ?? data.crops[id]?.size ?? 1;
+  const counted = needs.filter((x) => cellsOf(x) > 0);
+  const big = counted.filter((x) => sizeOf(x.id) > 1);
+  const small = counted.filter((x) => sizeOf(x.id) === 1);
+  const cells = ringCells(targetSize);
+  const n = targetSize + 2;
+  const smallTotal = small.reduce((s, x) => s + cellsOf(x), 0);
+
+  const options = big.map((x) => spotSets(targetSize, sizeOf(x.id), cellsOf(x)));
+  let best: { score: number[]; sets: Spot[][] } | null = null;
+  const better = (a: number[], b: number[]) => {
+    for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k] < b[k];
+    return false;
+  };
+  const search = (i: number, chosen: Spot[][], used: Set<string>) => {
+    if (i === big.length) {
+      const free = cells.filter((c) => !used.has(cellKey(c.row, c.col))).length;
+      if (free < smallTotal) return;
+      let r0 = 0, c0 = 0, r1 = n - 1, c1 = n - 1;
+      chosen.forEach((set, j) =>
+        set.forEach((p) => {
+          const s = sizeOf(big[j].id);
+          r0 = Math.min(r0, p.row);
+          c0 = Math.min(c0, p.col);
+          r1 = Math.max(r1, p.row + s - 1);
+          c1 = Math.max(c1, p.col + s - 1);
+        }),
+      );
+      const h = r1 - r0 + 1;
+      const w = c1 - c0 + 1;
+      if (h > 10 || w > 10) return;
+      const off = Math.abs((r0 + r1) / 2 - (n - 1) / 2) + Math.abs((c0 + c1) / 2 - (n - 1) / 2);
+      const score = [chosen.reduce((s, set) => s + set.length, 0), h * w, Math.abs(h - w), off];
+      if (!best || better(score, best.score)) best = { score, sets: chosen.map((set) => [...set]) };
+      return;
+    }
+    for (const set of options[i]) {
+      if (set.some((p) => overlaps(p, used))) continue;
+      chosen.push(set);
+      search(i + 1, chosen, new Set([...used, ...set.flatMap((p) => p.cells)]));
+      chosen.pop();
+    }
+  };
+  search(0, [], new Set());
+  const sets: Spot[][] = (best as { sets: Spot[][] } | null)?.sets ?? big.map(() => []);
+
+  const covered = new Set(sets.flatMap((set) => set.flatMap((p) => p.cells)));
+  const free = cells.map((_, i) => i).filter((i) => !covered.has(cellKey(cells[i].row, cells[i].col)));
+  const ids: string[] = [];
+  for (const x of small) for (let k = 0; k < cellsOf(x); k++) ids.push(x.id);
+  const order = ids.length >= free.length ? free : spreadOrder(targetSize).filter((i) => free.includes(i));
+  const at = new Map<number, string>();
+  ids.forEach((id, k) => order[k] !== undefined && at.set(order[k], id));
+
+  let r0 = 0, c0 = 0, r1 = n - 1, c1 = n - 1;
+  const bigs: BigPiece[] = [];
+  sets.forEach((set, j) =>
+    set.forEach((p) => {
+      const s = sizeOf(big[j].id);
+      r0 = Math.min(r0, p.row);
+      c0 = Math.min(c0, p.col);
+      r1 = Math.max(r1, p.row + s - 1);
+      c1 = Math.max(c1, p.col + s - 1);
+      bigs.push({ row: p.row, col: p.col, size: s, id: big[j].id, ringCells: p.ring });
+    }),
+  );
+  const plants: Record<string, number> = {};
+  for (const x of small) plants[x.id] = cellsOf(x);
+  sets.forEach((set, j) => (plants[big[j].id] = set.length || cellsOf(big[j])));
+  const layout: RequirementLayout = {
+    rows: r1 - r0 + 1,
+    cols: c1 - c0 + 1,
+    target: { row: 1 - r0, col: 1 - c0, size: targetSize },
+    ring: free.map((i) => ({ row: cells[i].row - r0, col: cells[i].col - c0, id: at.get(i) ?? null })),
+    bigs: bigs.map((b) => ({ ...b, row: b.row - r0, col: b.col - c0 })),
+    plants,
+  };
+  layoutCache.set(cacheKey, layout);
+  return layout;
+}
+
+/**
+ * "Chloronite with 6 Coalroot and 2 Thornshade around it"; a multi-cell ingredient says its plants and the
+ * cells they cover ("2 Snoozling covering 6 cells"): the picture's accessible name.
+ */
 export function ringSentence(src: DataSource, id: string, needs: Need[]): string {
-  const list = needs.filter((n) => n.count !== null).map((n) => `${n.count} ${nameOf(src, n.id)}`);
+  const list = needs
+    .filter((n) => n.count !== null)
+    .map((n) => (n.cells != null && n.cells !== n.count ? `${n.count} ${nameOf(src, n.id)} covering ${n.cells} cells` : `${n.count} ${nameOf(src, n.id)}`));
   const joined = list.length > 1 ? `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}` : (list[0] ?? "nothing");
   return `${nameOf(src, id)} with ${joined} around it`;
 }
