@@ -47,6 +47,9 @@ export const REMOVED_CONFIG: readonly string[] = [
   "decayDaysOverrides",
   "minimumMutationsOverrides",
   "rareDropValues",
+  // Became `capRareCrops`, default on (loot multipliers push chances past 100%). A saved value
+  // (off, the old default) is dropped so every scenario picks up the cap once.
+  "capRareCropChance",
 ];
 
 function migrateCondition(c: unknown): unknown {

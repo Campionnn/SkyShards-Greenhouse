@@ -9,13 +9,70 @@ import type { PlayerStats, TimedEvent } from "./state";
 const ofKind = <K extends TimedEvent["kind"]>(events: TimedEvent[], kind: K) =>
   events.filter((e): e is Extract<TimedEvent, { kind: K }> => e.kind === kind);
 
-/** Harvest one fully grown spawned Ashwreath (common) with the given stats. */
-function harvestOne(seed: number, stats: Partial<PlayerStats>, config: Partial<SimConfig> = {}) {
+/** Harvest one fully grown spawned plant (default Ashwreath, common, multiplier 0.15) with the given stats. */
+function harvestOne(seed: number, stats: Partial<PlayerStats>, config: Partial<SimConfig> = {}, kindId = "ashwreath") {
   const s = start(scenario([flow([step("a", layout())])], { seed, config, stats }));
-  inject(s, 1, "ashwreath", 5, 5, "spawned", { lockedEffects: [], fullyGrownAtCycle: 0 });
+  const p = inject(s, 1, kindId, 5, 5, "spawned", { lockedEffects: [], fullyGrownAtCycle: 0 });
+  p.stage = p.readyStage;
   const r = engine.run(s, 1);
-  return { h: ofKind(r.events, "harvested").find((e) => e.kindId === "ashwreath")!, r };
+  const h = ofKind(r.events, "harvested").find((e) => e.kindId === kindId);
+  if (!h) throw new Error(`${kindId} was not harvested`);
+  return { h, r };
 }
+
+describe("loot multipliers (August 20 patch) scale the armor Rare Crop chances", () => {
+  it("data.json carries the patch-note multiplier of every harvestable crop and mutation", () => {
+    const d = engine.data;
+    expect(d.mutations.ashwreath.multiplier).toBe(0.15);
+    expect(d.mutations.snoozling.multiplier).toBe(21);
+    expect(d.mutations.stoplight_petal.multiplier).toBe(25);
+    expect(d.mutations.all_in_aloe.multiplier).toBe(0.7);
+    expect(d.crops.wheat.multiplier).toBe(0.18);
+    expect(d.crops.red_mushroom.multiplier).toBe(0.08);
+    expect(d.crops.brown_mushroom.multiplier).toBe(0.08);
+    expect(d.crops.fire.multiplier).toBe(1); // never harvested: no multiplier in data.json
+    for (const m of Object.values(d.mutations)) expect(m.multiplier, m.id).toBeGreaterThan(0);
+  });
+
+  it("Tater 4/4 at Overbloom 400: Ashwreath rolls Cropie at 0.15 x 20% x 5 = 15%, not 100%", () => {
+    let cropies = 0;
+    const n = 600;
+    for (let seed = 1; seed <= n; seed++) cropies += harvestOne(seed, { armorSet: "tater", overbloom: 400 }).h.drops.cropie ?? 0;
+    expect(cropies / n).toBeGreaterThan(0.11);
+    expect(cropies / n).toBeLessThan(0.19);
+  });
+
+  it("a base crop uses its own multiplier: Wheat at 0.18 x 20% x 5 = 18% Cropie", () => {
+    let cropies = 0;
+    const n = 600;
+    for (let seed = 1; seed <= n; seed++) {
+      const s = start(scenario([flow([step("a", layout())])], { seed, stats: { armorSet: "tater", overbloom: 400 }, policies: { baseCropUpkeep: "harvestWhenGrown" } }));
+      inject(s, 1, "wheat", 5, 5, "planted", { stage: 8, readyStage: 8, lockedEffects: [], fullyGrownAtCycle: 0 });
+      const r = engine.run(s, 1);
+      const h = ofKind(r.events, "harvested").find((e) => e.kindId === "wheat");
+      expect(h).toBeDefined();
+      cropies += h!.drops.cropie ?? 0;
+    }
+    expect(cropies / n).toBeGreaterThan(0.14);
+    expect(cropies / n).toBeLessThan(0.22);
+  });
+
+  it("a big multiplier is capped at one item per roll by default: Stoplight Petal 25 x 20% = 500% gives exactly 1 Cropie", () => {
+    for (let seed = 1; seed <= 50; seed++) expect(harvestOne(seed, { armorSet: "tater" }, {}, "stoplight_petal").h.drops.cropie).toBe(1);
+  });
+
+  it("uncapped (capRareCrops off): 500% gives 5 Cropie", () => {
+    for (let seed = 1; seed <= 20; seed++) expect(harvestOne(seed, { armorSet: "tater" }, { capRareCrops: false }, "stoplight_petal").h.drops.cropie).toBe(5);
+  });
+
+  it("Ethereal Vine is not scaled by the multiplier: Snoozling (21, rare 25%) still drops a vine about 25% of the time", () => {
+    let vines = 0;
+    const n = 600;
+    for (let seed = 1; seed <= n; seed++) vines += harvestOne(seed, {}, {}, "snoozling").h.drops.ethereal_vine ?? 0;
+    expect(vines / n).toBeGreaterThan(0.2);
+    expect(vines / n).toBeLessThan(0.3);
+  });
+});
 
 describe("armor Rare Crops", () => {
   it("each set rolls its own drop; Fermento and Helianthus combine all tiers", () => {
@@ -51,32 +108,32 @@ describe("armor Rare Crops", () => {
     }
   });
 
-  it("Helianthus 4/4 at Overbloom 400 guarantees Cropie (20% x 5 = 100%) on every harvest and books Rare Crop revenue", () => {
+  it("Helianthus 4/4 at Overbloom 400 on Thornshade (multiplier 2) guarantees Cropie (20% x 2 x 5 = 200%, capped to 1) and books Rare Crop revenue", () => {
     let helianthus = 0;
     for (let seed = 1; seed <= 200; seed++) {
-      const { h, r } = harvestOne(seed, { armorSet: "helianthus", overbloom: 400 }, { armorRareCropBug: false });
+      const { h, r } = harvestOne(seed, { armorSet: "helianthus", overbloom: 400 }, { armorRareCropBug: false }, "thornshade");
       expect(h.drops.cropie).toBe(1);
-      expect([undefined, 1]).toContain(h.drops.squash); // 12% x 5 = 60%: at most one
+      expect(h.drops.squash).toBe(1); // 12% x 2 x 5 = 120%: capped to one
       helianthus += h.drops.helianthus ?? 0;
       expect(r.summary.rareCrops.cropie).toBe(1);
       expect(r.summary.revenue.rareCrops).toBeGreaterThanOrEqual(25_000);
     }
-    // 1.6% x 5 = 8% per harvest.
-    expect(helianthus).toBeGreaterThan(4);
-    expect(helianthus).toBeLessThan(35);
+    // 1.6% x 2 x 5 = 16% per harvest.
+    expect(helianthus).toBeGreaterThan(18);
+    expect(helianthus).toBeLessThan(48);
   });
 
   it("harvest yield does NOT scale the Ethereal Vine count (current game): a guaranteed vine at yield 1.5 always drops exactly 1", () => {
-    // Common Ashwreath: Ethereal Vine 0.15 x Overbloom 600 (x7) = 105%, capped to a guaranteed vine by capRareCropChance.
+    // Common Ashwreath: Ethereal Vine 0.15 x Overbloom 600 (x7) = 105%, capped to a guaranteed vine by capRareCrops.
     const counts = Array.from({ length: 200 }, (_, i) =>
-      harvestOne(i + 1, { overbloom: 600, plantYieldUpgrade: 0.5 }, { capRareCropChance: true }).h.drops.ethereal_vine,
+      harvestOne(i + 1, { overbloom: 600, plantYieldUpgrade: 0.5 }, { capRareCrops: true }).h.drops.ethereal_vine,
     );
     expect(counts.every((n) => n === 1)).toBe(true);
   });
 
   it("legacyMutationYield: harvest yield scales the Ethereal Vine count: a guaranteed vine at yield 1.5 gives 1, or 2 about half the time", () => {
     const counts = Array.from({ length: 400 }, (_, i) =>
-      harvestOne(i + 1, { overbloom: 600, plantYieldUpgrade: 0.5 }, { capRareCropChance: true, legacyMutationYield: true }).h.drops.ethereal_vine,
+      harvestOne(i + 1, { overbloom: 600, plantYieldUpgrade: 0.5 }, { capRareCrops: true, legacyMutationYield: true }).h.drops.ethereal_vine,
     );
     expect(counts.every((n) => n === 1 || n === 2)).toBe(true);
     const twos = counts.filter((n) => n === 2).length / counts.length;
@@ -85,7 +142,8 @@ describe("armor Rare Crops", () => {
   });
 
   it("harvest yield does NOT scale the armor set's Rare Crop count: a guaranteed Cropie at yield 1.5 always drops exactly 1", () => {
-    const counts = Array.from({ length: 200 }, (_, i) => harvestOne(i + 1, { armorSet: "tater", overbloom: 400, plantYieldUpgrade: 0.5 }).h.drops.cropie);
+    // Thornshade (multiplier 2): Cropie 20% x 2 x Overbloom 150 (x2.5) = 100%.
+    const counts = Array.from({ length: 200 }, (_, i) => harvestOne(i + 1, { armorSet: "tater", overbloom: 150, plantYieldUpgrade: 0.5 }, {}, "thornshade").h.drops.cropie);
     expect(counts.every((n) => n === 1)).toBe(true);
   });
 

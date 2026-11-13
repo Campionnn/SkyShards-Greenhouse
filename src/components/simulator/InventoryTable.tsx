@@ -23,7 +23,7 @@ const SECTIONS: { key: ItemCategory; title: string; hint: string }[] = [
   {
     key: "rareCrop",
     title: "Rare crops",
-    hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and a harvested mutation's own Ethereal Vine. Their chances are multiplied by (1 + Overbloom/100).",
+    hint: "Armor tiered-bonus drops (Cropie, Squash, Fermento, Helianthus) and a harvested mutation's own Ethereal Vine. Their chances are multiplied by (1 + Overbloom/100); the armor drops also by the harvested plant's loot multiplier.",
   },
   { key: "other", title: "Other drops", hint: "Harvest Bounty drops from plants holding Bonus Drops (not affected by Overbloom) and anything else." },
 ];

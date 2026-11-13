@@ -135,8 +135,12 @@ export interface SimConfig {
   soggybudWaterPerNeighbour: number;
   /** Soggybud stage = floor(water / this). */
   soggybudWaterPerStage: number;
-  /** Cap Overbloom-boosted Rare Crop chance at 100% instead of guaranteed + fractional extra. */
-  capRareCropChance: boolean;
+  /**
+   * Cap a Rare Crop chance (armor drops and Ethereal Vine) at 100%: at most one item per roll.
+   * Off: guaranteed whole part + a roll on the fraction. Default on since the loot multipliers
+   * (Stoplight Petal 25 x Cropie 20% = 500%) push chances far past 100%.
+   */
+  capRareCrops: boolean;
   fleshtrapHungerPerStage: number;
   fleshtrapFeedHunger: number;
   /**
@@ -254,7 +258,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   chorusOverflow: true,
   soggybudWaterPerNeighbour: 1.4,
   soggybudWaterPerStage: 10,
-  capRareCropChance: false,
+  capRareCrops: true,
   fleshtrapHungerPerStage: 1,
   fleshtrapFeedHunger: 6,
   aloeAutoHarvest: true,
@@ -299,7 +303,7 @@ export const CONFIG_META: ConfigMeta[] = [
   { key: "aloeHarvestStage", label: "All-in Aloe fixed harvest stage", group: "unpublished", input: { type: "number", min: 1, max: 27 }, description: "Stage the player harvests All-in Aloe at when auto is off. Growing out of a stage rolls that stage's chance to reset to stage 1 (3% at stage 4, +3% per stage); 14 maximises expected drops when checking every cycle." },
 
   { key: "armorRareCropBug", label: "Armor Rare Crop bug", group: "model", input: { type: "boolean" }, description: "Wiki-reported bug: in the Greenhouse, Cropie and Squash do not drop while wearing Fermento or Helianthus Armor (only Fermento and Helianthus roll). Off = the set bonus as written." },
-  { key: "capRareCropChance", label: "Cap Rare Crop chance at 100%", group: "model", input: { type: "boolean" }, description: "Overbloom can push a Rare Crop chance past 100%. Off: 175% = 1 guaranteed + a 75% roll for a 2nd. On: at most one item per roll." },
+  { key: "capRareCrops", label: "Cap Rare Crop chance at 100%", group: "model", input: { type: "boolean" }, description: "A mutation's loot multiplier and Overbloom can push a Rare Crop chance past 100% (Stoplight Petal: 25 × Cropie 20% = 500%). On: at most one item per roll. Off: 175% = 1 guaranteed + a 75% roll for a 2nd. Applies to the armor drops and Ethereal Vine." },
   { key: "mutationCreditOrder", label: "Mutation credit order", group: "model", input: { type: "select", options: [...MUTATION_CREDIT_ORDERS] }, description: "When a mutation spawns, it credits as many ring neighbours of each required kind as the requirement count (each counts toward their minimum mutations). Which ones, when more stand there, is unknown in game. ringOrder: row by row from the top-left (extra neighbours never age). mostRemainingFirst: the ones with the most left to help (spreads the use evenly). fewestRemainingFirst: the ones with the fewest left (uses the same ones up). random: a seeded random pick." },
   { key: "keepIdenticalOnStepChange", label: "Keep identical plants on step change", group: "model", input: { type: "boolean" }, description: "Same kind at the same anchor survives a step change untouched." },
   { key: "spawnsFillLayoutInputs", label: "Spawns fill layout inputs (hybrid)", group: "model", input: { type: "boolean" }, description: "A natural spawn (growing or fully grown) standing where a layout places the same mutation is kept and used as that input, instead of being broken and re-placed from inventory. This is what makes hybrid flows work: grow Magic Jellybeans in one step, then use them as inputs in the next while they finish growing." },

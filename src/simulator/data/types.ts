@@ -29,6 +29,12 @@ export interface CropDef {
   minimumMutations: MinimumMutations;
   positiveBuffs: EffectId[];
   negativeBuffs: EffectId[];
+  /**
+   * The kind's loot multiplier from the August 20 patch notes (data.json `multiplier`). The game
+   * also multiplies the armor Rare Crop chances by it (Wheat 0.18 x Cropie 20%). 1 for the kinds
+   * that are never harvested (fire / dead_plant / fermento), which carry none.
+   */
+  multiplier: number;
   drops: Record<ItemId, number>;
   sellPrice: number;
 }
@@ -50,6 +56,8 @@ export interface MutationDef {
   positiveBuffs: EffectId[];
   negativeBuffs: EffectId[];
   requiresWatering: boolean;
+  /** Loot multiplier from the August 20 patch notes; scales the armor Rare Crop chances (Ashwreath 0.15, Snoozling 21). */
+  multiplier: number;
   /** The base-crop bundle only; the mutation item itself is added at harvest. */
   drops: Record<ItemId, number>;
   /** 0 = never spawns from the weighted roll. */

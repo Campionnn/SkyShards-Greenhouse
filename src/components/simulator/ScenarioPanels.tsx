@@ -183,7 +183,8 @@ export const SettingsPanel: React.FC<{
                 Farming armor (4/4)
                 <InfoHint title="Farming armor" width={280}>
                   In the Greenhouse, every harvested crop or mutation rolls the set's Rare Crops: Tater: Cropie 20%. Cropie: Squash 12%. Squash: Fermento 2.8%.
-                  Fermento and Helianthus combine all the lower tiers and add Helianthus 1.6%. Chances x (1 + Overbloom/100).
+                  Fermento and Helianthus combine all the lower tiers and add Helianthus 1.6%. Chances x the plant's loot multiplier (Ashwreath 0.15, Wheat
+                  0.18, Snoozling 21) x (1 + Overbloom/100), at most one of each per harvest.
                 </InfoHint>
               </span>
             }

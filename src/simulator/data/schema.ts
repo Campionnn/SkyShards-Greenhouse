@@ -17,6 +17,8 @@ export const cropSchema = z.object({
   minimum_mutations: minimumMutations,
   positive_buffs: effectList,
   negative_buffs: effectList,
+  /** Loot multiplier (August 20 patch); harvestable crops only. Scales the armor Rare Crop chances. */
+  multiplier: z.number().positive().optional(),
   drops,
   sell_price: z.number().nonnegative(),
   notes: z.string().optional(),
@@ -36,6 +38,8 @@ export const mutationSchema = z.object({
   positive_buffs: effectList,
   negative_buffs: effectList,
   requires_watering: z.boolean(),
+  /** Loot multiplier (August 20 patch). Scales the armor Rare Crop chances. */
+  multiplier: z.number().positive(),
   drops,
   spawn_weight: z.number().nonnegative(),
   special: z.string().optional(),
