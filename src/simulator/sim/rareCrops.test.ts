@@ -165,7 +165,7 @@ describe("armor Rare Crops", () => {
 describe("NPC prices", () => {
   it("rare items use wiki NPC prices", () => {
     const p = npcPriceSource(engine.data);
-    expect(p.price("helianthus")).toBe(275_000);
+    expect(p.price("helianthus")).toBe(500_000);
     expect(p.price("cropie")).toBe(25_000);
     expect(p.price("ethereal_vine")).toBe(20_000);
     expect(p.price("wheat")).toBe(2.5);

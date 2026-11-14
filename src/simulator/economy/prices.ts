@@ -19,7 +19,7 @@ export const WIKI_NPC_PRICES: Record<string, number> = {
   cropie: 25_000,
   squash: 75_000,
   fermento: 250_000,
-  helianthus: 275_000,
+  helianthus: 500_000,
   ethereal_vine: 20_000,
   overclocker_3000: 250_000,
   burrowing_spores: 1,
