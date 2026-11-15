@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateScenario } from "../flow/validate";
 import type { Scenario, SimulationState } from "../sim/state";
+import type { SimConfig } from "../config";
 import { engine, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, start, step } from "../testHelpers";
 import { derivedSeed, seedRng } from "../rng";
 import { diagnoseScript, identifierUses } from "./check";
@@ -222,6 +223,26 @@ describe("scripts: actions", () => {
     expect(Array.isArray(v["plot:1.cellFx"])).toBe(true);
     expect(typeof v["plot:1.has"]).toBe("boolean");
     expect(JSON.parse(v["plot:1.json"] as string).kind).toBe("wheat");
+  });
+
+  it("p.harvestStage and nextSessionIn give the auto aloe harvest stage the built-in harvest uses", () => {
+    const run = (n: number, config?: Partial<SimConfig>) => {
+      const sc = scenario([flow([step("a", layout())])], { activity: { kind: "everyN", n, offset: 0 }, config });
+      sc.plots[0].script = { source: `let hs = null; let gap = null; let ready = null; function onSession() { const a = plot.at(5, 5); hs = a.harvestStage; ready = a.readyStage; gap = nextSessionIn }` };
+      const s = start(sc);
+      inject(s, 1, "all_in_aloe", 5, 5, "spawned", { stage: 2 });
+      const r = engine.run(s, 1);
+      const v = vars(r.state);
+      return { hs: v["plot:1.hs"], gap: v["plot:1.gap"], ready: v["plot:1.ready"], gate: plantAt(r.state, 1, 5, 5)?.gate.aloeHarvest };
+    };
+    const every1 = run(1);
+    expect(every1).toMatchObject({ hs: 14, gap: 1 });
+    expect(every1.hs).toBe(every1.gate?.stage); // the same pick as the built-in harvest
+    const every4 = run(4);
+    expect(every4).toMatchObject({ hs: 12, gap: 4 });
+    expect(every4.hs).toBe(every4.gate?.stage);
+    // Fixed stage: the configured stage.
+    expect(run(1, { aloeAutoHarvest: false, aloeHarvestStage: 9 })).toMatchObject({ hs: 9, ready: 9 });
   });
 
   it("activeEffects applies improved/immunity rules and effectsAt sees empty target cells", () => {

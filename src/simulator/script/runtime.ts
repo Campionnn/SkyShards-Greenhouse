@@ -35,7 +35,7 @@ import { harvestPlant } from "../sim/harvest";
 import { injectInto, spend } from "../sim/inventory";
 import { canBuy } from "../sim/market";
 import { applyStepLayout, markPickup, removeByPlayer } from "../sim/placement";
-import { runSessionPhase } from "../sim/player";
+import { autoAloeHarvestStage, runSessionPhase } from "../sim/player";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isDry, isFootprintFree, isFullyGrown, isHarvestable, isRoot, newPlant } from "../sim/plants";
 import type { PlantState, PlotState, SimulationState, TickEvent } from "../sim/state";
 import { bump, perPlot } from "../sim/summary";
@@ -683,6 +683,10 @@ export class ScriptRuntime {
     live("online", () => this.ctx?.active ?? false);
     live("cycle", () => this.ctx?.cycle ?? this.state.cycle);
     live("cycleSeconds", () => this.ctx?.cycleSeconds ?? this.state.lastCycleSeconds);
+    live("nextSessionIn", () => {
+      const k = this.ctx?.cyclesUntilNextActive() ?? Infinity;
+      return Number.isFinite(k) ? k : null;
+    });
     live("elapsed", () => this.ctx?.firesAt ?? this.state.elapsedSeconds);
     live("day", () => Math.floor((this.ctx?.firesAt ?? this.state.elapsedSeconds) / 86400));
     live("hour", () => hourOfDay(this.state.scenario.settings.playerStats.startTimeOfDay, this.ctx?.firesAt ?? this.state.elapsedSeconds));
@@ -1496,7 +1500,7 @@ function mergeOverrides(base: PolicyOverrides | undefined, patch: PolicyOverride
 // ---- plant ----
 
 const PLANT_KEYS = [
-  "id", "kind", "name", "row", "col", "size", "origin", "stage", "growthStages", "readyStage", "fullyGrown", "fullyGrownAtCycle", "harvestable",
+  "id", "kind", "name", "row", "col", "size", "origin", "stage", "growthStages", "readyStage", "harvestStage", "fullyGrown", "fullyGrownAtCycle", "harvestable",
   "water", "dry", "dead", "root", "rival", "decaySeconds", "decayCycles", "timesMutated", "mutatesRemaining", "effects", "activeEffects", "gives",
   "lockedEffects", "ground", "cells", "target", "asleep", "ratAlive", "charge", "hunger", "primed", "exploded", "canPickUp", "alive", "protected",
 ];
@@ -1561,6 +1565,12 @@ class PlantHost extends HostObject {
         return p.growthStages;
       case "readyStage":
         return p.readyStage;
+      case "harvestStage": {
+        // The stage the built-in harvest takes it at. All-in Aloe under auto harvest: picked now
+        // from the cycles until the next session and its cell's respawn chance, like the game does.
+        if (p.kindId !== "all_in_aloe" || p.origin !== "spawned" || !rt.cycleCtx.config.aloeAutoHarvest) return p.readyStage;
+        return autoAloeHarvestStage(rt.plotState(this.plotId)!, p, rt.cycleCtx, rt.scratchFor(this.plotId)).stage;
+      }
       case "fullyGrown":
         return isFullyGrown(p);
       case "harvestable":

@@ -95,12 +95,26 @@ function clearRoots(plot: PlotState, ctx: CycleCtx): void {
  */
 function aloeDue(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): boolean {
   if (!ctx.config.aloeAutoHarvest) return isFullyGrown(p);
+  const pick = autoAloeHarvestStage(plot, p, ctx, scratch);
+  p.gate.aloeHarvest = pick;
+  return p.stage >= pick.stage;
+}
+
+/**
+ * Auto aloe harvest: the stage the player would harvest this All-in Aloe at now, for the
+ * cycles until the next session and the respawn chance of its cell as the plot stands.
+ * Read-only (no RNG, no writes); `aloeDue` and the scripts' `p.harvestStage` share it.
+ */
+export function autoAloeHarvestStage(
+  plot: PlotState,
+  p: PlantState,
+  ctx: CycleCtx,
+  scratch: TickScratch
+): { stage: number; gapCycles: number; respawnChance: number } {
   const gapCycles = ctx.cyclesUntilNextActive();
   ensureEffects(plot, scratch); // Godseed eligibility after this session's earlier actions
   const q = respawnChance(plot, p, p.kindId, ctx.env.data, scratch.effects, ctx.stats.mutationChanceBonus);
-  const stage = aloeHarvestStageFor(gapCycles, q);
-  p.gate.aloeHarvest = { stage, gapCycles: Number.isFinite(gapCycles) ? gapCycles : -1, respawnChance: q };
-  return p.stage >= stage;
+  return { stage: aloeHarvestStageFor(gapCycles, q), gapCycles: Number.isFinite(gapCycles) ? gapCycles : -1, respawnChance: q };
 }
 
 /**
