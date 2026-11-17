@@ -179,7 +179,7 @@ export const KindTestCard: React.FC<{ test: KindTest; kind: CellKind; summary: L
       {summary.ratio !== null && (
         <p className={rejects && summary.ratio > OUTLIER_RATIO ? "flex items-start gap-1 text-red-300" : "text-slate-400"}>
           {rejects && summary.ratio > OUTLIER_RATIO && <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />}
-          Spread (best / median): {ratioText(summary.ratio)}
+          Sales spread (best / median seed): {ratioText(summary.ratio)}
           {rejects && summary.ratio > OUTLIER_RATIO ? `: over ${OUTLIER_RATIO}×, the server would reject this as inconsistent across seeds.` : ""}
         </p>
       )}

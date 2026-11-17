@@ -581,7 +581,7 @@ describe("submit dialog renders", () => {
       "Seed 2 failed: script error: boom at cycle 12",
       "A failed seed makes the server reject the submission.",
       "2/3 seeds",
-      "Spread (best / median): 1.00×",
+      "Sales spread (best / median seed): 1.00×",
       'data-testid="test-prep"',
       "differed from a real run by 20%",
       "Needs 165 Zombud, 116 Puffercloud to start, then 93 Zombud + 91 Puffercloud per day.",

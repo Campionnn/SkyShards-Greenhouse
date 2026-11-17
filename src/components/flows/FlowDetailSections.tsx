@@ -477,8 +477,12 @@ export const SeedTable: React.FC<{ seeds: FlowSeedResult[]; board: Board; quotes
   const rows = seeds
     .slice()
     .sort((a, b) => a.seedIndex - b.seedIndex)
-    .map((s) => ({ s, profit: valueResult(DATA, s.result, board, board === "normal" ? quotes : {}, pricing).profitPerDay }));
-  const ratio = spreadRatio(rows.map((r) => r.profit));
+    .map((s) => {
+      const v = valueResult(DATA, s.result, board, board === "normal" ? quotes : {}, pricing);
+      return { s, profit: v.profitPerDay, sales: v.revenuePerDay };
+    });
+  // Like the server's outlier check: gross sales, not net profit (near zero for a flow that buys most of what it places).
+  const ratio = spreadRatio(rows.map((r) => r.sales));
   const best = Math.max(1, ...rows.map((r) => r.profit));
   return (
     <div className="space-y-2">
@@ -497,7 +501,7 @@ export const SeedTable: React.FC<{ seeds: FlowSeedResult[]; board: Board; quotes
       <p className="flex flex-wrap items-center gap-1.5 text-secondary text-fg-muted">
         Best / median <b className={cn("font-semibold tabular-nums", ratio > OUTLIER_RATIO ? "text-problem" : "text-fg-body")}>{ratioText(ratio)}</b>
         <InfoHint title="Consistency">
-          The ranking uses the median seed, so no single lucky seed counts. The server rejects a flow whose best seed earns over {OUTLIER_RATIO}× its median.
+          The ranking uses the median seed, so no single lucky seed counts. The server rejects a flow whose best seed's produce sells for over {OUTLIER_RATIO}× the median seed's (sales before costs, so a flow that buys most of what it sells isn't flagged for a small wobble).
         </InfoHint>
       </p>
     </div>

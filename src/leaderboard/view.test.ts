@@ -608,6 +608,18 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(localKindSummary(data, never, "ironman", {}, DEFAULT_BAZAAR_PRICING).cantMake).toMatchObject({ done: false });
     expect(localKindSummary(data, never, "ironman_kit", {}, DEFAULT_BAZAAR_PRICING).cantMake).toBeNull();
   });
+
+  it("the local spread compares gross sales, not net profit (as the server's outlier check)", () => {
+    // Normal: sells ~1000/day of wheat, buys ~990/day of supplies; a 1% produce wobble is a big net ratio.
+    const wheat = data.crops.wheat.sellPrice;
+    const seeds = [1000, 1004, 1010].map((n) => ({ ok: true, error: null, result: result({ wheat: n / wheat }, { bought: { zombud: 1 } }), fromNothing: null }));
+    const quotes = { zombud: { lowestSellOffer: 999, highestBuyOrder: 998 } };
+    const s = localKindSummary(data, seeds, "normal", quotes, DEFAULT_BAZAAR_PRICING);
+    const net = seeds.map((x) => valueResult(data, x.result, "normal", quotes, DEFAULT_BAZAAR_PRICING).profitPerDay).sort((a, b) => a - b);
+    expect(net[2] / net[1]).toBeGreaterThan(2); // what the old net-profit check would have flagged
+    expect(s.ratio).not.toBeNull();
+    expect(s.ratio!).toBeLessThan(1.02);
+  });
 });
 
 describe("leaderboard v2/v3: flows set apart from the from-nothing ranking", () => {

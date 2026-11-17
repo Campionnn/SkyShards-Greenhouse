@@ -999,7 +999,7 @@ export interface LocalKindSummary {
   cell: RunResult | null;
   /** The cell's coins per day on the board. */
   profitPerDay: number | null;
-  /** best / median over the seeds' window values (the outlier check). */
+  /** best / median over the seeds' window gross sales (the outlier check, not net profit). */
   ratio: number | null;
   /** "From nothing": the starting items can't be made within the run (the server lists the flow apart). */
   cantMake: PrepInfo | null;
@@ -1019,7 +1019,10 @@ export function localKindSummary(data: GameData, seeds: readonly (LocalSeed | un
   const results = finished.filter((s) => s.ok && pick(s)).map((s) => pick(s)!);
   const complete = results.length === seeds.length && seeds.length > 0;
   const cell = complete ? cellResult(results, value) : null;
-  const ratio = complete ? spreadRatio(results.map(value)) : null;
+  // The outlier check compares gross sales (the API's stats.gross_value), never net profit: net is
+  // a small difference of large numbers for a flow that buys most of what it places.
+  const gross = (r: RunResult) => valueResult(data, r, board, board === "normal" ? quotes : {}, pricing).revenuePerDay;
+  const ratio = complete ? spreadRatio(results.map(gross)) : null;
   const prep = kind === "ironman" && cell ? readPrep(cell.prep) : null;
   return { done: finished.length, total: seeds.length, failed, cell, profitPerDay: cell ? value(cell) : null, ratio, cantMake: prep && !prep.done ? prep : null };
 }
