@@ -198,13 +198,12 @@ describe("leaderboard pages render", () => {
     expect(r.section).toContain('data-testid="stops-line"');
   });
 
-  it("ranking rows with the starting items: the same facts, the from-nothing number (title and peek), nothing set apart; links carry kit", async () => {
+  it("ranking rows with the starting items: the same facts, the from-nothing number (profit tooltip and peek), nothing set apart; links carry kit", async () => {
     const r = await renderRows("ironman", true);
     expect(r.blocked).toHaveLength(0);
     expect(r.ranked.map((x) => x.entry.id)).toContain("mockGods0009");
     const html = r.html;
     expect(html).toMatch(/Starting items: 165 Zombud, 116 Puffercloud · made in/);
-    expect(html).toMatch(/title="From nothing: [\d.]+[kMB]?\/day \(making the starting items first\)"/);
     expect(html).toContain("/day (making the starting items first)");
     expect(html).toContain("93 Zombud + 91 Puffercloud /day");
     expect(html).toContain('href="/flows/mockDevr0007?board=ironman&kit=1"');

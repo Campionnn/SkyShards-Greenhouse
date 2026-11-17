@@ -10,8 +10,9 @@ import { SlowingBadge, StallChip, StartingItemsLine } from "../FlowChips";
 import { Avatar, Badge, LikeButton } from "../FlowControls";
 import { EffortMeter, LayoutBoxes, LayoutThumb, MutationChip, Sparkline, SplitBar, SplitLegend } from "../FlowVisuals";
 import { FrequencyChart } from "../FrequencyChart";
-import { SPLIT_STYLE } from "../flowsDisplay";
+import { effortLevel, SPLIT_STYLE } from "../flowsDisplay";
 import { InfoHint } from "../../ui/InfoHint";
+import { KitTooltip } from "../../ui/Hint";
 import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, peekLayouts, shapeText, simHref, startShort, supplyText, thumbOf, upkeepShort, ROW_COLS, type RankingLinkState } from "./rankingHelpers";
 
 /**
@@ -51,14 +52,6 @@ export interface RowProps {
   /** Set the viewer's frequency (the peek's chart is clickable when given). */
   onEvery?: (every: number) => void;
 }
-
-const splitTitle = (row: FlowRow) =>
-  row.split
-    ? (["crops", "mutations", "rare"] as const)
-        .filter((k) => row.split![k] > 0)
-        .map((k) => `${SPLIT_STYLE[k].label} ${formatCoins(row.split![k])}/day`)
-        .join(" · ")
-    : undefined;
 
 
 /**
@@ -116,6 +109,32 @@ export const Coins: React.FC<{ value: number | null; className?: string; title?:
 const fraction = (row: FlowRow, top: number) => (top > 0 && row.profitPerDay !== null ? row.profitPerDay / top : 0);
 const headlineTitle = (row: FlowRow, board: Board, kit: boolean) =>
   board === "ironman" && kit && row.altPerDay !== null ? `From nothing: ${formatCoins(row.altPerDay)}/day (making the starting items first)` : undefined;
+
+const profitLabel = (row: FlowRow) => (row.profitPerDay === null ? "Not verified yet" : `${formatCoins(row.profitPerDay)} coins/day${row.scaled ? " (estimated)" : ""}`);
+
+/** The profit cell's tooltip: where the money comes from, share of the top flow, the from-nothing number. */
+const ProfitTipBody: React.FC<{ row: FlowRow; top: number; board: Board; kit: boolean }> = ({ row, top, board, kit }) => {
+  const parts = row.split ? (["crops", "mutations", "rare"] as const).filter((k) => row.split![k] > 0) : [];
+  const alt = headlineTitle(row, board, kit);
+  return (
+    <span className="block space-y-0.5 tabular-nums">
+      {parts.map((k) => (
+        <span key={k} className="flex items-center gap-1.5 whitespace-nowrap">
+          <span aria-hidden className={cn("h-1.5 w-2.5 rounded-full", SPLIT_STYLE[k].bar)} />
+          <span>{SPLIT_STYLE[k].label}</span>
+          <span className="ml-auto pl-3 text-fg-body">{formatCoins(row.split![k])}/day</span>
+        </span>
+      ))}
+      {row.profitPerDay !== null && top > 0 && <span className="block">{percent(Math.max(0, fraction(row, top)))} of the top flow</span>}
+      {row.scaled && <span className="block">Scaled to your stats</span>}
+      {alt && <span className="block">{alt}</span>}
+    </span>
+  );
+};
+
+const effortTipLabel = (row: FlowRow) => (row.effortAvg === null ? "Effort unknown" : `Effort: ${effortLevel(row.effortAvg).label}`);
+const effortTipHint = (row: FlowRow) =>
+  row.effortAvg === null ? "Not verified at this frequency yet." : `${Math.round(row.effortAvg)} per login on average, ${Math.round(row.effortPeak ?? 0)} at the heaviest`;
 
 const RowLikeButton: React.FC<{ row: FlowRow; like: RowLike; sort: SortKey }> = ({ row, like, sort }) => {
   const { entry } = row;
@@ -367,19 +386,23 @@ export const FlowRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = 
           <TopEarners row={row} />
           <UpkeepLine row={row} board={board} bare />
         </div>
-        <div className="min-w-0 text-right" title={splitTitle(row)}>
-          <Coins value={row.profitPerDay} className="text-title" title={headlineTitle(row, board, kit)} />
-          <div className="text-meta text-fg-meta">{row.scaled ? "coins/day · est." : "coins/day"}</div>
-          <SplitBar split={row.split} fraction={fraction(row, top)} className="mt-1.5" />
-        </div>
-        <span className="min-w-0">
-          <span className="@min-[60rem]:hidden">
-            <EffortMeter avg={row.effortAvg} peak={row.effortPeak} compact />
+        <KitTooltip label={profitLabel(row)} hint={<ProfitTipBody row={row} top={top} board={board} kit={kit} />} side="top" className="relative z-10 min-w-0 justify-end">
+          <div className="w-full min-w-0 cursor-default text-right" data-testid="row-profit">
+            <Coins value={row.profitPerDay} className="text-title" />
+            <div className="text-meta text-fg-meta">{row.scaled ? "coins/day · est." : "coins/day"}</div>
+            <SplitBar split={row.split} fraction={fraction(row, top)} className="mt-1.5" />
+          </div>
+        </KitTooltip>
+        <KitTooltip label={effortTipLabel(row)} hint={effortTipHint(row)} side="top" className="relative z-10 min-w-0">
+          <span className="min-w-0 cursor-default" data-testid="row-effort">
+            <span className="@min-[60rem]:hidden">
+              <EffortMeter avg={row.effortAvg} peak={row.effortPeak} compact noTitle />
+            </span>
+            <span className="hidden @min-[60rem]:inline">
+              <EffortMeter avg={row.effortAvg} peak={row.effortPeak} noTitle />
+            </span>
           </span>
-          <span className="hidden @min-[60rem]:inline">
-            <EffortMeter avg={row.effortAvg} peak={row.effortPeak} />
-          </span>
-        </span>
+        </KitTooltip>
         <div className="flex min-w-0 items-center gap-1.5">
           <Sparkline points={row.curve} selected={every} hoursPerCycle={hoursPerCycle} />
           <span className="text-secondary tabular-nums text-fg-body" title={FORGIVING_HINT}>
