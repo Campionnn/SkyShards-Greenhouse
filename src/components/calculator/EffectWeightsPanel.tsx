@@ -49,6 +49,7 @@ export const EffectWeightsPanel: React.FC = () => {
     () => Object.values(effectWeights).filter((v) => v !== 0).length,
     [effectWeights]
   );
+  const [open, setOpen] = useState(() => activeCount > 0);
 
 
   const handleChange = useCallback((effectId: string, raw: string) => {
@@ -95,7 +96,9 @@ export const EffectWeightsPanel: React.FC = () => {
 
 
   return (
-    <details className="group/ew" open={activeCount > 0 || undefined}>
+    // Starts open when weights are already set, then behaves as a plain collapsible: open state is
+    // user-owned, so zeroing every weight no longer snaps the menu shut.
+    <details className="group/ew" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="focus-ring flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-inner text-body text-fg-body pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
         <span className="flex min-w-0 flex-1 items-center gap-1.5">
           Effect weights
