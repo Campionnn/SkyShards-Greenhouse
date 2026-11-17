@@ -377,7 +377,7 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
     ...base,
     cantMake: s.board === "ironman" && !s.kit && prep && !prep.done ? prep : null,
     stops: s.board === "ironman" && !s.kit && stopsAt(cell.slowing === true, v.profitPerDay, altPerDay),
-    stallsFromNothing: s.board === "ironman" && s.kit ? stallsFromNothingOf(alt, altPerDay, v.profitPerDay, prep) : false,
+    stallsFromNothing: s.board === "ironman" && s.kit ? stallsFromNothingOf(alt, altPerDay, v.profitPerDay, prep, cell) : false,
     altPerDay,
     prep,
     sources: earningItems(data, result.bySource, s.board, quotes, pricing),
@@ -418,10 +418,38 @@ export function stopsAt(slowing: boolean, fromNothing: number | null, withItems:
  * starting items (`prep.done` false) or the from-nothing point stops (`stopsAt`); null without a
  * from-nothing point to judge by.
  */
-function stallsFromNothingOf(alt: CurvePoint | null, fromNothing: number | null, withItems: number, prep: PrepInfo | null): boolean | null {
+function stallsFromNothingOf(alt: CurvePoint | null, fromNothing: number | null, withItems: number, prep: PrepInfo | null, kitCell: RunResult): boolean | null {
   if (prep && !prep.done) return true;
   if (!alt || fromNothing === null) return null;
-  return stopsAt(alt.slowing === true, fromNothing, withItems);
+  if (stopsAt(alt.slowing === true, fromNothing, withItems)) return true;
+  const share = upkeepUseShare(kitCell, alt);
+  return share !== null && share < UPKEEP_USE_MIN;
+}
+
+/**
+ * From nothing, a flow with upkeep must keep at least this share of its upkeep items in use (placed per
+ * day, vs with the starting items) to count as not stalling. On the live board (2026-11) the flows that
+ * really run from nothing keep 38%+ (Ironman Chorus Fruit, ~0.2 upkeep a day); the ones that only earn
+ * base crops while their mutation setup sits idle keep under 15% (Devourer 0–3%).
+ */
+export const UPKEEP_USE_MIN = 0.25;
+
+/**
+ * How much of the upkeep items the flow still uses from nothing: the from-nothing point's `consumed`
+ * of the with-items cell's upkeep items over the cell's own. Null without upkeep (nothing to keep up)
+ * or without consumption data.
+ */
+export function upkeepUseShare(kitCell: Pick<RunResult, "upkeep" | "consumed">, alt: Pick<CurvePoint, "consumed">): number | null {
+  const items = positiveEntries(kitCell.upkeep).map(([item]) => item);
+  if (!items.length || !isRecord(alt.consumed)) return null;
+  let withItems = 0;
+  let fromNothing = 0;
+  for (const item of items) {
+    withItems += finite(kitCell.consumed?.[item]) ? kitCell.consumed[item] : 0;
+    const n = (alt.consumed as Record<string, unknown>)[item];
+    fromNothing += finite(n) ? n : 0;
+  }
+  return withItems > 0 ? fromNothing / withItems : null;
 }
 
 const numPair = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && finite(v[0]) && finite(v[1]) ? [v[0], v[1]] : null);

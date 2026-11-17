@@ -41,6 +41,7 @@ import {
   startItemsText,
   startItemsTotal,
   upkeepText,
+  upkeepUseShare,
   usedUpLines,
   writeListParams,
   type RowFilters,
@@ -542,23 +543,38 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
   });
 
   it("no stall: with the starting items, only flows that keep going from nothing (small upkeep allowed)", () => {
-    const fn = (wheat: number, slowing = false) => ({ produced: { wheat }, bought: {}, consumed: {}, ...(slowing ? { slowing: true as const } : {}) });
+    // `used`: upkeep items placed per day from nothing (the with-items cell places 10 of each upkeep item).
+    const fn = (wheat: number, used: Record<string, number> = {}, slowing = false) => ({ produced: { wheat }, bought: {}, consumed: used, ...(slowing ? { slowing: true as const } : {}) });
     const done = { kit: { zombud: 2 }, cycles: 75, days: 5.47, done: true, mode: "stitched" as const };
-    const kitCell = (upkeep: Record<string, number>) => result({ wheat: 1000 }, { upkeep, startItems: { zombud: 2 } });
+    const kitCell = (upkeep: Record<string, number>) =>
+      result({ wheat: 1000 }, { upkeep, startItems: { zombud: 2 }, consumed: Object.fromEntries(Object.keys(upkeep).map((k) => [k, 10])) });
     const rows = rankEntries(
       data,
       [
         v2entry("steady", kitCell({}), { altPoint: fn(990), prep: done }),
-        v2entry("small", kitCell({ cindershade: 0.2 }), { altPoint: fn(780), prep: done }), // a little upkeep, still runs
-        v2entry("slowButOk", kitCell({ zombud: 7 }), { altPoint: fn(500, true), prep: done }), // slowing, but over 10%
-        v2entry("stops", kitCell({ zombud: 20 }), { altPoint: fn(0, true), prep: done }),
+        // A little upkeep, and from nothing it keeps half of it going (Ironman Chorus Fruit): kept.
+        v2entry("small", kitCell({ cindershade: 0.2 }), { altPoint: fn(780, { cindershade: 5 }), prep: done }),
+        v2entry("slowButOk", kitCell({ zombud: 7 }), { altPoint: fn(500, { zombud: 4 }, true), prep: done }),
+        // Earns base crops from nothing (18% of the number) but its upkeep items sit unused (Devourer): stalls.
+        v2entry("devourer", kitCell({ zombud: 90, puffercloud: 90 }), { altPoint: fn(180, { zombud: 0.3, puffercloud: 0.3 }), prep: done }),
+        v2entry("stops", kitCell({ zombud: 20 }), { altPoint: fn(0, {}, true), prep: done }),
         v2entry("cant", kitCell({}), { altPoint: fn(1000), prep: { ...done, done: false } }),
         v2entry("unknown", kitCell({})),
       ],
       withKit,
     );
     const by = (f: Partial<RowFilters>) => rows.filter((r) => matchesFilters(r, { ...DEFAULT_FILTERS, ...f }, "ironman")).map((r) => r.entry.id).sort();
-    expect(Object.fromEntries(rows.map((r) => [r.entry.id, r.stallsFromNothing]))).toEqual({ steady: false, small: false, slowButOk: false, stops: true, cant: true, unknown: null });
+    expect(Object.fromEntries(rows.map((r) => [r.entry.id, r.stallsFromNothing]))).toEqual({
+      steady: false,
+      small: false,
+      slowButOk: false,
+      devourer: true,
+      stops: true,
+      cant: true,
+      unknown: null,
+    });
+    expect(upkeepUseShare({ upkeep: { zombud: 1 }, consumed: { zombud: 10 } }, { consumed: { zombud: 2.5 } })).toBe(0.25);
+    expect(upkeepUseShare({ upkeep: {}, consumed: { zombud: 10 } }, { consumed: {} })).toBeNull();
     expect(by({ noStall: true })).toEqual(["slowButOk", "small", "steady"]);
     expect(by({ noStall: true, noUpkeep: true })).toEqual(["steady"]);
     // From nothing the rows that stall are already set apart: the verdict is false there, the filter a no-op.
