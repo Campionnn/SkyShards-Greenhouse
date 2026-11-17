@@ -29,6 +29,7 @@ describe("frequency sweep", () => {
   it("clamps the parameters", () => {
     expect(clampSweepParams({ seeds: 0, cycles: 5 })).toEqual({ seeds: 1, cycles: 100 });
     expect(clampSweepParams({ seeds: 3.7, cycles: NaN })).toEqual({ seeds: 3, cycles: 2000 });
+    expect(clampSweepParams({ seeds: 5000, cycles: 2000 }).seeds).toBe(200);
   });
 
   it("the key ignores the online schedule but not the rest", () => {
@@ -50,7 +51,9 @@ describe("frequency sweep", () => {
     const runs = [ok(1, 1, 100), ok(1, 2, 300), ok(1, 3, 200), { every: 2, seed: 1, ok: false, error: "x", summary: null }, ok(2, 2, 50)];
     const pts = sweepPoints(runs);
     expect(pts.map((p) => p.every)).toEqual([...SWEEP_EVERY]);
-    expect(pts[0]).toMatchObject({ every: 1, profitPerDay: 200, runs: 3, failed: 0 });
+    expect(pts[0]).toMatchObject({ every: 1, profitPerDay: 200, mean: 200, n: 3, runs: 3, failed: 0 });
+    expect(pts[0].lo).toBeCloseTo(110);
+    expect(pts[0].hi).toBeCloseTo(290);
     expect(pts[1]).toMatchObject({ every: 2, profitPerDay: 50, runs: 2, failed: 1 });
     expect(pts[2].profitPerDay).toBeNull();
     // Forgiving uses the leaderboard's own formula on these points.
@@ -60,8 +63,9 @@ describe("frequency sweep", () => {
   it("points carry the median effort per login of runs with logins", () => {
     const runs = [1, 2, 3].map((seed) => runSweepCell(engine, base(), 2, seed, 30));
     const want = runs.map((r) => r.summary!.effort!.total / r.summary!.effort!.sessions).sort((a, b) => a - b)[1];
+    // (three seeds: the median is the middle one)
     expect(sweepPoints(runs).find((p) => p.every === 2)?.effortAvg).toBeCloseTo(want);
-    expect(sweepPoints(runs).find((p) => p.every === 1)?.effortAvg).toBeUndefined();
+    expect(sweepPoints(runs).find((p) => p.every === 1)?.profitPerDay).toBeNull();
   });
 
   it("runs one cell with the engine", () => {
@@ -103,6 +107,16 @@ describe("sweep pool", () => {
     expect(runs.map((r) => r.every)).toEqual([1, 2, 4]);
     expect(seen.sort()).toEqual([0, 1, 2]);
     expect(log.every((m) => m.cycles === 10)).toBe(true);
+  });
+
+  it("reuses its workers for job after job", async () => {
+    const log: SweepRequest[] = [];
+    let created = 0;
+    const pool = new SweepPool(2, () => (created++, new FakeWorker(log)));
+    const jobs = Array.from({ length: 10 }, (_, i) => ({ every: 1, seed: i }));
+    const runs = await pool.run(base(), 10, jobs);
+    expect(runs.map((r) => r.seed)).toEqual(jobs.map((j) => j.seed));
+    expect(created).toBe(2);
   });
 
   it("cancel rejects the active run", async () => {

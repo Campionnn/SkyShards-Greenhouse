@@ -19,13 +19,14 @@ export const KIND_SHORT: Record<CellKind, string> = { ironman: "From nothing", i
 export const KIND_BOARD: Record<CellKind, string> = { ironman: "Ironman", ironman_kit: "Ironman", normal: "Bazaar" };
 
 /** The detail page's sections (the `?tab=` values). */
-export type DetailTab = "need" | "earn" | "freq" | "flow" | "proof";
+export type DetailTab = "need" | "earn" | "freq" | "flow" | "proof" | "test";
 export const DETAIL_TABS: { value: DetailTab; label: string; short: string }[] = [
   { value: "need", label: "What you need", short: "Needs" },
   { value: "earn", label: "Earnings", short: "Earnings" },
   { value: "freq", label: "Login frequency", short: "Frequency" },
   { value: "flow", label: "How it works", short: "Flow" },
   { value: "proof", label: "Effort and seeds", short: "Effort" },
+  { value: "test", label: "Test with your stats", short: "Test" },
 ];
 export const tabFrom = (raw: string | null): DetailTab => (DETAIL_TABS.some((t) => t.value === raw) ? (raw as DetailTab) : "need");
 

@@ -17,6 +17,7 @@ import { MutationChip, SplitBar, SplitLegend } from "../FlowVisuals";
 import { EFFORT_LABEL } from "../flowsDisplay";
 import { FrequencyChart } from "../FrequencyChart";
 import { simHref } from "../ranking/rankingHelpers";
+import { StatsTestPanel } from "./StatsTestPanel";
 import { useCellSeeds } from "./useCellSeeds";
 import type { DetailModel } from "./detailModel";
 import { DETAIL_TABS, forgivingText, SEEDS_MAX_TIER, SEEDS_OTHER_TIERS, type DetailTab } from "./detailText";
@@ -235,7 +236,9 @@ export const DetailTabs: React.FC<{
   phone: boolean;
   /** Normal board: open the price editor (on one item, or the list for null). */
   onEditPrice?: (item: string | null) => void;
-}> = ({ detail, viewer, m, tab, onTab, phone, onEditPrice }) => (
+  /** Open the stats drawer (the Test tab's "Edit stats"). */
+  onEditStats?: () => void;
+}> = ({ detail, viewer, m, tab, onTab, phone, onEditPrice, onEditStats }) => (
   <div>
     <div className={cn("sticky top-0 z-(--z-sticky) bg-surface-page", phone && "-mx-1 px-1")}>
       <Tabs value={tab} onChange={onTab} items={DETAIL_TABS.map((t) => ({ value: t.value, label: phone ? t.short : t.label }))} idPrefix="flow-detail" label="Sections" scroll={phone} />
@@ -268,6 +271,7 @@ export const DetailTabs: React.FC<{
         </div>
       )}
       {tab === "proof" && <ProofPanel detail={detail} m={m} viewer={viewer} phone={phone} />}
+      {tab === "test" && <StatsTestPanel detail={detail} viewer={viewer} m={m} phone={phone} onEditStats={onEditStats} />}
     </TabPanel>
   </div>
 );

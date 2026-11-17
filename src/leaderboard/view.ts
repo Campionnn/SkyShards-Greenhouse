@@ -1054,6 +1054,11 @@ export interface FrequencyPoint {
   profitPerDay: number | null;
   /** Average effort per login at this frequency, when known (shown in the chart's tooltip). */
   effortAvg?: number | null;
+  /** Monte Carlo tests only (leaderboard/montecarlo.ts): the average and the 90% range over `n` seeds. */
+  mean?: number;
+  lo?: number;
+  hi?: number;
+  n?: number;
 }
 
 /** Profit per day at every grid frequency of one cell kind / tier (null where no cell exists). */

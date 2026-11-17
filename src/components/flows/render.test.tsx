@@ -327,6 +327,9 @@ describe("leaderboard pages render", () => {
     expect(html).toContain('data-testid="what-you-need"');
     expect(html).toContain("Layout complete");
     expect(all).not.toMatch(/paid back|on credit|Infinity|NaN/i);
+    // Test with your stats: options and an empty state until a test runs.
+    const testTab = detailAt(detail, "/flows/x?tab=test");
+    for (const s of ['data-testid="stats-test"', "Test with your stats", "Not tested yet", "Run test", "Every frequency", 'data-testid="stats-test-options"']) expect(testTab).toContain(s);
     // Restricted Markdown in How it works: headings and emphasis render; links are unwrapped to text.
     const flow = detailAt(detail, "/flows/x?tab=flow");
     expect(flow).toContain("<h3>How it works</h3>");

@@ -574,7 +574,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
         </div>
       )}
 
-      <DetailTabs detail={detail} viewer={viewer} m={m} tab={tab} onTab={setTab} phone={phone} onEditPrice={setPricing} />
+      <DetailTabs detail={detail} viewer={viewer} m={m} tab={tab} onTab={setTab} phone={phone} onEditPrice={setPricing} onEditStats={() => setStatsOpen(true)} />
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-meta text-fg-meta">
         <PriceNote viewer={viewer} now={now} onEditPrices={() => setPricing(null)} />

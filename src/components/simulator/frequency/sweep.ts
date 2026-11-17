@@ -1,8 +1,7 @@
 import type { Engine } from "../../../simulator/engine";
 import { effortPerSession, type ActivitySchedule, type RunSummary, type Scenario } from "../../../simulator";
-import { median } from "../../../leaderboard/result";
 import { EVERY } from "../../../leaderboard/tiers";
-import type { FrequencyPoint } from "../../../leaderboard/view";
+import { mcPoints, type McPoint } from "../../../leaderboard/montecarlo";
 
 /**
  * "Profit by online frequency" for the simulator page: the user's own scenario, as is, re-run with
@@ -13,9 +12,9 @@ import type { FrequencyPoint } from "../../../leaderboard/view";
 /** The frequencies tested: the leaderboard grid, so the two charts compare directly. */
 export const SWEEP_EVERY: readonly number[] = EVERY;
 
-export const DEFAULT_SWEEP_SEEDS = 3;
+export const DEFAULT_SWEEP_SEEDS = 20;
 export const MIN_SWEEP_SEEDS = 1;
-export const MAX_SWEEP_SEEDS = 9;
+export const MAX_SWEEP_SEEDS = 200;
 export const DEFAULT_SWEEP_CYCLES = 2000;
 export const MIN_SWEEP_CYCLES = 100;
 export const MAX_SWEEP_CYCLES = 20000;
@@ -112,31 +111,22 @@ export function summaryProfitPerDay(s: RunSummary): number {
   return s.elapsedSeconds > 0 ? s.profit / (s.elapsedSeconds / 86400) : 0;
 }
 
-export interface SweepPoint extends FrequencyPoint {
-  /** Runs at this frequency so far, and how many of them failed. */
-  runs: number;
-  failed: number;
-}
+export type SweepPoint = McPoint;
 
 /**
- * The chart's points: per frequency, the median profit per day over the finished seeds, priced by
- * `price` (the page passes Bazaar pricing in normal profile).
+ * The chart's points: per frequency, the distribution of profit per day over the finished seeds
+ * (median, average, 90% range), priced by `price` (the page passes Bazaar pricing in normal profile).
  */
 export function sweepPoints(runs: readonly SweepRun[], price: (s: RunSummary) => number = summaryProfitPerDay, grid: readonly number[] = SWEEP_EVERY): SweepPoint[] {
-  return grid.map((every) => {
-    const at = runs.filter((r) => r.every === every);
-    const ok = at.filter((r): r is SweepRun & { summary: RunSummary } => r.ok && r.summary !== null);
-    const base = { every, runs: at.length, failed: at.length - ok.length };
-    if (!ok.length) return { ...base, profitPerDay: null };
-    const logged = ok.filter((r) => (r.summary.effort?.sessions ?? 0) > 0);
-    return {
-      ...base,
-      profitPerDay: median(ok.map((r) => price(r.summary))),
-      effortAvg: logged.length ? median(logged.map((r) => effortPerSession(r.summary.effort))) : null,
-    };
-  });
+  return mcPoints(
+    runs.map((r) => ({
+      every: r.every,
+      value: r.ok && r.summary ? price(r.summary) : null,
+      effort: r.ok && r.summary && (r.summary.effort?.sessions ?? 0) > 0 ? effortPerSession(r.summary.effort) : null,
+    })),
+    grid
+  );
 }
-
 /** Average real hours per cycle over the finished runs (null without one). */
 export function sweepHoursPerCycle(runs: readonly SweepRun[]): number | null {
   let seconds = 0;

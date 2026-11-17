@@ -83,12 +83,21 @@ export const FrequencyChart: React.FC<{
   const hi = Math.log2(points[points.length - 1]?.every ?? 12);
   const xOf = (every: number) => pad.l + (hi > lo ? ((Math.log2(every) - lo) / (hi - lo)) * iw : iw / 2);
   const best = Math.max(0, ...known.map((p) => p.profitPerDay ?? 0));
-  const top = niceTop(best);
+  // Monte Carlo points carry a 90% range: drawn as a band, and the axis makes room for it.
+  const ranged = known.filter((p) => typeof p.lo === "number" && typeof p.hi === "number" && (p.n ?? 0) > 1);
+  const top = niceTop(Math.max(best, ...ranged.map((p) => p.hi!)));
   const yOf = (v: number) => pad.t + ih - (Math.max(0, v) / top) * ih;
   const xy = known.map((p) => ({ x: xOf(p.every), y: yOf(p.profitPerDay!) }));
   const line = monotonePath(xy);
   const base = pad.t + ih;
-  const area = xy.length > 1 ? `${line} L${xy[xy.length - 1].x.toFixed(1)},${base} L${xy[0].x.toFixed(1)},${base} Z` : "";
+  const area = xy.length > 1 && !ranged.length ? `${line} L${xy[xy.length - 1].x.toFixed(1)},${base} L${xy[0].x.toFixed(1)},${base} Z` : "";
+  const band =
+    ranged.length > 1
+      ? `${monotonePath(ranged.map((p) => ({ x: xOf(p.every), y: yOf(p.hi!) })))} ${[...ranged]
+          .reverse()
+          .map((p) => `L${xOf(p.every).toFixed(1)},${yOf(p.lo!).toFixed(1)}`)
+          .join(" ")} Z`
+      : "";
   const mine = points.find((p) => p.every === selected)?.profitPerDay ?? null;
   const focus = hover === null ? null : (points.find((p) => p.every === hover) ?? null);
   const windowEnd = Math.min(selected * 2, points[points.length - 1]?.every ?? selected);
@@ -176,6 +185,10 @@ export const FrequencyChart: React.FC<{
             ))}
             {mine !== null && mine > 0 && <line x1={pad.l} x2={width - pad.r} y1={yOf(mine)} y2={yOf(mine)} stroke="var(--color-select)" strokeOpacity={0.35} strokeDasharray="4 4" />}
             {area && <path d={area} fill="var(--color-go)" fillOpacity={0.1} />}
+            {band && <path d={band} fill="var(--color-go)" fillOpacity={0.14} data-testid="frequency-band" />}
+            {ranged.map((p) => (
+              <line key={`r${p.every}`} x1={xOf(p.every)} x2={xOf(p.every)} y1={yOf(p.hi!)} y2={yOf(p.lo!)} stroke="var(--color-go)" strokeOpacity={0.45} strokeWidth={1.5} />
+            ))}
             {focus && <line x1={fx} x2={fx} y1={pad.t} y2={base} stroke="var(--color-line-strong)" strokeDasharray="3 3" />}
             <path d={line} fill="none" stroke="var(--color-go)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
             {mineXY && <circle cx={mineXY.x} cy={mineXY.y} r={10} fill="var(--color-select)" fillOpacity={0.16} />}
@@ -219,6 +232,21 @@ export const FrequencyChart: React.FC<{
                   {best > 0 && `${Math.round((focus.profitPerDay / best) * 100)}% of the best`}
                   {delta !== null && <span className={delta >= 0 ? "text-go-fg" : "text-problem"}>{` · ${delta >= 0 ? "+" : ""}${Math.round(delta * 100)}% vs ${selectedLabel}`}</span>}
                 </span>
+                {typeof focus.mean === "number" && (focus.n ?? 0) > 1 && (
+                  <span className="mt-0.5 block tabular-nums text-fg-muted">
+                    Median · average <span className="text-fg-body">{formatCoins(focus.mean)}</span>
+                  </span>
+                )}
+                {typeof focus.lo === "number" && typeof focus.hi === "number" && (focus.n ?? 0) > 1 && (
+                  <span className="block tabular-nums text-fg-muted">
+                    90% of seeds <span className="text-fg-body">{formatCoins(focus.lo)}</span> to <span className="text-fg-body">{formatCoins(focus.hi)}</span>
+                  </span>
+                )}
+                {typeof focus.n === "number" && (
+                  <span className="block tabular-nums text-fg-meta">
+                    {focus.n} seed{focus.n === 1 ? "" : "s"}
+                  </span>
+                )}
                 {focus.effortAvg != null && <span className="block tabular-nums text-fg-muted">Effort {Math.round(focus.effortAvg)} / login</span>}
               </>
             )}
@@ -261,6 +289,11 @@ export const FrequencyChart: React.FC<{
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden className="size-2 rounded-full bg-select" /> {selectedLabel}
         </span>
+        {ranged.length > 0 && (
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden className="h-2 w-4 rounded-inner bg-go/25" /> 90% of seeds
+          </span>
+        )}
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden className="h-2 w-4 rounded-inner bg-fg-meta/20" /> Forgiving range: up to twice as late
         </span>

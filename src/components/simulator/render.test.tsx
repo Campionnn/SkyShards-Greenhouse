@@ -355,7 +355,8 @@ describe("simulator panels render", () => {
     const text = wrap(<FrequencyPanel scenario={sc} />).replace(/<!-- -->/g, "");
     expect(text).toContain("Profit by online frequency");
     expect(text).toContain("Compute");
-    expect(text).toContain("21 runs (7 frequencies × 3 seeds)");
+    expect(text).toContain("140 runs (7 frequencies × 20 seeds)");
+    for (const s of ["Quick", "Standard", "Thorough", "Deep"]) expect(text).toContain(s);
   });
 
   it("report panels", () => {
