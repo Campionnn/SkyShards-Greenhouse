@@ -539,7 +539,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
 
       {(owner || admin) && (
         <div className="space-y-3 border-y border-line py-2.5">
-          {owner && <StatusBox id={detail.id} initial={detail.status} onLive={onReload} />}
+          {owner && <StatusBox id={detail.id} initial={detail.status} onLive={onReload} collapsible />}
           {admin && <ModerationBox detail={detail} onReload={onReload} />}
         </div>
       )}

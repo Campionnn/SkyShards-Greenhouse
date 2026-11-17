@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ExternalLink, Flag, FlaskConical, LoaderCircle } from "lucide-react";
+import { ChevronDown, ExternalLink, Flag, FlaskConical, LoaderCircle } from "lucide-react";
 import type { FlowDetail, FlowSeedResult, FlowStatusResponse } from "../../leaderboard/api";
 import type { Board, CellKind } from "../../leaderboard/rules";
 import { valueResult, type Quotes } from "../../leaderboard/pricing";
@@ -515,8 +515,10 @@ const STATUS_TONE: Record<string, "go" | "problem" | "neutral" | "script"> = { l
  * Owner: verification progress (F70); polls every 5 s while pending and calls `onLive` when the
  * flow goes live. One row with the status, then the job list while pending.
  */
-export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => void }> = ({ id, initial, onLive }) => {
+export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => void; collapsible?: boolean }> = ({ id, initial, onLive, collapsible }) => {
   const [status, setStatus] = useState<FlowStatusResponse | null>(null);
+  // `collapsible` (the detail page): the job list starts folded behind a "Jobs" toggle.
+  const [jobsOpen, setJobsOpen] = useState(!collapsible);
   const [error, setError] = useState<string | null>(null);
   const pending = (status?.status ?? initial) === "pending";
   useEffect(() => {
@@ -558,11 +560,25 @@ export const StatusBox: React.FC<{ id: string; initial: string; onLive?: () => v
           The server simulates every login frequency with {SEEDS_MAX_TIER} secret seeds at the Max tier ({SEEDS_OTHER_TIERS} at the others), for Ironman (with and without the starting items) and Normal. This
           takes a few minutes and updates by itself.
         </InfoHint>
+        {collapsible && status?.jobs.length ? (
+          <button
+            type="button"
+            onClick={() => setJobsOpen((o) => !o)}
+            aria-expanded={jobsOpen}
+            aria-controls={`flow-jobs-${id}`}
+            className="focus-ring hit-area ml-auto inline-flex cursor-pointer items-center gap-1 rounded-inner text-secondary text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg"
+          >
+            <span className="tabular-nums">
+              Jobs {status.jobs.filter((j) => j.status === "done").length}/{status.jobs.length}
+            </span>
+            <ChevronDown aria-hidden className={cn("size-3.5 transition-transform duration-200", jobsOpen && "rotate-180")} />
+          </button>
+        ) : null}
       </div>
       {status?.rejectReason && <p className="break-words text-secondary text-problem">{status.rejectReason}</p>}
       {error && <p className="text-secondary text-warn">Could not refresh the status: {error}</p>}
-      {status?.jobs.length ? (
-        <ul className="grid gap-x-6 gap-y-1.5 text-secondary md:grid-cols-2">
+      {jobsOpen && status?.jobs.length ? (
+        <ul id={`flow-jobs-${id}`} className="grid gap-x-6 gap-y-1.5 text-secondary md:grid-cols-2">
           {status.jobs.map((j, i) => {
             const frac = j.total ? Math.min(1, (j.done ?? 0) / j.total) : 0;
             const label = j.status === "queued" && j.queuePosition ? `queued · #${j.queuePosition} in line` : j.status === "running" && j.total ? `running · ${j.done ?? 0}/${j.total} runs` : j.status;
