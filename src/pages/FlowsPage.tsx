@@ -172,8 +172,9 @@ export const FlowsPage: React.FC = () => {
   const all = useMemo(() => (result && !loading ? (result.data?.entries ?? []) : []), [result, loading]);
   const entries = useMemo(() => withLikeCounts(all, likes.counts), [all, likes.counts]);
   const ranked = useMemo(
-    () => rankEntries(DATA, entries, { board, kit, quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true, now }, viewer.every),
-    [entries, board, kit, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.every, now],
+    () =>
+      rankEntries(DATA, entries, { board, kit, hideStalling: filters.noStall, quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true, now }, viewer.every),
+    [entries, board, kit, filters.noStall, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.every, now],
   );
   const options = useMemo(() => earningOptions(ranked), [ranked]);
   const effective = useMemo<RowFilters>(() => ({ ...filters, query }), [filters, query]);
@@ -182,6 +183,9 @@ export const FlowsPage: React.FC = () => {
   const { ranked: shownRanked, cantMake: shownBlocked } = useMemo(() => splitRanked(shown), [shown]);
   const allSplit = useMemo(() => splitRanked(ranked), [ranked]);
   const counts = useMemo(() => facetCounts(allSplit.ranked), [allSplit.ranked]);
+  // With the starting items: flows that stall from nothing (they need a large stockpile), counted whether or not they are set apart.
+  const stockpileCount = useMemo(() => ranked.filter((r) => r.stallsFromNothing === true).length, [ranked]);
+  const stockpileMode = board === "ironman" && kit;
   const plotCounts = useMemo(() => {
     const out: Record<string, number> = {};
     for (const r of allSplit.ranked) out[String(r.entry.plots)] = (out[String(r.entry.plots)] ?? 0) + 1;
@@ -220,7 +224,7 @@ export const FlowsPage: React.FC = () => {
     <ListNoMatch query={effective.query} onClear={filtered ? clearAll : undefined} />
   ) : (
     <>
-      {shownRanked.length === 0 && <p className="py-6 text-center text-body text-fg-muted">{filtered ? "No flow ranked from nothing matches these filters." : "No flow is ranked from nothing yet."}</p>}
+      {shownRanked.length === 0 && <p className="py-6 text-center text-body text-fg-muted">{stockpileMode ? (filtered ? "No flow that runs without a stockpile matches these filters." : "No flow runs without a stockpile yet.") : filtered ? "No flow ranked from nothing matches these filters." : "No flow is ranked from nothing yet."}</p>}
       <ol data-testid="flows-list">
         {shownRanked.map((row, i) => (
           <Row
@@ -242,7 +246,15 @@ export const FlowsPage: React.FC = () => {
         ))}
       </ol>
       {shownBlocked.length > 0 && (
-        <CantMakeSection key={shownRanked.length === 0 ? "only" : "rest"} rows={shownBlocked} onSwitch={() => viewer.setKit(true)} defaultOpen={shownRanked.length === 0} rankingSearch={rankingSearch} phone={phone} />
+        <CantMakeSection
+          key={shownRanked.length === 0 ? "only" : "rest"}
+          rows={shownBlocked}
+          stockpile={stockpileMode}
+          onSwitch={stockpileMode ? () => setFilters({ noStall: false }) : () => viewer.setKit(true)}
+          defaultOpen={shownRanked.length === 0}
+          rankingSearch={rankingSearch}
+          phone={phone}
+        />
       )}
     </>
   );
@@ -331,6 +343,7 @@ export const FlowsPage: React.FC = () => {
           earningOptions={options}
           counts={counts}
           kit={kit}
+          stockpileCount={stockpileCount}
           onChange={setFilters}
           plots={plots}
           onPlots={setPlots}
@@ -390,6 +403,7 @@ export const FlowsPage: React.FC = () => {
           earningOptions={options}
           counts={counts}
           kit={kit}
+          stockpileCount={stockpileCount}
           onChange={setFilters}
           className="flex-wrap"
           lead={<PlotsField value={plots} onChange={setPlots} counts={plotCounts} />}

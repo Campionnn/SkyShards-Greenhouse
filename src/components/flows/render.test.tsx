@@ -269,10 +269,12 @@ describe("leaderboard pages render", () => {
     for (const sNeed of ["LEAD", "Plots", "Upkeep", "Starting items", "Any"]) expect(borrow).toContain(sNeed);
     expect(borrow).not.toContain("I own the starting items");
     expect(borrow).toContain('data-testid="earning-filter"');
-    // "From nothing · No stall" only with the starting items.
-    expect(borrow).not.toContain("From nothing");
-    const withKit = text(wrap(<FilterBar board="ironman" kit filters={{ ...DEFAULT_FILTERS, noStall: true }} earningOptions={[]} onChange={none} />));
-    for (const sNeed of ["From nothing", "No stall", "Clear filters"]) expect(withKit).toContain(sNeed);
+    // "Stockpile flows" only with the starting items; set apart by default (no "Clear filters" for it).
+    expect(borrow).not.toContain("Stockpile flows");
+    const withKit = text(wrap(<FilterBar board="ironman" kit filters={DEFAULT_FILTERS} earningOptions={[]} onChange={none} />));
+    for (const sNeed of ["Stockpile flows", "Set apart"]) expect(withKit).toContain(sNeed);
+    expect(withKit).not.toContain("Clear filters");
+    expect(text(wrap(<FilterBar board="ironman" kit filters={{ ...DEFAULT_FILTERS, noStall: false }} earningOptions={[]} onChange={none} />))).toContain("Ranked");
     // Facet counts over the ranked rows.
     const list = await mockList("ironman", "max", 1);
     const s: ViewSettings = { board: "ironman", quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false, now: Date.now() };

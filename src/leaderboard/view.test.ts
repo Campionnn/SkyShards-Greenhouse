@@ -44,6 +44,7 @@ import {
   upkeepUseShare,
   usedUpLines,
   writeListParams,
+  type FlowRow,
   type RowFilters,
   moneyBySource,
   findCell,
@@ -542,15 +543,13 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(by({ query: "chorus fruit" }).sort()).toEqual(["chorus", "devourer"]);
   });
 
-  it("no stall: with the starting items, only flows that keep going from nothing (small upkeep allowed)", () => {
+  it("stockpile flows: with the starting items, flows that stall from nothing are set apart by default (small upkeep allowed)", () => {
     // `used`: upkeep items placed per day from nothing (the with-items cell places 10 of each upkeep item).
     const fn = (wheat: number, used: Record<string, number> = {}, slowing = false) => ({ produced: { wheat }, bought: {}, consumed: used, ...(slowing ? { slowing: true as const } : {}) });
     const done = { kit: { zombud: 2 }, cycles: 75, days: 5.47, done: true, mode: "stitched" as const };
     const kitCell = (upkeep: Record<string, number>) =>
       result({ wheat: 1000 }, { upkeep, startItems: { zombud: 2 }, consumed: Object.fromEntries(Object.keys(upkeep).map((k) => [k, 10])) });
-    const rows = rankEntries(
-      data,
-      [
+    const entries = [
         v2entry("steady", kitCell({}), { altPoint: fn(990), prep: done }),
         // A little upkeep, and from nothing it keeps half of it going (Ironman Chorus Fruit): kept.
         v2entry("small", kitCell({ cindershade: 0.2 }), { altPoint: fn(780, { cindershade: 5 }), prep: done }),
@@ -560,10 +559,10 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
         v2entry("stops", kitCell({ zombud: 20 }), { altPoint: fn(0, {}, true), prep: done }),
         v2entry("cant", kitCell({}), { altPoint: fn(1000), prep: { ...done, done: false } }),
         v2entry("unknown", kitCell({})),
-      ],
-      withKit,
-    );
-    const by = (f: Partial<RowFilters>) => rows.filter((r) => matchesFilters(r, { ...DEFAULT_FILTERS, ...f }, "ironman")).map((r) => r.entry.id).sort();
+    ];
+    const rows = rankEntries(data, entries, { ...withKit, hideStalling: true });
+    const split = splitRanked(rows);
+    const ids = (rs: readonly FlowRow[]) => rs.map((r) => r.entry.id).sort();
     expect(Object.fromEntries(rows.map((r) => [r.entry.id, r.stallsFromNothing]))).toEqual({
       steady: false,
       small: false,
@@ -575,8 +574,14 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     });
     expect(upkeepUseShare({ upkeep: { zombud: 1 }, consumed: { zombud: 10 } }, { consumed: { zombud: 2.5 } })).toBe(0.25);
     expect(upkeepUseShare({ upkeep: {}, consumed: { zombud: 10 } }, { consumed: {} })).toBeNull();
-    expect(by({ noStall: true })).toEqual(["slowButOk", "small", "steady"]);
-    expect(by({ noStall: true, noUpkeep: true })).toEqual(["steady"]);
+    // Unknown (no from-nothing number yet) stays ranked; the stalling ones are set apart with rank 0.
+    expect(ids(split.ranked)).toEqual(["slowButOk", "small", "steady", "unknown"]);
+    expect(ids(split.cantMake)).toEqual(["cant", "devourer", "stops"]);
+    expect(split.cantMake.every((r) => r.rank === 0 && r.stockpile)).toBe(true);
+    expect(maxProfit(rows)).toBe(Math.max(...split.ranked.map((r) => r.profitPerDay ?? 0)));
+    // Turned off: everything is ranked again.
+    expect(splitRanked(rankEntries(data, entries, withKit)).cantMake).toEqual([]);
+    expect(DEFAULT_FILTERS.noStall).toBe(true);
     // From nothing the rows that stall are already set apart: the verdict is false there, the filter a no-op.
     expect(flowRow(data, v2entry("x", kitCell({})), ironman).stallsFromNothing).toBe(false);
   });
@@ -589,8 +594,8 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
   });
 
   it("URL params round-trip; v2's board names, the switch and junk are handled", () => {
-    const p = readListParams(new URLSearchParams("board=ironman&kit=1&sort=effort&plots=2&q=aloe&earning=chorus_fruit&earning=devourer&in=any&noUpkeep=1&maxStart=60&noStall=1"));
-    expect(p).toEqual({ board: "ironman", kit: true, sort: "effort", plots: "2", filters: { query: "aloe", earning: ["chorus_fruit", "devourer"], earningIn: "any", noUpkeep: true, maxStartItems: 60, noStall: true } });
+    const p = readListParams(new URLSearchParams("board=ironman&kit=1&sort=effort&plots=2&q=aloe&earning=chorus_fruit&earning=devourer&in=any&noUpkeep=1&maxStart=60&noStall=0"));
+    expect(p).toEqual({ board: "ironman", kit: true, sort: "effort", plots: "2", filters: { query: "aloe", earning: ["chorus_fruit", "devourer"], earningIn: "any", noUpkeep: true, maxStartItems: 60, noStall: false } });
     expect(readListParams(writeListParams(p))).toEqual(p);
     expect(writeListParams(p).get("kit")).toBe("1");
     expect(writeListParams({ board: null, kit: false, sort: "profit", plots: "any", filters: DEFAULT_FILTERS }).toString()).toBe("");
@@ -600,8 +605,10 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(readListParams(new URLSearchParams("board=ironman_strict&kit=1"))).toMatchObject({ board: "ironman", kit: false });
     // The switch means nothing on Normal and isn't written there.
     expect(writeListParams({ ...p, board: "normal" }).get("kit")).toBeNull();
-    // "Doesn't stall" only means something with the starting items.
+    // Ranking stockpile flows only means something with the starting items; the default (set apart) isn't written.
+    expect(writeListParams(p).get("noStall")).toBe("0");
     expect(writeListParams({ ...p, kit: false }).get("noStall")).toBeNull();
+    expect(writeListParams({ ...p, filters: { ...p.filters, noStall: true } }).get("noStall")).toBeNull();
     const junk = readListParams(new URLSearchParams("board=x&sort=nope&plots=9&maxStart=-1&earning=<b>&in=sometimes"));
     expect(junk).toEqual({ board: null, kit: false, sort: "profit", plots: "any", filters: DEFAULT_FILTERS });
   });

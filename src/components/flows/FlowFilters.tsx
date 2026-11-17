@@ -14,7 +14,7 @@ import type { FacetCounts } from "./ranking/rankingHelpers";
 /**
  * The ranking's filters (F08–F15) as field chips that open kit menus / popovers: plots, earning
  * crops / mutations (searchable, top 3 or anywhere), and on the ironman board upkeep, a
- * starting-items cap and (with the starting items) "doesn't stall from nothing". Each choice shows how many flows have it. The page keeps the values in its
+ * starting-items cap and (with the starting items) whether stockpile flows are ranked. Each choice shows how many flows have it. The page keeps the values in its
  * URL; filtering itself is `matchesFilters` (view.ts); plots is part of the list request.
  */
 
@@ -61,20 +61,19 @@ export const UpkeepField: React.FC<{ value: boolean; onChange: (v: boolean) => v
   </Dropdown>
 );
 
-/** Ironman with the starting items: only flows that also keep going from nothing. */
+/**
+ * Ironman with the starting items: whether flows that stall without them (they only run from a large
+ * stockpile) are ranked. Hidden by default; `count` is how many are set apart.
+ */
 export const StallField: React.FC<{ value: boolean; onChange: (v: boolean) => void; count?: number }> = ({ value, onChange, count }) => (
-  <Dropdown look="plain" label="From nothing" width={300} className={fieldChip} button={<FieldText k="From nothing" v={value ? "No stall" : "Any"} on={value} />}>
+  <Dropdown look="plain" label="Stockpile flows" width={320} className={fieldChip} button={<FieldText k="Stockpile flows" v={value ? "Set apart" : "Ranked"} on={!value} />}>
     {(close) => (
       <>
-        <MenuItem checked={!value} onSelect={() => (onChange(false), close())}>
-          Any flow
+        <MenuItem checked={value} hint="Ranks flows that keep going without the starting items (a tiny upkeep is fine)" onSelect={() => (onChange(true), close())}>
+          Set them apart
         </MenuItem>
-        <MenuItem
-          checked={value}
-          hint={`Keeps going without the starting items (small upkeep allowed)${count !== undefined ? ` · ${countHint(count)}` : ""}`}
-          onSelect={() => (onChange(true), close())}
-        >
-          Doesn't stall
+        <MenuItem checked={!value} hint={`Ranks flows that stall without a large stockpile too${count ? ` · ${countHint(count)}` : ""}`} onSelect={() => (onChange(false), close())}>
+          Rank them too
         </MenuItem>
       </>
     )}
@@ -202,14 +201,16 @@ export const FilterBar: React.FC<{
   onPlots?: (p: PlotsFilter) => void;
   plotCounts?: Record<string, number>;
   counts?: FacetCounts;
-  /** Ironman: "I have the starting items" is on (shows the no-stall filter). */
+  /** Ironman: "I have the starting items" is on (shows the stockpile-flows choice). */
   kit?: boolean;
+  /** With the starting items: how many flows are set apart as stockpile flows. */
+  stockpileCount?: number;
   /** Leading controls (the phone's sort chip and starting-items switch). */
   lead?: React.ReactNode;
   className?: string;
-}> = ({ board, filters, earningOptions, onChange, plots, onPlots, plotCounts, counts, kit, lead, className }) => {
+}> = ({ board, filters, earningOptions, onChange, plots, onPlots, plotCounts, counts, kit, stockpileCount, lead, className }) => {
   const ironman = board === "ironman";
-  const active = filters.earning.length > 0 || (ironman && (filters.noUpkeep || filters.maxStartItems !== null || (!!kit && filters.noStall)));
+  const active = filters.earning.length > 0 || (ironman && (filters.noUpkeep || filters.maxStartItems !== null));
   return (
     <div className={cn("flex items-center gap-1.5", className)} data-testid="filter-bar">
       {lead}
@@ -217,9 +218,9 @@ export const FilterBar: React.FC<{
       <EarningField options={earningOptions} value={filters.earning} mode={filters.earningIn} counts={counts} onChange={(earning, earningIn) => onChange({ earning, earningIn })} />
       {ironman && <UpkeepField value={filters.noUpkeep} count={counts?.noUpkeep} onChange={(noUpkeep) => onChange({ noUpkeep })} />}
       {ironman && <StartField value={filters.maxStartItems} counts={counts?.caps} onChange={(maxStartItems) => onChange({ maxStartItems })} />}
-      {ironman && kit && <StallField value={filters.noStall} count={counts?.noStall} onChange={(noStall) => onChange({ noStall })} />}
+      {ironman && kit && <StallField value={filters.noStall} count={stockpileCount} onChange={(noStall) => onChange({ noStall })} />}
       {active && (
-        <LinkButton className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap" onClick={() => onChange({ earning: [], earningIn: DEFAULT_FILTERS.earningIn, noUpkeep: false, maxStartItems: null, noStall: false })}>
+        <LinkButton className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap" onClick={() => onChange({ earning: [], earningIn: DEFAULT_FILTERS.earningIn, noUpkeep: false, maxStartItems: null })}>
           <X aria-hidden className="size-3" /> Clear filters
         </LinkButton>
       )}

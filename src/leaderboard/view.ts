@@ -131,6 +131,8 @@ export interface ViewSettings {
   board: Board;
   /** Ironman board: "I have the starting items" (the cells are the `ironman_kit` ones). */
   kit?: boolean;
+  /** With the starting items: set apart the flows that stall from nothing (`FlowRow.stockpile`); the filter `noStall`. */
+  hideStalling?: boolean;
   /** Normal board: Bazaar quotes (with the user's overrides); ignored for ironman. */
   quotes: Quotes;
   pricing: BazaarPricing;
@@ -214,6 +216,11 @@ export interface FlowRow {
    * when unknown (no from-nothing point). False on the other boards. Drives the `noStall` filter.
    */
   stallsFromNothing: boolean | null;
+  /**
+   * With the starting items and `hideStalling`: the flow stalls from nothing, so it only runs from a
+   * large stockpile. Set apart like `cantMake` / `stops` (rank 0, its own section).
+   */
+  stockpile: boolean;
   /** Ironman: the other ironman variant at the same tier / every (`altPoint`), priced; null when unknown. */
   altPerDay: number | null;
   /** Ironman: how the starting items are made (the "from nothing" cell's `prep`); null when unknown. */
@@ -362,6 +369,7 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
       cantMake: null,
       stops: false,
       stallsFromNothing: s.board === "ironman" && s.kit ? null : false,
+      stockpile: false,
       altPerDay: null,
       prep: s.board === "ironman" ? prepOf(entry, null, !!s.kit) : null,
     };
@@ -373,11 +381,13 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
   const alt = s.board === "ironman" ? altPointOf(entry, !!s.kit) : null;
   const altPerDay = alt ? pricePoint(data, alt, s) : null;
   const prep = s.board === "ironman" ? prepOf(entry, cell, !!s.kit) : null;
+  const stallsFromNothing = s.board === "ironman" && s.kit ? stallsFromNothingOf(alt, altPerDay, v.profitPerDay, prep, cell) : false;
   return {
     ...base,
     cantMake: s.board === "ironman" && !s.kit && prep && !prep.done ? prep : null,
     stops: s.board === "ironman" && !s.kit && stopsAt(cell.slowing === true, v.profitPerDay, altPerDay),
-    stallsFromNothing: s.board === "ironman" && s.kit ? stallsFromNothingOf(alt, altPerDay, v.profitPerDay, prep, cell) : false,
+    stallsFromNothing,
+    stockpile: s.board === "ironman" && !!s.kit && !!s.hideStalling && stallsFromNothing === true,
     altPerDay,
     prep,
     sources: earningItems(data, result.bySource, s.board, quotes, pricing),
@@ -583,14 +593,14 @@ export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s
     if (b.profitPerDay === null) return -1;
     return b.profitPerDay - a.profitPerDay || a.entry.title.localeCompare(b.entry.title);
   });
-  const apart = (r: Pick<FlowRow, "cantMake" | "stops">) => !!r.cantMake || r.stops;
+  const apart = (r: Pick<FlowRow, "cantMake" | "stops" | "stockpile">) => !!r.cantMake || r.stops || r.stockpile;
   const blocked = rows.filter(apart).map((r) => ({ ...r, rank: 0 }));
   return [...rank(rows.filter((r) => !apart(r))), ...blocked];
 }
 
-/** Ranked rows and the ones set apart from "from nothing" (can't make its starting items, or stops; rank 0), each in the given order. */
-export function splitRanked<T extends { cantMake: PrepInfo | null; stops?: boolean }>(rows: readonly T[]): { ranked: T[]; cantMake: T[] } {
-  const apart = (r: T) => !!r.cantMake || r.stops === true;
+/** Ranked rows and the ones set apart (from nothing: can't make its starting items, or stops; with them: `stockpile`; rank 0), each in the given order. */
+export function splitRanked<T extends { cantMake: PrepInfo | null; stops?: boolean; stockpile?: boolean }>(rows: readonly T[]): { ranked: T[]; cantMake: T[] } {
+  const apart = (r: T) => !!r.cantMake || r.stops === true || r.stockpile === true;
   return { ranked: rows.filter((r) => !apart(r)), cantMake: rows.filter(apart) };
 }
 
@@ -632,7 +642,7 @@ export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
 
 /** The largest profit in a set of rows (for the relative bars); rows set apart (`cantMake`, `stops`) don't count. */
 export function maxProfit(rows: readonly FlowRow[]): number {
-  return rows.reduce((m, r) => (r.cantMake || r.stops ? m : Math.max(m, r.profitPerDay ?? 0)), 0);
+  return rows.reduce((m, r) => (r.cantMake || r.stops || r.stockpile ? m : Math.max(m, r.profitPerDay ?? 0)), 0);
 }
 
 /**
@@ -922,13 +932,16 @@ export interface RowFilters {
   noUpkeep: boolean;
   /** Ironman board: at most this many starting items (null = any). */
   maxStartItems: number | null;
-  /** Ironman board with the starting items: only flows that don't stall from nothing (`FlowRow.stallsFromNothing` false). */
+  /**
+   * Ironman board with the starting items: rank only flows that don't stall from nothing; the others
+   * are set apart (`ViewSettings.hideStalling`, `FlowRow.stockpile`). On by default (URL `noStall=0` turns it off).
+   */
   noStall: boolean;
 }
 
-export const DEFAULT_FILTERS: RowFilters = { query: "", earning: [], earningIn: "top3", noUpkeep: false, maxStartItems: null, noStall: false };
+export const DEFAULT_FILTERS: RowFilters = { query: "", earning: [], earningIn: "top3", noUpkeep: false, maxStartItems: null, noStall: true };
 
-type FilterRow = Pick<FlowRow, "entry" | "sources" | "upkeepPerDay" | "startItemsCount"> & { search?: string; stallsFromNothing?: boolean | null };
+type FilterRow = Pick<FlowRow, "entry" | "sources" | "upkeepPerDay" | "startItemsCount"> & { search?: string };
 
 /**
  * Whether a row passes the filters on `board`. The starting-item filters only apply on the
@@ -948,8 +961,6 @@ export function matchesFilters(row: FilterRow, f: RowFilters, board: Board): boo
   if ((f.noUpkeep || f.maxStartItems !== null) && !cell) return false;
   if (f.noUpkeep && row.upkeepPerDay > 0) return false;
   if (f.maxStartItems !== null && row.startItemsCount > f.maxStartItems) return false;
-  // Only "with the starting items" rows carry a verdict (from-nothing rows are false: the ones that stall are set apart there).
-  if (f.noStall && row.stallsFromNothing !== false) return false;
   return true;
 }
 
@@ -984,7 +995,7 @@ export function readListParams(params: URLSearchParams): ListParams {
       earningIn: params.get("in") === "any" ? "any" : "top3",
       noUpkeep: params.get("noUpkeep") === "1",
       maxStartItems: capN !== null && Number.isInteger(capN) && capN >= 0 ? capN : null,
-      noStall: params.get("noStall") === "1",
+      noStall: params.get("noStall") !== "0",
     },
   };
 }
@@ -1002,7 +1013,7 @@ export function writeListParams(p: ListParams): URLSearchParams {
   if (f.earning.length && f.earningIn === "any") out.set("in", "any");
   if (f.noUpkeep) out.set("noUpkeep", "1");
   if (f.maxStartItems !== null) out.set("maxStart", String(f.maxStartItems));
-  if (f.noStall && p.kit && p.board !== "normal") out.set("noStall", "1");
+  if (!f.noStall && p.kit && p.board !== "normal") out.set("noStall", "0");
   return out;
 }
 
