@@ -13,8 +13,8 @@ import type { FacetCounts } from "./ranking/rankingHelpers";
 
 /**
  * The ranking's filters (F08–F15) as field chips that open kit menus / popovers: plots, earning
- * crops / mutations (searchable, top 3 or anywhere), and on the ironman board upkeep and a
- * starting-items cap. Each choice shows how many flows have it. The page keeps the values in its
+ * crops / mutations (searchable, top 3 or anywhere), and on the ironman board upkeep, a
+ * starting-items cap and (with the starting items) "doesn't stall from nothing". Each choice shows how many flows have it. The page keeps the values in its
  * URL; filtering itself is `matchesFilters` (view.ts); plots is part of the list request.
  */
 
@@ -55,6 +55,26 @@ export const UpkeepField: React.FC<{ value: boolean; onChange: (v: boolean) => v
         </MenuItem>
         <MenuItem checked={value} hint={`Grows back everything it uses${count !== undefined ? ` · ${countHint(count)}` : ""}`} onSelect={() => (onChange(true), close())}>
           No upkeep
+        </MenuItem>
+      </>
+    )}
+  </Dropdown>
+);
+
+/** Ironman with the starting items: only flows that also keep going from nothing. */
+export const StallField: React.FC<{ value: boolean; onChange: (v: boolean) => void; count?: number }> = ({ value, onChange, count }) => (
+  <Dropdown look="plain" label="From nothing" width={300} className={fieldChip} button={<FieldText k="From nothing" v={value ? "No stall" : "Any"} on={value} />}>
+    {(close) => (
+      <>
+        <MenuItem checked={!value} onSelect={() => (onChange(false), close())}>
+          Any flow
+        </MenuItem>
+        <MenuItem
+          checked={value}
+          hint={`Keeps going without the starting items (small upkeep allowed)${count !== undefined ? ` · ${countHint(count)}` : ""}`}
+          onSelect={() => (onChange(true), close())}
+        >
+          Doesn't stall
         </MenuItem>
       </>
     )}
@@ -182,12 +202,14 @@ export const FilterBar: React.FC<{
   onPlots?: (p: PlotsFilter) => void;
   plotCounts?: Record<string, number>;
   counts?: FacetCounts;
+  /** Ironman: "I have the starting items" is on (shows the no-stall filter). */
+  kit?: boolean;
   /** Leading controls (the phone's sort chip and starting-items switch). */
   lead?: React.ReactNode;
   className?: string;
-}> = ({ board, filters, earningOptions, onChange, plots, onPlots, plotCounts, counts, lead, className }) => {
+}> = ({ board, filters, earningOptions, onChange, plots, onPlots, plotCounts, counts, kit, lead, className }) => {
   const ironman = board === "ironman";
-  const active = filters.earning.length > 0 || (ironman && (filters.noUpkeep || filters.maxStartItems !== null));
+  const active = filters.earning.length > 0 || (ironman && (filters.noUpkeep || filters.maxStartItems !== null || (!!kit && filters.noStall)));
   return (
     <div className={cn("flex items-center gap-1.5", className)} data-testid="filter-bar">
       {lead}
@@ -195,8 +217,9 @@ export const FilterBar: React.FC<{
       <EarningField options={earningOptions} value={filters.earning} mode={filters.earningIn} counts={counts} onChange={(earning, earningIn) => onChange({ earning, earningIn })} />
       {ironman && <UpkeepField value={filters.noUpkeep} count={counts?.noUpkeep} onChange={(noUpkeep) => onChange({ noUpkeep })} />}
       {ironman && <StartField value={filters.maxStartItems} counts={counts?.caps} onChange={(maxStartItems) => onChange({ maxStartItems })} />}
+      {ironman && kit && <StallField value={filters.noStall} count={counts?.noStall} onChange={(noStall) => onChange({ noStall })} />}
       {active && (
-        <LinkButton className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap" onClick={() => onChange({ earning: [], earningIn: DEFAULT_FILTERS.earningIn, noUpkeep: false, maxStartItems: null })}>
+        <LinkButton className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap" onClick={() => onChange({ earning: [], earningIn: DEFAULT_FILTERS.earningIn, noUpkeep: false, maxStartItems: null, noStall: false })}>
           <X aria-hidden className="size-3" /> Clear filters
         </LinkButton>
       )}

@@ -541,6 +541,30 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(by({ query: "chorus fruit" }).sort()).toEqual(["chorus", "devourer"]);
   });
 
+  it("no stall: with the starting items, only flows that keep going from nothing (small upkeep allowed)", () => {
+    const fn = (wheat: number, slowing = false) => ({ produced: { wheat }, bought: {}, consumed: {}, ...(slowing ? { slowing: true as const } : {}) });
+    const done = { kit: { zombud: 2 }, cycles: 75, days: 5.47, done: true, mode: "stitched" as const };
+    const kitCell = (upkeep: Record<string, number>) => result({ wheat: 1000 }, { upkeep, startItems: { zombud: 2 } });
+    const rows = rankEntries(
+      data,
+      [
+        v2entry("steady", kitCell({}), { altPoint: fn(990), prep: done }),
+        v2entry("small", kitCell({ cindershade: 0.2 }), { altPoint: fn(780), prep: done }), // a little upkeep, still runs
+        v2entry("slowButOk", kitCell({ zombud: 7 }), { altPoint: fn(500, true), prep: done }), // slowing, but over 10%
+        v2entry("stops", kitCell({ zombud: 20 }), { altPoint: fn(0, true), prep: done }),
+        v2entry("cant", kitCell({}), { altPoint: fn(1000), prep: { ...done, done: false } }),
+        v2entry("unknown", kitCell({})),
+      ],
+      withKit,
+    );
+    const by = (f: Partial<RowFilters>) => rows.filter((r) => matchesFilters(r, { ...DEFAULT_FILTERS, ...f }, "ironman")).map((r) => r.entry.id).sort();
+    expect(Object.fromEntries(rows.map((r) => [r.entry.id, r.stallsFromNothing]))).toEqual({ steady: false, small: false, slowButOk: false, stops: true, cant: true, unknown: null });
+    expect(by({ noStall: true })).toEqual(["slowButOk", "small", "steady"]);
+    expect(by({ noStall: true, noUpkeep: true })).toEqual(["steady"]);
+    // From nothing the rows that stall are already set apart: the verdict is false there, the filter a no-op.
+    expect(flowRow(data, v2entry("x", kitCell({})), ironman).stallsFromNothing).toBe(false);
+  });
+
   it("'Chorus Fruit' shows the chorus flows ordered by coins per day", () => {
     const flows = [10, 30, 20].map((n, i) => v2entry(`c${i}`, result({ chorus_fruit: n, potato: n * 1000 }, { bySource: { chorus_fruit: { potato: n * 1000 } } })));
     const rows = rankEntries(data, [...flows, v2entry("x", result({ wheat: 1e6 }, { bySource: { wheat: { wheat: 1e6 } } }))], ironman);
@@ -549,8 +573,8 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
   });
 
   it("URL params round-trip; v2's board names, the switch and junk are handled", () => {
-    const p = readListParams(new URLSearchParams("board=ironman&kit=1&sort=effort&plots=2&q=aloe&earning=chorus_fruit&earning=devourer&in=any&noUpkeep=1&maxStart=60"));
-    expect(p).toEqual({ board: "ironman", kit: true, sort: "effort", plots: "2", filters: { query: "aloe", earning: ["chorus_fruit", "devourer"], earningIn: "any", noUpkeep: true, maxStartItems: 60 } });
+    const p = readListParams(new URLSearchParams("board=ironman&kit=1&sort=effort&plots=2&q=aloe&earning=chorus_fruit&earning=devourer&in=any&noUpkeep=1&maxStart=60&noStall=1"));
+    expect(p).toEqual({ board: "ironman", kit: true, sort: "effort", plots: "2", filters: { query: "aloe", earning: ["chorus_fruit", "devourer"], earningIn: "any", noUpkeep: true, maxStartItems: 60, noStall: true } });
     expect(readListParams(writeListParams(p))).toEqual(p);
     expect(writeListParams(p).get("kit")).toBe("1");
     expect(writeListParams({ board: null, kit: false, sort: "profit", plots: "any", filters: DEFAULT_FILTERS }).toString()).toBe("");
@@ -560,6 +584,8 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(readListParams(new URLSearchParams("board=ironman_strict&kit=1"))).toMatchObject({ board: "ironman", kit: false });
     // The switch means nothing on Normal and isn't written there.
     expect(writeListParams({ ...p, board: "normal" }).get("kit")).toBeNull();
+    // "Doesn't stall" only means something with the starting items.
+    expect(writeListParams({ ...p, kit: false }).get("noStall")).toBeNull();
     const junk = readListParams(new URLSearchParams("board=x&sort=nope&plots=9&maxStart=-1&earning=<b>&in=sometimes"));
     expect(junk).toEqual({ board: null, kit: false, sort: "profit", plots: "any", filters: DEFAULT_FILTERS });
   });

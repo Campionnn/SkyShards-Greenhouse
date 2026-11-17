@@ -330,6 +330,7 @@ export const FlowsPage: React.FC = () => {
           filters={filters}
           earningOptions={options}
           counts={counts}
+          kit={kit}
           onChange={setFilters}
           plots={plots}
           onPlots={setPlots}
@@ -388,6 +389,7 @@ export const FlowsPage: React.FC = () => {
           filters={filters}
           earningOptions={options}
           counts={counts}
+          kit={kit}
           onChange={setFilters}
           className="flex-wrap"
           lead={<PlotsField value={plots} onChange={setPlots} counts={plotCounts} />}

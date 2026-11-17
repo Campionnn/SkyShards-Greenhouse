@@ -208,6 +208,12 @@ export interface FlowRow {
    * day it never grows). Listed apart with `cantMake`, not ranked.
    */
   stops: boolean;
+  /**
+   * "With the starting items" rows: whether the same flow stalls from nothing (its starting items
+   * can't be made, or it stops once they run out: `stopsAt` on the from-nothing `altPoint`); null
+   * when unknown (no from-nothing point). False on the other boards. Drives the `noStall` filter.
+   */
+  stallsFromNothing: boolean | null;
   /** Ironman: the other ironman variant at the same tier / every (`altPoint`), priced; null when unknown. */
   altPerDay: number | null;
   /** Ironman: how the starting items are made (the "from nothing" cell's `prep`); null when unknown. */
@@ -355,6 +361,7 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
       search,
       cantMake: null,
       stops: false,
+      stallsFromNothing: s.board === "ironman" && s.kit ? null : false,
       altPerDay: null,
       prep: s.board === "ironman" ? prepOf(entry, null, !!s.kit) : null,
     };
@@ -370,6 +377,7 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
     ...base,
     cantMake: s.board === "ironman" && !s.kit && prep && !prep.done ? prep : null,
     stops: s.board === "ironman" && !s.kit && stopsAt(cell.slowing === true, v.profitPerDay, altPerDay),
+    stallsFromNothing: s.board === "ironman" && s.kit ? stallsFromNothingOf(alt, altPerDay, v.profitPerDay, prep) : false,
     altPerDay,
     prep,
     sources: earningItems(data, result.bySource, s.board, quotes, pricing),
@@ -403,6 +411,17 @@ export const STOPS_SHARE = 0.1;
 /** Whether a slowing from-nothing value stops (see `FlowRow.stops`); false without the other number to compare with. */
 export function stopsAt(slowing: boolean, fromNothing: number | null, withItems: number | null): boolean {
   return slowing && fromNothing !== null && withItems !== null && withItems > 0 && fromNothing < STOPS_SHARE * withItems;
+}
+
+/**
+ * A "with the starting items" row's from-nothing verdict: true when the builder can't make the
+ * starting items (`prep.done` false) or the from-nothing point stops (`stopsAt`); null without a
+ * from-nothing point to judge by.
+ */
+function stallsFromNothingOf(alt: CurvePoint | null, fromNothing: number | null, withItems: number, prep: PrepInfo | null): boolean | null {
+  if (prep && !prep.done) return true;
+  if (!alt || fromNothing === null) return null;
+  return stopsAt(alt.slowing === true, fromNothing, withItems);
 }
 
 const numPair = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && finite(v[0]) && finite(v[1]) ? [v[0], v[1]] : null);
@@ -875,11 +894,13 @@ export interface RowFilters {
   noUpkeep: boolean;
   /** Ironman board: at most this many starting items (null = any). */
   maxStartItems: number | null;
+  /** Ironman board with the starting items: only flows that don't stall from nothing (`FlowRow.stallsFromNothing` false). */
+  noStall: boolean;
 }
 
-export const DEFAULT_FILTERS: RowFilters = { query: "", earning: [], earningIn: "top3", noUpkeep: false, maxStartItems: null };
+export const DEFAULT_FILTERS: RowFilters = { query: "", earning: [], earningIn: "top3", noUpkeep: false, maxStartItems: null, noStall: false };
 
-type FilterRow = Pick<FlowRow, "entry" | "sources" | "upkeepPerDay" | "startItemsCount"> & { search?: string };
+type FilterRow = Pick<FlowRow, "entry" | "sources" | "upkeepPerDay" | "startItemsCount"> & { search?: string; stallsFromNothing?: boolean | null };
 
 /**
  * Whether a row passes the filters on `board`. The starting-item filters only apply on the
@@ -899,6 +920,8 @@ export function matchesFilters(row: FilterRow, f: RowFilters, board: Board): boo
   if ((f.noUpkeep || f.maxStartItems !== null) && !cell) return false;
   if (f.noUpkeep && row.upkeepPerDay > 0) return false;
   if (f.maxStartItems !== null && row.startItemsCount > f.maxStartItems) return false;
+  // Only "with the starting items" rows carry a verdict (from-nothing rows are false: the ones that stall are set apart there).
+  if (f.noStall && row.stallsFromNothing !== false) return false;
   return true;
 }
 
@@ -933,6 +956,7 @@ export function readListParams(params: URLSearchParams): ListParams {
       earningIn: params.get("in") === "any" ? "any" : "top3",
       noUpkeep: params.get("noUpkeep") === "1",
       maxStartItems: capN !== null && Number.isInteger(capN) && capN >= 0 ? capN : null,
+      noStall: params.get("noStall") === "1",
     },
   };
 }
@@ -950,6 +974,7 @@ export function writeListParams(p: ListParams): URLSearchParams {
   if (f.earning.length && f.earningIn === "any") out.set("in", "any");
   if (f.noUpkeep) out.set("noUpkeep", "1");
   if (f.maxStartItems !== null) out.set("maxStart", String(f.maxStartItems));
+  if (f.noStall && p.kit && p.board !== "normal") out.set("noStall", "1");
   return out;
 }
 

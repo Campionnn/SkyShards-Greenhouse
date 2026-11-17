@@ -139,15 +139,16 @@ export const FORGIVING_HINT = "How much of the profit survives logging in late (
 
 /** Whether any client-side filter or the search is on (on Normal the Ironman-only ones don't count). */
 export function filtersActive(f: RowFilters, board: Board): boolean {
-  return f.query.trim() !== "" || f.earning.length > 0 || (board === "ironman" && (f.noUpkeep || f.maxStartItems !== null));
+  return f.query.trim() !== "" || f.earning.length > 0 || (board === "ironman" && (f.noUpkeep || f.maxStartItems !== null || f.noStall));
 }
 
-/** Facet counts over the board's ranked rows (the other filters ignored): earning (top 3 / anywhere), starting-item caps, no upkeep. */
+/** Facet counts over the board's ranked rows (the other filters ignored): earning (top 3 / anywhere), starting-item caps, no upkeep, no stall from nothing. */
 export function facetCounts(rows: readonly FlowRow[]) {
   const top3: Record<string, number> = {};
   const anywhere: Record<string, number> = {};
   const caps: Record<string, number> = {};
   let noUpkeep = 0;
+  let noStall = 0;
   for (const r of rows) {
     r.sources.forEach((s, i) => {
       anywhere[s.id] = (anywhere[s.id] ?? 0) + 1;
@@ -155,8 +156,9 @@ export function facetCounts(rows: readonly FlowRow[]) {
     });
     if (!r.entry.cell) continue;
     if (r.upkeepPerDay <= 0) noUpkeep++;
+    if (r.stallsFromNothing === false) noStall++;
     for (const cap of [0, 60, 200]) if (r.startItemsCount <= cap) caps[cap] = (caps[cap] ?? 0) + 1;
   }
-  return { top3, anywhere, caps, noUpkeep };
+  return { top3, anywhere, caps, noUpkeep, noStall };
 }
 export type FacetCounts = ReturnType<typeof facetCounts>;
