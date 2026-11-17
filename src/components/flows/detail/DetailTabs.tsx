@@ -237,7 +237,7 @@ export const DetailTabs: React.FC<{
   onEditPrice?: (item: string | null) => void;
 }> = ({ detail, viewer, m, tab, onTab, phone, onEditPrice }) => (
   <div>
-    <div className={cn("sticky top-0 z-(--z-sticky) bg-surface-page", phone && "-mx-3 px-3")}>
+    <div className={cn("sticky top-0 z-(--z-sticky) bg-surface-page", phone && "-mx-1 px-1")}>
       <Tabs value={tab} onChange={onTab} items={DETAIL_TABS.map((t) => ({ value: t.value, label: phone ? t.short : t.label }))} idPrefix="flow-detail" label="Sections" scroll={phone} />
     </div>
     <TabPanel idPrefix="flow-detail" value={tab} className="kit-fade-in pt-4" key={tab}>
