@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Clock, Play, RotateCcw, Share2, SlidersHorizontal, Square, Trophy, Undo2, UserRound } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Clock, Play, FolderOpen, RotateCcw, SlidersHorizontal, Square, Trophy, Undo2, UserRound } from "lucide-react";
 import type { SimulationView } from "../../../hooks/useSimulation";
 import { ruleDifferences } from "../../../leaderboard/rules";
 import { profileRuleKind } from "../../../leaderboard/view";
@@ -115,12 +115,12 @@ export const MobileChips: React.FC<{
         />
         <Chip
           ref={shareRef}
-          icon={<Share2 />}
+          icon={<FolderOpen />}
           open={pop === "share"}
           onClick={() => setPop((p) => (p === "share" ? null : "share"))}
-          className={cn("h-11 border", pop === "share" ? "border-select/60" : "border-line-strong")}
+          className={cn("h-11 border border-go/35 bg-go/10 text-go-fg [&>svg]:text-go-fg", pop === "share" && "bg-go/20")}
         >
-          Share
+          Flows
         </Chip>
       </div>
       {/* The settings as equal tiles: 2 × 2 on phones (4 across cut the values off), one row on wider
@@ -146,7 +146,7 @@ export const MobileChips: React.FC<{
       <Popover anchor={problemsRef.current} open={pop === "problems"} onClose={close} label="Problems" width={360}>
         <ProblemList problems={problems} close={close} />
       </Popover>
-      <Popover anchor={shareRef.current} open={pop === "share"} onClose={close} label="Share" role="menu" width={260} align="end">
+      <Popover anchor={shareRef.current} open={pop === "share"} onClose={close} label="Flows" role="menu" width={280} align="end">
         {shareMenu(close)}
       </Popover>
     </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Clock, Dices, Eye, Play, RotateCcw, Share2, SlidersHorizontal, Square, Trophy, Undo2, UserRound } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Clock, Dices, Download, Eraser, Eye, FolderOpen, Play, RotateCcw, Save, SlidersHorizontal, Square, Trophy, Undo2, Upload, UserRound } from "lucide-react";
 import type { SimulationView } from "../../../hooks/useSimulation";
 import { applyRules, ruleDifferences, type RuleKind } from "../../../leaderboard/rules";
 import { EVERY, nearestEvery } from "../../../leaderboard/tiers";
@@ -274,9 +274,18 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         <span className="@max-[1280px]:hidden">Reset</span>
       </KitButton>
       <Sep />
-      <KitButton ref={reg("share")} variant="ghost" onClick={() => toggle("share")} aria-expanded={pop === "share"} title="Export or import flows, submit to the leaderboard, or start over" className="max-md:hidden">
-        <Share2 />
-        <span className="@max-[1280px]:hidden">Share</span>
+      <KitButton
+        ref={reg("share")}
+        variant="accent"
+        onClick={() => toggle("share")}
+        aria-expanded={pop === "share"}
+        aria-haspopup="menu"
+        title="Save, load, import or export flows, submit to the leaderboard, or start over"
+        className={cn("h-[30px] max-md:hidden", pop === "share" && "bg-go/20")}
+      >
+        <FolderOpen />
+        <span>Flows</span>
+        <ChevronDown className="-mr-0.5" />
       </KitButton>
       </div>
 
@@ -428,7 +437,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
         </ul>
       </Popover>
 
-      <Popover anchor={anchors.current.share ?? null} open={pop === "share"} onClose={close} label="Share" role="menu" width={240} align="end">
+      <Popover anchor={anchors.current.share ?? null} open={pop === "share"} onClose={close} label="Flows" role="menu" width={260} align="end">
         {shareMenu(close)}
       </Popover>
     </div>
@@ -586,32 +595,41 @@ const RunButton = React.forwardRef<
 });
 RunButton.displayName = "RunButton";
 
-/** Share menu items (the page passes its handlers). */
-export const ShareMenuItems: React.FC<{
+/** Flows menu items (the page passes its handlers). */
+export const FlowsMenuItems: React.FC<{
+  onSave: () => void;
+  onLoad: () => void;
   onExport: () => void;
   onImport: () => void;
   onSubmit: () => void;
   /** Wipe everything back to a fresh simulator (with an Undo toast). */
   onStartOver?: () => void;
   close: () => void;
-  icons: { dl: React.ReactNode; ul: React.ReactNode; trophy: React.ReactNode; startOver?: React.ReactNode };
-}> = ({ onExport, onImport, onSubmit, onStartOver, close, icons }) => (
+}> = ({ onSave, onLoad, onExport, onImport, onSubmit, onStartOver, close }) => (
   <>
-    <MenuLabel>Scenario</MenuLabel>
-    <MenuItem icon={icons.dl} onSelect={() => (close(), onExport())} hint="Download and copy your flows as JSON">
-      Export flows…
+    <MenuLabel>This browser</MenuLabel>
+    <MenuItem icon={<Save />} onSelect={() => (close(), onSave())} hint="Plots, settings and inventory, in this browser">
+      Save flows…
     </MenuItem>
-    <MenuItem icon={icons.ul} onSelect={() => (close(), onImport())} hint="Replace your plots from a file">
-      Import flows…
+    <MenuItem icon={<FolderOpen />} onSelect={() => (close(), onLoad())} hint="Open, rename or delete saves">
+      Load saved…
     </MenuItem>
     <MenuSeparator />
-    <MenuItem icon={icons.trophy} onSelect={() => (close(), onSubmit())} hint="Put these flows on the public leaderboard">
+    <MenuLabel>File</MenuLabel>
+    <MenuItem icon={<Upload />} onSelect={() => (close(), onImport())} hint="From a JSON file or pasted text">
+      Import flows…
+    </MenuItem>
+    <MenuItem icon={<Download />} onSelect={() => (close(), onExport())} hint="Download and copy as JSON">
+      Export flows…
+    </MenuItem>
+    <MenuSeparator />
+    <MenuItem icon={<Trophy />} onSelect={() => (close(), onSubmit())} hint="Put these flows on the public board">
       Submit to leaderboard…
     </MenuItem>
     {onStartOver && (
       <>
         <MenuSeparator />
-        <MenuItem icon={icons.startOver} tone="danger" onSelect={() => (close(), onStartOver())} hint="Remove every plot and restore all settings to their defaults">
+        <MenuItem icon={<Eraser />} tone="danger" onSelect={() => (close(), onStartOver())} hint="Reset plots and settings (undoable)">
           Start over
         </MenuItem>
       </>

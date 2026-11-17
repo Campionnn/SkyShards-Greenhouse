@@ -585,7 +585,7 @@ describe("simulator panels render", () => {
     expect(text).toContain("Back");
     expect(text).toContain("Undo the step from cycle 40");
     // The bar can't overflow: a shrinking, clipped left group (settings) and a fixed right group
-    // (run cluster). Submitting lives in the Leaderboard tab and the Share menu, not a bar button.
+    // (run cluster). Submitting lives in the Leaderboard tab and the Flows menu, not a bar button.
     expect(text).toContain("flex min-w-0 flex-1 items-center gap-1 overflow-hidden");
     expect(text).toContain("flex shrink-0 items-center gap-1");
     expect(text).not.toContain("Test and submit this flow");

@@ -4,8 +4,9 @@ import { useToast } from "../../ui";
 import { FlowExportDialog } from "../FlowExportDialog";
 import { exportFlows, type FlowExportOptions } from "../scenarioEdit";
 import { ImportDialog } from "./ImportDialog";
+import { SavedFlowsDialog } from "./SavedFlowsDialog";
 
-// Export / Import, reachable from the command bar's Share menu and the drawer's Scenario tab. One
+// Save / Load (this browser) and Export / Import (files), reachable from the command bar's Flows menu and the drawer's Scenario tab. One
 // hook owns the dialogs; the page renders `dialogs` once. Submitting to the leaderboard is the
 // page's Leaderboard tab (LeaderboardTab.tsx), not a dialog.
 
@@ -13,6 +14,7 @@ export function useShare(scenario: Scenario, onChange: (sc: Scenario) => void) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [saved, setSaved] = useState<null | "save" | "load">(null);
 
   const exportJson = async (options: FlowExportOptions) => {
     const text = JSON.stringify(exportFlows(scenario, options), null, 2);
@@ -41,7 +43,8 @@ export function useShare(scenario: Scenario, onChange: (sc: Scenario) => void) {
     <>
       {exporting && <FlowExportDialog onClose={() => setExporting(false)} onExport={exportJson} />}
       {importing && <ImportDialog scenario={scenario} onChange={onChange} onClose={() => setImporting(false)} />}
+      {saved && <SavedFlowsDialog scenario={scenario} onChange={onChange} focus={saved} onClose={() => setSaved(null)} />}
     </>
   );
-  return { openExport: () => setExporting(true), openImport: () => setImporting(true), dialogs };
+  return { openExport: () => setExporting(true), openImport: () => setImporting(true), openSave: () => setSaved("save"), openLoad: () => setSaved("load"), dialogs };
 }

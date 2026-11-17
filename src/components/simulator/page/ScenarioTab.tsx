@@ -1,5 +1,5 @@
 import React from "react";
-import { Copy, Download, Eraser, FolderInput, Pencil, Plus, Trash2, Trophy, Upload } from "lucide-react";
+import { Copy, Download, Eraser, FolderInput, FolderOpen, Pencil, Plus, Save, Trash2, Trophy, Upload } from "lucide-react";
 import { MAX_PLOTS, type Scenario, type ScenarioIssue } from "../../../simulator";
 import { useContextMenu, type ContextMenuEntry } from "../../ui/contextMenuContext";
 import { IconButton, KitButton, KitLabel } from "../../ui/kit";
@@ -24,10 +24,13 @@ export const ScenarioTab: React.FC<{
   error: string | null;
   onExport: () => void;
   onImport: () => void;
+  /** Save to / load from this browser (SavedFlowsDialog). */
+  onSave?: () => void;
+  onLoadSaved?: () => void;
   onSubmit: () => void;
   /** Wipe everything back to a fresh simulator (the page shows an Undo toast). */
   onStartOver?: () => void;
-}> = ({ scenario, onChange, onEditFlow, onDuplicate, onRemove, plotMenu, onLoadLayout, issues, warnings, error, onExport, onImport, onSubmit, onStartOver }) => {
+}> = ({ scenario, onChange, onEditFlow, onDuplicate, onRemove, plotMenu, onLoadLayout, issues, warnings, error, onExport, onImport, onSave, onLoadSaved, onSubmit, onStartOver }) => {
   const openMenu = useContextMenu();
   const errors = issues.filter((i) => i.level === "error");
   const full = scenario.plots.length >= MAX_PLOTS;
@@ -90,13 +93,23 @@ export const ScenarioTab: React.FC<{
       )}
 
       <section>
-        <KitLabel className="mb-2">Share</KitLabel>
+        <KitLabel className="mb-2">Flows</KitLabel>
         <div className="flex flex-wrap gap-2">
-          <KitButton onClick={onExport} title="Choose what to include, then download and copy your flows as JSON">
-            <Download /> Export flows
-          </KitButton>
+          {onSave && (
+            <KitButton onClick={onSave} title="Save plots, flows, settings and starting inventory in this browser">
+              <Save /> Save flows
+            </KitButton>
+          )}
+          {onLoadSaved && (
+            <KitButton onClick={onLoadSaved} title="Open, rename or delete flows saved in this browser">
+              <FolderOpen /> Load saved
+            </KitButton>
+          )}
           <KitButton onClick={onImport} title="Replace your plots from an exported flows file">
             <Upload /> Import flows
+          </KitButton>
+          <KitButton onClick={onExport} title="Choose what to include, then download and copy your flows as JSON">
+            <Download /> Export flows
           </KitButton>
           <KitButton onClick={onSubmit} title="Put these flows on the public leaderboard (log in with Discord)">
             <Trophy className="text-coin" /> Submit to leaderboard

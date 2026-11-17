@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { CodeXml, Copy, Download, Eraser, FolderInput, Pencil, Trash2, Trophy, Upload } from "lucide-react";
+import { CodeXml, Copy, FolderInput, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "../components/ui";
 import { ContextMenuProvider } from "../components/ui/ContextMenu";
 import type { ContextMenuEntry } from "../components/ui/contextMenuContext";
@@ -21,7 +21,7 @@ import { FromNothingBanner, FromNothingPreparing } from "../components/simulator
 import { previewScenarioOf, useFromNothingPreview, withPreviewSeed } from "../components/simulator/fromNothingPreview";
 import { addPlot, duplicatePlot, importFlows, isBlankScenario, nextPlotId, placeLayout, removePlot, type LayoutDestination } from "../components/simulator/scenarioEdit";
 import { spotFailureText } from "../components/simulator/format";
-import { CommandBar, ShareMenuItems, type PageProblem } from "../components/simulator/page/CommandBar";
+import { CommandBar, FlowsMenuItems, type PageProblem } from "../components/simulator/page/CommandBar";
 import { KpiCompact, KpiCompactDetail, KpiStrip } from "../components/simulator/page/KpiStrip";
 import { MobileChips, MobileRunBar } from "../components/simulator/page/Mobile";
 import { PlotsRow } from "../components/simulator/page/PlotsRow";
@@ -509,13 +509,14 @@ export const SimulatorPage: React.FC = () => {
     setDrawerOpen(true);
   };
   const shareMenu = (close: () => void) => (
-    <ShareMenuItems
+    <FlowsMenuItems
       close={close}
+      onSave={share.openSave}
+      onLoad={share.openLoad}
       onExport={share.openExport}
       onImport={share.openImport}
       onSubmit={openSubmit}
       onStartOver={startOver}
-      icons={{ dl: <Download />, ul: <Upload />, trophy: <Trophy />, startOver: <Eraser /> }}
     />
   );
 
@@ -692,6 +693,8 @@ export const SimulatorPage: React.FC = () => {
             error={view.status === "error" ? view.error : null}
             onExport={share.openExport}
             onImport={share.openImport}
+            onSave={share.openSave}
+            onLoadSaved={share.openLoad}
             onSubmit={openSubmit}
             onStartOver={startOver}
           />
