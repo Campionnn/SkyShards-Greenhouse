@@ -48,9 +48,11 @@ const CRC_TABLE = (() => {
   return table;
 })();
 
-function crc32(bytes: Uint8Array, crc = 0xffffffff): number {
+/** PNG chunk CRC (CRC-32, ISO 3309): starts at all ones and is inverted at the end. */
+export function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
   for (let i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
-  return crc >>> 0;
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function readChunks(bytes: Uint8Array<ArrayBuffer>): Chunk[] {

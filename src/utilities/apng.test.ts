@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseApng } from "./apng";
+import { crc32, parseApng } from "./apng";
 import { ANIMATED_CROPS, getLcmFrameCount } from "./gridExport";
 
 const cropPath = (id: string) => resolve(__dirname, "../../public/greenhouse/crops", `${id}.png`);
@@ -36,6 +36,21 @@ describe("animated crop icons", () => {
       }
     });
   }
+
+  it("crc32 is the standard PNG CRC (frames with bad CRCs don't display anywhere)", () => {
+    expect(crc32(new TextEncoder().encode("IEND"))).toBe(0xae426082);
+    // Every chunk of a re-emitted frame and of the stage icons carries a valid CRC.
+    const checkChunks = (png: Uint8Array) => {
+      const v = new DataView(png.buffer, png.byteOffset, png.byteLength);
+      for (let o = 8; o < png.length; ) {
+        const len = v.getUint32(o);
+        expect(v.getUint32(o + 8 + len)).toBe(crc32(png.subarray(o + 4, o + 8 + len)));
+        o += 12 + len;
+      }
+    };
+    for (const f of parseApng(load("all_in_aloe")).frames) checkChunks(f.png);
+    for (let n = 1; n <= 5; n++) checkChunks(load(`all_in_aloe_stage_${n}`));
+  });
 
   it("parses a static crop icon as a single frame", () => {
     expect(parseApng(load("wheat")).frames).toHaveLength(1);
