@@ -57,6 +57,7 @@ const view: SimulationView = {
   warnings: [],
   history: { canStepBack: true, lastAction: { kind: "run", fromCycle: 40, cycles: 1 } },
   rewound: null,
+  quiet: false,
 };
 
 const wrap = (node: React.ReactNode) =>

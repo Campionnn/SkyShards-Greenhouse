@@ -41,7 +41,7 @@ import type { ScriptTarget } from "../components/simulator/script/scriptEdit";
 import { BazaarMoneyPanel } from "../components/simulator/BazaarPanels";
 import { InventoryTable } from "../components/simulator/InventoryTable";
 import { bazaarProfit } from "../components/simulator/bazaarFormat";
-import { useSimulation } from "../hooks/useSimulation";
+import { settledView, useSimulation } from "../hooks/useSimulation";
 import { useBazaarPrices } from "../hooks/useBazaarPrices";
 import { useProfileMode } from "../hooks/useProfileMode";
 import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, MAX_PLOTS, migrateScenario, scenarioFromShareCodes, type ProfileMode, type RunSummary, type Scenario } from "../simulator";
@@ -192,7 +192,11 @@ export const SimulatorPage: React.FC = () => {
   const preview = fromNothing.preview;
   const previewScenario = useMemo(() => (preview ? previewScenarioOf(preview) : null), [preview]);
   const engineScenario = useMemo(() => withProfile(previewScenario ?? settled, previewScenario ? "ironman" : profile), [previewScenario, settled, profile]);
-  const { view, run, step, stepBack, undo, stop, reset, addItems } = useSimulation(engineScenario);
+  const sim = useSimulation(engineScenario);
+  const { run, step, stepBack, undo, stop, reset, addItems } = sim;
+  // A single Step / Back / Undo in flight is drawn as ready: holding → would otherwise flash the
+  // run controls, the progress bar and the status line every cycle.
+  const view = useMemo(() => settledView(sim.view), [sim.view]);
   /** Live Bazaar quotes with the user's manual prices on top. */
   const quotes = bazaar.quotes;
   /** Normal profile: the run bar's profit at Bazaar prices. */

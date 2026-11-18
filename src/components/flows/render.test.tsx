@@ -652,7 +652,7 @@ describe("simulator settings: the leaderboard rules", () => {
           <CommandBar
             scenario={sc}
             onChange={() => {}}
-            view={{ status: "ready", snapshot: null, previousSummary: null, lastCycleEvents: [], log: [], progress: null, lastCall: null, error: null, issues: [], warnings: [], history: { canStepBack: false, lastAction: null }, rewound: null }}
+            view={{ status: "ready", snapshot: null, previousSummary: null, lastCycleEvents: [], log: [], progress: null, lastCall: null, error: null, issues: [], warnings: [], history: { canStepBack: false, lastAction: null }, rewound: null, quiet: false }}
             profile="ironman"
             onProfileChange={() => {}}
             onRun={() => {}}

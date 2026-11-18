@@ -28,6 +28,17 @@ export interface SimulationView {
   history: HistoryInfo;
   /** The last Back / Undo, for the status line (cleared by the next Step / Run). */
   rewound: { undone: UndoableAction | null } | null;
+  /**
+   * The in-flight request is a quick one (a single Step, Back or Undo). The page keeps showing the
+   * settled view for those (see `settledView`) so holding → doesn't flash the run controls, the
+   * progress bar and the status line on every cycle.
+   */
+  quiet: boolean;
+}
+
+/** The view as the page draws it: a quick Step / Back / Undo in flight still looks ready. */
+export function settledView(view: SimulationView): SimulationView {
+  return view.status === "running" && view.quiet ? { ...view, status: "ready", progress: null } : view;
 }
 
 const initialView: SimulationView = {
@@ -43,6 +54,7 @@ const initialView: SimulationView = {
   warnings: [],
   history: { canStepBack: false, lastAction: null },
   rewound: null,
+  quiet: false,
 };
 
 function trimLog(events: TimedEvent[], currentCycle: number): TimedEvent[] {
@@ -61,6 +73,8 @@ export function useSimulation(scenario: Scenario | null) {
   /** reqId of the latest init/reset; older responses belong to a previous scenario and are dropped. */
   const epochRef = useRef(0);
   const [view, setView] = useState<SimulationView>(initialView);
+  /** A run / back request is in flight. The page may draw a quick one as ready, so guard here too. */
+  const busyRef = useRef(false);
 
   useEffect(() => {
     const worker = new Worker(new URL("../simulator/worker/engine.worker.ts", import.meta.url), { type: "module" });
@@ -69,6 +83,7 @@ export function useSimulation(scenario: Scenario | null) {
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const msg = event.data;
       if (msg.reqId < epochRef.current) return;
+      if (msg.type === "ready" || msg.type === "result" || msg.type === "rewound" || msg.type === "error") busyRef.current = false;
       switch (msg.type) {
         case "ready":
           setView({
@@ -154,8 +169,9 @@ export function useSimulation(scenario: Scenario | null) {
 
   const run = useCallback(
     (ticks: number) => {
-      if (ticks < 1) return;
-      setView((v) => (v.status === "ready" ? { ...v, status: "running", progress: { done: 0, total: ticks, summary: null } } : v));
+      if (ticks < 1 || busyRef.current) return;
+      busyRef.current = true;
+      setView((v) => (v.status === "ready" ? { ...v, status: "running", quiet: ticks === 1, progress: { done: 0, total: ticks, summary: null } } : v));
       send({ type: "run", reqId: ++reqIdRef.current, ticks, retainEvents: "all", keepLastCycles: LOG_CYCLES, dropKinds: NOISY });
     },
     [send]
@@ -175,13 +191,17 @@ export function useSimulation(scenario: Scenario | null) {
 
   /** Goes back exactly one cycle. */
   const stepBack = useCallback(() => {
-    setView((v) => (v.status === "ready" ? { ...v, status: "running", progress: null } : v));
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setView((v) => (v.status === "ready" ? { ...v, status: "running", quiet: true, progress: null } : v));
     send({ type: "back", reqId: ++reqIdRef.current, to: "cycle" });
   }, [send]);
 
   /** Take back the last Step / Run / inventory change. */
   const undo = useCallback(() => {
-    setView((v) => (v.status === "ready" ? { ...v, status: "running", progress: null } : v));
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setView((v) => (v.status === "ready" ? { ...v, status: "running", quiet: true, progress: null } : v));
     send({ type: "back", reqId: ++reqIdRef.current, to: "undo" });
   }, [send]);
 
