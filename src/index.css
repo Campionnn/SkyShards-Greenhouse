@@ -221,6 +221,13 @@
   font-display: swap;
 }
 
+/* Always reserve the page scrollbar's gutter. Modals, drawers and the mobile nav lock scrolling
+   with body { overflow: hidden }, which otherwise removes the scrollbar and widens the viewport,
+   so the whole page reflows (jumps sideways) while they are open. */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   /* Minecraft (unifont) stays last before the generic family: glyph coverage for game symbols only. */
   font-family: "Inter", system-ui, "Segoe UI", "Minecraft", sans-serif;
