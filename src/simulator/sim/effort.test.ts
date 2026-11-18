@@ -111,9 +111,20 @@ describe("effort counters", () => {
     const r = engine.run(start(sc), 2);
     const e = r.state.summary.effort!;
     expect(e.counts).toMatchObject({ stepChange: 1, remove: 1, replant: 1, place: 1 });
-    const scaled = (EFFORT_WEIGHTS.remove + EFFORT_WEIGHTS.replant + EFFORT_WEIGHTS.place) * STEP_CHANGE_EFFORT_SCALE;
+    const scaled = (EFFORT_WEIGHTS.remove + EFFORT_WEIGHTS.replant + EFFORT_WEIGHTS.place + (e.counts.ground ?? 0) * EFFORT_WEIGHTS.ground) * STEP_CHANGE_EFFORT_SCALE;
     expect(e.total).toBeCloseTo(scaled + (e.counts.water ?? 0) * EFFORT_WEIGHTS.water);
     expect(e.weighted?.stepChange).toBeUndefined();
+  });
+
+  it("counts each ground block a step change repaints, at the step-change scale", () => {
+    const g = (ground: string, row: number, col: number) => ({ ground, row, col });
+    const one = { ...layout([["wheat", 0, 0]]), groundTiles: [g("farmland", 0, 0)] };
+    const two = { ...layout([["wheat", 0, 0]]), groundTiles: [g("farmland", 0, 0), g("soul_sand", 5, 5), g("sand", 6, 6)] };
+    const sc = scenario([flow([step("one", one, [{ kind: "cycles", n: 1 }]), step("two", two)])], { activity: ONLINE, config: NO_WATER });
+    const e = engine.run(start(sc), 1).state.summary.effort!;
+    expect(e.counts.stepChange).toBe(1);
+    expect(e.counts.ground).toBe(2); // 0,0 stays farmland
+    expect(e.weighted?.ground).toBe(2 * EFFORT_WEIGHTS.ground * STEP_CHANGE_EFFORT_SCALE);
   });
 
   it("counts a Noctilume time change once per session for all plots", () => {

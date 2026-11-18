@@ -77,7 +77,7 @@ export const isFreePlacedItem = (kindId: string, config?: Pick<SimConfig, "freeP
  * a Bazaar visit once per session anything was bought or sold. A step change itself weighs nothing:
  * what it does (breaking the old layout, placing the new one, the harvests right after) counts at
  * `STEP_CHANGE_EFFORT_SCALE` of the usual weights, since rebuilding in one go is easier than the
- * same actions spread over logins; the new step's ground comes with it. Work a step change undoes
+ * same actions spread over logins; each ground block the new step changes counts as a ground fix (at that scale). Work a step change undoes
  * in the same session (a crop replanted or an item placed earlier that session, broken by the step
  * change) counts for neither.
  */

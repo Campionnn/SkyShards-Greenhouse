@@ -43,8 +43,8 @@ export const EffortPanel: React.FC<{ summary: RunSummary; className?: string }> 
           <p>How much work the player does each time they log in. The leaderboard shows the same numbers.</p>
           <p>
             A weighted count of what the player does while online: {WEIGHT_LIST}. Watering a plot counts once per login, however many plants need it, and a Noctilume
-            time change once per login for all plots. Everything a step change does (breaking the old layout, placing the new one) counts at{" "}
-            {STEP_CHANGE_EFFORT_SCALE}× weight, since rebuilding in one go is easier, and its ground comes with it. Something put down and broken again in the same login (a crop replanted, then
+            time change once per login for all plots. Everything a step change does (breaking the old layout, placing the new one, changing its ground blocks) counts at{" "}
+            {STEP_CHANGE_EFFORT_SCALE}× weight, since rebuilding in one go is easier. Something put down and broken again in the same login (a crop replanted, then
             cleared by a step change) counts for neither. Average per login and the heaviest login so far.
           </p>
         </>

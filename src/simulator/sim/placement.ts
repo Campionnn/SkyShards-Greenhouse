@@ -2,7 +2,7 @@ import { isFreePlacedItem, type SimConfig } from "../config";
 import type { GameData } from "../data/types";
 import { cellIndex, footprint, footprintFits, ringCells } from "../grid/cells";
 import type { CycleCtx, ResolvedLayout, TickScratch } from "./context";
-import { effortBreak, effortPut } from "./effort";
+import { effort, effortBreak, effortPut } from "./effort";
 import { destroyPlant, isPrimedBlastberry } from "./explosion";
 import { harvestPlant } from "./harvest";
 import { closePlotDebts, credit, refundPlacement, spend } from "./inventory";
@@ -161,6 +161,15 @@ export function applyStepLayout(
     removeByPlayer(plot, p, ctx, scratch, "step change");
   }
 
+  // Effort: each cell whose ground the new step needs changed is a ground block swapped (a step
+  // change counts it at the step-change scale). Cells the layout leaves unpainted are left as they are.
+  if (mode === "step") {
+    let changed = 0;
+    for (const key in layout.groundTiles) {
+      if ((plot.groundOverrides[key] ?? plot.groundTiles[key]) !== layout.groundTiles[key]) changed += 1;
+    }
+    effort(ctx.state, "ground", changed);
+  }
   plot.slots = layout.slots.map((s) => ({ ...s }));
   plot.groundTiles = { ...layout.groundTiles };
   plot.groundOverrides = {}; // Chorus ground changes last only within a step
