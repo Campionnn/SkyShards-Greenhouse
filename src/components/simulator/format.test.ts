@@ -26,7 +26,7 @@ describe("formatPercent (uptime everywhere: never better than the run was)", () 
   });
 
   it("agrees with the uptime ratio of real counts", () => {
-    // 10,394 of 10,988 cell-cycles up (594 short): the KPI and the Sustainability card read the same.
+    // 10,394 of 10,988 cell-cycles up (594 short): the KPI and the Uptime card read the same.
     expect(formatPercent(10394 / 10988)).toBe("94.5%");
   });
 });

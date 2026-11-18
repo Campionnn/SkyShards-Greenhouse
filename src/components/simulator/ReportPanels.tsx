@@ -103,7 +103,7 @@ export const MoneyPanel: React.FC<{
     },
     { label: "Revenue", get: (s) => s.coinsRealised, strong: true },
     { label: "Replacements", get: (s) => -s.costs.replacements, hint: "NPC value of items re-placed after decay. Mutation items count 0; fermento (250k) and dead plants (500) use their NPC price." },
-    { label: "Supplies", get: (s) => -s.costs.supplies, hint: "NPC value of items the layout needed but did not have (mutation items count 0; see Sustainability)." },
+    { label: "Supplies", get: (s) => -s.costs.supplies, hint: "NPC value of items the layout needed but did not have (mutation items count 0; see Uptime)." },
     { label: "Profit", get: (s) => s.profit, strong: true },
   ];
   const spawned = Object.values(summary.spawned).reduce((a, b) => a + b, 0);
@@ -157,7 +157,7 @@ export const MoneyPanel: React.FC<{
   );
 };
 
-// ---- Sustainability -------------------------------------------------------
+// ---- Uptime -------------------------------------------------------
 
 const pct = formatPercent; // the one uptime formatter (floors: never better than the run was)
 
@@ -452,11 +452,11 @@ const LOSS_LABEL = {
 };
 
 /**
- * Sustainability, as the page's tab body: the uptime of the checked targets (with the full tree)
+ * Uptime, as the page's tab body: the uptime of the checked targets (with the full tree)
  * on the left; stock shortfalls, mutation debt, placed items and losses on the right. Lays out
  * by its own width (container query), so it also fits a narrow column.
  */
-export const SustainabilityPanel: React.FC<{ report: SustainabilityReport; summary: RunSummary; className?: string }> = ({ report, summary, className = "" }) => {
+export const UptimePanel: React.FC<{ report: SustainabilityReport; summary: RunSummary; className?: string }> = ({ report, summary, className = "" }) => {
   const [showAll, setShowAll] = useState(false);
   const tree = useUptimeTree(report.spots);
   const watched = report.items.filter((i) => i.consumed > 0 || i.shortfall > 0);

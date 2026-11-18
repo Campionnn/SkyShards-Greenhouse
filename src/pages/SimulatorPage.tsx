@@ -8,7 +8,7 @@ import { Tabs } from "../components/ui/kit";
 import { MenuItem, MenuSeparator } from "../components/ui/Popover";
 import { surface } from "../components/ui/surface";
 import { LayoutPickerDialog } from "../components/simulator/LayoutPicker";
-import { MoneyPanel, SustainabilityPanel } from "../components/simulator/ReportPanels";
+import { MoneyPanel, UptimePanel } from "../components/simulator/ReportPanels";
 import { EarningsPanel } from "../components/simulator/EarningsPanel";
 import { EffortPanel } from "../components/simulator/EffortPanel";
 import { FrequencyPanel } from "../components/simulator/frequency/FrequencyPanel";
@@ -47,9 +47,9 @@ import { useProfileMode } from "../hooks/useProfileMode";
 import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, MAX_PLOTS, migrateScenario, scenarioFromShareCodes, type ProfileMode, type RunSummary, type Scenario } from "../simulator";
 import { extractLayoutCode, LocalStorageManager, readIncomingLayout, readIncomingScenario, SOURCE_LABEL, type IncomingLayout } from "../utilities";
 
-type ResultTab = "overview" | "inventory" | "sustain" | "timeline" | "events" | "scripts" | "leaderboard";
+type ResultTab = "overview" | "inventory" | "uptime" | "timeline" | "events" | "scripts" | "leaderboard";
 const TAB_KEY = "skyshards-simulator-tab";
-const RESULT_TABS: readonly ResultTab[] = ["overview", "inventory", "sustain", "timeline", "events", "scripts", "leaderboard"];
+const RESULT_TABS: readonly ResultTab[] = ["overview", "inventory", "uptime", "timeline", "events", "scripts", "leaderboard"];
 /** Migrates a saved scenario and fills missing settings from the defaults. */
 function withDefaults(saved: Scenario): Scenario {
   const sc = migrateScenario(saved);
@@ -131,7 +131,8 @@ export const SimulatorPage: React.FC = () => {
   const setEditingPlot = (plotId: number | null) => setEditing(plotId === null ? null : { plotId, step: 0 });
   // Results tab (remembered), settings drawer, and the plot whose layout "Replace" is picking for.
   const [tab, setTabState] = useState<ResultTab>(() => {
-    const saved = typeof localStorage !== "undefined" ? localStorage.getItem(TAB_KEY) : null;
+    const stored = typeof localStorage !== "undefined" ? localStorage.getItem(TAB_KEY) : null;
+    const saved = stored === "sustain" ? "uptime" : stored; // the tab was called "Sustainability" before
     return RESULT_TABS.includes(saved as ResultTab) ? (saved as ResultTab) : "overview";
   });
   const setTab = (t: ResultTab) => {
@@ -454,7 +455,7 @@ export const SimulatorPage: React.FC = () => {
     });
   };
 
-  // ---- Problems: scenario errors/warnings and the sustainability verdict --------------------------
+  // ---- Problems: scenario errors/warnings and the uptime verdict --------------------------
   /** Open a results tab and scroll so its bar sits right under the sticky header. */
   const goTab = (t: ResultTab) => {
     setTab(t);
@@ -496,7 +497,7 @@ export const SimulatorPage: React.FC = () => {
       level: "unsustainable",
       where: "Not sustainable",
       message: firstFailure ? spotFailureText(firstFailure) : "A checked target sat empty without the requirements for its mutation.",
-      action: { label: "Sustainability", run: () => goTab("sustain") },
+      action: { label: "Uptime", run: () => goTab("uptime") },
     });
   }
 
@@ -504,7 +505,7 @@ export const SimulatorPage: React.FC = () => {
   const resultTabs: { value: ResultTab; label: string; count?: number | null }[] = [
     { value: "overview", label: "Overview" },
     { value: "inventory", label: state?.summary.market ? "Inventory & Bazaar" : "Inventory" },
-    { value: "sustain", label: "Sustainability", count: state?.summary.uptime && state.summary.uptime.requirements > 0 ? 1 : null },
+    { value: "uptime", label: "Uptime", count: state?.summary.uptime && state.summary.uptime.requirements > 0 ? 1 : null },
     { value: "timeline", label: "Timeline" },
     { value: "events", label: "Events" },
     ...(!preview ? [{ value: "scripts" as const, label: "Scripts" }, { value: "leaderboard" as const, label: "Leaderboard" }] : []),
@@ -673,7 +674,7 @@ export const SimulatorPage: React.FC = () => {
               onStartingInventoryChange={preview ? undefined : (startingInventory) => setScenario((sc) => ({ ...sc, startingInventory }))}
             />
           )}
-          {snapshot && state && tab === "sustain" && <SustainabilityPanel report={snapshot.report} summary={state.summary} />}
+          {snapshot && state && tab === "uptime" && <UptimePanel report={snapshot.report} summary={state.summary} />}
           {state && tab === "timeline" && (
             <FlowTimeline key={`${state.scenario.settings.seed}-${state.cycle === 0 ? "setup" : "run"}`} flows={state.flows} defs={state.scenario.plots} cycle={state.cycle} elapsedSeconds={state.elapsedSeconds} />
           )}

@@ -201,7 +201,7 @@ export const InventoryTable: React.FC<{
         {
           label: shortItems === 1 ? "shortfall" : "shortfalls",
           value: formatCount(shortItems),
-          title: "Times a placement was short of an item (see Sustainability). Not scaled per day.",
+          title: "Times a placement was short of an item (see Uptime). Not scaled per day.",
           tone: shortItems > 0 ? "text-red-300" : undefined,
         },
       ];

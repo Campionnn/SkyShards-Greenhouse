@@ -12,7 +12,7 @@ import { engine, flow, inject, LAYOUT_A_CODE, LAYOUT_B_CODE, layout, scenario, s
 import { ToastProvider } from "../ui";
 import { PlotMarkLegend, PlotView } from "./PlotView";
 import { LayoutPickerPanel } from "./LayoutPicker";
-import { MoneyPanel, SustainabilityPanel, UptimeTree } from "./ReportPanels";
+import { MoneyPanel, UptimePanel, UptimeTree } from "./ReportPanels";
 import { InventoryTable } from "./InventoryTable";
 import { WatchPicker } from "./flowgraph/TargetsTab";
 import { FlowEditorContext, type FlowEditorApi, type InspectorTab } from "./flowgraph/context";
@@ -264,11 +264,11 @@ describe("simulator panels render", () => {
 
   it("the outcomes list counts decay extensions, and tolerates a summary without them", () => {
     const summary = { ...state.summary, extended: { wheat: 3 } };
-    const html = wrap(<SustainabilityPanel report={view.snapshot!.report} summary={summary} />).replace(/<!-- -->/g, "");
+    const html = wrap(<UptimePanel report={view.snapshot!.report} summary={summary} />).replace(/<!-- -->/g, "");
     expect(html).toContain("decay timers extended (minimum not met)");
     const old: Partial<typeof state.summary> = { ...state.summary };
     delete old.extended;
-    expect(() => wrap(<SustainabilityPanel report={view.snapshot!.report} summary={old as typeof state.summary} />)).not.toThrow();
+    expect(() => wrap(<UptimePanel report={view.snapshot!.report} summary={old as typeof state.summary} />)).not.toThrow();
   });
 
   it("placed items and losses are separate disclosures, collapsed by default", () => {
@@ -276,7 +276,7 @@ describe("simulator panels render", () => {
     const watched = report.items.filter((item) => item.consumed > 0 || item.shortfall > 0);
     expect(watched.length).toBeGreaterThan(0);
     const summary = { ...state.summary, extended: { wheat: 3 } };
-    const html = wrap(<SustainabilityPanel report={report} summary={summary} />).replace(/<!-- -->/g, "");
+    const html = wrap(<UptimePanel report={report} summary={summary} />).replace(/<!-- -->/g, "");
     const disclosures = [...html.matchAll(/<details\b([^>]*)>([\s\S]*?)<\/details>/g)];
 
     expect(disclosures).toHaveLength(2);
@@ -292,10 +292,10 @@ describe("simulator panels render", () => {
     expect(disclosures[1][2]).toMatch(/>3<\/span> Wheat <span[^>]*>decay timers extended \(minimum not met\)/);
   });
 
-  it("empty sustainability detail sections stay hidden", () => {
+  it("empty uptime detail sections stay hidden", () => {
     const report = { ...view.snapshot!.report, items: [] };
     const summary = { ...state.summary, decayed: {}, destroyed: {}, extended: {}, driedOut: {} };
-    const html = wrap(<SustainabilityPanel report={report} summary={summary} />);
+    const html = wrap(<UptimePanel report={report} summary={summary} />);
     expect(html).not.toContain("<details");
     expect(html).not.toContain("Placed items");
     expect(html).not.toContain("Losses, halts and decay extensions");
@@ -375,7 +375,7 @@ describe("simulator panels render", () => {
     const html = wrap(
       <>
         <MoneyPanel summary={state.summary} previous={before.summary} />
-        <SustainabilityPanel report={view.snapshot!.report} summary={state.summary} />
+        <UptimePanel report={view.snapshot!.report} summary={state.summary} />
         <InventoryTable state={state} />
         <InventoryTable state={view.snapshot!.state} onAddItems={() => {}} startingInventory={{ chloronite: 3 }} onStartingInventoryChange={() => {}} />
         <InventoryTable state={start.state} onAddItems={() => {}} startingInventory={{ chloronite: 3 }} onStartingInventoryChange={() => {}} />
@@ -384,7 +384,7 @@ describe("simulator panels render", () => {
     expect(html).toContain("Profit");
     expect(html).toContain("Started with");
     expect(html).toContain("This is what you start with");
-    expect(html).toContain("Sustainab");
+    expect(html).toContain("Uptime of checked targets");
   });
 
   it("the effort panel shows per-login effort and its breakdown, or waits for the first login", () => {

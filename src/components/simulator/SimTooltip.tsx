@@ -244,10 +244,10 @@ export const SimTooltip: React.FC<{
             <p className="text-amber-300">Requirements not met for the last {target.ineligibleCycles} cycles.</p>
           )}
           {target.watched === false ? (
-            <p className="text-slate-500">Not checked for sustainability (pick checked targets in the flow editor).</p>
+            <p className="text-slate-500">Not checked for uptime (pick checked targets in the flow editor).</p>
           ) : (
             <p className={target.watchStatus === "requirements" ? "text-red-300" : "text-cyan-300"}>
-              Checked for sustainability
+              Checked for uptime
               {target.watchStatus === "requirements"
                 ? ": empty without its requirements, so it is losing uptime."
                 : target.watchStatus === "blocked"

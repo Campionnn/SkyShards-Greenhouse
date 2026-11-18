@@ -101,7 +101,7 @@ export function formatRate(n: number): string {
 
 /**
  * A ratio (0–1) as a percent with one decimal: the one formatter for uptime everywhere (KPI strip,
- * phone header, plot footers, Sustainability card). It floors, so a figure never reads better than
+ * phone header, plot footers, Uptime card). It floors, so a figure never reads better than
  * the run was: "100%" only when the ratio is exactly 1, "0%" only when it is exactly 0, and
  * 0.99996 reads "99.9%", never "100.0%"; a sliver above 0 reads "<0.1%". Non-finite input reads "0%".
  */
