@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
@@ -235,6 +237,16 @@ describe("simulator panels render", () => {
     expect(plantIconOf({ kindId: "turtlellini", gate: { exploded: 1 } })).toBe("cracked_turtlellini");
     expect(plantIconOf({ kindId: "shellfruit", gate: {} })).toBe("shellfruit");
     expect(plantIconOf({ kindId: "wheat", gate: { exploded: 1 } })).toBe("wheat");
+  });
+
+  it("plantIconOf: an All-in Aloe shows its stage's colour (a new texture every 3 stages)", () => {
+    const icon = (stage: number) => plantIconOf({ kindId: "all_in_aloe", gate: {}, stage });
+    expect([0, 1, 3, 4, 6, 7, 9, 10, 12, 13, 14, 23].map(icon)).toEqual(
+      [1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5].map((n) => `all_in_aloe_stage_${n}`),
+    );
+    for (let n = 1; n <= 5; n++) expect(existsSync(resolve(__dirname, `../../../public/greenhouse/crops/all_in_aloe_stage_${n}.png`))).toBe(true);
+    // Without a stage (palettes, item lists) it keeps the cycling icon.
+    expect(plantIconOf({ kindId: "all_in_aloe", gate: {} })).toBe("all_in_aloe");
   });
 
   it("describeEvent: decayExtended, and a decayed dead plant leaves nothing", () => {

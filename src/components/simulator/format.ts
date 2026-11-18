@@ -34,9 +34,22 @@ export function nameOf(id: string): string {
   );
 }
 
-/** Icon id for a standing plant: a Turtlellini that took a Blastberry hit shows cracked. */
-export function plantIconOf(p: { kindId: string; gate: { exploded?: number } }): string {
-  return p.kindId === "turtlellini" && (p.gate.exploded ?? 0) >= 1 ? "cracked_turtlellini" : p.kindId;
+/**
+ * All-in Aloe's in-game head texture changes every 3 stages (1-3, 4-6, 7-9, 10-12, 13+), per the
+ * Greenhouse Companion mod's stage models. The icon for each is one frame of all_in_aloe.png.
+ */
+export function aloeStageIcon(stage: number): string {
+  return `all_in_aloe_stage_${Math.min(5, Math.max(1, Math.ceil(stage / 3)))}`;
+}
+
+/**
+ * Icon id for a standing plant: a Turtlellini that took a Blastberry hit shows cracked, and an
+ * All-in Aloe shows the colour of its current stage instead of cycling through all of them.
+ */
+export function plantIconOf(p: { kindId: string; gate: { exploded?: number }; stage?: number }): string {
+  if (p.kindId === "turtlellini" && (p.gate.exploded ?? 0) >= 1) return "cracked_turtlellini";
+  if (p.kindId === "all_in_aloe" && p.stage !== undefined) return aloeStageIcon(p.stage);
+  return p.kindId;
 }
 
 /** The crop or mutation definition for an id, if it is one. */
