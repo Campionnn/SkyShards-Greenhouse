@@ -106,7 +106,7 @@ const StatsFormHost: React.FC = () => <StatsForm viewer={useFlowViewer()} />;
 describe("leaderboard pages render", () => {
   it("/flows renders the toolbar, the frequency, the stats chip, sorting, filters and a loading state; the form lives in the drawer", () => {
     const html = text(wrap(<FlowsPage />));
-    for (const s of ["Flow rankings", "Online every", "Max stats · set yours", "Coins/day", "Effort", "Forgiving", "More sorts", "NPC prices", "Key", "Search flows, authors, crops", "Loading the rankings...", "Submit a flow"]) {
+    for (const s of ["Layout rankings", "Online every", "Max stats · set yours", "Coins/day", "Effort", "Forgiving", "More sorts", "NPC prices", "Key", "Search flows, authors, crops", "Loading the rankings...", "Submit a flow"]) {
       expect(html).toContain(s);
     }
     for (const s of ["Ironman", "Normal", "Earning", "Plots", "I have the starting items"]) expect(html).toContain(s);
@@ -291,7 +291,7 @@ describe("leaderboard pages render", () => {
   it("/flows/:id renders the strip and every section from a full entry", async () => {
     const detail = normalizeDetail((await mockDetail("mockChloro01"))!);
     const html = detailAt(detail);
-    for (const s of ["Chloronite engine with wheat filler", "Open in simulator", "Copy link", "Forgiving", "Flow rankings", "Read more"]) expect(html).toContain(s);
+    for (const s of ["Chloronite engine with wheat filler", "Open in simulator", "Copy link", "Forgiving", "Layout rankings", "Read more"]) expect(html).toContain(s);
     // Whose stats: the default stats say so, with Set your stats and Import from Hypixel right there.
     expect(html).toContain('data-testid="stats-row"');
     expect(html).toMatch(/These numbers are for <b[^>]*>max stats<\/b>/);
@@ -418,7 +418,7 @@ describe("leaderboard pages render", () => {
   it("/flows/:id keeps the ranking's query in the back link and the starting-items switch in Open in simulator", async () => {
     const detail = normalizeDetail((await mockDetail("mockAloe0002"))!);
     const plain = detailAt(detail, "/flows/mockAloe0002?board=ironman&kit=1");
-    expect(plain).toContain('href="/flows?board=ironman&kit=1"');
+    expect(plain).toContain('href="/?board=ironman&kit=1"');
     const fromRanking = renderToString(
       <MemoryRouter initialEntries={[{ pathname: "/flows/mockAloe0002", search: "?board=ironman", state: { rankingSearch: "?sort=liked&q=aloe&plots=3" } }]}>
         <ToastProvider>
@@ -428,7 +428,7 @@ describe("leaderboard pages render", () => {
         </ToastProvider>
       </MemoryRouter>,
     );
-    expect(text(fromRanking)).toContain('href="/flows?sort=liked&q=aloe&plots=3"');
+    expect(text(fromRanking)).toContain('href="/?sort=liked&q=aloe&plots=3"');
   });
 
   it("an old entry (pre-v2 'ironman' cells with payback fields) still renders", async () => {

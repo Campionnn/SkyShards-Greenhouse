@@ -11,10 +11,11 @@ import { DISCORD_PATH } from "../../seo/routes";
 // Below 1024px the links move into a full-width menu sheet.
 
 const NAV_ITEMS = [
-  { path: "/", label: "Calculator" },
-  { path: "/designer", label: "Designer" },
+  // "/" is the flow leaderboard, shown to players as "Layouts" (the simulator still says flows).
+  { path: "/", label: "Layouts" },
   { path: "/simulator", label: "Simulator" },
-  { path: "/flows", label: "Flows" },
+  { path: "/calculator", label: "Calculator" },
+  { path: "/designer", label: "Designer" },
   { path: "/guide", label: "Guide" },
   { path: "/wiki", label: "Wiki" },
 ] as const;
@@ -31,8 +32,9 @@ export const Navigation: React.FC = () => {
   const location = useLocation();
   const [open, setOpen] = useState(false);
 
-  // Sections with sub-pages (/wiki/<slug>) stay current on them.
-  const isCurrent = (path: string) => (path === "/" ? location.pathname === "/" : location.pathname === path || location.pathname.startsWith(`${path}/`));
+  // Sections with sub-pages (/wiki/<slug>; a layout's detail page /flows/<id>) stay current on them.
+  const isCurrent = (path: string) =>
+    path === "/" ? location.pathname === "/" || location.pathname.startsWith("/flows/") : location.pathname === path || location.pathname.startsWith(`${path}/`);
   const currentPath = NAV_ITEMS.find((i) => isCurrent(i.path))?.path ?? null;
   // The underline slides from the old page to the new one (same as the kit's Tabs: transform only,
   // interruptible, no motion under reduced motion). Pages outside the nav (about, contact) have none.

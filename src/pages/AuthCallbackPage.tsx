@@ -51,8 +51,8 @@ export const AuthCallbackPage: React.FC = () => {
               <DiscordIcon className="w-3.5 h-3.5" /> Try again
             </button>
           )}
-          <Link to={result?.kind === "error" ? result.returnPath : "/flows"} className={buttonClass.neutral}>
-            {result?.kind === "error" && result.returnPath !== "/flows" ? "Go back" : "Go to the leaderboard"}
+          <Link to={result?.kind === "error" ? result.returnPath : "/"} className={buttonClass.neutral}>
+            {result?.kind === "error" && result.returnPath !== "/" ? "Go back" : "Go to the leaderboard"}
           </Link>
         </div>
       </div>

@@ -37,13 +37,13 @@ describe("authService: token handling", () => {
   it("parses the callback fragment and only returns to in-app paths", async () => {
     const { parseAuthHash } = await import("./authService");
     expect(parseAuthHash("#token=t1&return=%2Fsimulator%3Fx%3D1")).toEqual({ kind: "token", token: "t1", returnPath: "/simulator?x=1" });
-    expect(parseAuthHash("#token=t1")).toEqual({ kind: "token", token: "t1", returnPath: "/flows" });
-    expect(parseAuthHash("#token=t1&return=https%3A%2F%2Fevil.example")).toMatchObject({ returnPath: "/flows" });
-    expect(parseAuthHash("#token=t1&return=%2F%2Fevil.example")).toMatchObject({ returnPath: "/flows" });
+    expect(parseAuthHash("#token=t1")).toEqual({ kind: "token", token: "t1", returnPath: "/" });
+    expect(parseAuthHash("#token=t1&return=https%3A%2F%2Fevil.example")).toMatchObject({ returnPath: "/" });
+    expect(parseAuthHash("#token=t1&return=%2F%2Fevil.example")).toMatchObject({ returnPath: "/" });
     expect(parseAuthHash("#auth_error=account_too_new")).toMatchObject({ kind: "error", code: "account_too_new", message: expect.stringContaining("30 days") });
-    expect(parseAuthHash("#auth_error=weird")).toMatchObject({ kind: "error", message: "Login failed (weird).", returnPath: "/flows" });
+    expect(parseAuthHash("#auth_error=weird")).toMatchObject({ kind: "error", message: "Login failed (weird).", returnPath: "/" });
     expect(parseAuthHash("#auth_error=cancelled&return=%2Fflows%2Fabc")).toMatchObject({ message: "Discord login was cancelled.", returnPath: "/flows/abc" });
-    expect(parseAuthHash("#auth_error=name_blocked&return=%2F%2Fevil.example")).toMatchObject({ message: expect.stringContaining("isn't allowed"), returnPath: "/flows" });
+    expect(parseAuthHash("#auth_error=name_blocked&return=%2F%2Fevil.example")).toMatchObject({ message: expect.stringContaining("isn't allowed"), returnPath: "/" });
     expect(parseAuthHash("")).toBeNull();
   });
 

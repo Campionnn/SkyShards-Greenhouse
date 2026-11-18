@@ -23,7 +23,7 @@ export function clearToken(): void {
 }
 
 /** A relative in-app path only (no protocol-relative or absolute URLs: an open redirect otherwise). */
-export function safeReturnPath(path: string | null | undefined, fallback = "/flows"): string {
+export function safeReturnPath(path: string | null | undefined, fallback = "/"): string {
   if (!path || !path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return fallback;
   return path;
 }

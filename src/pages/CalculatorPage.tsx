@@ -1,5 +1,5 @@
 /**
- * The Calculator (`/`): pick mutation targets, Solve, read the best layout.
+ * The Calculator (`/calculator`): pick mutation targets, Solve, read the best layout.
  *
  * Wide (page ≥ 69rem): a left rail (Targets, Solve, More settings) · the result in the centre (score
  * line, the large grid, the legend; the progress bar while solving) · Priorities & locks in a right
@@ -7,15 +7,14 @@
  * Targets | Priorities tabs, so the lock brush stays beside the grid. Phone: the result first, a
  * setup fold, the priorities, and a sticky Solve bar.
  */
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { ChevronDown, Grid3x3, Square } from "lucide-react";
 import { useGridState, useGreenhouseData, useLockedPlacements } from "../context";
-import { GridManagerModal, FirstTimeVisitorModal, useToast } from "../components";
+import { GridManagerModal, useToast } from "../components";
 import { MutationTargets, SolverResults, CropConfigurationsPanel, EffectWeightsPanel, LocalSolverPanel } from "../components";
 import { UniqueCropsPanel, useUniqueCrops } from "../components"; // UNIQUE_CROPS
 import { solveGreenhouseWithJob, SolveCancelledError, toSolveErrorInfo, loadLocalSolverSettings } from "../services";
 import type { SolveErrorInfo } from "../services";
-import { LocalStorageManager } from "../utilities";
 import type { SolveSession, SolveRunMeta } from "../components/calculator/solverStatus";
 import type { SolveResponse, MutationGoal } from "../types/greenhouse";
 import { cn } from "../components/ui/cn";
@@ -41,39 +40,6 @@ export const CalculatorPage: React.FC = () => {
   const uniqueCrops = useUniqueCrops(); // UNIQUE_CROPS
 
   const [isGridModalOpen, setIsGridModalOpen] = useState(false);
-  const [isFirstTimeModalOpen, setIsFirstTimeModalOpen] = useState(false);
-
-  // First-visit modal: only when nothing is customised and the visit flag is unset.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const gridConfig = LocalStorageManager.loadGridConfig();
-      const mutationTargets = LocalStorageManager.loadMutationTargets();
-      const designerInputs = LocalStorageManager.loadDesignerInputs();
-      const designerTargets = LocalStorageManager.loadDesignerTargets();
-      const lockedPlacements = LocalStorageManager.loadLockedPlacements();
-      const priorities = LocalStorageManager.loadPriorities();
-      const hasVisited = localStorage.getItem("skyshards-has-visited");
-      
-      // The default grid is 12 cells in a 4x4 diamond.
-      const isDefaultGrid = gridConfig && gridConfig.size === 12;
-      
-      const hasUserData = 
-        (!isDefaultGrid && gridConfig && gridConfig.size > 0) ||
-        (mutationTargets && mutationTargets.length > 0) ||
-        (designerInputs && designerInputs.length > 0) ||
-        (designerTargets && designerTargets.length > 0) ||
-        (lockedPlacements && lockedPlacements.length > 0) ||
-        (priorities && Object.keys(priorities).length > 0);
-      
-      if (!hasUserData && !hasVisited) {
-        setIsFirstTimeModalOpen(true);
-      }
-      
-      localStorage.setItem("skyshards-has-visited", "true");
-    }, 100); // Let the contexts initialise first.
-    
-    return () => clearTimeout(timer);
-  }, []);
 
   const [error, setError] = useState<SolveErrorInfo | null>(null);
   const [result, setResult] = useState<SolveResponse | null>(null);
@@ -389,7 +355,6 @@ export const CalculatorPage: React.FC = () => {
 
       <GridManagerModal isOpen={isGridModalOpen} onClose={() => setIsGridModalOpen(false)} />
 
-      <FirstTimeVisitorModal isOpen={isFirstTimeModalOpen} onClose={() => setIsFirstTimeModalOpen(false)} onConfigureGrid={() => setIsGridModalOpen(true)} />
     </>
   );
 };

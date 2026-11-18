@@ -303,7 +303,7 @@ export const FlowsPage: React.FC = () => {
       <div className="@container space-y-2.5 pb-6">
         <header className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-baseline gap-1.5">
-            <h1 className="text-title text-fg">Flow rankings</h1>
+            <h1 className="text-title text-fg">Layout rankings</h1>
             <HowRanked />
           </div>
           <div className="flex items-center gap-1">
@@ -374,7 +374,7 @@ export const FlowsPage: React.FC = () => {
     <div className="@container space-y-3 py-2 sm:py-3">
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 items-baseline gap-2">
-          <h1 className="text-hero text-fg">Flow rankings</h1>
+          <h1 className="text-hero text-fg">Layout rankings</h1>
           <HowRanked />
           {counted}
         </div>

@@ -27,7 +27,8 @@ const devLocalRoutes = import.meta.env.DEV
   ? Object.entries(import.meta.glob<{ path: string; default: React.ComponentType }>("./dev-local/*.tsx", { eager: true })).map(([, m]) => ({ path: m.path, element: <m.default /> }))
   : [];
 
-// Redirects /?layout=X to /designer?layout=X; otherwise renders the calculator.
+// The home page is the Layouts ranking (FlowsPage). Old designer share links (/?layout=X) still go
+// to /designer?layout=X.
 const IndexRouteWithRedirect: React.FC = () => {
   const [searchParams] = useSearchParams();
   const layoutCode = searchParams.get("layout");
@@ -38,9 +39,17 @@ const IndexRouteWithRedirect: React.FC = () => {
   
   return (
     <Suspense fallback={<LoadingSpinner />}>
-      <CalculatorPage />
+      <FlowsPage />
     </Suspense>
   );
+};
+
+// The ranking used to live at /flows: keep its query (board, sort, filters) on the way home.
+// Production 301s at the edge (src/seo/routes.ts); this covers dev, preview and GitHub Pages.
+const OldFlowsRedirect: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const query = searchParams.toString();
+  return <Navigate to={query ? `/?${query}` : "/"} replace />;
 };
 
 const LoadingSpinner = () => (
@@ -82,6 +91,14 @@ const router = createBrowserRouter([
         element: <IndexRouteWithRedirect />,
       },
       {
+        path: "calculator",
+        element: (
+          <Suspense fallback={<LoadingSpinner />}>
+            <CalculatorPage />
+          </Suspense>
+        ),
+      },
+      {
         path: "designer",
         element: (
           <Suspense fallback={<LoadingSpinner />}>
@@ -99,11 +116,7 @@ const router = createBrowserRouter([
       },
       {
         path: "flows",
-        element: (
-          <Suspense fallback={<LoadingSpinner />}>
-            <FlowsPage />
-          </Suspense>
-        ),
+        element: <OldFlowsRedirect />,
       },
       {
         // Moderation, reached by URL only (before flows/:id).

@@ -321,8 +321,8 @@ const PictureDialog: React.FC<{ layout: StepLayout; caption: string; onClose: ()
 function useBackLink(viewer: FlowViewer): string {
   const location = useLocation();
   const state = location.state as { rankingSearch?: unknown } | null;
-  if (typeof state?.rankingSearch === "string") return `/flows${state.rankingSearch}`;
-  return `/flows?board=${viewer.board}${viewer.board === "ironman" && viewer.kit ? "&kit=1" : ""}`;
+  if (typeof state?.rankingSearch === "string") return `/${state.rankingSearch}`;
+  return `/?board=${viewer.board}${viewer.board === "ironman" && viewer.kit ? "&kit=1" : ""}`;
 }
 
 export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDetail) => void; onReload: () => void }> = ({ detail, onChange, onReload }) => {
@@ -435,7 +435,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
     try {
       await deleteFlow(detail.id);
       toast({ title: "Flow deleted", variant: "success" });
-      navigate("/flows");
+      navigate("/");
     } catch (e) {
       toast({ title: "Could not delete", description: e instanceof Error ? e.message : String(e), variant: "error" });
       setDeleteBusy(false);
@@ -532,7 +532,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
     <div className="mx-auto max-w-[1100px] space-y-4 py-2 sm:py-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Link to={backLink} className="focus-ring hit-area inline-flex items-center gap-1 rounded-inner text-secondary text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg">
-          <ArrowLeft className="size-3.5" /> Flow rankings
+          <ArrowLeft className="size-3.5" /> Layout rankings
         </Link>
         <AccountControl />
       </div>
@@ -728,8 +728,8 @@ export const FlowDetailPage: React.FC = () => {
   if (state.error || !state.detail)
     return (
       <div className="mx-auto max-w-[1100px] space-y-6 py-4">
-        <Link to="/flows" className="focus-ring hit-area inline-flex items-center gap-1 rounded-inner text-secondary text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg">
-          <ArrowLeft className="size-3.5" /> Flow rankings
+        <Link to="/" className="focus-ring hit-area inline-flex items-center gap-1 rounded-inner text-secondary text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg">
+          <ArrowLeft className="size-3.5" /> Layout rankings
         </Link>
         <div className="mx-auto max-w-md space-y-3 py-10 text-center" role={state.notFound ? undefined : "alert"}>
           <p className="text-title text-fg">{state.notFound ? "This flow isn't on the leaderboard" : "Could not load this flow"}</p>
@@ -748,7 +748,7 @@ export const FlowDetailPage: React.FC = () => {
               </KitButton>
             )}
             <Link
-              to="/flows"
+              to="/"
               className="focus-ring inline-flex h-8 items-center rounded-control border border-line-strong bg-surface-control px-3 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover"
             >
               Back to the rankings

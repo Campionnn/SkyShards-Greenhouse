@@ -168,7 +168,7 @@ describe("wiki static pages", () => {
 
   it("covers every navigable app route", () => {
     const routePaths = SITE_ROUTES.map((route) => route.path);
-    for (const path of ["/", "/designer", "/simulator", "/flows", "/guide", "/about", "/contact", "/privacy-policy"]) {
+    for (const path of ["/", "/calculator", "/designer", "/simulator", "/guide", "/about", "/contact", "/privacy-policy"]) {
       expect(routePaths).toContain(path);
     }
     // A wiki short link must never shadow a route page.
@@ -182,7 +182,7 @@ describe("wiki static pages", () => {
     const titles = [...indexHtml.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => m[1].replace(/&amp;/g, "&"));
     expect(titles).toContain(HOME_TITLE);
     expect(titleForPath("/")).toBe(HOME_TITLE);
-    expect(titleForPath("/flows/abc123")).toBe(titleForPath("/flows"));
+    expect(titleForPath("/flows/abc123")).toBe(HOME_TITLE);
     expect(titleForPath("/simulator/")).toBe(titleForPath("/simulator"));
   });
 
@@ -202,10 +202,10 @@ describe("wiki static pages", () => {
       .filter((line) => !line.startsWith("#"));
     expect(lines).toContain("/gloomgourd /wiki/gloomgourd 301");
     expect(lines).toContain("/all_in_aloe /wiki/all-in-aloe 301");
-    expect(lines).toContain("/calculator / 301");
+    expect(lines).toContain("/flows / 301");
     // The header/footer short link leaves for the Discord invite with a real 301.
     expect(lines).toContain(`/discord ${DISCORD_INVITE_URL} 301`);
-    expect(lines[lines.length - 1]).toBe("/flows/* /flows 200");
+    expect(lines[lines.length - 1]).toBe("/flows/* / 200");
     expect(lines.length).toBeLessThanOrEqual(2000);
     const sources = lines.map((line) => line.split(" ")[0]);
     expect(new Set(sources).size).toBe(sources.length);

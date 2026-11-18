@@ -420,7 +420,7 @@ export const FlowsAdminPage: React.FC = () => {
     <div className="w-full space-y-4 py-3 sm:py-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h1 className="text-title text-fg">Leaderboard moderation</h1>
-        <Link to="/flows" className="focus-ring rounded-inner text-secondary text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg">
+        <Link to="/" className="focus-ring rounded-inner text-secondary text-fg-muted transition-colors duration-(--duration-hover) hover:text-fg">
           Back to the leaderboard
         </Link>
       </div>
