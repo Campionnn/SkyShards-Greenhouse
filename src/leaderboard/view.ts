@@ -207,7 +207,8 @@ export interface FlowRow {
   /**
    * "From nothing": the flow stops once its starting items run out (a slowing cell worth under
    * STOPS_SHARE of the same flow with the starting items, e.g. a Devourer farm that needs ~91 Zombud a
-   * day it never grows). Listed apart with `cantMake`, not ranked.
+   * day it never grows), or its upkeep items mostly sit unused (`idleUpkeepFromNothing`, the same
+   * test as `stallsFromNothing` with the items). Listed apart with `cantMake`, not ranked.
    */
   stops: boolean;
   /**
@@ -385,7 +386,7 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
   return {
     ...base,
     cantMake: s.board === "ironman" && !s.kit && prep && !prep.done ? prep : null,
-    stops: s.board === "ironman" && !s.kit && stopsAt(cell.slowing === true, v.profitPerDay, altPerDay),
+    stops: s.board === "ironman" && !s.kit && (stopsAt(cell.slowing === true, v.profitPerDay, altPerDay) || idleUpkeepFromNothing(cell, alt)),
     stallsFromNothing,
     stockpile: s.board === "ironman" && !!s.kit && !!s.hideStalling && stallsFromNothing === true,
     altPerDay,
@@ -460,6 +461,18 @@ export function upkeepUseShare(kitCell: Pick<RunResult, "upkeep" | "consumed">, 
     fromNothing += finite(n) ? n : 0;
   }
   return withItems > 0 ? fromNothing / withItems : null;
+}
+
+/**
+ * A "from nothing" cell whose upkeep items mostly sit unused (under UPKEEP_USE_MIN of what the same
+ * flow places with the starting items): its number is base crops while the mutation setup is idle,
+ * so it stalls like `stopsAt` (e.g. Buffed Stoplight: ~5% of its Noctilume / Snoozling). False without
+ * upkeep or the other ironman point.
+ */
+export function idleUpkeepFromNothing(fromNothing: RunResult, withItems: Pick<CurvePoint, "consumed"> | null): boolean {
+  if (!withItems) return false;
+  const share = upkeepUseShare({ upkeep: fromNothing.upkeep, consumed: withItems.consumed ?? {} }, { consumed: fromNothing.consumed });
+  return share !== null && share < UPKEEP_USE_MIN;
 }
 
 const numPair = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && finite(v[0]) && finite(v[1]) ? [v[0], v[1]] : null);

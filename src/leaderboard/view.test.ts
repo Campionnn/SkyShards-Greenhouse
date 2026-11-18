@@ -584,6 +584,22 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(DEFAULT_FILTERS.noStall).toBe(true);
     // From nothing the rows that stall are already set apart: the verdict is false there, the filter a no-op.
     expect(flowRow(data, v2entry("x", kitCell({})), ironman).stallsFromNothing).toBe(false);
+    // ... with the same upkeep test: a from-nothing cell whose upkeep items sit idle (Buffed Stoplight, ~5%) stops.
+    const fnCell = (used: number, upkeep: Record<string, number> = { noctilume: 2.8 }) => result({ wheat: 250 }, { upkeep, consumed: Object.fromEntries(Object.keys(upkeep).map((k) => [k, used])) });
+    const withItemsPoint = { produced: { wheat: 1000 }, bought: {}, consumed: { noctilume: 10 } };
+    const fromNothingRows = splitRanked(
+      rankEntries(
+        data,
+        [
+          v2entry("stoplight", fnCell(0.5), { altPoint: withItemsPoint, prep: done }),
+          v2entry("chorusFruit", fnCell(5), { altPoint: withItemsPoint, prep: done }),
+          v2entry("noUpkeep", fnCell(0, {}), { altPoint: withItemsPoint, prep: done }),
+        ],
+        ironman,
+      ),
+    );
+    expect(ids(fromNothingRows.ranked)).toEqual(["chorusFruit", "noUpkeep"]);
+    expect(fromNothingRows.cantMake.map((r) => [r.entry.id, r.stops])).toEqual([["stoplight", true]]);
   });
 
   it("'Chorus Fruit' shows the chorus flows ordered by coins per day", () => {

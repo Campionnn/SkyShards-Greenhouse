@@ -21,6 +21,7 @@ import {
   stallInfo,
   starvedList,
   steadyRate,
+  idleUpkeepFromNothing,
   stopsAt,
   suppliesOf,
   suppliesText,
@@ -62,10 +63,14 @@ export function detailModel(detail: FlowDetail, viewer: FlowViewer) {
   const kitN = numbers.find((n) => n.kind === "ironman_kit")?.profitPerDay ?? null;
   const fnCell = findCell(detail.cells, "ironman", viewer.tier, viewer.every) ?? findCell(detail.cells, "ironman", "max", viewer.every);
   const need = upkeepNeedText(fnCell?.median.upkeep);
+  const kitCell = findCell(detail.cells, "ironman_kit", viewer.tier, viewer.every) ?? findCell(detail.cells, "ironman_kit", "max", viewer.every);
+  const topped = `With the items topped up: ${kitN !== null ? formatCoins(kitN) : "?"}/day.`;
   const stopsNote =
     fromNothing && prep?.done && stopsAt(fromNothing.slowing, fromNothing.profitPerDay, kitN)
-      ? `From nothing it stops once the starting items run out${need ? `: it uses ${need} that it doesn't grow` : ""}. Leftover placed items that never helped enough mutations don't decay, so the plots stay blocked (no room for Lonelily). With the items topped up: ${kitN !== null ? formatCoins(kitN) : "?"}/day.`
-      : null;
+      ? `From nothing it stops once the starting items run out${need ? `: it uses ${need} that it doesn't grow` : ""}. Leftover placed items that never helped enough mutations don't decay, so the plots stay blocked (no room for Lonelily). ${topped}`
+      : fromNothing && prep?.done && fnCell && idleUpkeepFromNothing(fnCell.median, kitCell?.median ?? null)
+        ? `From nothing it stalls once the starting items run out${need ? `: it uses ${need} that it doesn't grow back` : ""}, so its mutation setup sits mostly idle and the number above is mostly base crops. It only keeps running from a large stockpile. ${topped}`
+        : null;
 
   const firstThumb = detail.summary?.plots.find((p) => p.thumb)?.thumb ?? null;
   const median = cell?.median ?? null;
