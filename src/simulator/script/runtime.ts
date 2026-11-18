@@ -15,7 +15,7 @@
 // condition is stopped at its boundary and recorded in state.scripts.halt; the cycle
 // completes and run() stops after it. After an error, no more script code runs that cycle.
 
-import { cellKey, footprintFits, GRID_SIZE, inBounds } from "../grid/cells";
+import { cellIndex, cellKey, footprint, footprintFits, GRID_SIZE, inBounds, indexKey } from "../grid/cells";
 import { isFreePlacedItem, MAX_WATER, RULES_HIDDEN_CONFIG_KEYS, type SimConfig } from "../config";
 import { isHarvestableCrop, kindDef } from "../data/load";
 import { dueTarget, transition } from "../flow/runner";
@@ -1325,6 +1325,8 @@ class PlotHost extends HostObject {
           const g = toStr(a[2]);
           if (!KNOWN_GROUND.includes(g)) info.fail(`"${g}" isn't a ground block. Use one of: ${KNOWN_GROUND.join(", ")}`);
           if (!rt.canAct(info, "plot.setGround")) return false;
+          // Game rule: the ground under a standing plant can't be changed.
+          if (buildOccupancy(this.plot)[cellIndex(r, c)]) return false;
           const k = cellKey(r, c);
           if (this.plot.groundTiles[k] === g) delete this.plot.groundOverrides[k];
           else this.plot.groundOverrides[k] = g;
@@ -1451,6 +1453,17 @@ class PlotHost extends HostObject {
       const allowDebt = ctx.config.allowMutationDebt === true && !!data.mutations[kind];
       const req = { cycle: ctx.cycle, plotId: plot.id, row, col, action: `place ${kind} (script)`, replacement: false, allowDebt };
       if (!spend(ctx.state, kind, 1, req, ctx.prices, ctx.emit)) return false;
+    }
+    // Game rule: a plant only goes on its own ground, so the player swaps the block first.
+    const ground = def!.ground;
+    if (ground) {
+      for (const idx of footprint(row, col, def!.size)) {
+        const k = indexKey(idx);
+        if ((own(plot.groundOverrides, k) ?? own(plot.groundTiles, k)) === ground) continue;
+        if (own(plot.groundTiles, k) === ground) delete plot.groundOverrides[k];
+        else plot.groundOverrides[k] = ground;
+        effort(ctx.state, "ground");
+      }
     }
     const p = newPlant(ctx.state, data, ctx.config, kind, row, col, origin, ctx.cycle);
     // Broken again before the next tick, it is picked back up (item returned).

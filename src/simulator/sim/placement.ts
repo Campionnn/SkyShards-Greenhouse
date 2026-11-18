@@ -1,6 +1,6 @@
 import { isFreePlacedItem, type SimConfig } from "../config";
 import type { GameData } from "../data/types";
-import { cellIndex, footprint, footprintFits, ringCells } from "../grid/cells";
+import { cellIndex, footprint, footprintFits, indexKey, ringCells } from "../grid/cells";
 import type { CycleCtx, ResolvedLayout, TickScratch } from "./context";
 import { effort, effortBreak, effortPut } from "./effort";
 import { destroyPlant, isPrimedBlastberry } from "./explosion";
@@ -95,6 +95,10 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
       // Normal profile: setup stays free, but count what building it would cost (sim/market.ts).
       bump(ctx.state.summary.market.built, d.kindId);
     }
+    // Game rule: a plant only goes on its own ground. A cell changed in play (Chorus End Stone)
+    // is swapped back to the layout's ground before the plant goes down.
+    const swapped = restoreLayoutGround(plot, layout, d.row, d.col, d.size);
+    if (swapped > 0 && mode !== "setup") effort(ctx.state, "ground", swapped);
     const p = newPlant(ctx.state, ctx.env.data, ctx.config, d.kindId, d.row, d.col, d.origin, ctx.cycle);
     if (paid && mode !== "setup") markPickup(p, ctx, replacement);
     insertPlant(plot, p);
@@ -103,6 +107,23 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
     if (mode !== "setup") effortPut(ctx.state, scratch, p.id, d.origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, origin: p.origin, replacement });
   }
+}
+
+/**
+ * Swap the footprint cells of a layout plant back to the ground the layout paints there (Chorus
+ * End Stone or a script's `setGround` on a free cell). Returns how many cells changed. No RNG.
+ */
+function restoreLayoutGround(plot: PlotState, layout: ResolvedLayout, row: number, col: number, size: number): number {
+  let changed = 0;
+  for (const idx of footprint(row, col, size)) {
+    const key = indexKey(idx);
+    const want = layout.groundTiles[key];
+    if (want === undefined || !(key in plot.groundOverrides)) continue;
+    if (plot.groundOverrides[key] !== want) changed += 1;
+    if (plot.groundTiles[key] === want) delete plot.groundOverrides[key];
+    else plot.groundOverrides[key] = want;
+  }
+  return changed;
 }
 
 const matches = (p: PlantState, d: ResolvedLayout["plants"][number]) =>
@@ -161,18 +182,32 @@ export function applyStepLayout(
     removeByPlayer(plot, p, ctx, scratch, "step change");
   }
 
+  // Game rule: the ground under a standing plant can't be changed. Plants that stay through the
+  // step change (spawns outside the new layout, layout inputs, identical plants) keep the ground
+  // they stand on, Chorus End Stone included; only free cells take the new step's ground.
+  const keptGround: Record<string, string> = {};
+  for (const p of plot.plants) {
+    for (const idx of footprint(p.row, p.col, p.size)) {
+      const key = indexKey(idx);
+      const g = plot.groundOverrides[key] ?? plot.groundTiles[key];
+      if (g !== undefined) keptGround[key] = g;
+    }
+  }
+
   // Effort: each cell whose ground the new step needs changed is a ground block swapped (a step
   // change counts it at the step-change scale). Cells the layout leaves unpainted are left as they are.
   if (mode === "step") {
     let changed = 0;
     for (const key in layout.groundTiles) {
+      if (key in keptGround) continue;
       if ((plot.groundOverrides[key] ?? plot.groundTiles[key]) !== layout.groundTiles[key]) changed += 1;
     }
     effort(ctx.state, "ground", changed);
   }
   plot.slots = layout.slots.map((s) => ({ ...s }));
   plot.groundTiles = { ...layout.groundTiles };
-  plot.groundOverrides = {}; // Chorus ground changes last only within a step
+  plot.groundOverrides = {}; // Chorus ground changes on free cells last only within a step
+  for (const key in keptGround) if (plot.groundTiles[key] !== keptGround[key]) plot.groundOverrides[key] = keptGround[key];
   plot.slotIneligibleCycles = {};
   plot.watchStatus = {};
   closePlotDebts(ctx.state, plot.id);
