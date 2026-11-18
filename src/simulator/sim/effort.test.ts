@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EFFORT_WEIGHTS } from "../config";
+import { EFFORT_WEIGHTS, STEP_CHANGE_EFFORT_SCALE } from "../config";
 import { engine, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, singlePlot, start, step, TIMER_ONLY } from "../testHelpers";
 import { effortPerSession } from "./effort";
 import type { ActivitySchedule } from "./state";
@@ -12,9 +12,9 @@ const NO_WATER = { waterLossMin: 0, waterLossMax: 0 };
 describe("effort counters", () => {
   it("starts at zero and stays there while the player is never online", () => {
     const s = start(singlePlot(layout([["wheat", 0, 0]]), { activity: NEVER_ACTIVE }));
-    expect(s.summary.effort).toEqual({ sessions: 0, total: 0, peak: 0, counts: {} });
+    expect(s.summary.effort).toEqual({ sessions: 0, total: 0, peak: 0, counts: {}, weighted: {} });
     const r = engine.run(s, 10);
-    expect(r.state.summary.effort).toEqual({ sessions: 0, total: 0, peak: 0, counts: {} });
+    expect(r.state.summary.effort).toEqual({ sessions: 0, total: 0, peak: 0, counts: {}, weighted: {} });
   });
 
   it("counts a session per online cycle and watering once per plot only when something needed water", () => {
@@ -65,7 +65,7 @@ describe("effort counters", () => {
     expect(e.counts.stepChange).toBe(1);
     expect(e.sessions).toBe(3);
     // The step-change session replaces the crop (remove + place) and so is the peak.
-    expect(e.peak).toBeGreaterThanOrEqual(EFFORT_WEIGHTS.stepChange);
+    expect(e.peak).toBeGreaterThan(0);
     expect(e.peak).toBeLessThanOrEqual(e.total);
     expect(effortPerSession(e)).toBeCloseTo(e.total / 3);
   });
@@ -98,7 +98,31 @@ describe("effort counters", () => {
     const e = r.state.summary.effort!;
     expect(r.events.filter((x) => x.kind === "placed")).toHaveLength(2); // the replant and the step's crop
     expect(e.counts).toEqual({ water: 1, harvest: 1, replant: 1, stepChange: 1 });
-    expect(e.total).toBe(EFFORT_WEIGHTS.water + EFFORT_WEIGHTS.harvest + EFFORT_WEIGHTS.replant + EFFORT_WEIGHTS.stepChange);
+    // The step's crop is planted as part of the step change: at the reduced weight.
+    expect(e.total).toBe(EFFORT_WEIGHTS.water + EFFORT_WEIGHTS.harvest + EFFORT_WEIGHTS.replant * STEP_CHANGE_EFFORT_SCALE);
+    expect(e.weighted).toEqual({ water: 1, harvest: 1, replant: EFFORT_WEIGHTS.replant * STEP_CHANGE_EFFORT_SCALE });
+  });
+
+  it("weights a step change's own breaks and placements at the reduced scale, with nothing flat on top", () => {
+    const sc = scenario([flow([step("one", layout([["wheat", 0, 0]]), [{ kind: "cycles", n: 2 }]), step("two", layout([["carrot", 0, 0], ["fire", 5, 5]]))])], {
+      activity: ONLINE,
+      config: NO_WATER,
+    });
+    const r = engine.run(start(sc), 2);
+    const e = r.state.summary.effort!;
+    expect(e.counts).toMatchObject({ stepChange: 1, remove: 1, replant: 1, place: 1 });
+    const scaled = (EFFORT_WEIGHTS.remove + EFFORT_WEIGHTS.replant + EFFORT_WEIGHTS.place) * STEP_CHANGE_EFFORT_SCALE;
+    expect(e.total).toBeCloseTo(scaled + (e.counts.water ?? 0) * EFFORT_WEIGHTS.water);
+    expect(e.weighted?.stepChange).toBeUndefined();
+  });
+
+  it("counts a Noctilume time change once per session for all plots", () => {
+    const sc = scenario([flow([step("a", layout())]), flow([step("b", layout())])], { activity: ONLINE, config: NO_WATER });
+    const s = start(sc, TIMER_ONLY);
+    inject(s, 1, "noctilume", 4, 4, "spawned", { stage: 0 }, TIMER_ONLY);
+    inject(s, 2, "noctilume", 4, 4, "spawned", { stage: 0 }, TIMER_ONLY);
+    const e = TIMER_ONLY.run(s, 1).state.summary.effort!;
+    expect(e.counts.noctilume).toBe(1);
   });
 
   it("still counts breaking a plant put down in an earlier session", () => {

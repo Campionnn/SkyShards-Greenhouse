@@ -1,12 +1,14 @@
 import React from "react";
 import { EFFORT_WEIGHTS, type RunSummary } from "../../simulator";
+import { STEP_CHANGE_EFFORT_SCALE } from "../../simulator/config";
 import { effortResult } from "../../leaderboard/result";
-import { EFFORT_LABEL, effortLevel } from "../flows/flowsDisplay";
+import { EFFORT_LABEL, effortLevel, effortRows } from "../flows/flowsDisplay";
 import { formatCount, formatRate } from "./format";
 import { ResultCard } from "./page/ResultCard";
 
 /** "Watering 1, Harvests 1, ..." in the engine's order, for the help text. */
 const WEIGHT_LIST = Object.entries(EFFORT_WEIGHTS)
+  .filter(([, w]) => w > 0)
   .map(([k, w]) => `${EFFORT_LABEL[k] ?? k} ${w}`)
   .join(", ");
 
@@ -23,10 +25,7 @@ export const EffortPanel: React.FC<{ summary: RunSummary; className?: string }> 
   const none = effort.sessions === 0;
   const level = effortLevel(none ? null : effort.avg);
 
-  const kinds = Object.entries(effort.byKind)
-    .map(([k, n]) => ({ k, label: EFFORT_LABEL[k] ?? k, n: n ?? 0, w: (n ?? 0) * (EFFORT_WEIGHTS[k as keyof typeof EFFORT_WEIGHTS] ?? 1) }))
-    .filter((r) => r.n > 0)
-    .sort((a, b) => b.w - a.w);
+  const kinds = effortRows(effort).map((r) => ({ ...r, label: EFFORT_LABEL[r.k] ?? r.k }));
   const total = kinds.reduce((s, r) => s + r.w, 0);
   const shown = kinds.length > RAMP.length ? kinds.slice(0, RAMP.length - 1) : kinds;
   const rest = kinds.slice(shown.length);
@@ -43,8 +42,9 @@ export const EffortPanel: React.FC<{ summary: RunSummary; className?: string }> 
         <>
           <p>How much work the player does each time they log in. The leaderboard shows the same numbers.</p>
           <p>
-            A weighted count of what the player does while online: {WEIGHT_LIST}. Watering a plot counts once per login, however many plants need it. A step change
-            counts on top of what it places and breaks, and its ground comes with it. Something put down and broken again in the same login (a crop replanted, then
+            A weighted count of what the player does while online: {WEIGHT_LIST}. Watering a plot counts once per login, however many plants need it, and a Noctilume
+            time change once per login for all plots. Everything a step change does (breaking the old layout, placing the new one) counts at{" "}
+            {STEP_CHANGE_EFFORT_SCALE}× weight, since rebuilding in one go is easier, and its ground comes with it. Something put down and broken again in the same login (a crop replanted, then
             cleared by a step change) counts for neither. Average per login and the heaviest login so far.
           </p>
         </>

@@ -73,10 +73,13 @@ export const isFreePlacedItem = (kindId: string, config?: Pick<SimConfig, "freeP
  * (minigame kinds count `minigame` instead), each base crop replanted, each item placed outside
  * setup, each plant the player breaks or clears (one click, like a harvest), each placed item
  * swapped before decay, root clearing once per plot, each ground block fixed, each gate
- * interaction, a Noctilume time change once per plot, each step change (on top of the places and
- * breaks it causes; the new step's ground comes with it), and a Bazaar visit once per session
- * anything was bought or sold. Work a step change undoes in the same session (a crop replanted or
- * an item placed earlier that session, broken by the step change) counts for neither.
+ * interaction, a Noctilume time change once per session (all plots share one day/night cycle), and
+ * a Bazaar visit once per session anything was bought or sold. A step change itself weighs nothing:
+ * what it does (breaking the old layout, placing the new one, the harvests right after) counts at
+ * `STEP_CHANGE_EFFORT_SCALE` of the usual weights, since rebuilding in one go is easier than the
+ * same actions spread over logins; the new step's ground comes with it. Work a step change undoes
+ * in the same session (a crop replanted or an item placed earlier that session, broken by the step
+ * change) counts for neither.
  */
 export const EFFORT_WEIGHTS: Readonly<Record<EffortKind, number>> = {
   water: 1,
@@ -91,9 +94,12 @@ export const EFFORT_WEIGHTS: Readonly<Record<EffortKind, number>> = {
   ground: 1,
   gate: 1,
   noctilume: 1,
-  stepChange: 2,
+  // Counted (how many step changes) but weightless: the rebuild's own actions carry the work.
+  stepChange: 0,
   bazaar: 2,
 };
+/** The weight scale for everything a step change does (sim/effort.ts `duringStepChange`). */
+export const STEP_CHANGE_EFFORT_SCALE = 0.5;
 /** Harvests that are a minigame in game (PlantBoy Advance, Stoplight Petal, Phantomleaf). */
 export const MINIGAME_HARVEST_KINDS: readonly string[] = ["plantboy_advance", "stoplight_petal", "phantomleaf"];
 

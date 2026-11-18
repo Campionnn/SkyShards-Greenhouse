@@ -30,6 +30,8 @@ export interface EffortResult {
   peak: number;
   /** Raw action counts per session, by kind. */
   byKind: Partial<Record<EffortKind, number>>;
+  /** Weighted effort per session, by kind (step-change work scaled down). Missing on older cells. */
+  weightedByKind?: Partial<Record<EffortKind, number>>;
 }
 
 /** Average layout cells left empty for lack of stock, for one (plot, step, item). */
@@ -167,7 +169,10 @@ export function effortResult(e: EffortSummary | undefined): EffortResult {
   if (!e || e.sessions === 0) return { sessions: 0, avg: 0, peak: 0, byKind: {} };
   const byKind: Partial<Record<EffortKind, number>> = {};
   for (const [k, n] of Object.entries(e.counts)) if (n) byKind[k as EffortKind] = n / e.sessions;
-  return { sessions: e.sessions, avg: e.total / e.sessions, peak: e.peak, byKind };
+  if (!e.weighted) return { sessions: e.sessions, avg: e.total / e.sessions, peak: e.peak, byKind };
+  const weightedByKind: Partial<Record<EffortKind, number>> = {};
+  for (const [k, w] of Object.entries(e.weighted)) if (w) weightedByKind[k as EffortKind] = w / e.sessions;
+  return { sessions: e.sessions, avg: e.total / e.sessions, peak: e.peak, byKind, weightedByKind };
 }
 
 /** Share of the run's time each plot spent in each flow step, from the runners' history. */

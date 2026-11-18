@@ -11,7 +11,7 @@ import { FarmPicture } from "../guide/FarmPicture";
 import { CropImage } from "../shared";
 import { formatCoins, formatRate, nameOf, rarityOf } from "../simulator/format";
 import { cn } from "../ui/cn";
-import { EFFORT_LABEL, effortLevel, SPLIT_STYLE } from "./flowsDisplay";
+import { EFFORT_LABEL, effortLevel, effortRows, SPLIT_STYLE } from "./flowsDisplay";
 
 /**
  * Small visual pieces for the leaderboard: the revenue split bar, the frequency sparkline, layout
@@ -236,10 +236,7 @@ export const EffortMeter: React.FC<{ avg: number | null; peak: number | null; co
  * the work (count × the engine's `EFFORT_WEIGHTS`). Used by the leaderboard detail page.
  */
 export const EffortBreakdown: React.FC<{ effort: EffortResult }> = ({ effort }) => {
-  const rows = Object.entries(effort.byKind)
-    .map(([k, n]) => ({ k, n: n ?? 0, w: (n ?? 0) * (EFFORT_WEIGHTS[k as EffortKind] ?? 1) }))
-    .filter((r) => r.n > 0)
-    .sort((a, b) => b.w - a.w);
+  const rows = effortRows(effort);
   const total = rows.reduce((s, r) => s + r.w, 0);
   if (!rows.length) return <p className="text-secondary text-fg-meta">No actions recorded.</p>;
   return (

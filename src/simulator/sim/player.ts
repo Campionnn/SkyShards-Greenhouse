@@ -7,7 +7,7 @@ import { respawnChance } from "../spawn/respawn";
 import { cellKey, footprint, footprintFits, GRID_SIZE } from "../grid/cells";
 import type { CycleCtx, Phase, TickScratch } from "./context";
 import { wouldDecayWithin } from "./decay";
-import { effort, effortPut, effortWater } from "./effort";
+import { duringStepChange, effort, effortNoctilume, effortPut, effortWater } from "./effort";
 import { harvestPlant } from "./harvest";
 import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLYBEAN, newPlant, removePlant } from "./plants";
 import { layoutInputAt, maintainLayout, neededLayout, removeByPlayer, replacePlacedBeforeDecay } from "./placement";
@@ -71,7 +71,7 @@ function tendGates(plot: PlotState, ctx: CycleCtx): void {
     // time once per visit, however many Noctilumes stand there.
     if (g.noctilumeTime && p.kindId === "noctilume" && p.origin === "spawned" && !isFullyGrown(p)) noctilume = true;
   }
-  if (noctilume) effort(ctx.state, "noctilume");
+  if (noctilume) effortNoctilume(ctx);
 }
 
 /** Break Devourer roots (no drops). Effort: once per plot per session with roots. */
@@ -259,7 +259,8 @@ export const PLAYER_PHASES: readonly Phase[] = [
     id: "harvestAfterStepChange",
     summary: "After a step change, harvest spawns the new layout no longer uses as inputs.",
     run: (plot, ctx, scratch) => {
-      if (scratch.stepChanged) harvestSpawns(plot, ctx, scratch);
+      // Part of the rebuild: weighted like the step change's own work.
+      if (scratch.stepChanged) duringStepChange(() => harvestSpawns(plot, ctx, scratch));
     },
   },
   {

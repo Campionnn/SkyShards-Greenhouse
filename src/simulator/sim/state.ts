@@ -370,6 +370,8 @@ export interface EffortSummary {
   peak: number;
   /** Raw action counts by kind (unweighted). */
   counts: Partial<Record<EffortKind, number>>;
+  /** Weighted effort by kind (sums to `total`; step-change work is scaled down). Missing in old states. */
+  weighted?: Partial<Record<EffortKind, number>>;
 }
 
 /**

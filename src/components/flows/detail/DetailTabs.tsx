@@ -14,7 +14,7 @@ import { Bone, KitButton, KitLabel, Pill, TabPanel, Tabs } from "../../ui/kit";
 import { EmptyCells, FlowWalkthrough, ItemBreakdown, SeedTable, SourceBreakdown, WhatYouNeed } from "../FlowDetailSections";
 import { FlowMarkdown } from "../FlowMarkdown";
 import { MutationChip, SplitBar, SplitLegend } from "../FlowVisuals";
-import { EFFORT_LABEL } from "../flowsDisplay";
+import { EFFORT_LABEL, effortRows } from "../flowsDisplay";
 import { FrequencyChart } from "../FrequencyChart";
 import { simHref } from "../ranking/rankingHelpers";
 import { StatsTestPanel } from "./StatsTestPanel";
@@ -42,13 +42,7 @@ const FORGIVING_HINT =
 /** Work per login by action (F83), weighted by the engine's effort weights. */
 const EffortList: React.FC<{ m: DetailModel }> = ({ m }) => {
   const effort = m.shown?.result.effort;
-  const rows = effort
-    ? Object.entries(effort.byKind)
-        .map(([k, n]) => ({ k, n: n ?? 0, weight: EFFORT_WEIGHTS[k as EffortKind] ?? 1 }))
-        .map((r) => ({ ...r, w: r.n * r.weight }))
-        .filter((r) => r.n > 0)
-        .sort((a, b) => b.w - a.w)
-    : [];
+  const rows = effort ? effortRows(effort).map((r) => ({ ...r, weight: EFFORT_WEIGHTS[r.k as EffortKind] ?? 1 })) : [];
   if (!rows.length) return <p className="text-secondary text-fg-meta">{effort ? "No actions recorded." : "Not verified at this frequency yet."}</p>;
   const total = rows.reduce((s, r) => s + r.w, 0);
   return (

@@ -1,5 +1,5 @@
-import { EFFORT_WEIGHTS, MINIGAME_HARVEST_KINDS } from "../config";
-import type { TickScratch } from "./context";
+import { EFFORT_WEIGHTS, MINIGAME_HARVEST_KINDS, STEP_CHANGE_EFFORT_SCALE } from "../config";
+import type { CycleCtx, TickScratch } from "./context";
 import type { EffortKind, EffortSummary, SimulationState } from "./state";
 
 /**
@@ -9,15 +9,33 @@ import type { EffortKind, EffortSummary, SimulationState } from "./state";
  * each online session: `sessions += 1` and the session's weighted effort becomes `peak` if it is
  * the largest so far. Plain data, no RNG; never changes what the simulation does.
  *
- * Two rules keep it from counting work a player wouldn't do (both per plot and per session, kept
- * in the cycle's `TickScratch`, never in state):
- * - watering a plot counts once, however many times it is watered (`effortWater`);
+ * Three rules keep it from counting work a player wouldn't do (per plot and per session, kept
+ * in the cycle's `TickScratch` / `CycleCtx`, never in state):
+ * - watering a plot counts once, however many times it is watered (`effortWater`); a Noctilume
+ *   time change counts once per session for every plot together (one day/night cycle);
  * - a plant the player put down this session and breaks again in the same session (a base crop
- *   replanted, then broken by the step change) counts for neither (`effortPut` / `effortBreak`).
+ *   replanted, then broken by the step change) counts for neither (`effortPut` / `effortBreak`);
+ * - everything a step change does (its harvests, breaks, placements) is one rebuild in one go and
+ *   counts at `STEP_CHANGE_EFFORT_SCALE` of its weight (`duringStepChange`); the step change
+ *   itself adds nothing on top.
  */
 
+/** The weight scale for actions being counted now (lowered inside `duringStepChange`). */
+let scale = 1;
+
+/** Run `fn` with every action it counts weighted at `STEP_CHANGE_EFFORT_SCALE`. */
+export function duringStepChange<T>(fn: () => T): T {
+  const before = scale;
+  scale = STEP_CHANGE_EFFORT_SCALE;
+  try {
+    return fn();
+  } finally {
+    scale = before;
+  }
+}
+
 export function zeroEffort(): EffortSummary {
-  return { sessions: 0, total: 0, peak: 0, counts: {} };
+  return { sessions: 0, total: 0, peak: 0, counts: {}, weighted: {} };
 }
 
 /** The state's effort summary, created on first use for states saved before it existed. */
@@ -25,22 +43,28 @@ export function effortOf(state: SimulationState): EffortSummary {
   return (state.summary.effort ??= zeroEffort());
 }
 
-/** Count `n` actions of a kind. */
-export function effort(state: SimulationState, kind: EffortKind, n = 1): void {
-  if (n <= 0) return;
-  const e = effortOf(state);
-  e.counts[kind] = (e.counts[kind] ?? 0) + n;
-  e.total += n * EFFORT_WEIGHTS[kind];
+function add(e: EffortSummary, kind: EffortKind, n: number, w: number): void {
+  const counts = e.counts[kind] = (e.counts[kind] ?? 0) + n;
+  if (counts === 0) delete e.counts[kind];
+  if (w === 0) return;
+  const weighted = (e.weighted ??= {});
+  if ((weighted[kind] = (weighted[kind] ?? 0) + w) === 0) delete weighted[kind];
+  e.total += w;
 }
 
-/** Take back one action counted earlier this session (a later action undid it). */
-function uncount(state: SimulationState, kind: EffortKind): void {
+/** Count `n` actions of a kind; returns the weight each was counted at. */
+export function effort(state: SimulationState, kind: EffortKind, n = 1): number {
+  const each = EFFORT_WEIGHTS[kind] * scale;
+  if (n <= 0) return each;
+  add(effortOf(state), kind, n, n * each);
+  return each;
+}
+
+/** Take back one action counted earlier this session at weight `w` (a later action undid it). */
+function uncount(state: SimulationState, kind: EffortKind, w: number): void {
   const e = effortOf(state);
-  const n = e.counts[kind] ?? 0;
-  if (n <= 0) return;
-  if (n === 1) delete e.counts[kind];
-  else e.counts[kind] = n - 1;
-  e.total -= EFFORT_WEIGHTS[kind];
+  if ((e.counts[kind] ?? 0) <= 0) return;
+  add(e, kind, -1, -w);
 }
 
 /** A harvest is a `minigame` action for the minigame kinds, else `harvest`. */
@@ -55,13 +79,20 @@ export function effortWater(state: SimulationState, scratch: TickScratch): void 
   effort(state, "water");
 }
 
+/** The player set the time for a Noctilume. Counts once per session for all plots (`ctx.effortNoctilume`). */
+export function effortNoctilume(ctx: CycleCtx): void {
+  if (ctx.effortNoctilume) return;
+  ctx.effortNoctilume = true;
+  effort(ctx.state, "noctilume");
+}
+
 /**
  * The player put a plant down (`replant`, `place`, or `replace` for a swap before decay). It is
  * remembered for the rest of the session, so breaking it again before logging off undoes the count.
  */
 export function effortPut(state: SimulationState, scratch: TickScratch, plantId: number, kind: EffortKind): void {
-  effort(state, kind);
-  (scratch.effortPlaced ??= new Map()).set(plantId, kind);
+  const w = effort(state, kind);
+  (scratch.effortPlaced ??= new Map()).set(plantId, { kind, w });
 }
 
 /**
@@ -76,8 +107,8 @@ export function effortBreak(state: SimulationState, scratch: TickScratch, plantI
     return;
   }
   scratch.effortPlaced!.delete(plantId);
-  uncount(state, put);
-  if (put === "replace") effort(state, "remove");
+  uncount(state, put.kind, put.w);
+  if (put.kind === "replace") effort(state, "remove");
 }
 
 /** End of an online session: count it and keep the largest session's effort as `peak`. */

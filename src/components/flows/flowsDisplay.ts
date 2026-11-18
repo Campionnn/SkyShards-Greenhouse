@@ -1,5 +1,8 @@
 import { useMemo } from "react";
 import type { FlowDetail } from "../../leaderboard/api";
+import type { EffortResult } from "../../leaderboard/result";
+import { EFFORT_WEIGHTS } from "../../simulator/config";
+import type { EffortKind } from "../../simulator/sim/state";
 import { rarityOf } from "../simulator/format";
 
 /** Non-component helpers for the leaderboard components (kept apart for fast refresh). */
@@ -26,9 +29,22 @@ export const EFFORT_LABEL: Record<string, string> = {
   ground: "Ground fixes",
   gate: "Gate interactions",
   noctilume: "Noctilume time changes",
+  // `stepChange` weighs nothing (the rebuild's own actions carry it); the label stays for old results.
   stepChange: "Step changes",
   bazaar: "Bazaar visits",
 };
+
+/**
+ * Effort per login by action, heaviest first: `n` actions and `w` weighted effort per login. Uses
+ * the engine's own weighted totals when the result has them (step-change work counts at a reduced
+ * weight), else count × `EFFORT_WEIGHTS` (older results). Weightless kinds (step changes) are left out.
+ */
+export function effortRows(effort: EffortResult): { k: string; n: number; w: number }[] {
+  return Object.entries(effort.byKind)
+    .map(([k, n]) => ({ k, n: n ?? 0, w: effort.weightedByKind ? (effort.weightedByKind[k as EffortKind] ?? 0) : (n ?? 0) * (EFFORT_WEIGHTS[k as EffortKind] ?? 1) }))
+    .filter((r) => r.n > 0 && r.w > 0)
+    .sort((a, b) => b.w - a.w);
+}
 
 /** The highest rarity among some mutations (for a row's rarity label). */
 export function topRarity(ids: readonly string[]): string | null {
@@ -47,9 +63,9 @@ export function topRarity(ids: readonly string[]): string | null {
  */
 export function effortLevel(avg: number | null): { bars: number; label: string; tone: string } {
   if (avg === null) return { bars: 0, label: "unknown", tone: "text-fg-meta" };
-  if (avg < 10) return { bars: 1, label: "Relaxed", tone: "text-fg-muted" };
-  if (avg < 25) return { bars: 2, label: "Light", tone: "text-fg-muted" };
-  if (avg < 60) return { bars: 3, label: "Moderate", tone: "text-fg-muted" };
+  if (avg < 25) return { bars: 1, label: "Relaxed", tone: "text-fg-muted" };
+  if (avg < 50) return { bars: 2, label: "Light", tone: "text-fg-muted" };
+  if (avg < 100) return { bars: 3, label: "Moderate", tone: "text-fg-muted" };
   if (avg < 150) return { bars: 4, label: "Busy", tone: "text-fg-muted" };
   return { bars: 5, label: "Intense", tone: "text-fg-muted" };
 }

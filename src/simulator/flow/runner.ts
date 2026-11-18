@@ -1,6 +1,6 @@
 import { isFreePlacedItem } from "../config";
 import type { CycleCtx, TickScratch } from "../sim/context";
-import { effort } from "../sim/effort";
+import { duringStepChange, effort } from "../sim/effort";
 import { canBuy } from "../sim/market";
 import { applyStepLayout } from "../sim/placement";
 import type { FlowRunnerState, PlotState, ScenarioPlot, TickEvent } from "../sim/state";
@@ -72,8 +72,11 @@ export function transition(
     stepIndex: runner.stepIndex,
     ...(skipped.length ? { skipped } : {}),
   });
-  effort(ctx.state, "stepChange");
-  applyStepLayout(plot, ctx.layoutFor(plot.id), ctx, scratch, !!to.fullClear);
+  // The rebuild is one job: its breaks and placements count at a reduced weight, nothing extra on top.
+  duringStepChange(() => {
+    effort(ctx.state, "stepChange");
+    applyStepLayout(plot, ctx.layoutFor(plot.id), ctx, scratch, !!to.fullClear);
+  });
   resetStepCounters(runner);
 }
 

@@ -39,7 +39,7 @@ export interface TickScratch {
   /** Effort (sim/effort.ts): this plot's watering is already counted this session. */
   effortWatered?: boolean;
   /** Effort (sim/effort.ts): plants the player put down this session, by id, and the action counted for it. */
-  effortPlaced?: Map<number, EffortKind>;
+  effortPlaced?: Map<number, { kind: EffortKind; w: number }>;
 }
 
 export const newScratch = (forced?: ForcedEffects): TickScratch => ({
@@ -77,6 +77,8 @@ export interface CycleCtx {
   cyclesUntilNextActive(): number;
   /** The scenario's scripts (src/simulator/script), or null when it has none. */
   scripts: ScriptRuntime | null;
+  /** Effort (sim/effort.ts): a Noctilume time change is already counted this session (all plots). */
+  effortNoctilume?: boolean;
 }
 
 /** One named step of `TICK_PHASES` (sim/tick.ts) or, on active cycles, `PLAYER_PHASES` (sim/player.ts). */
