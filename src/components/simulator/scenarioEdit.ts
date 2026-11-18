@@ -199,6 +199,15 @@ export const DEFAULT_FLOW_EXPORT_OPTIONS: FlowExportOptions = {
   seed: false,
 };
 
+export const DEFAULT_EXPORT_FILE_NAME = "greenhouse-flows";
+
+/** A safe download name: strips characters file systems reject, trims, falls back to the default, and ends in ".json". */
+export function exportFileName(raw: string): string {
+  // eslint-disable-next-line no-control-regex
+  const base = raw.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "").trim().replace(/\.json$/i, "").replace(/[. ]+$/, "");
+  return `${base || DEFAULT_EXPORT_FILE_NAME}.json`;
+}
+
 type ExportedSettings = Partial<Omit<Scenario["settings"], "playerStats" | "policies" | "config">> & {
   playerStats?: Partial<Scenario["settings"]["playerStats"]>;
   policies?: Scenario["plots"][number]["policies"];

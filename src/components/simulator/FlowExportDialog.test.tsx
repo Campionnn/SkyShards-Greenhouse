@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { FlowExportPanel } from "./FlowExportDialog";
+import { exportFileName } from "./scenarioEdit";
 
 const render = () => renderToStaticMarkup(<FlowExportPanel onClose={() => undefined} onExport={() => undefined} />);
 
@@ -27,5 +28,18 @@ describe("flow export options", () => {
     expect(html).toContain("Download JSON");
     expect(html).toContain("Cancel");
     expect(html).toContain('aria-label="Close export dialog"');
+  });
+
+  it("offers a file name field defaulting to greenhouse-flows", () => {
+    const html = render();
+    expect(html).toContain("File name");
+    expect(html).toMatch(/id="flow-export-file-name"[^>]*value="greenhouse-flows"|value="greenhouse-flows"[^>]*id="flow-export-file-name"/);
+  });
+
+  it("sanitizes the file name and always ends in .json", () => {
+    expect(exportFileName("Rose Dragon")).toBe("Rose Dragon.json");
+    expect(exportFileName("my:flow?.json")).toBe("myflow.json");
+    expect(exportFileName("  ")).toBe("greenhouse-flows.json");
+    expect(exportFileName("a/b\\c. ")).toBe("abc.json");
   });
 });

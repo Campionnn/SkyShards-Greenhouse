@@ -16,12 +16,12 @@ export function useShare(scenario: Scenario, onChange: (sc: Scenario) => void) {
   const [importing, setImporting] = useState(false);
   const [saved, setSaved] = useState<null | "save" | "load">(null);
 
-  const exportJson = async (options: FlowExportOptions) => {
+  const exportJson = async (options: FlowExportOptions, fileName: string) => {
     const text = JSON.stringify(exportFlows(scenario, options), null, 2);
     const blob = new Blob([text], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "greenhouse-flows.json";
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(a.href);
     setExporting(false);

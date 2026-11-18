@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
 import { BodyPortal, PortalHost } from "../ui";
-import { DEFAULT_FLOW_EXPORT_OPTIONS, type FlowExportOptions } from "./scenarioEdit";
+import { KitInput } from "../ui/kit";
+import { DEFAULT_EXPORT_FILE_NAME, DEFAULT_FLOW_EXPORT_OPTIONS, exportFileName, type FlowExportOptions } from "./scenarioEdit";
 import { buttonClass } from "./styles";
 
 const EXPORT_SECTIONS: { key: keyof FlowExportOptions; label: string; description: string }[] = [
@@ -13,7 +14,7 @@ const EXPORT_SECTIONS: { key: keyof FlowExportOptions; label: string; descriptio
   { key: "seed", label: "Random seed", description: "The seed used for reproducible simulation results." },
 ];
 
-type ExportProps = { onClose: () => void; onExport: (options: FlowExportOptions) => void };
+type ExportProps = { onClose: () => void; onExport: (options: FlowExportOptions, fileName: string) => void };
 
 /** Native modal dialog supplies Escape dismissal and an inert background; Tab wraps within it. */
 export const FlowExportDialog: React.FC<ExportProps> = (props) => {
@@ -70,10 +71,11 @@ export const FlowExportDialog: React.FC<ExportProps> = (props) => {
 /** Kept separate from the portal for server-render regression tests. */
 export const FlowExportPanel: React.FC<ExportProps> = ({ onClose, onExport }) => {
   const [options, setOptions] = useState<FlowExportOptions>(() => ({ ...DEFAULT_FLOW_EXPORT_OPTIONS }));
+  const [fileName, setFileName] = useState(DEFAULT_EXPORT_FILE_NAME);
   return (
     <form
       className="flex flex-col max-h-[calc(100dvh-2rem)]"
-      onSubmit={(e) => { e.preventDefault(); onExport(options); }}
+      onSubmit={(e) => { e.preventDefault(); onExport(options, exportFileName(fileName)); }}
     >
       <div className="flex items-center justify-between gap-3 border-b border-slate-700 px-4 py-3 sm:px-5">
         <h2 id="flow-export-title" className="text-base font-semibold text-slate-100">Export flows</h2>
@@ -85,6 +87,23 @@ export const FlowExportPanel: React.FC<ExportProps> = ({ onClose, onExport }) =>
         <p id="flow-export-description" className="text-xs leading-relaxed text-slate-400">
           Choose what to include in your JSON. By default, only flows are exported, just like before.
         </p>
+        <div>
+          <label htmlFor="flow-export-file-name" className="mb-1.5 block text-xs font-medium text-slate-200">File name</label>
+          <div className="flex items-center gap-1.5">
+            <KitInput
+              id="flow-export-file-name"
+              value={fileName}
+              maxLength={100}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => setFileName(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              placeholder={DEFAULT_EXPORT_FILE_NAME}
+              className="h-8 min-w-0 flex-1"
+            />
+            <span className="text-xs text-slate-500">.json</span>
+          </div>
+        </div>
         <label className="flex items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3">
           <input type="checkbox" checked disabled className="mt-0.5 accent-emerald-500" />
           <span className="min-w-0">
