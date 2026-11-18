@@ -29,6 +29,8 @@ import { plotUptime } from "../components/simulator/page/plotUptime";
 import { ScenarioTab } from "../components/simulator/page/ScenarioTab";
 import { SettingsDrawer, type DrawerTab } from "../components/simulator/page/SettingsDrawer";
 import { useShare } from "../components/simulator/page/useShare";
+import { FileDropOverlay } from "../components/simulator/page/FileDropOverlay";
+import { readFlowsFile, useFileDrop, useFlowsImport } from "../components/simulator/page/flowsImport";
 import { consumeSubmitReopen } from "../components/simulator/submitDraft";
 import { LeaderboardTab } from "../components/simulator/page/LeaderboardTab";
 import { applyRules, boardFrom, type Board, type RuleKind } from "../leaderboard/rules";
@@ -411,6 +413,21 @@ export const SimulatorPage: React.FC = () => {
 
   const share = useShare(scenario, setScenario);
 
+  // Dropping an exported flows .json anywhere on the page imports it (same as Flows → Import, with Undo).
+  // Off while an overlay (flow editor, script editor, from-nothing preview) is up; dialogs block it themselves.
+  const importFlowsText = useFlowsImport(scenario, setScenario);
+  const dropFile = useCallback(
+    (file: File) => {
+      readFlowsFile(file)
+        .then((text) => {
+          if (importFlowsText(text, file.name)) setDrawerOpen(false);
+        })
+        .catch(() => toast({ title: `Could not read ${file.name}`, description: "Try dropping it again, or use Flows → Import.", variant: "error" }));
+    },
+    [importFlowsText, toast]
+  );
+  const dropping = useFileDrop(dropFile, editingPlot === null && scripting === null && !preview && fromNothing.preparing === null);
+
   /**
    * Start over: every plot, flow, script, the starting inventory and all settings (player stats,
    * online schedule, actions, advanced, seed) back to a first visit. The new scenario restarts the
@@ -701,6 +718,7 @@ export const SimulatorPage: React.FC = () => {
         }
       />
       {share.dialogs}
+      <FileDropOverlay active={dropping} />
 
       {editingPlot !== null && scenario.plots.some((p) => p.id === editingPlot) && (
         <FlowGraphEditor
