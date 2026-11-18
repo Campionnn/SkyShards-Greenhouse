@@ -5,6 +5,7 @@ import { cn } from "../ui/cn";
 import { useSlidingIndicator } from "../ui/useSlidingIndicator";
 import { DiscordIcon } from "../ui/DiscordIcon";
 import { DISCORD_PATH } from "../../seo/routes";
+import { ThemeMenu } from "./ThemeMenu";
 
 // Site header (docs/design-system/foundations.md "Site chrome"). Neutral links; the current page has
 // the select-colour underline, like the kit's Tabs. One brand mark: the aqua All-in Aloe frame.
@@ -130,6 +131,8 @@ export const Navigation: React.FC = () => {
           <ExternalLink aria-hidden className="size-3.5" />
           <span className="sr-only">(opens in a new tab)</span>
         </a>
+
+        <ThemeMenu />
 
         <button
           type="button"

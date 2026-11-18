@@ -123,6 +123,66 @@
   --ease-glide: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
+/* ---- Theme: "Slate" (the site's colours before 2026-10-30, opt-in from the header) ----------
+   Colours only: the blue-tinted Tailwind slate neutrals with emerald go, selection and focus, and
+   the original Tailwind yellow / amber / sky / violet / red-300 ramps. Set by src/theme/theme.ts
+   (html[data-theme="slate"], applied before first paint by index.html). Contrast-tested like the
+   default (src/__tests__/tokens.test.ts). */
+:root[data-theme="slate"] {
+  --color-slate-50: oklch(98.4% 0.003 247.858);
+  --color-slate-100: oklch(96.8% 0.007 247.896);
+  --color-slate-200: oklch(92.9% 0.013 255.508);
+  --color-slate-300: oklch(86.9% 0.022 252.894);
+  --color-slate-400: oklch(70.4% 0.04 256.788);
+  --color-slate-500: oklch(55.4% 0.046 257.417);
+  --color-slate-600: oklch(44.6% 0.043 257.281);
+  --color-slate-700: oklch(37.2% 0.044 257.287);
+  --color-slate-800: oklch(27.9% 0.041 260.031);
+  --color-slate-900: oklch(20.8% 0.042 265.755);
+  --color-slate-950: oklch(12.9% 0.042 264.695);
+  --color-yellow-300: oklch(90.5% 0.182 98.111);
+  --color-yellow-400: oklch(85.2% 0.199 91.936);
+  --color-yellow-500: oklch(79.5% 0.184 86.047);
+  --color-amber-200: oklch(92.4% 0.12 95.746);
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-400: oklch(82.8% 0.189 84.429);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-sky-300: oklch(82.8% 0.111 230.318);
+  --color-sky-400: oklch(74.6% 0.16 232.661);
+  --color-sky-500: oklch(68.5% 0.169 237.323);
+  --color-violet-300: oklch(81.1% 0.111 293.571);
+  --color-violet-400: oklch(70.2% 0.183 293.541);
+  --color-violet-500: oklch(60.6% 0.25 292.717);
+  --color-red-300: oklch(80.8% 0.114 19.571);
+
+  --color-surface-page: var(--color-slate-950);
+  --color-surface-panel: var(--color-slate-900);
+  --color-surface-card: color-mix(in oklab, var(--color-slate-800) 40%, transparent);
+  --color-surface-well: color-mix(in oklab, var(--color-slate-950) 50%, transparent);
+  --color-surface-raised: color-mix(in oklab, var(--color-slate-900) 95%, transparent);
+  --color-surface-hover: color-mix(in oklab, var(--color-slate-700) 50%, transparent);
+  --color-surface-control: color-mix(in oklab, var(--color-slate-800) 60%, transparent);
+
+  --color-line: color-mix(in oklab, var(--color-slate-700) 50%, transparent);
+  --color-line-strong: color-mix(in oklab, var(--color-slate-600) 40%, transparent);
+  --color-line-control: var(--color-slate-500);
+
+  --color-fg: var(--color-slate-100);
+  --color-fg-body: var(--color-slate-200);
+  --color-fg-muted: var(--color-slate-400);
+  --color-fg-meta: oklch(68% 0.042 257);
+  --color-fg-disabled: var(--color-slate-600);
+
+  --color-coin: var(--color-yellow-400);
+  --color-warn: var(--color-amber-300);
+  --color-problem: var(--color-red-300);
+  --color-script: var(--color-sky-300);
+  --color-restart: var(--color-violet-300);
+  --color-focus: var(--color-emerald-400);
+  --color-select: var(--color-emerald-500);
+  --color-select-fg: var(--color-emerald-300);
+}
+
 /* Not Tailwind namespaces: use as z-(--z-popover), duration-(--duration-pop). */
 :root {
   --z-sticky: 20;

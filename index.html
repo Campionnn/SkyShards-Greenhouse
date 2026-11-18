@@ -8,6 +8,13 @@
     <meta name="darkreader-lock" />
     <!-- The page title is set below with the SEO tags; per-route pages replace it at build time (src/seo/routes.ts). -->
 
+    <!-- Colour theme (src/theme/theme.ts), applied before first paint so there is no flash. -->
+    <script>
+      try {
+        if (localStorage.getItem("skyshards-theme") === "slate") document.documentElement.dataset.theme = "slate";
+      } catch (e) {}
+    </script>
+
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=GT-5R3XB2C7"></script>
     <script>

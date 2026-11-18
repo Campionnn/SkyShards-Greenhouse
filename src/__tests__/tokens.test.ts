@@ -48,11 +48,11 @@ export function themeFrom(css: string, overrides: Vars = new Map()): Vars {
   return theme;
 }
 
-/** Every `[data-palette="…"]` block in the stylesheet, as name → overrides. */
+/** Every `[data-palette="…"]` / `[data-theme="…"]` block in the stylesheet, as name → overrides. */
 export function palettesIn(css: string): Map<string, Vars> {
   const out = new Map<string, Vars>();
-  for (const b of blocks(css, /\[data-palette/)) {
-    const name = b.selector.match(/\[data-palette\s*=\s*["']?([\w-]+)["']?\s*\]/)?.[1] ?? b.selector;
+  for (const b of blocks(css, /\[data-(palette|theme)/)) {
+    const name = b.selector.match(/\[data-(?:palette|theme)\s*=\s*["']?([\w-]+)["']?\s*\]/)?.[1] ?? b.selector;
     const prev = out.get(name) ?? new Map();
     for (const [k, v] of declarations(b.body)) prev.set(k, v);
     out.set(name, prev);
