@@ -429,7 +429,12 @@ const PlantDetails: React.FC<{ p: PlantState; m: MutationDef | undefined; cycleS
             <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-0.5">Has</div>
             <EffectChips effects={effective} variant="has" emptyText="nothing" />
             {cancelled.length > 0 && <div className="mt-1 text-[11px] text-slate-500">cancelled: {cancelled.map(getEffectName).join(", ")}</div>}
-            {p.lockedEffects && growing && p.kindId !== "all_in_aloe" && (
+            {p.gate.settling !== undefined && (
+              <div className="mt-1 text-[11px] text-amber-300">
+                Just appeared: until the next tick only harvest boost/loss and immunity work (from its neighbours now); the rest, such as Harvest Bounty and XP, starts after a tick
+              </div>
+            )}
+            {p.lockedEffects && growing && p.kindId !== "all_in_aloe" && p.gate.settling === undefined && (
               <div className="mt-1 text-[11px] text-slate-500">
                 Yield locked at full growth: {p.lockedEffects.length ? p.lockedEffects.map(getEffectName).join(", ") : "no effects"}
               </div>

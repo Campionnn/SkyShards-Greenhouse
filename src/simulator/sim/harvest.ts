@@ -10,7 +10,7 @@ import { ALOE_FRAGMENT, aloeRow, FRAGMENTS_PER_ALOE } from "../growth/aloe";
 import { uniqueCropYieldBonus } from "../growth/clock";
 import type { CycleCtx, TickScratch } from "./context";
 import { effortHarvest } from "./effort";
-import { explode, isPrimedBlastberry } from "./explosion";
+import { explode, isPrimedBlastberry, isSettling, SETTLING_EFFECTS } from "./explosion";
 import { convertAloeFragments, credit } from "./inventory";
 import { JELLYBEAN, removePlant, yieldEffectsLocked } from "./plants";
 import { bump, perPlot } from "./summary";
@@ -36,10 +36,12 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const rng = ctx.state.rng;
   const isMutation = !!data.mutations[p.kindId];
 
-  const locked = yieldEffectsLocked(p) ? p.lockedEffects : null;
+  const settling = isSettling(p);
+  const locked = yieldEffectsLocked(p) && !settling ? p.lockedEffects : null;
   // Unlocked: the effects it holds right now, after whatever the player did earlier this session.
+  // A Shellfruit made by a blast since the last tick has only its yield effects yet (SETTLING_EFFECTS).
   if (!locked) ensureEffects(plot, scratch);
-  const effective: readonly string[] = locked ?? effectiveListShared(p.held);
+  const effective: readonly string[] = locked ?? effectiveListShared(settling ? p.held.filter((e) => SETTLING_EFFECTS.has(e)) : p.held);
   const sum = greenhouseYieldSum(effective, ctx.stats.plantYieldUpgrade, uniqueCropYieldBonus(ctx.uniqueCropCount));
   const def = isMutation ? data.mutations[p.kindId] : data.crops[p.kindId];
   // Jellybean: data.json bundle is the stage-12 (x1) amount; the stage multiplier scales bundle and item count.

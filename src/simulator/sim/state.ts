@@ -64,6 +64,12 @@ export interface PlantState {
     /** Turtlellini: times caught in a Blastberry explosion (2 = Shellfruit). */
     exploded?: number;
     /**
+     * Shellfruit made by a blast: the cycle it appeared. Until the next tick only its yield effects
+     * and immunity work, live from its neighbours (sim/explosion.ts `SETTLING_EFFECTS`); that tick's
+     * growth phase latches every effect and clears this.
+     */
+    settling?: number;
+    /**
      * A mutation item placed from inventory with no greenhouse tick since: breaking it now picks
      * it back up (item returned, sim/placement.ts `removeByPlayer`). "replacement" when the spend was
      * booked as a replacement (undone too). Cleared by the next tick's growth phase.

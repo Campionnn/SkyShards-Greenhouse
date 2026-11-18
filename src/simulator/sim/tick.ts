@@ -96,6 +96,12 @@ function phaseGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void
   for (const p of plot.plants) {
     // A tick has passed since it was placed: breaking it no longer gives the item back (placement.ts `pickUp`).
     if (p.gate.pickup) delete p.gate.pickup;
+    // A Shellfruit a blast made before this tick: every effect works from now on, latched from what
+    // its neighbours give it now (the effects phase just ran). Until now only its yield effects did.
+    if (p.gate.settling !== undefined && p.gate.settling < ctx.cycle) {
+      delete p.gate.settling;
+      p.lockedEffects = effectiveListShared(p.held) as string[];
+    }
     // A placed Blastberry primes on the first tick after placement.
     if (p.kindId === "blastberry" && p.origin === "placed" && !p.isDeadPlant) p.gate.primed = true;
     if (p.isDeadPlant || p.origin === "placed") continue;

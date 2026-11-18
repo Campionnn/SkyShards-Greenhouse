@@ -572,6 +572,47 @@ describe("Turtlellini -> Shellfruit", () => {
     expect(ofKind(r.events, "exploded")).toHaveLength(1);
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "shellfruit", timesMutated: 0, mutatesRemaining: 6, decaySecondsRemaining: 3 * DAY });
   });
+
+  /**
+   * A Turtlellini one blast from Shellfruit at (5,5) and a placed primed Blastberry at (5,6) that
+   * decays this tick. `forced` stands in for neighbours giving the Shellfruit effects.
+   */
+  const aboutToTurn = (opts: { online?: boolean; forced?: string[] } = {}) => {
+    const s = blank({
+      activity: opts.online ? ONLINE : undefined,
+      config: opts.forced ? { forcedEffects: { shellfruit: opts.forced } } : {},
+    });
+    inject(s, 1, "turtlellini", 5, 5, "spawned", { gate: { exploded: 1 } });
+    inject(s, 1, "blastberry", 5, 6, "placed", { gate: { primed: true }, timesMutated: 8, mutatesRemaining: 0, decaySecondsRemaining: 1 });
+    return s;
+  };
+  const GIVEN = ["bonus_drops", "improved_harvest_boost", "improved_xp_boost", "immunity"];
+
+  it("a new Shellfruit has only its yield effects and immunity until a tick has passed, then latches everything", () => {
+    const r = engine.run(aboutToTurn({ forced: GIVEN }), 1);
+    const shell = plantAt(r.state, 1, 5, 5)!;
+    expect(shell.kindId).toBe("shellfruit");
+    expect(shell.gate.settling).toBe(r.state.cycle - 1);
+    expect(shell.lockedEffects).toEqual([]); // harvestable, but yields with SETTLING_EFFECTS of what it holds
+    // The next tick's growth phase latches what its neighbours give it then.
+    const settled = plantAt(engine.run(r.state, 1).state, 1, 5, 5)!;
+    expect(settled.gate.settling).toBeUndefined();
+    expect(settled.lockedEffects).toEqual(expect.arrayContaining(GIVEN));
+  });
+
+  it("harvested on the cycle it appears, its harvest boost counts but Harvest Bounty doesn't roll", () => {
+    const cocoa = (forced?: string[]) => {
+      const r = engine.run(aboutToTurn({ online: true, forced }), 1);
+      const h = ofKind(r.events, "harvested").find((e) => e.kindId === "shellfruit");
+      expect(h).toBeDefined();
+      return { cocoa: h!.drops.cocoa_beans ?? 0, rng: JSON.stringify(r.state.rng) };
+    };
+    const plain = cocoa();
+    const boosted = cocoa(["improved_harvest_boost"]);
+    expect(boosted.cocoa).toBeGreaterThan(plain.cocoa);
+    // Bonus Drops held but not working yet: no bounty rolls, so the RNG ends where it does without it.
+    expect(cocoa(["improved_harvest_boost", "bonus_drops"])).toEqual(boosted);
+  });
 });
 
 describe("predictions use the current counters", () => {
