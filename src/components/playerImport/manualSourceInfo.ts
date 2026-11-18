@@ -6,7 +6,7 @@
  * Source: hypixelskyblock.minecraft.wiki (Account & Profile Upgrades, Rosewater Flask, Mooshroom Cow
  * Pet, Garden Chips, Earthworm / Firefly / Lunar Moth / Mite Shard, Atmospheric Filter, Magic 8 Ball,
  * Crop Fever, Pesthunter Phillip, Harvest Harbinger Potion, Century Cake, Celestial Mason Jar, Melon
- * Juice Mixin, Doug, Zorro's Cape, Anita's Artifact), checked Oct 2026.
+ * Juice Mixin, Dark Cacao Truffle, Doug, Zorro's Cape, Anita's Artifact), checked Oct 2026.
  */
 
 const CHIP_RARITY =
@@ -84,6 +84,10 @@ export const MANUAL_SOURCE_INFO: Record<string, readonly string[]> = {
   melonJuice: [
     "Rare mixin, crafted from 16 Melon Juice and 2 Soggybud. Melon Juice is the Harvest Feast rare crop from Melon.",
     "Lasts as long as the God Potion it is brewed into. The wiki says Hypercharge boosts it since a fix on Oct 28, 2026.",
+  ],
+  darkCacaoTruffle: [
+    "Buy a Dark Cacao Truffle from the Chocolate Shop (Chocolate Factory IV, 2.5b Chocolate, up to 3 per SkyBlock year). It ages +0.1 Cocoa Beans Fortune per hour and becomes a Refined Dark Cacao Truffle at +30 (300 hours).",
+    "Eating a refined one gives +30 Cocoa Beans Fortune for 60 minutes. The first 5 you eat also give +1 Cocoa Beans Fortune each, permanently (read from the API). Not boosted by Hypercharge.",
   ],
   fortunateFeasting: [
     "Tiers I–V cost 50 / 100 / 150 / 200 / 250 Carnival Tokens at Doug. Not boosted by Hypercharge.",
