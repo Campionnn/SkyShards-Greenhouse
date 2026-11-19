@@ -290,6 +290,29 @@ describe("growth", () => {
     expect(plantAt(later, 1, 5, 5)?.held).not.toContain("improved_harvest_boost");
   });
 
+  it("locked effects are never spread: once its suppliers are gone a fully grown plant gives only its own buffs", () => {
+    // Wheat at (5,5) between Nether Wart (improved_harvest_boost) and a Cindershade (effect_spread +
+    // improved_harvest_boost) next to a Cactus (improved_water_retain): it holds and relays all of them.
+    const s = empty();
+    inject(s, 1, "wheat", 5, 5, "planted");
+    inject(s, 1, "nether_wart", 5, 4, "planted");
+    inject(s, 1, "cindershade", 4, 5, "placed");
+    inject(s, 1, "cactus", 3, 5, "planted");
+    inject(s, 1, "carrot", 6, 5, "planted"); // the receiver below the wheat
+    const grown = engine.run(s, 8).state;
+    const wheat = plantAt(grown, 1, 5, 5)!;
+    expect(wheat.lockedEffects).toEqual(expect.arrayContaining(["effect_spread", "improved_harvest_boost"]));
+    // While its spreader stands it is a relay, so the carrot receives what it relays.
+    expect(plantAt(grown, 1, 6, 5)!.held).toContain("improved_harvest_boost");
+    // Remove every supplier. The wheat keeps its locked set (yield) but spreads only what wheat gives.
+    const plot = grown.plots[0];
+    plot.plants = plot.plants.filter((p) => !["nether_wart", "cindershade", "cactus"].includes(p.kindId));
+    const later = engine.run(grown, 1).state;
+    expect(plantAt(later, 1, 5, 5)!.lockedEffects).toEqual(wheat.lockedEffects);
+    expect(plantAt(later, 1, 5, 5)!.held).toEqual(["xp_boost"]); // only what the carrot gives it now
+    expect([...plantAt(later, 1, 6, 5)!.held].sort()).toEqual(["harvest_boost"]); // wheat's own buff only
+  });
+
   it("#4 a gated plant takes no growth step and emits growthBlocked until the player acts", () => {
     const s = empty();
     inject(s, 1, "snoozling", 3, 3, "spawned", { stage: 4 });
