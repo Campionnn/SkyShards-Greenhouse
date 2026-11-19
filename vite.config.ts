@@ -2,8 +2,15 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "path";
-import { writeFileSync, readFileSync, mkdirSync } from "fs";
-import { buildWikiStaticPages, buildRoutePages, buildNotFoundPage, buildSitemap } from "./src/wiki/staticPages";
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from "fs";
+import {
+  buildWikiStaticPages,
+  buildRoutePages,
+  buildNotFoundPage,
+  buildSitemap,
+  buildHomePage,
+  templateImage,
+} from "./src/wiki/staticPages";
 import { buildWikiIndex, SITE_URL } from "./src/wiki/slugs";
 import { SITE_ROUTES, buildRedirects } from "./src/seo/routes";
 import type { GreenhouseDataJSON } from "./src/services/greenhouseDataService";
@@ -32,10 +39,18 @@ const staticPagesPlugin = () => ({
     const template = readFileSync(resolve(distPath, "index.html"), "utf-8");
     const data = JSON.parse(readFileSync(resolve(__dirname, "public/greenhouse/data.json"), "utf-8")) as GreenhouseDataJSON;
 
-    const routePages = buildRoutePages(template);
-    const wikiPages = buildWikiStaticPages(template, data);
+    // Discord cards show the site screenshot only when it is actually deployed
+    // (a missing image would leave an empty gallery tile); else the brand mark.
+    const shot = templateImage(template);
+    const shotFile = shot?.startsWith(`${SITE_URL}/`) ? resolve(distPath, shot.slice(SITE_URL.length + 1)) : null;
+    const screenshotUrl = shotFile && existsSync(shotFile) ? shot : null;
+
+    const routePages = buildRoutePages(template, SITE_URL, { data, screenshotUrl });
+    const wikiPages = buildWikiStaticPages(template, data, SITE_URL, screenshotUrl);
     mkdirSync(resolve(distPath, "wiki"), { recursive: true });
     for (const page of [...routePages, ...wikiPages]) writeFileSync(resolve(distPath, page.file), page.html);
+    // index.html is the home page and the /flows/:id shell: give it the home card.
+    writeFileSync(resolve(distPath, "index.html"), buildHomePage(template, data, SITE_URL, screenshotUrl));
 
     writeFileSync(resolve(distPath, "404.html"), buildNotFoundPage(template));
     writeFileSync(resolve(distPath, "_redirects"), buildRedirects(buildWikiIndex(data).entries));

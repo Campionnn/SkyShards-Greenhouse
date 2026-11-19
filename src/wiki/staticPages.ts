@@ -11,6 +11,9 @@ import { SITE_URL, WIKI_BASE_PATH, buildWikiIndex, wikiUrl } from "./slugs";
 import type { WikiEntry } from "./slugs";
 import { buildUsedInMap, getRecipeSource } from "./recipes";
 import { SITE_ROUTES } from "../seo/routes";
+import { EMBED_SCRIPT_ID, componentEmbedScriptFor } from "./componentEmbed";
+import type { Container } from "./componentEmbed";
+import { isRouteEmbedPath, routeEmbed, wikiItemEmbed } from "./siteEmbeds";
 
 export interface StaticPage {
   /** Path inside dist/, e.g. "wiki/gloomgourd.html". */
@@ -30,6 +33,16 @@ interface PageMeta {
   bodyHtml: string;
   /** Defaults to "article". */
   ogType?: "article" | "website";
+  /** Discord component embed for the page; OG stays the fallback. */
+  embed?: Container | null;
+}
+
+/** Options for the route pages' Discord cards (src/wiki/siteEmbeds.ts). */
+export interface RouteEmbedOptions {
+  /** Needed for the cards; without it the route pages keep only OG tags. */
+  data?: GreenhouseDataJSON;
+  /** The site screenshot for the card's gallery, when it exists in dist/; else the brand mark. */
+  screenshotUrl?: string | null;
 }
 
 /**
@@ -38,8 +51,10 @@ interface PageMeta {
  * Cloudflare Pages serves /designer from designer.html with a 200 instead of
  * falling back to 404.html.
  */
-export function buildRoutePages(template: string, siteUrl: string = SITE_URL): StaticPage[] {
-  const image = extractMeta(template, "property", "og:image") ?? `${siteUrl}/favicon/favicon.png`;
+export function buildRoutePages(template: string, siteUrl: string = SITE_URL, embeds: RouteEmbedOptions = {}): StaticPage[] {
+  const image = templateImage(template) ?? `${siteUrl}/favicon/favicon.png`;
+  const embedFor = (path: string) =>
+    embeds.data && isRouteEmbedPath(path) ? routeEmbed(path, embeds.data, { siteUrl, screenshotUrl: embeds.screenshotUrl }) : null;
   return SITE_ROUTES.filter((route) => route.path !== "/").map((route) => {
     const url = `${siteUrl}${route.path}`;
     return {
@@ -54,9 +69,25 @@ export function buildRoutePages(template: string, siteUrl: string = SITE_URL): S
         smallImage: false,
         ogType: "website",
         bodyHtml: `<h1>${escapeHtml(route.title)}</h1><p>${escapeHtml(route.description)}</p>`,
+        embed: embedFor(route.path),
       }),
     };
   });
+}
+
+/**
+ * dist/index.html with the home page's Discord card. Everything else about
+ * index.html already is the home page. It is also what Pages serves for
+ * /flows/:id (see buildRedirects), where the Pages Function (functions/)
+ * swaps in the flow's own card for crawlers.
+ */
+export function buildHomePage(template: string, data: GreenhouseDataJSON, siteUrl: string = SITE_URL, screenshotUrl?: string | null): string {
+  return setComponentEmbed(template, routeEmbed("/", data, { siteUrl, screenshotUrl }));
+}
+
+/** The template's og:image (the site screenshot), or null. */
+export function templateImage(template: string): string | null {
+  return extractMeta(template, "property", "og:image");
 }
 
 /**
@@ -77,7 +108,12 @@ export function buildSitemap(urls: string[], lastmod: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}</urlset>\n`;
 }
 
-export function buildWikiStaticPages(template: string, data: GreenhouseDataJSON, siteUrl: string = SITE_URL): StaticPage[] {
+export function buildWikiStaticPages(
+  template: string,
+  data: GreenhouseDataJSON,
+  siteUrl: string = SITE_URL,
+  screenshotUrl?: string | null,
+): StaticPage[] {
   const index = buildWikiIndex(data);
   const usedIn = buildUsedInMap(data);
   const nameOf = (id: string) => index.byId.get(id)?.name ?? id;
@@ -102,6 +138,7 @@ export function buildWikiStaticPages(template: string, data: GreenhouseDataJSON,
           nameOf,
           siteUrl,
         )}${linkList("Used in", usedIn.get(entry.id) ?? [], nameOf, siteUrl)}`,
+        embed: wikiItemEmbed(entry, data, usedIn, siteUrl),
       }),
     };
   });
@@ -116,7 +153,7 @@ export function buildWikiStaticPages(template: string, data: GreenhouseDataJSON,
       title: "Greenhouse Wiki - Every Crop & Mutation | SkyShards",
       description: homeDescription,
       url: homeUrl,
-      image: extractMeta(template, "property", "og:image") ?? `${siteUrl}/favicon/favicon.png`,
+      image: templateImage(template) ?? `${siteUrl}/favicon/favicon.png`,
       imageAlt: "SkyShards Greenhouse Wiki",
       smallImage: false,
       bodyHtml: `<h1>Greenhouse Wiki</h1><p>${escapeHtml(homeDescription)}</p>${linkList(
@@ -125,6 +162,7 @@ export function buildWikiStaticPages(template: string, data: GreenhouseDataJSON,
         nameOf,
         siteUrl,
       )}`,
+      embed: routeEmbed(WIKI_BASE_PATH, data, { siteUrl, screenshotUrl }),
     }),
   });
 
@@ -249,7 +287,20 @@ function applyMeta(template: string, meta: PageMeta): string {
   }
   html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/?>/, `<link rel="canonical" href="${escapeAttr(meta.url)}" />`);
   html = html.replace(/<noscript>[\s\S]*?<\/noscript>/, `<noscript>\n      <div style="padding: 2rem; font-family: Arial, sans-serif">${meta.bodyHtml}</div>\n    </noscript>`);
-  return html;
+  return setComponentEmbed(html, meta.embed ?? null);
+}
+
+const EMBED_SCRIPT_PATTERN = new RegExp(`\\s*<script id="${EMBED_SCRIPT_ID}"[^>]*>[\\s\\S]*?<\\/script>`, "g");
+
+/**
+ * Puts the Discord component-embed <script> at the end of <head> (replacing
+ * any earlier one), or removes it when `component` is null or breaks a rule.
+ */
+export function setComponentEmbed(html: string, component: Container | null): string {
+  const without = html.replace(EMBED_SCRIPT_PATTERN, "");
+  const script = component ? componentEmbedScriptFor(component) : null;
+  // Function replacer: the JSON may contain "$" sequences.
+  return script ? without.replace(/<\/head>/, () => `  ${script}\n  </head>`) : without;
 }
 
 function metaPattern(attr: "name" | "property", key: string): RegExp {

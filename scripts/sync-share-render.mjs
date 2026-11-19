@@ -1,5 +1,5 @@
 // Copies the built share renderer (dist-share/, from `pnpm build:share`) into the sibling SkyShards-API
-// checkout at tools/share-render/, replacing what was there (node_modules is kept).
+// checkout at tools/share-render/, replacing what was there (node_modules and package-lock.json are kept).
 //
 // Usage: pnpm build:share && pnpm sync:share
 
@@ -19,6 +19,8 @@ if (!existsSync(resolve(repoRoot, "../SkyShards-API"))) {
   console.error("sync-share-render: SkyShards-API checkout not found next to this repo.");
   process.exit(1);
 }
-if (existsSync(target)) for (const f of readdirSync(target)) if (f !== "node_modules") rmSync(resolve(target, f), { recursive: true, force: true });
+// node_modules and the API's committed package-lock.json (npm install there) are kept.
+const keep = new Set(["node_modules", "package-lock.json"]);
+if (existsSync(target)) for (const f of readdirSync(target)) if (!keep.has(f)) rmSync(resolve(target, f), { recursive: true, force: true });
 cpSync(source, target, { recursive: true });
 console.log(`sync-share-render: -> ${target} (render ${readFileSync(resolve(source, "RENDER_VERSION"), "utf8").trim()})`);

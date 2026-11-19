@@ -26,6 +26,8 @@ dist-share
 *.sln
 *.sw?
 .vercel
+# Local state of `wrangler pages dev` (Pages Functions in functions/)
+.wrangler/
 
 # Local-only Rose Dragon flow generator (its output lives in public/greenhouse/flows/)
 /tools/rose-dragon/
