@@ -5,6 +5,7 @@ import { DEFAULT_POLICIES, mergePolicies } from "../flow/policies";
 import { THUNDERLING_CHARGE_PER_STAGE, THUNDERLING_MAX_CHARGE, type SimConfig } from "../config";
 import type { Engine } from "../engine";
 import { engine, engineWith, flow, inject, layout, NEVER_ACTIVE, plantAt, scenario, step, start, TIMER_ONLY } from "../testHelpers";
+import { serendipityChance } from "./serendipity";
 import type { ActivitySchedule, TimedEvent } from "./state";
 
 const blank = (activity: ActivitySchedule = NEVER_ACTIVE, config: Partial<SimConfig> = {}, eng: Engine = engine) =>
@@ -496,5 +497,57 @@ describe("Thunderling charge", () => {
     expect(p.gate.charge).toBeUndefined();
     const r = engine.run(s, 5);
     expect(plantAt(r.state, 1, 5, 5)!.gate.charge).toBeUndefined();
+  });
+});
+describe("Mutation Serendipity (Zombuddy Shard)", () => {
+  const harvestOnce = (seed: number, mutationSerendipity: number | undefined) => {
+    const s = start(scenario([flow([step("a", layout())])], { seed, stats: { mutationSerendipity } }));
+    if (mutationSerendipity === undefined) delete (s.scenario.settings.playerStats as { mutationSerendipity?: number }).mutationSerendipity;
+    inject(s, 1, "ashwreath", 5, 5, "spawned", { lockedEffects: [], fullyGrownAtCycle: 0 });
+    return engine.run(s, 1);
+  };
+
+  it("chance is 0.1% per level, capped at level 10", () => {
+    expect(serendipityChance(0)).toBe(0);
+    expect(serendipityChance(5)).toBeCloseTo(0.005);
+    expect(serendipityChance(10)).toBeCloseTo(0.01);
+    expect(serendipityChance(99)).toBeCloseTo(0.01);
+    expect(serendipityChance(undefined)).toBe(0);
+  });
+
+  it("level 0 or missing rolls nothing: byte-identical runs", () => {
+    for (const seed of [1, 2, 3]) {
+      const strip = (r: ReturnType<typeof harvestOnce>) => JSON.stringify({ ...r.state, scenario: null });
+      expect(strip(harvestOnce(seed, 0))).toBe(strip(harvestOnce(seed, undefined)));
+    }
+  });
+
+  it("level 10: about 1% of harvested spawns re-mutate in place at their first stage as a fresh spawn", () => {
+    // Ashwreath has 0 growth stages: its first stage is fully grown (latched at once).
+    let hits = 0;
+    for (let seed = 1; seed <= 3000; seed++) {
+      const r = harvestOnce(seed, 10);
+      const re = ofKind(r.events, "spawned").filter((e) => e.remutated);
+      if (!re.length) {
+        expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
+        continue;
+      }
+      hits++;
+      expect(re).toHaveLength(1);
+      expect(re[0]).toMatchObject({ mutationId: "ashwreath", row: 5, col: 5 });
+      expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "ashwreath", origin: "spawned", stage: 0, timesMutated: 0 });
+      expect(plantAt(r.state, 1, 5, 5)!.lockedEffects).not.toBeNull();
+      expect(r.state.summary.spawned.ashwreath).toBe(1);
+    }
+    expect(hits).toBeGreaterThan(10);
+    expect(hits).toBeLessThan(55);
+  });
+
+  it("only natural-spawn mutations re-mutate (not base crops)", () => {
+    for (let seed = 1; seed <= 300; seed++) {
+      const s = start(scenario([flow([step("a", layout([["wheat", 5, 5]]))])], { seed, stats: { mutationSerendipity: 10 } }));
+      const r = engine.run(s, 3);
+      expect(ofKind(r.events, "spawned").some((e) => e.remutated)).toBe(false);
+    }
   });
 });

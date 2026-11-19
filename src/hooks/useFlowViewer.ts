@@ -22,6 +22,8 @@ export interface ViewerStats {
   speedAttribute: number;
   growthUpgradeTier: number;
   floraShard: number;
+  /** Mutation Serendipity attribute level 0-10. */
+  mutationSerendipity: number;
   mutationChanceBonus: number;
   miningFortune: number;
   farmingFortune: number;
@@ -44,6 +46,7 @@ export function defaultViewerStats(): ViewerStats {
     speedAttribute: s.speedAttribute,
     growthUpgradeTier: s.growthUpgradeTier,
     floraShard: s.floraShard,
+    mutationSerendipity: s.mutationSerendipity ?? 0,
     mutationChanceBonus: s.mutationChanceBonus,
     miningFortune: s.miningFortune,
     farmingFortune: s.farmingFortune,
@@ -95,6 +98,7 @@ export function readViewerStats(raw: unknown): ViewerStats {
     speedAttribute: num(r.speedAttribute, d.speedAttribute),
     growthUpgradeTier: num(r.growthUpgradeTier, d.growthUpgradeTier),
     floraShard: num(r.floraShard, d.floraShard),
+    mutationSerendipity: num(r.mutationSerendipity, d.mutationSerendipity),
     mutationChanceBonus: num(r.mutationChanceBonus, d.mutationChanceBonus),
     miningFortune: num(r.miningFortune, d.miningFortune),
     farmingFortune: num(r.farmingFortune, d.farmingFortune),

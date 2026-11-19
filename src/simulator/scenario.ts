@@ -28,6 +28,8 @@ export const DEFAULT_PLAYER_STATS: PlayerStats = {
   startTimeOfDay: 0,
   /** Flora attribute shard, max 10. */
   floraShard: 10,
+  /** Mutation Serendipity attribute (Zombuddy Shard), max 10 = 1% re-mutate chance. */
+  mutationSerendipity: 10,
 };
 
 export function defaultSettings(): Settings {

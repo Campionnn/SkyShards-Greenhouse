@@ -153,7 +153,7 @@ export function describeEvent(e: TimedEvent): string {
   const at = "row" in e ? ` at (${e.row},${e.col})` : "";
   switch (e.kind) {
     case "spawned":
-      return `${nameOf(e.mutationId)} spawned${at}${e.rival ? ` - a rival in the ${nameOf(e.slotTarget ?? "")} slot` : ""}`;
+      return `${nameOf(e.mutationId)} ${e.remutated ? "re-mutated (Mutation Serendipity)" : "spawned"}${at}${e.rival ? ` - a rival in the ${nameOf(e.slotTarget ?? "")} slot` : ""}`;
     case "harvested": {
       const items = Object.entries(e.drops)
         .map(([item, qty]) => `${formatCount(qty)} ${nameOf(item)}`)

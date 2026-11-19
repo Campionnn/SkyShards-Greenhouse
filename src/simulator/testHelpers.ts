@@ -105,6 +105,8 @@ export const BASELINE_TEST_STATS: PlayerStats = {
   startTimeOfDay: 0,
   /** 0 so the unique crop count equals the crops planted. */
   floraShard: 0,
+  /** 0: no re-mutation rolls, so harvest RNG is unchanged. */
+  mutationSerendipity: 0,
 };
 
 export function scenario(flows: Flow[], opts: ScenarioOptions = {}): Scenario {

@@ -32,6 +32,9 @@ describe("IMPORT_FIELDS", () => {
     expect(field("floraShard").apply(12)).toEqual({ floraShard: 10 });
     expect(field("floraShard").apply(4.6)).toEqual({ floraShard: 5 });
     expect(field("speedAttribute").apply(-3)).toEqual({ speedAttribute: 0 });
+    expect(field("mutationSerendipity").apply(7)).toEqual({ mutationSerendipity: 7 });
+    expect(field("mutationSerendipity").apply(14)).toEqual({ mutationSerendipity: 10 });
+    expect(field("mutationSerendipity").apply("x")).toBeNull();
     expect(field("cropGrowth").apply(400)).toEqual({ cropGrowth: 210 });
     expect(field("growthUpgradeTier").apply(9.4)).toEqual({ growthUpgradeTier: 9 });
     expect(field("plantYieldUpgrade").apply(0.5)).toEqual({ plantYieldUpgrade: 0.2 });

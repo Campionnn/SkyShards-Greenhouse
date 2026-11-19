@@ -23,7 +23,7 @@ export function withStats(engine: Engine, stats: PlayerStats): Engine {
 /** The stat fields the viewer enters (useFlowViewer's ViewerStats without `every`). */
 export type EnteredStats = Pick<
   PlayerStats,
-  "cropGrowth" | "speedAttribute" | "growthUpgradeTier" | "floraShard" | "mutationChanceBonus" | "miningFortune" | "farmingFortune" | "plantYieldUpgrade" | "evergreenChip" | "overbloom" | "armorSet" | "cropFortune" | "tools"
+  "cropGrowth" | "speedAttribute" | "growthUpgradeTier" | "floraShard" | "mutationSerendipity" | "mutationChanceBonus" | "miningFortune" | "farmingFortune" | "plantYieldUpgrade" | "evergreenChip" | "overbloom" | "armorSet" | "cropFortune" | "tools"
 >;
 
 /** Complete player stats from what the viewer entered (the max tier fills anything missing). */
@@ -34,6 +34,7 @@ export function enteredPlayerStats(s: EnteredStats): PlayerStats {
     speedAttribute: s.speedAttribute,
     growthUpgradeTier: s.growthUpgradeTier,
     floraShard: s.floraShard,
+    mutationSerendipity: s.mutationSerendipity ?? 0,
     mutationChanceBonus: s.mutationChanceBonus,
     miningFortune: s.miningFortune,
     farmingFortune: s.farmingFortune,

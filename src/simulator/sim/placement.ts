@@ -23,6 +23,10 @@ export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, sc
   }
   if (isHarvestable(p)) {
     harvestPlant(plot, p, ctx, scratch);
+    // Mutation Serendipity re-mutated it in place: the player wanted the cell clear, so the new
+    // stage-1 plant is broken too (nothing to harvest yet).
+    const again = plot.plants.find((q) => q.row === p.row && q.col === p.col && q.kindId === p.kindId && q.id > p.id && q.origin === "spawned");
+    if (again && !(ctx.state.scripts && isProtected(ctx.state, plot.id, again.id))) removeByPlayer(plot, again, ctx, scratch, `${why} (re-mutated)`);
     return;
   }
   effortBreak(ctx.state, scratch, p.id);

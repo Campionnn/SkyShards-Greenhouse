@@ -68,7 +68,7 @@ type NumKey = Exclude<keyof ViewerStats, "armorSet" | "cropFortune" | "tools">;
 type StatKey = NumKey & NumericStatKey;
 
 /** Stats that change the simulation itself: these decide the tier. */
-const SIM_FIELDS: StatKey[] = ["cropGrowth", "growthUpgradeTier", "speedAttribute", "floraShard", "mutationChanceBonus", "miningFortune"];
+const SIM_FIELDS: StatKey[] = ["cropGrowth", "growthUpgradeTier", "speedAttribute", "floraShard", "mutationSerendipity", "mutationChanceBonus", "miningFortune"];
 /** Yield-only stats: these scale the stored counts directly. Per-crop fortune goes after Farming Fortune. */
 const YIELD_FIELDS_TOP: StatKey[] = ["farmingFortune"];
 const YIELD_FIELDS_REST: StatKey[] = ["plantYieldUpgrade", "overbloom", "evergreenChip"];
@@ -167,6 +167,7 @@ export const TierStatsTable: React.FC<{ highlight: TierId }> = ({ highlight }) =
           ["speedAttribute", "Speed attribute"],
           ["growthUpgradeTier", "Growth upgrade"],
           ["floraShard", "Flora"],
+          ["mutationSerendipity", "Serendipity"],
           ["mutationChanceBonus", "Bioanalysis"],
           ["miningFortune", "Mining Fortune"],
         ] as const

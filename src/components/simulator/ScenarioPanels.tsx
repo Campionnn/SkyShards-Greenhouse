@@ -51,6 +51,7 @@ const PLAYER_STAT_KEYS: NumericStatKey[] = [
   "evergreenChip",
   "mutationChanceBonus",
   "floraShard",
+  "mutationSerendipity",
   "miningFortune",
   "overbloom",
 ];
@@ -173,7 +174,7 @@ export const SettingsPanel: React.FC<{
             <StatInput
               key={key}
               def={STAT_FIELDS[key]}
-              value={settings.playerStats[key]}
+              value={settings.playerStats[key] ?? 0}
               onChange={(v) => setSettings({ playerStats: { ...settings.playerStats, [key]: v } })}
             />
           ))}

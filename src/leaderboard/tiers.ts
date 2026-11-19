@@ -13,13 +13,13 @@ export type TierId = "max" | "high" | "mid" | "low";
 export const TIERS: readonly TierId[] = ["max", "high", "mid", "low"];
 
 /** The stats that change the simulation itself (growth, spawn rolls, unique crops, Chloronite). */
-export type SimStats = Pick<PlayerStats, "cropGrowth" | "speedAttribute" | "growthUpgradeTier" | "floraShard" | "mutationChanceBonus" | "miningFortune">;
+export type SimStats = Pick<PlayerStats, "cropGrowth" | "speedAttribute" | "growthUpgradeTier" | "floraShard" | "mutationChanceBonus" | "miningFortune" | "mutationSerendipity">;
 
 export const TIER_STATS: Readonly<Record<TierId, SimStats>> = {
-  max: { cropGrowth: 210, speedAttribute: 10, growthUpgradeTier: 9, floraShard: 10, mutationChanceBonus: 0.15, miningFortune: 2000 },
-  high: { cropGrowth: 160, speedAttribute: 5, growthUpgradeTier: 8, floraShard: 7, mutationChanceBonus: 0.1, miningFortune: 1500 },
-  mid: { cropGrowth: 100, speedAttribute: 0, growthUpgradeTier: 5, floraShard: 3, mutationChanceBonus: 0.05, miningFortune: 1000 },
-  low: { cropGrowth: 40, speedAttribute: 0, growthUpgradeTier: 2, floraShard: 0, mutationChanceBonus: 0, miningFortune: 500 },
+  max: { cropGrowth: 210, speedAttribute: 10, growthUpgradeTier: 9, floraShard: 10, mutationChanceBonus: 0.15, miningFortune: 2000, mutationSerendipity: 10 },
+  high: { cropGrowth: 160, speedAttribute: 5, growthUpgradeTier: 8, floraShard: 7, mutationChanceBonus: 0.1, miningFortune: 1500, mutationSerendipity: 7 },
+  mid: { cropGrowth: 100, speedAttribute: 0, growthUpgradeTier: 5, floraShard: 3, mutationChanceBonus: 0.05, miningFortune: 1000, mutationSerendipity: 3 },
+  low: { cropGrowth: 40, speedAttribute: 0, growthUpgradeTier: 2, floraShard: 0, mutationChanceBonus: 0, miningFortune: 500, mutationSerendipity: 0 },
 };
 
 /** The yield-only stats every server run uses (wiki maxima); the page scales results for other values. */

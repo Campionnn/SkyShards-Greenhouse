@@ -15,6 +15,7 @@ import { convertAloeFragments, credit } from "./inventory";
 import { JELLYBEAN, removePlant, yieldEffectsLocked } from "./plants";
 import { bump, perPlot } from "./summary";
 import { ZOMBUD, zombudHarvest } from "./zombud";
+import { rollRemutation } from "./serendipity";
 import type { PlantState, PlotState } from "./state";
 
 function scaleDrops(drops: Record<string, number>, factor: number): Record<string, number> {
@@ -177,4 +178,6 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   const primed = isPrimedBlastberry(p);
   removePlant(plot, p);
   if (primed) explode(plot, p, ctx); // drops are kept
+  // Mutation Serendipity: the harvested spawn may re-mutate in place (no roll at level 0).
+  rollRemutation(plot, p, ctx, scratch);
 }

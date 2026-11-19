@@ -208,6 +208,12 @@ export interface PlayerStats {
    * `effectiveUniqueCrops` treats missing as 0.
    */
   floraShard: number;
+  /**
+   * Mutation Serendipity attribute (Zombuddy Shard), level 0-10: a harvested natural-spawn mutation
+   * re-mutates in its cell at stage 1 with chance 0.1% x level (sim/serendipity.ts). Optional:
+   * missing in old saves (`withDefaults` fills it) = 0.
+   */
+  mutationSerendipity?: number;
 }
 
 /** When the player is online. All harvesting, watering, upkeep and gate interaction happens then. */
@@ -448,7 +454,8 @@ export type TickEvent =
   | { kind: "driedOut"; plantId: number; kindId: KindId; row: number; col: number }
   | { kind: "harvested"; plantId: number; kindId: KindId; row: number; col: number; origin: Origin;
       drops: Record<ItemId, number>; coinValue: number; rival: boolean }
-  | { kind: "spawned"; plantId: number; mutationId: MutationId; row: number; col: number; rival: boolean; slotTarget: MutationId | null }
+  /** `remutated`: Mutation Serendipity re-mutated a harvested spawn in place (sim/serendipity.ts), not a spawn roll. */
+  | { kind: "spawned"; plantId: number; mutationId: MutationId; row: number; col: number; rival: boolean; slotTarget: MutationId | null; remutated?: true }
   | { kind: "placed"; plantId: number; kindId: KindId; row: number; col: number; origin: Origin; replacement: boolean }
   | { kind: "removed"; plantId: number; kindId: KindId; row: number; col: number; reason: string }
   /** The player restored the ground under an empty target cell to what its mutation needs. */

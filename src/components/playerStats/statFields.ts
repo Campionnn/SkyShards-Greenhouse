@@ -11,7 +11,7 @@
 import type { PlayerStats } from "../../simulator/sim/state";
 
 /** PlayerStats keys holding a number. */
-export type NumericStatKey = { [K in keyof PlayerStats]-?: PlayerStats[K] extends number ? K : never }[keyof PlayerStats];
+export type NumericStatKey = { [K in keyof PlayerStats]-?: NonNullable<PlayerStats[K]> extends number ? K : never }[keyof PlayerStats];
 
 export interface StatOption {
   value: number;
@@ -98,6 +98,8 @@ const levels = (describe: (n: number) => string): StatOption[] =>
 export const FLORA_OPTIONS = levels((n) => `+${n} unique`);
 /** Greenhouse Speed attribute: +0.1–1% growth speed. */
 export const SPEED_ATTRIBUTE_OPTIONS = levels((n) => `+${Number((n * 0.1).toFixed(1))}%`);
+/** Mutation Serendipity attribute: +0.1–1% chance to re-mutate on harvest. */
+export const SERENDIPITY_OPTIONS = levels((n) => `${Number((n * 0.1).toFixed(1))}% re-mutate`);
 
 export const STAT_FIELDS: Record<NumericStatKey, StatFieldDef> = {
   cropGrowth: { key: "cropGrowth", kind: "number", label: "Crop Growth", min: 0, max: 210, step: 5, hint: "0 to 210." },
@@ -110,6 +112,7 @@ export const STAT_FIELDS: Record<NumericStatKey, StatFieldDef> = {
   plantYieldUpgrade: { key: "plantYieldUpgrade", kind: "select", label: "Plant Yield upgrade", options: PLANT_YIELD_OPTIONS, hint: "Greenhouse upgrade, +2% per tier." },
   evergreenChip: { key: "evergreenChip", kind: "chip", label: "Evergreen Chip", chip: EVERGREEN_CHIP, hint: "More base crops from Greenhouse harvests: +2% / +2.5% / +3% per level (Rare / Epic / Legendary)." },
   overbloom: { key: "overbloom", kind: "number", label: "Overbloom", min: 0, max: 1000, step: 1, hint: "Rare Crop chance × (1 + Overbloom/100), capped at 100% per roll." },
+  mutationSerendipity: { key: "mutationSerendipity", kind: "select", label: "Mutation Serendipity attribute", options: SERENDIPITY_OPTIONS, hint: "Zombuddy Shard. A harvested mutation may re-mutate in its cell at stage 1." },
   startTimeOfDay: { key: "startTimeOfDay", kind: "number", label: "Start time of day", min: 0, max: 24, step: 0.5 },
 };
 

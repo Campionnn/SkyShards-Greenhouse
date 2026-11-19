@@ -258,6 +258,7 @@ describe("tiers", () => {
     expect(s.farmingFortune).toBe(YIELD_STATS.farmingFortune);
     expect(s.armorSet).toBe("helianthus");
     expect(defaultSettings().playerStats).toEqual(tierStats("max"));
+    expect(tierStats("max").mutationSerendipity).toBe(10);
   });
 });
 

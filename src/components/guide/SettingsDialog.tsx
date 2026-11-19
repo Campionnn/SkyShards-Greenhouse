@@ -108,7 +108,7 @@ const SettingsBody: React.FC<React.ComponentProps<typeof SettingsDialog>> = ({ s
           <KitLabel>Your stats</KitLabel>
           <div className="space-y-1.5">
             {GUIDE_STAT_KEYS.map((key) => (
-              <StatInput key={key} def={STAT_FIELDS[key]} value={settings.playerStats[key]} commitOn="blur" onChange={(v) => setStat(key, v)} />
+              <StatInput key={key} def={STAT_FIELDS[key]} value={settings.playerStats[key] ?? 0} commitOn="blur" onChange={(v) => setStat(key, v)} />
             ))}
           </div>
         </section>
