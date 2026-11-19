@@ -195,7 +195,9 @@ export const LocalSolverPanel: React.FC = () => {
         </div>
 
         <ol className="list-inside list-decimal space-y-0.5 text-meta text-fg-meta">
-          <li>Install Python 3.10+ (python.org, tick "Add to PATH" on Windows).</li>
+          <li>
+            Install 64-bit Python 3.10 to 3.14, ideally 3.13 (python.org, tick "Add to PATH" on Windows). Python 3.15 doesn't work yet; it can stay installed next to 3.13.
+          </li>
           <li>Unzip the download and run start.bat (Windows) or start.sh (Mac/Linux).</li>
           <li>Leave that window open and turn on the switch above. Chrome asks once to allow local network access; Safari may block it.</li>
         </ol>
