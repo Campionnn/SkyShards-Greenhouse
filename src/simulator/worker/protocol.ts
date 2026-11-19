@@ -1,6 +1,7 @@
 import type { ScenarioIssue } from "../flow/validate";
 import type { SustainabilityReport } from "../analysis/sustainability";
 import type { RetainEvents, RunSummary, Scenario, SimulationState, TickEventKind, TimedEvent } from "../sim/state";
+import type { StopKind, StopPoint } from "../sim/stops";
 import type { HistoryInfo, UndoableAction } from "./timeline";
 
 export type { HistoryInfo, UndoableAction } from "./timeline";
@@ -16,11 +17,29 @@ export type WorkerRequest =
   | { type: "addItems"; reqId: number; items: Record<string, number> }
   /** Go back one cycle ("cycle") or take back the last Step / Run / inventory change ("undo"). */
   | { type: "back"; reqId: number; to: "cycle" | "undo" }
-  | { type: "reset"; reqId: number };
+  | { type: "reset"; reqId: number }
+  /**
+   * Step inside a cycle: to the next (or previous) stop point of one of `kinds` (sim/stops.ts).
+   * Next past the cycle's last such stop finishes the cycle (a `result`, like a Step). Previous
+   * before the first goes back to the cycle's start, and from there into the previous cycle.
+   */
+  | { type: "stepStop"; reqId: number; dir: "next" | "prev"; kinds: StopKind[]; dropKinds?: TickEventKind[] };
 
 export interface SessionSnapshot {
   state: SimulationState;
   report: SustainabilityReport;
+}
+
+/** Where a step inside a cycle landed. */
+export interface StopPosition {
+  /** The cycle being stepped through (its clock has not moved yet). */
+  cycle: number;
+  stop: StopPoint;
+  /** Position among every stop of the cycle. */
+  ordinal: number;
+  /** Position among the cycle's stops of the chosen kinds (1-based) and how many there are. */
+  index: number;
+  count: number;
 }
 
 export type WorkerResponse =
@@ -39,5 +58,12 @@ export type WorkerResponse =
       cyclesRun: number;
       truncated: boolean;
       history: HistoryInfo;
+      /** A step inside a cycle that finished it: the events since the stop shown before (grid marks). */
+      marks?: TimedEvent[];
     }
-  | { type: "error"; reqId: number; message: string; issues?: ScenarioIssue[] };
+  | { type: "error"; reqId: number; message: string; issues?: ScenarioIssue[] }
+  /**
+   * A step inside a cycle. `position` null: at a cycle's start (between cycles, the timeline's own
+   * state). `events`: what happened since the position shown before (for the grid marks).
+   */
+  | { type: "stopped"; reqId: number; snapshot: SessionSnapshot; position: StopPosition | null; events: TimedEvent[]; history: HistoryInfo };

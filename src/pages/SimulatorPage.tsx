@@ -42,6 +42,8 @@ import { BazaarMoneyPanel } from "../components/simulator/BazaarPanels";
 import { InventoryTable } from "../components/simulator/InventoryTable";
 import { bazaarProfit } from "../components/simulator/bazaarFormat";
 import { settledView, useSimulation } from "../hooks/useSimulation";
+import { StopBar } from "../components/simulator/page/StopBar";
+import { stepsInside, useStepBy } from "../components/simulator/page/stepBy";
 import { useBazaarPrices } from "../hooks/useBazaarPrices";
 import { useProfileMode } from "../hooks/useProfileMode";
 import { DEFAULT_CONFIG, DEFAULT_POLICIES, defaultSettings, MAX_PLOTS, migrateScenario, scenarioFromShareCodes, type ProfileMode, type RunSummary, type Scenario } from "../simulator";
@@ -193,7 +195,13 @@ export const SimulatorPage: React.FC = () => {
   const previewScenario = useMemo(() => (preview ? previewScenarioOf(preview) : null), [preview]);
   const engineScenario = useMemo(() => withProfile(previewScenario ?? settled, previewScenario ? "ironman" : profile), [previewScenario, settled, profile]);
   const sim = useSimulation(engineScenario);
-  const { run, step, stepBack, undo, stop, reset, addItems } = sim;
+  const { run, step, stepBack, stepStop, undo, stop, reset, addItems } = sim;
+  // Step by a cycle, or stop by stop inside it (Run menu; remembered in this browser).
+  const [stepBy, setStepBy] = useStepBy();
+  const inside = stepsInside(stepBy);
+  const stepNext = useCallback(() => (inside ? stepStop("next", stepBy.kinds) : step()), [inside, stepStop, stepBy.kinds, step]);
+  // Mid-cycle with detail off: Back goes to the cycle's start (the worker handles that).
+  const stepPrev = useCallback(() => (inside ? stepStop("prev", stepBy.kinds) : stepBack()), [inside, stepStop, stepBy.kinds, stepBack]);
   // A single Step / Back / Undo in flight is drawn as ready: holding → would otherwise flash the
   // run controls, the progress bar and the status line every cycle.
   const view = useMemo(() => settledView(sim.view), [sim.view]);
@@ -517,8 +525,8 @@ export const SimulatorPage: React.FC = () => {
 
   const runProps = {
     onRun: run,
-    onStep: step,
-    onStepBack: stepBack,
+    onStep: stepNext,
+    onStepBack: stepPrev,
     onUndo: undo,
     onStop: stop,
     onReset: reset,
@@ -565,6 +573,8 @@ export const SimulatorPage: React.FC = () => {
           watching={fromNothing.preparing !== null || !!preview}
           preview={!!preview}
           onOpenLeaderboard={openSubmit}
+          stepBy={stepBy}
+          onStepByChange={setStepBy}
         />
         <div className="flex h-12 items-center gap-3 px-3 md:hidden">
           <span className="text-body font-semibold text-fg">Simulator</span>
@@ -593,6 +603,7 @@ export const SimulatorPage: React.FC = () => {
           preview={!!preview}
         />
 
+        {view.stop && <StopBar position={view.stop} onFinish={() => step()} />}
         {fromNothing.preparing !== null && <FromNothingPreparing progress={fromNothing.preparing} onCancel={fromNothing.exit} />}
         {preview && <FromNothingBanner preview={preview} inventory={state?.inventory ?? null} onPart={(part) => fromNothing.setPreview({ ...preview, part })} onExit={fromNothing.exit} />}
         {state?.scripts?.halt && (
@@ -691,7 +702,7 @@ export const SimulatorPage: React.FC = () => {
       </div>
 
       {/* Phone: run controls at the thumb */}
-      <MobileRunBar view={view} {...runProps} seed={seed} onSeedChange={onSeedChange} />
+      <MobileRunBar view={view} {...runProps} seed={seed} onSeedChange={onSeedChange} stepBy={stepBy} onStepByChange={setStepBy} />
 
       <SettingsDrawer
         open={drawerOpen}

@@ -89,6 +89,12 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
     // the call, else just the final one); otherwise they are only counted.
     const cycleEvents: TimedEvent[] | null = retain === "all" || (retain === "summary" && (i === total - 1 || mayStopEarly)) ? [] : null;
     const ctx = makeCycleCtx(env, state, { cycle, active, cycleSeconds: seconds, firesAt, uniqueCropCount }, cycleEvents, scripts, eventCounts);
+    // Stepping inside a cycle (sim/stops.ts): only with a probe; a normal run never sets it.
+    if (opts.probe) {
+      const probe = opts.probe;
+      const view = { state, events: cycleEvents ?? [], scripts };
+      ctx.probe = (stop) => probe(stop, view);
+    }
 
     const plots: { plot: PlotState; scratch: TickScratch }[] = [];
     for (const id of order) {
@@ -129,7 +135,13 @@ export function run(env: Env, input: SimulationState, ticks: number, opts: RunOp
 
     // 6. Scripts close the cycle. Normal profile: the player sells surplus mutation items before logging off.
     if (scripts && active) scripts.callHook("afterSession", [], "controller");
-    if (active && reserve) sellSurplus(state, env.data, reserve);
+    if (active && reserve) {
+      if (ctx.probe) {
+        const before = marketTotals(state.summary.market!);
+        sellSurplus(state, env.data, reserve);
+        if (marketTotals(state.summary.market!) !== before) ctx.probe({ kind: "playerAction", plotId: null, id: "sell" });
+      } else sellSurplus(state, env.data, reserve);
+    }
     if (active) {
       if (state.summary.market && marketTotals(state.summary.market) !== marketBefore) effort(state, "bazaar");
       closeSession(state, effortBefore);

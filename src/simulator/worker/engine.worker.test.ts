@@ -85,6 +85,45 @@ describe("session worker", () => {
     expect(last("error").message).toBe("Already at the start");
   });
 
+  it("steps stop by stop inside a cycle, never changing where Step and Run lead", async () => {
+    await send({ type: "init", reqId: 50, scenario: sc });
+    await send({ type: "run", reqId: 51, ticks: 3, retainEvents: "none" });
+    const at3 = last("result").snapshot.state;
+    await send({ type: "run", reqId: 52, ticks: 2, retainEvents: "none" });
+    const at5 = last("result").snapshot.state;
+    await send({ type: "back", reqId: 53, to: "undo" });
+
+    // Through cycle 3 by session phases, then past its end: the cycle finishes like a Step.
+    let reqId = 60;
+    const seen: string[] = [];
+    for (;;) {
+      await send({ type: "stepStop", reqId: ++reqId, dir: "next", kinds: ["sessionPhase"] });
+      const m = posted[posted.length - 1];
+      if (m.type !== "stopped") break;
+      expect(m.position!.cycle).toBe(3);
+      expect(m.snapshot.state.cycle).toBe(3);
+      seen.push(`${m.position!.stop.plotId}:${m.position!.stop.id}`);
+    }
+    expect(seen[0]).toBe("1:session");
+    expect(seen.filter((x) => x.endsWith(":session"))).toHaveLength(3);
+    expect(last("result").snapshot.state.cycle).toBe(4);
+
+    // Previous from a cycle's start: the last such stop of the cycle before; then back to its start.
+    await send({ type: "stepStop", reqId: ++reqId, dir: "prev", kinds: ["sessionPhase"] });
+    let m = last("stopped");
+    expect(m.position!.cycle).toBe(3);
+    expect(m.position!.index).toBe(m.position!.count);
+    await send({ type: "back", reqId: ++reqId, to: "cycle" });
+    expect(JSON.stringify(last("rewound").snapshot.state)).toBe(JSON.stringify(at3));
+
+    // From the middle of a cycle a plain Run finishes it and goes on: the same states as before.
+    await send({ type: "stepStop", reqId: ++reqId, dir: "next", kinds: ["tickPhase", "playerAction"] });
+    m = last("stopped");
+    expect(m.position!.cycle).toBe(3);
+    await send({ type: "run", reqId: ++reqId, ticks: 2, retainEvents: "none" });
+    expect(JSON.stringify(last("result").snapshot.state)).toBe(JSON.stringify(at5));
+  });
+
   it("reports scenario errors instead of throwing", async () => {
     await send({ type: "init", reqId: 40, scenario: { ...sc, plots: [] } });
     const err = last("error");

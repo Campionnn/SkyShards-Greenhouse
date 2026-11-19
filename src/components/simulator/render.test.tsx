@@ -58,6 +58,7 @@ const view: SimulationView = {
   history: { canStepBack: true, lastAction: { kind: "run", fromCycle: 40, cycles: 1 } },
   rewound: null,
   quiet: false,
+  stop: null,
 };
 
 const wrap = (node: React.ReactNode) =>
@@ -586,6 +587,8 @@ describe("simulator panels render", () => {
           onOpenSettings={() => {}}
           problems={[]}
           shareMenu={() => null}
+          stepBy={{ detail: false, kinds: [] }}
+          onStepByChange={() => {}}
         />
         <KpiStrip view={view} plotCount={2} />
         <EventLog log={view.log} plotIds={[1, 2]} />

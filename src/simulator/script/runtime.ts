@@ -39,6 +39,7 @@ import { autoAloeHarvestStage, runSessionPhase } from "../sim/player";
 import { buildOccupancy, DEAD_PLANT, insertPlant, isDry, isFootprintFree, isFullyGrown, isHarvestable, isRoot, newPlant } from "../sim/plants";
 import type { PlantState, PlotState, SimulationState, TickEvent } from "../sim/state";
 import { bump, perPlot } from "../sim/summary";
+import { probeAction } from "../sim/stops";
 import { latchIfReady } from "../sim/tick";
 import type * as A from "./ast";
 import { EVENT_HOOKS, SCRIPT_PHASES } from "./docs";
@@ -334,6 +335,40 @@ export class ScriptRuntime {
     this.forgetGoneProtections();
   }
 
+  /**
+   * Stepping inside a cycle (sim/replay.ts): write the variables as they are right now into `into`
+   * (a detached copy of the scripts state), so a mid-cycle snapshot shows them. Touches nothing in
+   * the runtime or the run's state; a value that can't be kept leaves `into` as it was.
+   */
+  encodeInto(into: ScriptsState): void {
+    try {
+      const enc = new Encoder(this.encodeEnv);
+      const shared = enc.encode(this.shared, "shared");
+      const scopes: ScriptsState["scopes"] = {};
+      for (const inst of this.scripts) {
+        const out: Record<string, [ScriptVarKind, EncodedValue]> = {};
+        for (const [name, kind] of inst.declared) {
+          const b = inst.scope.vars.get(name);
+          if (b) out[name] = [kind, enc.encode(b.value, name)];
+        }
+        scopes[inst.key] = out;
+      }
+      into.heap = enc.heap;
+      into.shared = shared;
+      into.scopes = scopes;
+    } catch (err) {
+      if (!(err instanceof PersistError)) throw err;
+    }
+  }
+
+  /**
+   * Stop points (sim/stops.ts): the script whose code is running now, and its hook. A physical
+   * action taken while this is set is a script action (also inside a phase it ran with runPhase).
+   */
+  get acting(): { script: ScriptKey; hook: string | null } | null {
+    return this.current ? { script: this.current.key, hook: this.currentHook } : null;
+  }
+
   /** Forget protections of plants that are gone (part of every save). */
   private forgetGoneProtections(): void {
     const ss = this.scriptsState;
@@ -401,7 +436,13 @@ export class ScriptRuntime {
       this.currentHook = prev.hook;
       this.mode = prev.mode;
     }
-    if (!outer) this.flush();
+    if (!outer) {
+      // Stepping inside a cycle: a stop once the hook call is done (the events it caused are
+      // delivered next, each event hook its own stop).
+      const probe = this.ctx?.probe;
+      if (probe && hook !== "top level") probe({ kind: "scriptHook", plotId: inst.plotId, id: hook, script: inst.key, hook });
+      this.flush();
+    }
   }
 
   /** Add one outermost call's interpreter steps to the run's total (ScriptsState.steps). */
@@ -796,7 +837,10 @@ export class ScriptRuntime {
     const fn = (name: string, impl: (args: unknown[], info: CallInfo) => unknown) =>
       new HostFn(`debug.${name}`, (a, info) => {
         guard(info, name);
-        return impl(a, info);
+        const out = impl(a, info);
+        const ctx = this.ctx;
+        if (ctx?.probe) probeAction(ctx, this.current?.plotId ?? null, `debug.${name}`);
+        return out;
       });
     const plotArg = (v: unknown, info: CallInfo, what: string): PlotState => {
       const id = v instanceof PlotHost ? v.id : toNum(v);
@@ -1317,6 +1361,7 @@ class PlotHost extends HostObject {
           }
           // Effort: once per plot per session, like the built-in phase.
           if (watered) effortWater(this.ctx.state, rt.scratchFor(this.id));
+          if (watered && this.ctx.probe) probeAction(this.ctx, this.id, "water");
           return true;
         });
       case "setGround":
@@ -1330,6 +1375,7 @@ class PlotHost extends HostObject {
           const k = cellKey(r, c);
           if (this.plot.groundTiles[k] === g) delete this.plot.groundOverrides[k];
           else this.plot.groundOverrides[k] = g;
+          if (this.ctx.probe) probeAction(this.ctx, this.id, "setGround", undefined, r, c, g);
           return true;
         });
       case "runPhase":
@@ -1378,6 +1424,7 @@ class PlotHost extends HostObject {
           if (!rt.canAct(info, "plot.setLayout")) return false;
           rt.scriptPlot(this.id).layout = layout;
           applyStepLayout(this.plot, this.ctx.layoutFor(this.id), this.ctx, rt.scratchFor(this.id), false);
+          if (this.ctx.probe) probeAction(this.ctx, this.id, "setLayout");
           return true;
         });
       case "resetLayout":
@@ -1387,6 +1434,7 @@ class PlotHost extends HostObject {
           if (!sp.layout) return false;
           delete sp.layout;
           applyStepLayout(this.plot, this.ctx.layoutFor(this.id), this.ctx, rt.scratchFor(this.id), false);
+          if (this.ctx.probe) probeAction(this.ctx, this.id, "setLayout", undefined, undefined, undefined, "back to the step's layout");
           return true;
         });
     }
@@ -1471,6 +1519,7 @@ class PlotHost extends HostObject {
     insertPlant(plot, p);
     effortPut(ctx.state, rt.scratchFor(plot.id), p.id, origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row, col, origin, replacement: false });
+    if (ctx.probe) probeAction(ctx, plot.id, origin === "planted" ? "plant" : "place", p.kindId, row, col);
     return true;
   }
 }
@@ -1675,6 +1724,7 @@ class PlantHost extends HostObject {
         return fn(key, (_a, info) => this.act(info, key, (plot, q) => {
           effortBreak(rt.cycleCtx.state, rt.scratchFor(this.plotId), q.id);
           destroyPlant(plot, q, rt.cycleCtx, "destroyed by script");
+          if (rt.cycleCtx.probe) probeAction(rt.cycleCtx, this.plotId, "destroy", q.kindId, q.row, q.col);
         }));
       case "waterIt":
         return fn(key, (a, info) => {
@@ -1684,22 +1734,26 @@ class PlantHost extends HostObject {
             // Effort: once per plot per session, however many plants are watered (like the built-in phase).
             if (q.water < MAX_WATER) effortWater(rt.cycleCtx.state, rt.scratchFor(this.plotId));
             q.water = add === null ? MAX_WATER : Math.min(MAX_WATER, q.water + add);
+            if (rt.cycleCtx.probe) probeAction(rt.cycleCtx, this.plotId, "water", q.kindId, q.row, q.col);
           });
         });
       case "wake":
         return fn(key, (_a, info) => this.act(info, key, (_plot, q) => {
           if (q.gate.asleep) effort(rt.cycleCtx.state, "gate");
           q.gate.asleep = false;
+          if (rt.cycleCtx.probe) probeAction(rt.cycleCtx, this.plotId, "wake", q.kindId, q.row, q.col);
         }));
       case "vacuum":
         return fn(key, (_a, info) => this.act(info, key, (_plot, q) => {
           if (q.gate.ratAlive) effort(rt.cycleCtx.state, "gate");
           q.gate.ratAlive = false;
+          if (rt.cycleCtx.probe) probeAction(rt.cycleCtx, this.plotId, "vacuum", q.kindId, q.row, q.col);
         }));
       case "discharge":
         return fn(key, (_a, info) => this.act(info, key, (_plot, q) => {
           if (q.gate.charge) effort(rt.cycleCtx.state, "gate");
           if (q.gate.charge !== undefined) q.gate.charge = 0;
+          if (rt.cycleCtx.probe) probeAction(rt.cycleCtx, this.plotId, "discharge", q.kindId, q.row, q.col);
         }));
       case "feed":
         return fn(key, (_a, info) =>
@@ -1707,6 +1761,7 @@ class PlantHost extends HostObject {
             if (q.kindId === "fleshtrap" && q.origin === "spawned") {
               q.gate.hunger = (q.gate.hunger ?? 0) + rt.cycleCtx.config.fleshtrapFeedHunger;
               effort(rt.cycleCtx.state, "gate");
+              if (rt.cycleCtx.probe) probeAction(rt.cycleCtx, this.plotId, "feed", q.kindId, q.row, q.col);
             }
           })
         );

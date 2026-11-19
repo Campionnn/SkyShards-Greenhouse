@@ -11,6 +11,7 @@ import { buildOccupancy, DEAD_PLANT, insertPlant, isFootprintFree, isHarvestable
 import type { PlantState, PlotState, SlotLabel } from "./state";
 import { bump } from "./summary";
 import { isProtected } from "../script/overrides";
+import { probeAction } from "./stops";
 
 /**
  * Player removal: harvest if harvestable, clear a Dead Plant (item back to inventory), pick a
@@ -34,9 +35,11 @@ export function removeByPlayer(plot: PlotState, p: PlantState, ctx: CycleCtx, sc
     removePlant(plot, p);
     credit(ctx.state, DEAD_PLANT, p.size * p.size);
     ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "cleared dead plant" });
+    if (ctx.probe) probeAction(ctx, plot.id, "clearDead", p.kindId, p.row, p.col);
     return;
   }
   destroyPlant(plot, p, ctx, why);
+  if (ctx.probe) probeAction(ctx, plot.id, "break", p.kindId, p.row, p.col, why);
 }
 
 /**
@@ -50,6 +53,7 @@ function pickUp(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScra
   removePlant(plot, p);
   refundPlacement(ctx.state, p.kindId, p.gate.pickup === "replacement", ctx.prices);
   ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "picked up (no tick since placed)" });
+  if (ctx.probe) probeAction(ctx, plot.id, "pickUp", p.kindId, p.row, p.col);
 }
 
 /**
@@ -110,6 +114,7 @@ export function placeLayoutPlants(plot: PlotState, layout: ResolvedLayout, ctx: 
     // Setup is built before the run; everything after is the player's work.
     if (mode !== "setup") effortPut(ctx.state, scratch, p.id, d.origin === "planted" ? "replant" : "place");
     ctx.emit(plot.id, { kind: "placed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, origin: p.origin, replacement });
+    if (ctx.probe) probeAction(ctx, plot.id, p.origin === "planted" ? "plant" : "place", p.kindId, p.row, p.col);
   }
 }
 
@@ -285,6 +290,7 @@ export function replacePlacedBeforeDecay(
     insertPlant(plot, fresh);
     effortPut(ctx.state, scratch, fresh.id, "replace");
     ctx.emit(plot.id, { kind: "placed", plantId: fresh.id, kindId: fresh.kindId, row: fresh.row, col: fresh.col, origin: "placed", replacement: true });
+    if (ctx.probe) probeAction(ctx, plot.id, "replace", fresh.kindId, fresh.row, fresh.col);
   }
 }
 

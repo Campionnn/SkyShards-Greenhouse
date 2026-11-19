@@ -1,5 +1,6 @@
 import type { SimulationView } from "../../../hooks/useSimulation";
 import { CONFIG_META, DEFAULT_CONFIG, type RunSummary, type Scenario } from "../../../simulator";
+import { describeStop, stopPlace } from "./stepBy";
 
 // Plain helpers shared by the simulator page's components (kept out of .tsx files so React fast
 // refresh only sees components there).
@@ -47,6 +48,10 @@ export function statusText(view: SimulationView, plotCount: number): string {
   if (running && view.progress) return `Running ${view.progress.done.toLocaleString("en-US")} of ${view.progress.total.toLocaleString("en-US")} cycles… Space or Esc stops.`;
   if (running) return "Going back…";
   if (!ready || !summary) return "";
+  if (view.stop) {
+    const s = view.stop;
+    return `Cycle ${s.cycle}, ${s.index} of ${s.count}: ${stopPlace(s.stop)} · ${describeStop(s.stop)}`;
+  }
   if (view.rewound) {
     const undone = view.rewound.undone;
     const cycle = view.snapshot!.state.cycle;

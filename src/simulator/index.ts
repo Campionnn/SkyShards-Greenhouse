@@ -95,6 +95,9 @@ export {
 } from "./growth/aloe";
 export { cycleSeconds, effectiveUniqueCrops } from "./growth/clock";
 export type * from "./sim/state";
+// Stepping inside a cycle: stop points (engine.replayCycle replays a cycle to one).
+export { STOP_KINDS, type StopKind, type StopPoint } from "./sim/stops";
+export type { StopCapture, StopReplay } from "./sim/replay";
 // Scripting (src/simulator/script): language checks and the API reference. Running scripts
 // happens inside run(); there is no separate entry point.
 export { checkScriptExpression, diagnoseScript, type ScriptDiagnostic } from "./script/check";

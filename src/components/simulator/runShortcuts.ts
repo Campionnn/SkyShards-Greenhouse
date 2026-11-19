@@ -14,8 +14,8 @@ export interface ShortcutKey {
 
 /** Shown in the shortcuts hint and button titles. */
 export const RUN_SHORTCUTS: { keys: string; action: string }[] = [
-  { keys: "→ or .", action: "Step one cycle (hold to keep stepping)" },
-  { keys: "← or ,", action: "Back one cycle (hold to keep going back)" },
+  { keys: "→ or .", action: "Step one cycle, or to the next stop with Step by: Detail (hold to keep stepping)" },
+  { keys: "← or ,", action: "Back one cycle, or to the previous stop (hold to keep going back)" },
   { keys: "Space", action: "Run N cycles, or Stop while running" },
   { keys: "Shift + →", action: "Run N cycles" },
   { keys: "Esc", action: "Stop a run" },

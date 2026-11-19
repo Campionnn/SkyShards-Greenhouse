@@ -16,6 +16,7 @@ import { JELLYBEAN, removePlant, yieldEffectsLocked } from "./plants";
 import { bump, perPlot } from "./summary";
 import { ZOMBUD, zombudHarvest } from "./zombud";
 import { rollRemutation } from "./serendipity";
+import { probeAction } from "./stops";
 import type { PlantState, PlotState } from "./state";
 
 function scaleDrops(drops: Record<string, number>, factor: number): Record<string, number> {
@@ -180,4 +181,6 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   if (primed) explode(plot, p, ctx); // drops are kept
   // Mutation Serendipity: the harvested spawn may re-mutate in place (no roll at level 0).
   rollRemutation(plot, p, ctx, scratch);
+  // Stepping inside a cycle (sim/stops.ts): one stop per harvest, its blast and re-mutation included.
+  if (ctx.probe) probeAction(ctx, plot.id, "harvest", p.kindId, p.row, p.col);
 }

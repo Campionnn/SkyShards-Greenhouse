@@ -5,6 +5,7 @@ import type { PriceSource } from "../economy/prices";
 import type { EffectsKey, EffectsMemo, ForcedEffects } from "../effects/adapter";
 import type { FlowStep, Policies, StepLayout } from "../flow/types";
 import type { ScriptRuntime } from "../script/runtime";
+import type { CycleProbe } from "./stops";
 import type { EffortKind, FlowRunnerState, PlayerStats, PlotId, PlotState, ScenarioPlot, SimulationState, SlotLabel, TickEvent } from "./state";
 
 /** A step layout resolved against game data: sizes filled in, origin decided. */
@@ -79,6 +80,11 @@ export interface CycleCtx {
   scripts: ScriptRuntime | null;
   /** Effort (sim/effort.ts): a Noctilume time change is already counted this session (all plots). */
   effortNoctilume?: boolean;
+  /**
+   * Stop points (sim/stops.ts): set only when run() was given `RunOptions.probe` (stepping inside a
+   * cycle). Absent in every normal run; each call site is guarded by `if (ctx.probe)`. Read only.
+   */
+  probe?: CycleProbe;
 }
 
 /** One named step of `TICK_PHASES` (sim/tick.ts) or, on active cycles, `PLAYER_PHASES` (sim/player.ts). */

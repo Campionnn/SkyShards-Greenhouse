@@ -4,6 +4,7 @@ import { duringStepChange, effort } from "../sim/effort";
 import { canBuy } from "../sim/market";
 import { applyStepLayout } from "../sim/placement";
 import type { FlowRunnerState, PlotState, ScenarioPlot, TickEvent } from "../sim/state";
+import { probeAction } from "../sim/stops";
 import { bump } from "../sim/summary";
 import { collectedOf, conditionsHold, type TriggerView } from "./triggers";
 
@@ -78,6 +79,9 @@ export function transition(
     applyStepLayout(plot, ctx.layoutFor(plot.id), ctx, scratch, !!to.fullClear);
   });
   resetStepCounters(runner);
+  // Stepping inside a cycle (sim/stops.ts): the step change, after its rebuild (each break and
+  // placement of the rebuild was a stop of its own).
+  if (ctx.probe) probeAction(ctx, plot.id, "stepChange", undefined, undefined, undefined, to.label?.trim() || `Step ${runner.stepIndex + 1}`);
 }
 
 /** Reset after layout: harvests/breaks during clearing count for neither step. */

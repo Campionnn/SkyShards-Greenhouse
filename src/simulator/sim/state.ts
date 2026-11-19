@@ -5,6 +5,7 @@ import type { CropFortune, FarmingToolStats } from "../economy/fortune";
 import type { ArmorSet } from "../economy/rareCrops";
 import type { RngState } from "../rng";
 import type { ScriptDef, ScriptsState } from "../script/types";
+import type { RunProbe } from "./stops";
 
 // SimulationState is plain data (no Map, Set, class or closure) so it survives
 // structuredClone, postMessage and JSON, and run() stays splittable.
@@ -493,6 +494,11 @@ export interface RunOptions {
    * per call instead of one: run(s, n) equals n calls of run(s, 1).
    */
   onCycle?: (state: SimulationState) => boolean | void;
+  /**
+   * Stop points (sim/stops.ts `replayStops`): called inside each cycle after every phase, hook and
+   * single action, with the working state. Read only. Without it the engine builds and calls nothing.
+   */
+  probe?: RunProbe;
 }
 
 export interface BatchResult {

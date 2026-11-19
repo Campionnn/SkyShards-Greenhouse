@@ -13,6 +13,7 @@ import { buildOccupancy, insertPlant, isFullyGrown, isHarvestable, isRoot, JELLY
 import { layoutInputAt, maintainLayout, neededLayout, removeByPlayer, replacePlacedBeforeDecay } from "./placement";
 import type { PlantState, PlotState } from "./state";
 import { isProtected, phaseDisabled } from "../script/overrides";
+import { probeAction } from "./stops";
 
 /** Reused buffer of `fixGround` (synchronous). */
 const groundNow: (string | undefined)[] = [];
@@ -32,7 +33,10 @@ function decaysBeforeNextSession(plot: PlotState, p: PlantState, ctx: CycleCtx):
  */
 function water(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   if (ctx.policiesFor(plot.id).watering !== "toMax") return;
-  if (waterToMax(plot)) effortWater(ctx.state, scratch);
+  if (waterToMax(plot)) {
+    effortWater(ctx.state, scratch);
+    if (ctx.probe) probeAction(ctx, plot.id, "water");
+  }
 }
 
 /** Water every plant on the plot to `MAX_WATER` (Soggybud can't be watered). True if any plant needed water. */
@@ -54,24 +58,33 @@ function tendGates(plot: PlotState, ctx: CycleCtx): void {
     if (g.wakeSnoozling && p.gate.asleep) {
       p.gate.asleep = false;
       effort(ctx.state, "gate");
+      if (ctx.probe) probeAction(ctx, plot.id, "wake", p.kindId, p.row, p.col);
     }
     if (g.vacuumRat && p.gate.ratAlive) {
       p.gate.ratAlive = false;
       effort(ctx.state, "gate");
+      if (ctx.probe) probeAction(ctx, plot.id, "vacuum", p.kindId, p.row, p.col);
     }
     if (g.dischargeThunderling && p.gate.charge) {
       p.gate.charge = 0;
       effort(ctx.state, "gate");
+      if (ctx.probe) probeAction(ctx, plot.id, "discharge", p.kindId, p.row, p.col);
     }
     if (g.feedFleshtrap && p.kindId === "fleshtrap" && p.origin === "spawned") {
       p.gate.hunger = (p.gate.hunger ?? 0) + ctx.config.fleshtrapFeedHunger;
       effort(ctx.state, "gate");
+      if (ctx.probe) probeAction(ctx, plot.id, "feed", p.kindId, p.row, p.col);
     }
     // Noctilume: the growth gate reads `noctilumeTime` on active cycles; the player changes the
     // time once per visit, however many Noctilumes stand there.
     if (g.noctilumeTime && p.kindId === "noctilume" && p.origin === "spawned" && !isFullyGrown(p)) noctilume = true;
   }
-  if (noctilume) effortNoctilume(ctx);
+  if (noctilume) {
+    const counted = ctx.effortNoctilume;
+    effortNoctilume(ctx);
+    // One time change for every plot together: a stop the first time only.
+    if (ctx.probe && !counted) probeAction(ctx, plot.id, "noctilume");
+  }
 }
 
 /** Break Devourer roots (no drops). Effort: once per plot per session with roots. */
@@ -83,6 +96,7 @@ function clearRoots(plot: PlotState, ctx: CycleCtx): void {
     removePlant(plot, p);
     cleared = true;
     ctx.emit(plot.id, { kind: "removed", plantId: p.id, kindId: p.kindId, row: p.row, col: p.col, reason: "cleared root" });
+    if (ctx.probe) probeAction(ctx, plot.id, "clearRoot", p.kindId, p.row, p.col);
   }
   if (cleared) effort(ctx.state, "roots");
 }
@@ -156,6 +170,7 @@ function tendBaseCrops(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): vo
     insertPlant(plot, replant);
     effortPut(ctx.state, scratch, replant.id, "replant");
     ctx.emit(plot.id, { kind: "placed", plantId: replant.id, kindId, row, col, origin: "planted", replacement: false });
+    if (ctx.probe) probeAction(ctx, plot.id, "replant", kindId, row, col);
   }
 }
 
@@ -233,6 +248,7 @@ function fixGround(plot: PlotState, ctx: CycleCtx): void {
       ground[idx] = m.ground;
       effort(ctx.state, "ground");
       ctx.emit(plot.id, { kind: "groundFixed", row, col, from: current, to: m.ground, mutationId: m.id });
+      if (ctx.probe) probeAction(ctx, plot.id, "fixGround", undefined, row, col, m.ground);
     }
   }
 }
@@ -292,6 +308,8 @@ export const PLAYER_PHASES: readonly Phase[] = [
  */
 export function runPlayerSession(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const scripts = ctx.scripts;
+  // Stepping inside a cycle (sim/stops.ts): a stop after each phase. Absent in a normal run.
+  const probe = ctx.probe;
   // Every harvest, break, placement, step change or watering can change what plants give each
   // other. `held` is brought up to date after each phase and hook (a no-op when the plot is
   // unchanged); readers in between (harvest, Aloe's respawn chance, scripts) refresh on demand.
@@ -299,6 +317,7 @@ export function runPlayerSession(plot: PlotState, ctx: CycleCtx, scratch: TickSc
     for (const phase of PLAYER_PHASES) {
       phase.run(plot, ctx, scratch);
       ensureEffects(plot, scratch);
+      if (probe) probe({ kind: "sessionPhase", plotId: plot.id, id: phase.id });
     }
     return;
   }
@@ -308,6 +327,7 @@ export function runPlayerSession(plot: PlotState, ctx: CycleCtx, scratch: TickSc
     if (phaseDisabled(ctx.state, plot.id, phase.id)) continue;
     phase.run(plot, ctx, scratch);
     ensureEffects(plot, scratch);
+    if (probe) probe({ kind: "sessionPhase", plotId: plot.id, id: phase.id });
     scripts.flush();
     ensureEffects(plot, scratch);
   }

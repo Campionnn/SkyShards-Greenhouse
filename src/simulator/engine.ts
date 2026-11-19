@@ -6,7 +6,9 @@ import { validateScenario } from "./flow/validate";
 import type { Env } from "./sim/context";
 import { initState } from "./sim/init";
 import { injectItems } from "./sim/inventory";
+import { replayCycle } from "./sim/replay";
 import { run } from "./sim/run";
+import type { StopPoint } from "./sim/stops";
 import type { BatchResult, RunOptions, Scenario, SimulationState } from "./sim/state";
 
 /** Simulator over one immutable data set. Evaluates scenarios only; never generates or ranks layouts. */
@@ -19,6 +21,11 @@ export function createEngine(data: GameData = defaultGameData()) {
     initState: (scenario: Scenario) => initState(env, scenario),
     /** Advance `ticks` cycles. `run(state, 1)` is a step. */
     run: (state: SimulationState, ticks: number, opts?: RunOptions): BatchResult => run(env, state, ticks, opts),
+    /**
+     * Stepping inside a cycle: replay the cycle starting at `state` and list its stop points,
+     * copying the state at the first one `pick` accepts (sim/replay.ts). Never moves time.
+     */
+    replayCycle: (state: SimulationState, pick?: (stop: StopPoint, ordinal: number) => boolean) => replayCycle(env, state, pick),
     analyse: (state: SimulationState) => analyseSustainability(state, data),
     /** Add (negative: remove) inventory items. Returns a new state; time does not move. */
     addItems: (state: SimulationState, items: Record<string, number>) => injectItems(state, items),

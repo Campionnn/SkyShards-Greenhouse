@@ -4,7 +4,7 @@ import type { SimulationView } from "../../../hooks/useSimulation";
 import { applyRules, ruleDifferences, type RuleKind } from "../../../leaderboard/rules";
 import { EVERY, nearestEvery } from "../../../leaderboard/tiers";
 import { profileRuleKind, ruleDifferenceLines } from "../../../leaderboard/view";
-import { CONFIG_META, cycleSeconds, effectiveUniqueCrops, type ProfileMode, type Scenario } from "../../../simulator";
+import { CONFIG_META, cycleSeconds, effectiveUniqueCrops, STOP_KINDS, type ProfileMode, type Scenario } from "../../../simulator";
 import { PlayerImportBox } from "../../playerImport/PlayerImportBox";
 import { StatInput } from "../../playerStats/StatInput";
 import { STAT_FIELDS } from "../../playerStats/statFields";
@@ -16,6 +16,7 @@ import { formatDuration } from "../format";
 import { modalOpen, ownsKeys, RUN_SHORTCUTS, runShortcutFor } from "../runShortcuts";
 import { ScheduleEditor } from "../ScenarioPanels";
 import { RUN_PRESETS, undoTitle } from "./pageHelpers";
+import { STOP_KIND_INFO, stepsInside, type StepBy } from "./stepBy";
 
 // The simulator's sticky command bar: the profile switch, the settings people change all the time
 // (as property chips with popovers), the problems pill, and the run cluster. The rest of the
@@ -62,6 +63,9 @@ export interface CommandBarProps {
   onOpenLeaderboard?: () => void;
   /** A from-nothing preview: settings chips are read-only (the preview has its own scenario). */
   preview?: boolean;
+  /** Step by a whole cycle or stop by stop inside it (the Run menu's "Step by"). */
+  stepBy: StepBy;
+  onStepByChange: (s: StepBy) => void;
 }
 
 /** A borderless "label value" chip that opens a popover. */
@@ -103,7 +107,9 @@ function everyLabel(sc: Scenario): string {
 }
 
 export const CommandBar: React.FC<CommandBarProps> = (props) => {
-  const { scenario, onChange, view, profile, onProfileChange, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange, changedSettings, onOpenSettings, problems, shareMenu, preview } = props;
+  const { scenario, onChange, view, profile, onProfileChange, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange, changedSettings, onOpenSettings, problems, shareMenu, preview, stepBy, onStepByChange } = props;
+  const inside = stepsInside(stepBy);
+  const canBack = view.history.canStepBack || view.stop !== null;
   const [pop, setPop] = useState<null | "online" | "player" | "rules" | "problems" | "run" | "share">(null);
   const anchors = useRef<Record<string, HTMLElement | null>>({});
   const reg = (k: string) => (el: HTMLElement | null) => void (anchors.current[k] = el);
@@ -136,7 +142,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
       if (action === "stop" && !isRunning) return;
       e.preventDefault();
       if (action === "step" && isReady) onStep();
-      else if (action === "back" && isReady && view.history.canStepBack) onStepBack();
+      else if (action === "back" && isReady && (view.history.canStepBack || view.stop !== null)) onStepBack();
       else if (action === "run" && isReady) onRun(n);
       else if (action === "toggleRun") {
         if (isRunning) onStop();
@@ -242,12 +248,12 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
 
       {/* Run cluster */}
       {!running && (
-        <div className="inline-flex shrink-0 overflow-hidden rounded-control border border-line-strong bg-surface-control max-md:hidden" role="group" aria-label="Step">
+        <div className={cn("inline-flex shrink-0 overflow-hidden rounded-control border bg-surface-control max-md:hidden", inside ? "border-select/60" : "border-line-strong")} role="group" aria-label={inside ? "Step inside the cycle" : "Step"}>
           <button
             type="button"
             onClick={onStepBack}
-            disabled={!ready || !view.history.canStepBack}
-            title="Back one cycle (← or ,)"
+            disabled={!ready || !canBack}
+            title={inside ? "Back to the previous stop (← or ,). Step by: Run ▾" : view.stop ? "Back to the start of this cycle (← or ,)" : "Back one cycle (← or ,)"}
             className="focus-ring-inset inline-flex h-7 cursor-pointer items-center gap-1 px-2.5 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
           >
             <ChevronLeft className="size-3.5" />
@@ -257,10 +263,11 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
             type="button"
             onClick={onStep}
             disabled={!ready}
-            title="Step one cycle (→ or .)"
+            title={inside ? "Step to the next stop inside the cycle (→ or .). Step by: Run ▾" : view.stop ? "Finish this cycle (→ or .)" : "Step one cycle (→ or .)"}
             className="focus-ring-inset inline-flex h-7 cursor-pointer items-center gap-1 border-l border-line-strong px-2.5 text-body font-medium text-fg-body transition-colors duration-(--duration-hover) hover:bg-surface-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
           >
             <span className="@max-[1100px]:hidden">Step</span>
+            {inside && <span className="text-secondary font-normal text-select-fg @max-[1330px]:hidden">· detail</span>}
             <ChevronRight className="size-3.5" />
           </button>
         </div>
@@ -423,7 +430,7 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
       </Popover>
 
       <Popover anchor={anchors.current.run ?? null} open={pop === "run"} onClose={close} label="Run options" width={360} align="end">
-        <RunOptions n={n} setN={setN} seed={seed} onSeedChange={onSeedChange} running={running} close={close} />
+        <RunOptions n={n} setN={setN} seed={seed} onSeedChange={onSeedChange} running={running} close={close} stepBy={stepBy} onStepByChange={onStepByChange} />
         <MenuSeparator />
         <MenuLabel>Keyboard</MenuLabel>
         <ul className="space-y-1 px-2 pb-1.5">
@@ -471,16 +478,18 @@ export const ProblemList: React.FC<{ problems: PageProblem[]; close: () => void 
   </ul>
 );
 
-/** The Run menu's length presets and seed (the bar's ▾ and the phone's ▾). */
-export const RunOptions: React.FC<{ n: number; setN: (n: number) => void; seed: number; onSeedChange: (seed: number) => void; running: boolean; close: () => void; custom?: boolean }> = ({
-  n,
-  setN,
-  seed,
-  onSeedChange,
-  running,
-  close,
-  custom,
-}) => (
+/** The Run menu's length presets, Step by and seed (the bar's ▾ and the phone's ▾). */
+export const RunOptions: React.FC<{
+  n: number;
+  setN: (n: number) => void;
+  seed: number;
+  onSeedChange: (seed: number) => void;
+  running: boolean;
+  close: () => void;
+  custom?: boolean;
+  stepBy?: StepBy;
+  onStepByChange?: (s: StepBy) => void;
+}> = ({ n, setN, seed, onSeedChange, running, close, custom, stepBy, onStepByChange }) => (
   <>
     <MenuLabel>Run length</MenuLabel>
     <div className="flex gap-1 px-1 pb-1.5">
@@ -504,6 +513,12 @@ export const RunOptions: React.FC<{ n: number; setN: (n: number) => void; seed: 
         </button>
       ))}
     </div>
+    {stepBy && onStepByChange && (
+      <>
+        <MenuSeparator />
+        <StepByOptions value={stepBy} onChange={onStepByChange} large={custom} />
+      </>
+    )}
     {custom && (
       <label className="flex items-center justify-between gap-2 px-2 py-1.5 text-body text-fg-body">
         Cycles
@@ -637,3 +652,45 @@ export const FlowsMenuItems: React.FC<{
   </>
 );
 
+
+/**
+ * Step by: a whole cycle, or stop by stop inside it, and which kinds of stop (sim/stops.ts). Replays
+ * the cycle to each stop, so it never changes what the run does.
+ */
+const StepByOptions: React.FC<{ value: StepBy; onChange: (s: StepBy) => void; large?: boolean }> = ({ value, onChange, large }) => (
+  <div className="px-2 pb-1.5" data-testid="step-by">
+    <div className="mb-1.5 flex items-center justify-between gap-2">
+      <span className="text-label uppercase text-fg-meta">Step by</span>
+      <Segmented<"cycle" | "detail">
+        label="Step by"
+        value={value.detail ? "detail" : "cycle"}
+        onChange={(v) => onChange({ ...value, detail: v === "detail" })}
+        className={large ? "h-11" : undefined}
+        options={[
+          { value: "cycle", label: "Cycle", title: "Step and Back move one whole cycle" },
+          { value: "detail", label: "Detail", title: "Step and Back move to the next or previous moment inside the cycle" },
+        ]}
+      />
+    </div>
+    {value.detail && (
+      <>
+        <ul className="space-y-0.5">
+          {STOP_KINDS.map((k) => (
+            <li key={k} className={cn("flex items-center gap-2.5 rounded-inner px-1", large ? "min-h-11" : "min-h-8")}>
+              <div className="min-w-0 flex-1">
+                <div className="text-body text-fg-body">{STOP_KIND_INFO[k].label}</div>
+                <div className="text-meta text-fg-meta">{STOP_KIND_INFO[k].hint}</div>
+              </div>
+              <Switch
+                checked={value.kinds.includes(k)}
+                label={STOP_KIND_INFO[k].label}
+                onChange={(on) => onChange({ ...value, kinds: STOP_KINDS.filter((x) => (x === k ? on : value.kinds.includes(x))) })}
+              />
+            </li>
+          ))}
+        </ul>
+        {value.kinds.length === 0 && <p className="mt-1 px-1 text-secondary text-warn">Pick at least one, or Step moves a whole cycle.</p>}
+      </>
+    )}
+  </div>
+);

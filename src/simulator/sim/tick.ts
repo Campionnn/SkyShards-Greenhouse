@@ -72,7 +72,16 @@ export const TICK_PHASES: readonly Phase[] = [
 
 /** One plot's game tick, on run()'s working copy. Internal: only sim/run.ts may import it (scope-guard test). */
 export function tickPlot(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
-  for (const phase of TICK_PHASES) phase.run(plot, ctx, scratch);
+  const probe = ctx.probe;
+  if (!probe) {
+    for (const phase of TICK_PHASES) phase.run(plot, ctx, scratch);
+    return;
+  }
+  // Stepping inside a cycle (sim/stops.ts): a stop after each phase.
+  for (const phase of TICK_PHASES) {
+    phase.run(plot, ctx, scratch);
+    probe({ kind: "tickPhase", plotId: plot.id, id: phase.id });
+  }
 }
 
 /** Latch effects the first time a plant is fully grown. (Exported for the scripts' `debug.setStage`.) */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RunSummary, Scenario, ScenarioIssue, TickEventKind, TimedEvent } from "../simulator";
-import type { HistoryInfo, SessionSnapshot, UndoableAction, WorkerRequest, WorkerResponse } from "../simulator/worker/protocol";
+import type { RunSummary, Scenario, ScenarioIssue, StopKind, TickEventKind, TimedEvent } from "../simulator";
+import type { HistoryInfo, SessionSnapshot, StopPosition, UndoableAction, WorkerRequest, WorkerResponse } from "../simulator/worker/protocol";
 
 /** Cycles of history the recent-events log keeps. */
 export const LOG_CYCLES = 20;
@@ -34,6 +34,11 @@ export interface SimulationView {
    * progress bar and the status line on every cycle.
    */
   quiet: boolean;
+  /**
+   * Stepping inside a cycle: the stop point shown now (the snapshot is mid-cycle), or null between
+   * cycles. Back from here goes to the cycle's start; Step / Run finish the cycle first.
+   */
+  stop: StopPosition | null;
 }
 
 /** The view as the page draws it: a quick Step / Back / Undo in flight still looks ready. */
@@ -55,6 +60,7 @@ const initialView: SimulationView = {
   history: { canStepBack: false, lastAction: null },
   rewound: null,
   quiet: false,
+  stop: null,
 };
 
 function trimLog(events: TimedEvent[], currentCycle: number): TimedEvent[] {
@@ -83,7 +89,7 @@ export function useSimulation(scenario: Scenario | null) {
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const msg = event.data;
       if (msg.reqId < epochRef.current) return;
-      if (msg.type === "ready" || msg.type === "result" || msg.type === "rewound" || msg.type === "error") busyRef.current = false;
+      if (msg.type === "ready" || msg.type === "result" || msg.type === "rewound" || msg.type === "error" || msg.type === "stopped") busyRef.current = false;
       switch (msg.type) {
         case "ready":
           setView({
@@ -98,7 +104,7 @@ export function useSimulation(scenario: Scenario | null) {
           });
           break;
         case "updated":
-          setView((v) => ({ ...v, snapshot: msg.snapshot, history: msg.history, error: null }));
+          setView((v) => ({ ...v, snapshot: msg.snapshot, history: msg.history, error: null, stop: null }));
           break;
         case "rewound":
           setView((v) => {
@@ -115,6 +121,7 @@ export function useSimulation(scenario: Scenario | null) {
               lastCall: null,
               rewound: { undone: msg.undone },
               error: null,
+              stop: null,
             };
           });
           break;
@@ -129,15 +136,33 @@ export function useSimulation(scenario: Scenario | null) {
               status: "ready",
               previousSummary: v.snapshot?.state.summary ?? null,
               snapshot: msg.snapshot,
-              lastCycleEvents: msg.events.filter((e) => e.cycle === cycle - 1),
+              // A step inside the cycle finished it: the marks show what happened since the stop before.
+              lastCycleEvents: msg.marks ?? msg.events.filter((e) => e.cycle === cycle - 1),
               log: trimLog([...v.log, ...msg.events], cycle),
               progress: null,
               lastCall: { cyclesRun: msg.cyclesRun, truncated: msg.truncated },
               history: msg.history,
               rewound: null,
               error: null,
+              stop: null,
             };
           });
+          break;
+        case "stopped":
+          setView((v) => ({
+            ...v,
+            status: "ready",
+            previousSummary: v.snapshot?.state.summary ?? null,
+            snapshot: msg.snapshot,
+            // What happened since the stop shown before; the log gets the cycle once it is finished.
+            lastCycleEvents: msg.events,
+            progress: null,
+            lastCall: null,
+            history: msg.history,
+            rewound: null,
+            error: null,
+            stop: msg.position,
+          }));
           break;
         case "error":
           setView((v) => ({
@@ -178,6 +203,20 @@ export function useSimulation(scenario: Scenario | null) {
   );
 
   const step = useCallback(() => run(1), [run]);
+
+  /**
+   * Step to the next / previous stop point of one of `kinds` inside the cycle (a phase, an action,
+   * a script hook). Past the cycle's last one, next finishes the cycle like a Step.
+   */
+  const stepStop = useCallback(
+    (dir: "next" | "prev", kinds: StopKind[]) => {
+      if (busyRef.current || kinds.length === 0) return;
+      busyRef.current = true;
+      setView((v) => (v.status === "ready" ? { ...v, status: "running", quiet: true, progress: null } : v));
+      send({ type: "stepStop", reqId: ++reqIdRef.current, dir, kinds, dropKinds: NOISY });
+    },
+    [send]
+  );
   const stop = useCallback(() => send({ type: "stop" }), [send]);
   const reset = useCallback(() => {
     const reqId = ++reqIdRef.current;
@@ -205,5 +244,5 @@ export function useSimulation(scenario: Scenario | null) {
     send({ type: "back", reqId: ++reqIdRef.current, to: "undo" });
   }, [send]);
 
-  return { view, run, step, stepBack, undo, stop, reset, addItems };
+  return { view, run, step, stepBack, stepStop, undo, stop, reset, addItems };
 }

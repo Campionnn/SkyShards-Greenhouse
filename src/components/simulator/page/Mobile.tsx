@@ -11,6 +11,7 @@ import { formatDuration } from "../format";
 import { ProblemList, RunOptions, type PageProblem } from "./CommandBar";
 import { undoTitle } from "./pageHelpers";
 import type { DrawerTab } from "./SettingsDrawer";
+import { stepsInside, type StepBy } from "./stepBy";
 
 // Phones: the desktop command bar as two rows that always fit the width (problems, the profile
 // switch and Share; then the frequent settings as tiles), and the run controls in a bottom bar where
@@ -166,7 +167,10 @@ export const MobileRunBar: React.FC<{
   onReset: () => void;
   seed: number;
   onSeedChange: (seed: number) => void;
-}> = ({ view, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange }) => {
+  stepBy: StepBy;
+  onStepByChange: (s: StepBy) => void;
+}> = ({ view, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange, stepBy, onStepByChange }) => {
+  const inside = stepsInside(stepBy);
   const running = view.status === "running";
   const ready = view.status === "ready";
   const [n, setN] = useState(200);
@@ -191,11 +195,25 @@ export const MobileRunBar: React.FC<{
       <button type="button" aria-label="Undo" title={undoTitle(view.history.lastAction)} onClick={onUndo} disabled={!canUndo} className={`${btn} w-11 shrink-0 rounded-container border border-line-strong bg-surface-control text-fg-body max-[359px]:hidden`}>
         <Undo2 className="size-4" />
       </button>
-      <div className="flex shrink-0 rounded-container border border-line-strong bg-surface-control">
-        <button type="button" onClick={onStepBack} disabled={!ready || !view.history.canStepBack} aria-label="Back one cycle" title="Back one cycle" className={`${btn} w-11 rounded-l-container text-fg-body`}>
+      <div className={cn("flex shrink-0 rounded-container border bg-surface-control", inside ? "border-select/60" : "border-line-strong")}>
+        <button
+          type="button"
+          onClick={onStepBack}
+          disabled={!ready || !(view.history.canStepBack || view.stop)}
+          aria-label={inside ? "Back to the previous stop" : "Back one cycle"}
+          title={inside ? "Back to the previous stop" : "Back one cycle"}
+          className={`${btn} w-11 rounded-l-container text-fg-body`}
+        >
           <ChevronLeft className="size-5" />
         </button>
-        <button type="button" onClick={onStep} disabled={!ready} aria-label="Step one cycle" title="Step one cycle" className={`${btn} w-11 rounded-r-container border-l border-line-strong text-fg-body`}>
+        <button
+          type="button"
+          onClick={onStep}
+          disabled={!ready}
+          aria-label={inside ? "Step to the next stop" : "Step one cycle"}
+          title={inside ? "Step to the next stop" : "Step one cycle"}
+          className={`${btn} w-11 rounded-r-container border-l border-line-strong text-fg-body`}
+        >
           <ChevronRight className="size-5" />
         </button>
       </div>
@@ -218,8 +236,8 @@ export const MobileRunBar: React.FC<{
             type="button"
             onClick={() => setMenu((m) => !m)}
             aria-expanded={menu}
-            aria-label="Run length, seed and undo"
-            title="Run length, seed and undo"
+            aria-label="Run length, step by, seed and undo"
+            title="Run length, step by, seed and undo"
             className={cn(`${btn} w-10 shrink-0 rounded-r-container border-l border-on-go/25 text-on-go`, menu ? "bg-go" : "bg-go-strong")}
           >
             <ChevronDown className={cn("size-4 transition-transform duration-(--duration-hover) ease-snappy", menu && "rotate-180")} />
@@ -228,7 +246,7 @@ export const MobileRunBar: React.FC<{
       )}
 
       <Popover anchor={runRef.current} open={menu && !running} onClose={close} label="Run options" width={320} align="end">
-        <RunOptions n={n} setN={setN} seed={seed} onSeedChange={onSeedChange} running={running} close={close} custom />
+        <RunOptions n={n} setN={setN} seed={seed} onSeedChange={onSeedChange} running={running} close={close} custom stepBy={stepBy} onStepByChange={onStepByChange} />
         <MenuSeparator />
         <MenuItem icon={<Undo2 />} disabled={!canUndo} onSelect={() => (close(), onUndo())} hint={view.history.lastAction ? undoTitle(view.history.lastAction).replace(/ \(Ctrl Z\)$/, "") : undefined}>
           Undo
