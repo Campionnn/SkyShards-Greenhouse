@@ -156,6 +156,7 @@ export const CropConfigurationsPanel: React.FC<CropConfigurationsPanelProps> = (
         )}
         <InfoHint title="Priorities & locks" width={280}>
           <p>Priorities tell the solver which crops to use sparingly: higher = use less (0 = no preference, 100 = avoid).</p>
+          <p>A mutation set to 0 can also be placed anywhere for its effects when effect weights are on, but only where it raises the score.</p>
           <p>The brush locks a crop on the grid, so the solver must work around it. Right-click a lock on the grid to remove it.</p>
         </InfoHint>
         {status && <Pill tone="warn">{status}</Pill>}
