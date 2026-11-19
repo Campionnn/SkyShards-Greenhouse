@@ -70,6 +70,19 @@ export function effortLevel(avg: number | null): { bars: number; label: string; 
   return { bars: 5, label: "Intense", tone: "text-effort-5", bar: "bg-effort-5" };
 }
 
+/** What effort means, for the ranking's hints and key. */
+export const EFFORT_HINT =
+  "How much work the layout takes to run each time you log in: harvests, replants, placements, watering, ground fixes and rebuilds, each weighted by how long it takes (a harvest counts 1, placing an item 3). Lower means less hands-on.";
+
+/** The five effort tiers with their ranges, lightest first (same cut-offs as `effortLevel`). */
+export const EFFORT_TIERS = [
+  { avg: 0, range: "under 25" },
+  { avg: 25, range: "25–50" },
+  { avg: 50, range: "50–100" },
+  { avg: 100, range: "100–150" },
+  { avg: 150, range: "150+" },
+].map((t) => ({ ...effortLevel(t.avg), range: t.range }));
+
 /** Plot-level static numbers for the detail hero ("3 plots · 7 steps · scripted"). */
 export function useFlowShape(detail: FlowDetail) {
   return useMemo(() => {

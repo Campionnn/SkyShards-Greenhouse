@@ -134,7 +134,9 @@ const ProfitTipBody: React.FC<{ row: FlowRow; top: number; board: Board; kit: bo
 
 const effortTipLabel = (row: FlowRow) => (row.effortAvg === null ? "Effort unknown" : `Effort: ${effortLevel(row.effortAvg).label}`);
 const effortTipHint = (row: FlowRow) =>
-  row.effortAvg === null ? "Not verified at this frequency yet." : `${Math.round(row.effortAvg)} per login on average, ${Math.round(row.effortPeak ?? 0)} at the heaviest`;
+  row.effortAvg === null
+    ? "Not verified at this frequency yet."
+    : `How much work the layout takes per login: ${Math.round(row.effortAvg)} on average, ${Math.round(row.effortPeak ?? 0)} at the heaviest. Lower is less hands-on.`;
 
 const RowLikeButton: React.FC<{ row: FlowRow; like: RowLike; sort: SortKey }> = ({ row, like, sort }) => {
   const { entry } = row;

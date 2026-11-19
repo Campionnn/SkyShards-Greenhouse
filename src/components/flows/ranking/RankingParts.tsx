@@ -7,7 +7,8 @@ import { priceAge } from "../../simulator/bazaarFormat";
 import { cn } from "../../ui/cn";
 import { Bone, ButtonLink, IconButton, KitButton, KitLabel, Switch } from "../../ui/kit";
 import { Dropdown, MenuItem, Popover } from "../../ui/Popover";
-import { SPLIT_STYLE } from "../flowsDisplay";
+import { EffortBars } from "../FlowVisuals";
+import { EFFORT_HINT, EFFORT_TIERS, SPLIT_STYLE } from "../flowsDisplay";
 import { FORGIVING_HINT, ROW_COLS, SORT_HINT } from "./rankingHelpers";
 
 /** The ranking's smaller parts: the prices-and-key popover, the sort heads and menu, the list states. */
@@ -123,6 +124,19 @@ export const KeyButton: React.FC<{ viewer: FlowViewer; now: number; onEditPrices
               <li>Forgiving: {FORGIVING_HINT.charAt(0).toLowerCase() + FORGIVING_HINT.slice(1)}</li>
             </ul>
           </section>
+          <section className="space-y-1.5">
+            <KitLabel>Effort</KitLabel>
+            <p className="text-fg-body">{EFFORT_HINT}</p>
+            <ul className="space-y-1">
+              {EFFORT_TIERS.map((t) => (
+                <li key={t.label} className="flex items-center justify-between gap-3">
+                  <EffortBars bars={t.bars} bar={t.bar} />
+                  <span className={cn("flex-1", t.tone)}>{t.label}</span>
+                  <span className="tabular-nums text-fg-meta">{t.range}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
         </div>
       </Popover>
     </>
@@ -140,10 +154,10 @@ export const ReloadButton: React.FC<{ loading: boolean; onReload: () => void }> 
 const SORTS = Object.keys(SORT_LABEL) as SortKey[];
 
 /** A column head that sorts: aria-pressed, the column's aria-sort, the hint as its title. */
-export const SortHead: React.FC<{ sort: SortKey; k: SortKey; onSort: (k: SortKey) => void; label: string; align?: "end"; children: React.ReactNode }> = ({ sort, k, onSort, label, align, children }) => {
+export const SortHead: React.FC<{ sort: SortKey; k: SortKey; onSort: (k: SortKey) => void; label: string; align?: "end"; /** An InfoHint after the head. */ hint?: React.ReactNode; children: React.ReactNode }> = ({ sort, k, onSort, label, align, hint, children }) => {
   const on = sort === k || (k === "liked" && sort === "liked30d");
   return (
-    <div role="columnheader" aria-sort={on ? (k === "effort" ? "ascending" : "descending") : "none"} className={cn("flex min-w-0", align === "end" && "justify-end")}>
+    <div role="columnheader" aria-sort={on ? (k === "effort" ? "ascending" : "descending") : "none"} className={cn("flex min-w-0 items-center gap-1", align === "end" && "justify-end")}>
       <button
         type="button"
         aria-pressed={on}
@@ -158,6 +172,7 @@ export const SortHead: React.FC<{ sort: SortKey; k: SortKey; onSort: (k: SortKey
         {children}
         <ChevronDown aria-hidden className={cn("size-3", !on && "opacity-0")} />
       </button>
+      {hint}
     </div>
   );
 };

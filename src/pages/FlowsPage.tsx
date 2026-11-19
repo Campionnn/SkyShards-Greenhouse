@@ -5,6 +5,7 @@ import { AccountControl, BoardToggle, KitSwitch } from "../components/flows/Flow
 import { FilterBar, PlotsField, type PlotsFilter } from "../components/flows/FlowFilters";
 import { FlowRowItem, PhoneRowItem } from "../components/flows/ranking/RankingRow";
 import { KeyButton, ListEmpty, ListError, ListNoMatch, ListSkeleton, PricesChip, ReloadButton, SortHead, SortMenu } from "../components/flows/ranking/RankingParts";
+import { EFFORT_HINT } from "../components/flows/flowsDisplay";
 import { BazaarPriceDialog } from "../components/simulator/BazaarPanels";
 import { CantMakeSection } from "../components/flows/ranking/SetApart";
 import { BOARD_INTRO, facetCounts, filtersActive, ROW_COLS } from "../components/flows/ranking/rankingHelpers";
@@ -433,7 +434,7 @@ export const FlowsPage: React.FC = () => {
           <SortHead sort={sort} k="profit" onSort={setSort} label="profit" align="end">
             Coins/day
           </SortHead>
-          <SortHead sort={sort} k="effort" onSort={setSort} label="least effort">
+          <SortHead sort={sort} k="effort" onSort={setSort} label="least effort" hint={<InfoHint title="Effort" label="What effort means" className="hidden @min-[60rem]:inline-flex">{EFFORT_HINT}</InfoHint>}>
             Effort
           </SortHead>
           <SortHead sort={sort} k="forgiving" onSort={setSort} label="most forgiving">
