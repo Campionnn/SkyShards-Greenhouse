@@ -206,7 +206,7 @@ export const API: ApiSection[] = [
     entries: [
       { name: "place", signature: "plot.place(kind, row, col)", description: "Put a crop or item at the anchor cell. Base crops and fire are free; other items come from the inventory (false when there is none, unless mutation debt is on).", action: true },
       { name: "breakAt", signature: "plot.breakAt(row, col)", description: "Break whatever covers the cell (harvested if it can be).", action: true },
-      { name: "harvestAll", signature: "plot.harvestAll(kind?)", description: "Harvest every harvestable spawn and base crop (of that kind). Returns how many.", action: true },
+      { name: "harvestAll", signature: "plot.harvestAll(kind?)", description: "Harvest every harvestable spawn and base crop (of that kind). Returns how many harvests, counting re-harvests of Mutation Serendipity re-mutations that are harvestable at once.", action: true },
       { name: "breakAll", signature: "plot.breakAll(kind)", description: "Break every plant of that kind (harvested where possible). Returns how many.", action: true },
       { name: "water", signature: "plot.water()", description: "Water every plant to the max (not Soggybud).", action: true },
       { name: "setGround", signature: "plot.setGround(row, col, ground)", description: "Change the ground block at a cell (farmland, sand, soul_sand, mycelium, netherrack, end_stone).", action: true },
@@ -255,7 +255,7 @@ export const API: ApiSection[] = [
       { name: "protected", signature: "p.protected", description: "Built-in phases leave it alone (see protect)." },
       { name: "willDecayWithin", signature: "p.willDecayWithin(cycles)", description: "Its timer runs out within that many cycles and its minimum mutations are met." },
       { name: "break", signature: "p.break()", description: "Break it: harvested if harvestable, a Dead Plant is cleared (item back), a mutation item placed since the last tick is picked back up (item back, p.canPickUp), anything else is destroyed.", action: true },
-      { name: "harvest", signature: "p.harvest()", description: "Harvest it if it can be harvested (false otherwise).", action: true },
+      { name: "harvest", signature: "p.harvest()", description: "Harvest it if it can be harvested (false otherwise). If Mutation Serendipity re-mutates it in place and the new plant is harvestable at once (Shellfruit, 0-stage mutations), that is harvested too, as often as it happens.", action: true },
       { name: "destroy", signature: "p.destroy()", description: "Break it without drops.", action: true },
       { name: "waterIt", signature: "p.waterIt(amount?)", description: "Water it to the max (or add amount).", action: true },
       { name: "wake", signature: "p.wake() / p.vacuum() / p.discharge() / p.feed()", description: "Wake a Snoozling, vacuum a Cheesebite rat, discharge a Thunderling, feed a Fleshtrap.", action: true },

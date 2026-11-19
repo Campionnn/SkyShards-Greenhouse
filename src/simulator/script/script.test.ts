@@ -312,6 +312,27 @@ describe("scripts: actions", () => {
       expect(buffed.state.inventory.blastberry).toBe(1);
     });
 
+    it("harvest() and harvestAll() also harvest a Mutation Serendipity re-mutation that is harvestable at once", () => {
+      for (const source of [`let n = 0; function onSession() { const p = plot.at(5, 5); if (p) n = p.harvest() ? 1 : 0 }`, `let n = 0; function onSession() { n = plot.harvestAll("ashwreath") }`]) {
+        let hits = 0;
+        for (let seed = 1; seed <= 1500; seed++) {
+          const sc = scenario([flow([step("a", layout())])], { seed, stats: { mutationSerendipity: 10 } });
+          sc.plots[0].script = { source: `function onStart() { plot.disable("harvest") } ${source}` };
+          const s = start(sc);
+          inject(s, 1, "ashwreath", 5, 5, "spawned", { lockedEffects: [], fullyGrownAtCycle: 0 });
+          const r = engine.run(s, 1);
+          const remutated = r.events.filter((e) => e.kind === "spawned" && e.remutated).length;
+          const harvested = r.events.filter((e) => e.kind === "harvested" && e.kindId === "ashwreath").length;
+          if (remutated) hits++;
+          // Every re-mutation (0-stage: fully grown at once) is harvested too, so the cell ends empty.
+          expect(harvested).toBe(1 + remutated);
+          expect(plantAt(r.state, 1, 5, 5)).toBeUndefined();
+          if (source.includes("harvestAll")) expect(vars(r.state)["plot:1.n"]).toBe(harvested);
+        }
+        expect(hits).toBeGreaterThan(3);
+      }
+    });
+
     it("canPickUp is false for the starting layout and for free items", () => {
       const s = start(withScripts(`let a = null; let f = null; function onStart() { plot.place("fire", 0, 0) } function onTick() { f = plot.at(0, 0).canPickUp; a = plot.at(4, 4).canPickUp }`));
       const v = vars(engine.run(s, 1).state);

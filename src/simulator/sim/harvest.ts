@@ -12,7 +12,7 @@ import type { CycleCtx, TickScratch } from "./context";
 import { effortHarvest } from "./effort";
 import { explode, isPrimedBlastberry, isSettling, SETTLING_EFFECTS } from "./explosion";
 import { convertAloeFragments, credit } from "./inventory";
-import { JELLYBEAN, removePlant, yieldEffectsLocked } from "./plants";
+import { isHarvestable, JELLYBEAN, removePlant, yieldEffectsLocked } from "./plants";
 import { bump, perPlot } from "./summary";
 import { ZOMBUD, zombudHarvest } from "./zombud";
 import { rollRemutation } from "./serendipity";
@@ -33,7 +33,7 @@ function scaleDrops(drops: Record<string, number>, factor: number): Record<strin
  * the player is perfect and a failed attempt can be retried on the spot, so
  * they harvest like any other spawn.
  */
-export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): void {
+export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): PlantState | null {
   const { data } = ctx.env;
   const rng = ctx.state.rng;
   const isMutation = !!data.mutations[p.kindId];
@@ -180,7 +180,22 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   removePlant(plot, p);
   if (primed) explode(plot, p, ctx); // drops are kept
   // Mutation Serendipity: the harvested spawn may re-mutate in place (no roll at level 0).
-  rollRemutation(plot, p, ctx, scratch);
+  const again = rollRemutation(plot, p, ctx, scratch);
   // Stepping inside a cycle (sim/stops.ts): one stop per harvest, its blast and re-mutation included.
   if (ctx.probe) probeAction(ctx, plot.id, "harvest", p.kindId, p.row, p.col);
+  return again;
+}
+
+/**
+ * Harvest, then keep harvesting what Mutation Serendipity re-mutates in the same cell while it is
+ * harvestable at once (0-stage kinds such as Shellfruit). Returns how many harvests happened.
+ */
+export function harvestWithRemutations(plot: PlotState, p: PlantState, ctx: CycleCtx, scratch: TickScratch): number {
+  let n = 1;
+  let again = harvestPlant(plot, p, ctx, scratch);
+  while (again && plot.plants.includes(again) && isHarvestable(again)) {
+    again = harvestPlant(plot, again, ctx, scratch);
+    n++;
+  }
+  return n;
 }

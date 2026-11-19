@@ -31,7 +31,7 @@ import { isKnownItem } from "../flow/validate";
 import { creditInputs, wouldDecayWithin } from "../sim/decay";
 import { effort, effortBreak, effortPut, effortWater } from "../sim/effort";
 import { destroyPlant } from "../sim/explosion";
-import { harvestPlant } from "../sim/harvest";
+import { harvestWithRemutations } from "../sim/harvest";
 import { injectInto, spend } from "../sim/inventory";
 import { canBuy } from "../sim/market";
 import { applyStepLayout, markPickup, removeByPlayer } from "../sim/placement";
@@ -1332,8 +1332,7 @@ class PlotHost extends HostObject {
           let n = 0;
           for (const p of [...this.plot.plants]) {
             if (!this.plot.plants.includes(p) || !k(p) || p.origin === "placed" || !isHarvestable(p)) continue;
-            harvestPlant(this.plot, p, this.ctx, rt.scratchFor(this.id));
-            n++;
+            n += harvestWithRemutations(this.plot, p, this.ctx, rt.scratchFor(this.id));
           }
           return n;
         });
@@ -1718,7 +1717,7 @@ class PlantHost extends HostObject {
       case "harvest":
         return fn(key, (_a, info) => {
           if (!rt.canAct(info, "plant.harvest") || !isHarvestable(p) || p.origin === "placed") return false;
-          return this.act(info, key, (plot, q) => harvestPlant(plot, q, rt.cycleCtx, rt.scratchFor(this.plotId)));
+          return this.act(info, key, (plot, q) => void harvestWithRemutations(plot, q, rt.cycleCtx, rt.scratchFor(this.plotId)));
         });
       case "destroy":
         return fn(key, (_a, info) => this.act(info, key, (plot, q) => {
