@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RunSummary, Scenario, ScenarioIssue, StopKind, TickEventKind, TimedEvent } from "../simulator";
+import type { RunSummary, Scenario, ScenarioIssue, TickEventKind, TimedEvent } from "../simulator";
+import type { StopFilter } from "../simulator/worker/stopFilter";
 import type { HistoryInfo, SessionSnapshot, StopPosition, UndoableAction, WorkerRequest, WorkerResponse } from "../simulator/worker/protocol";
 
 /** Cycles of history the recent-events log keeps. */
@@ -205,15 +206,15 @@ export function useSimulation(scenario: Scenario | null) {
   const step = useCallback(() => run(1), [run]);
 
   /**
-   * Step to the next / previous stop point of one of `kinds` inside the cycle (a phase, an action,
-   * a script hook). Past the cycle's last one, next finishes the cycle like a Step.
+   * Step to the next / previous stop point `filter` picks inside the cycle (a phase, an action, a
+   * script hook). Past the cycle's last one, next finishes the cycle like a Step.
    */
   const stepStop = useCallback(
-    (dir: "next" | "prev", kinds: StopKind[]) => {
-      if (busyRef.current || kinds.length === 0) return;
+    (dir: "next" | "prev", filter: StopFilter) => {
+      if (busyRef.current || filter.kinds.length === 0) return;
       busyRef.current = true;
       setView((v) => (v.status === "ready" ? { ...v, status: "running", quiet: true, progress: null } : v));
-      send({ type: "stepStop", reqId: ++reqIdRef.current, dir, kinds, dropKinds: NOISY });
+      send({ type: "stepStop", reqId: ++reqIdRef.current, dir, filter, dropKinds: NOISY });
     },
     [send]
   );

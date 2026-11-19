@@ -169,7 +169,8 @@ export const MobileRunBar: React.FC<{
   onSeedChange: (seed: number) => void;
   stepBy: StepBy;
   onStepByChange: (s: StepBy) => void;
-}> = ({ view, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange, stepBy, onStepByChange }) => {
+  onChooseStops: () => void;
+}> = ({ view, onRun, onStep, onStepBack, onUndo, onStop, onReset, seed, onSeedChange, stepBy, onStepByChange, onChooseStops }) => {
   const inside = stepsInside(stepBy);
   const running = view.status === "running";
   const ready = view.status === "ready";
@@ -246,7 +247,7 @@ export const MobileRunBar: React.FC<{
       )}
 
       <Popover anchor={runRef.current} open={menu && !running} onClose={close} label="Run options" width={320} align="end">
-        <RunOptions n={n} setN={setN} seed={seed} onSeedChange={onSeedChange} running={running} close={close} custom stepBy={stepBy} onStepByChange={onStepByChange} />
+        <RunOptions n={n} setN={setN} seed={seed} onSeedChange={onSeedChange} running={running} close={close} custom stepBy={stepBy} onStepByChange={onStepByChange} onChooseStops={onChooseStops} />
         <MenuSeparator />
         <MenuItem icon={<Undo2 />} disabled={!canUndo} onSelect={() => (close(), onUndo())} hint={view.history.lastAction ? undoTitle(view.history.lastAction).replace(/ \(Ctrl Z\)$/, "") : undefined}>
           Undo

@@ -587,8 +587,9 @@ describe("simulator panels render", () => {
           onOpenSettings={() => {}}
           problems={[]}
           shareMenu={() => null}
-          stepBy={{ detail: false, kinds: [] }}
+          stepBy={{ detail: false, filter: { kinds: [] } }}
           onStepByChange={() => {}}
+          onChooseStops={() => {}}
         />
         <KpiStrip view={view} plotCount={2} />
         <EventLog log={view.log} plotIds={[1, 2]} />

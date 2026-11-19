@@ -43,6 +43,7 @@ import { InventoryTable } from "../components/simulator/InventoryTable";
 import { bazaarProfit } from "../components/simulator/bazaarFormat";
 import { settledView, useSimulation } from "../hooks/useSimulation";
 import { StopBar } from "../components/simulator/page/StopBar";
+import { StopPickerDialog } from "../components/simulator/page/StopPicker";
 import { stepsInside, useStepBy } from "../components/simulator/page/stepBy";
 import { useBazaarPrices } from "../hooks/useBazaarPrices";
 import { useProfileMode } from "../hooks/useProfileMode";
@@ -199,9 +200,10 @@ export const SimulatorPage: React.FC = () => {
   // Step by a cycle, or stop by stop inside it (Run menu; remembered in this browser).
   const [stepBy, setStepBy] = useStepBy();
   const inside = stepsInside(stepBy);
-  const stepNext = useCallback(() => (inside ? stepStop("next", stepBy.kinds) : step()), [inside, stepStop, stepBy.kinds, step]);
+  const [choosingStops, setChoosingStops] = useState(false);
+  const stepNext = useCallback(() => (inside ? stepStop("next", stepBy.filter) : step()), [inside, stepStop, stepBy.filter, step]);
   // Mid-cycle with detail off: Back goes to the cycle's start (the worker handles that).
-  const stepPrev = useCallback(() => (inside ? stepStop("prev", stepBy.kinds) : stepBack()), [inside, stepStop, stepBy.kinds, stepBack]);
+  const stepPrev = useCallback(() => (inside ? stepStop("prev", stepBy.filter) : stepBack()), [inside, stepStop, stepBy.filter, stepBack]);
   // A single Step / Back / Undo in flight is drawn as ready: holding → would otherwise flash the
   // run controls, the progress bar and the status line every cycle.
   const view = useMemo(() => settledView(sim.view), [sim.view]);
@@ -575,6 +577,7 @@ export const SimulatorPage: React.FC = () => {
           onOpenLeaderboard={openSubmit}
           stepBy={stepBy}
           onStepByChange={setStepBy}
+          onChooseStops={() => setChoosingStops(true)}
         />
         <div className="flex h-12 items-center gap-3 px-3 md:hidden">
           <span className="text-body font-semibold text-fg">Simulator</span>
@@ -603,7 +606,7 @@ export const SimulatorPage: React.FC = () => {
           preview={!!preview}
         />
 
-        {view.stop && <StopBar position={view.stop} onFinish={() => step()} />}
+        {view.stop && <StopBar position={view.stop} onFinish={() => step()} onChoose={() => setChoosingStops(true)} />}
         {fromNothing.preparing !== null && <FromNothingPreparing progress={fromNothing.preparing} onCancel={fromNothing.exit} />}
         {preview && <FromNothingBanner preview={preview} inventory={state?.inventory ?? null} onPart={(part) => fromNothing.setPreview({ ...preview, part })} onExit={fromNothing.exit} />}
         {state?.scripts?.halt && (
@@ -702,7 +705,7 @@ export const SimulatorPage: React.FC = () => {
       </div>
 
       {/* Phone: run controls at the thumb */}
-      <MobileRunBar view={view} {...runProps} seed={seed} onSeedChange={onSeedChange} stepBy={stepBy} onStepByChange={setStepBy} />
+      <MobileRunBar view={view} {...runProps} seed={seed} onSeedChange={onSeedChange} stepBy={stepBy} onStepByChange={setStepBy} onChooseStops={() => setChoosingStops(true)} />
 
       <SettingsDrawer
         open={drawerOpen}
@@ -734,6 +737,14 @@ export const SimulatorPage: React.FC = () => {
         }
       />
       {share.dialogs}
+      {choosingStops && (
+        <StopPickerDialog
+          filter={stepBy.filter}
+          onChange={(filter) => setStepBy({ ...stepBy, filter })}
+          plotIds={plotIds}
+          onClose={() => setChoosingStops(false)}
+        />
+      )}
       <FileDropOverlay active={dropping} />
 
       {editingPlot !== null && scenario.plots.some((p) => p.id === editingPlot) && (

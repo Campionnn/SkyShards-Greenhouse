@@ -1,7 +1,8 @@
 import type { ScenarioIssue } from "../flow/validate";
 import type { SustainabilityReport } from "../analysis/sustainability";
 import type { RetainEvents, RunSummary, Scenario, SimulationState, TickEventKind, TimedEvent } from "../sim/state";
-import type { StopKind, StopPoint } from "../sim/stops";
+import type { StopPoint } from "../sim/stops";
+import type { StopFilter } from "./stopFilter";
 import type { HistoryInfo, UndoableAction } from "./timeline";
 
 export type { HistoryInfo, UndoableAction } from "./timeline";
@@ -19,11 +20,11 @@ export type WorkerRequest =
   | { type: "back"; reqId: number; to: "cycle" | "undo" }
   | { type: "reset"; reqId: number }
   /**
-   * Step inside a cycle: to the next (or previous) stop point of one of `kinds` (sim/stops.ts).
+   * Step inside a cycle: to the next (or previous) stop point `filter` picks (sim/stops.ts, ./stopFilter.ts).
    * Next past the cycle's last such stop finishes the cycle (a `result`, like a Step). Previous
    * before the first goes back to the cycle's start, and from there into the previous cycle.
    */
-  | { type: "stepStop"; reqId: number; dir: "next" | "prev"; kinds: StopKind[]; dropKinds?: TickEventKind[] };
+  | { type: "stepStop"; reqId: number; dir: "next" | "prev"; filter: StopFilter; dropKinds?: TickEventKind[] };
 
 export interface SessionSnapshot {
   state: SimulationState;
@@ -37,7 +38,7 @@ export interface StopPosition {
   stop: StopPoint;
   /** Position among every stop of the cycle. */
   ordinal: number;
-  /** Position among the cycle's stops of the chosen kinds (1-based) and how many there are. */
+  /** Position among the cycle's chosen stops (1-based) and how many there are. */
   index: number;
   count: number;
 }

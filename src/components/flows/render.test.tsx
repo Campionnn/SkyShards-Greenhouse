@@ -667,8 +667,9 @@ describe("simulator settings: the leaderboard rules", () => {
             onOpenSettings={() => {}}
             problems={[]}
             shareMenu={() => null}
-            stepBy={{ detail: false, kinds: [] }}
+            stepBy={{ detail: false, filter: { kinds: [] } }}
             onStepByChange={() => {}}
+            onChooseStops={() => {}}
           />
         )
       );

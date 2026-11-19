@@ -476,3 +476,37 @@ export const KitTextarea = React.forwardRef<HTMLTextAreaElement, React.TextareaH
   <textarea ref={ref} {...rest} aria-invalid={invalid || rest["aria-invalid"] || undefined} className={cn("py-2", field, className)} />
 ));
 KitTextarea.displayName = "KitTextarea";
+
+/**
+ * One option of a multi-select set that applies at once (filters, which stops to step to): a
+ * small pressed / not-pressed button. `index` shows a step number before the label (an ordered
+ * set). Group several in a `role="group"` with an `aria-label`. `size="touch"` for 44px targets.
+ */
+export const ToggleChip: React.FC<{
+  pressed: boolean;
+  onChange: (pressed: boolean) => void;
+  children: React.ReactNode;
+  index?: number;
+  title?: string;
+  disabled?: boolean;
+  size?: "sm" | "touch";
+  className?: string;
+}> = ({ pressed, onChange, children, index, title, disabled, size = "sm", className }) => (
+  <button
+    type="button"
+    aria-pressed={pressed}
+    title={title}
+    disabled={disabled}
+    onClick={() => onChange(!pressed)}
+    className={cn(
+      "hit-area focus-ring inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control border px-2.5 text-secondary transition-colors duration-(--duration-hover) disabled:cursor-default disabled:opacity-40",
+      // sm grows to 44px on touch screens; touch is always 44px.
+      size === "touch" ? "h-11" : "h-7 pointer-coarse:h-11",
+      pressed ? "border-select/60 bg-select/10 font-medium text-select-fg" : "border-line-strong bg-surface-well text-fg-muted hover:border-line-control hover:text-fg-body",
+      className,
+    )}
+  >
+    {index !== undefined && <span className={cn("tabular-nums", pressed ? "text-select-fg/70" : "text-fg-meta")}>{index}</span>}
+    {children}
+  </button>
+);

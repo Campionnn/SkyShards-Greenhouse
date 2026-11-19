@@ -97,7 +97,7 @@ describe("session worker", () => {
     let reqId = 60;
     const seen: string[] = [];
     for (;;) {
-      await send({ type: "stepStop", reqId: ++reqId, dir: "next", kinds: ["sessionPhase"] });
+      await send({ type: "stepStop", reqId: ++reqId, dir: "next", filter: { kinds: ["sessionPhase"] } });
       const m = posted[posted.length - 1];
       if (m.type !== "stopped") break;
       expect(m.position!.cycle).toBe(3);
@@ -109,7 +109,7 @@ describe("session worker", () => {
     expect(last("result").snapshot.state.cycle).toBe(4);
 
     // Previous from a cycle's start: the last such stop of the cycle before; then back to its start.
-    await send({ type: "stepStop", reqId: ++reqId, dir: "prev", kinds: ["sessionPhase"] });
+    await send({ type: "stepStop", reqId: ++reqId, dir: "prev", filter: { kinds: ["sessionPhase"] } });
     let m = last("stopped");
     expect(m.position!.cycle).toBe(3);
     expect(m.position!.index).toBe(m.position!.count);
@@ -117,7 +117,7 @@ describe("session worker", () => {
     expect(JSON.stringify(last("rewound").snapshot.state)).toBe(JSON.stringify(at3));
 
     // From the middle of a cycle a plain Run finishes it and goes on: the same states as before.
-    await send({ type: "stepStop", reqId: ++reqId, dir: "next", kinds: ["tickPhase", "playerAction"] });
+    await send({ type: "stepStop", reqId: ++reqId, dir: "next", filter: { kinds: ["tickPhase", "playerAction"] } });
     m = last("stopped");
     expect(m.position!.cycle).toBe(3);
     await send({ type: "run", reqId: ++reqId, ticks: 2, retainEvents: "none" });

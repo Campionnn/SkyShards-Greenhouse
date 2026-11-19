@@ -2,7 +2,7 @@
 import { createEngine } from "../engine";
 import { ScenarioError } from "../flow/validate";
 import type { Scenario, SimulationState, TickEventKind, TimedEvent } from "../sim/state";
-import type { StopKind, StopPoint } from "../sim/stops";
+import { scanCycle, type CycleScan, type StopFilter } from "./stopFilter";
 import { drive } from "./driver";
 import type { SessionSnapshot, StopPosition, WorkerRequest, WorkerResponse } from "./protocol";
 import { createTimeline, type Timeline } from "./timeline";
@@ -35,12 +35,12 @@ function initialise(reqId: number, next: Scenario) {
   post({ type: "ready", reqId, snapshot: snapshot(init.state), events: init.events, warnings, history: timeline.info() });
 }
 
-/** Events emitted between the chosen-kind stop before `ordinal` (or the cycle's start) and `ordinal`. */
-function stepEvents(stops: StopPoint[], eventsAt: number[], events: TimedEvent[], ordinal: number, kinds: readonly StopKind[], drop?: readonly TickEventKind[]): TimedEvent[] {
+/** Events emitted between the chosen stop before `ordinal` (or the cycle's start) and `ordinal`. */
+function stepEvents(scan: CycleScan, events: TimedEvent[], ordinal: number, drop?: readonly TickEventKind[]): TimedEvent[] {
   let from = 0;
   for (let i = ordinal - 1; i >= 0; i--) {
-    if (kinds.includes(stops[i].kind)) {
-      from = eventsAt[i];
+    if (scan.chosen[i]) {
+      from = scan.eventsAt[i];
       break;
     }
   }
@@ -49,75 +49,68 @@ function stepEvents(stops: StopPoint[], eventsAt: number[], events: TimedEvent[]
 }
 
 /** Show the stop at `ordinal` of the cycle starting at `base` (the timeline's current state). */
-function showStop(reqId: number, tl: Timeline, base: SimulationState, ordinal: number, kinds: readonly StopKind[], drop?: readonly TickEventKind[]) {
-  const r = engine.replayCycle(base, (_s, i) => i === ordinal);
-  const cap = r.capture!;
+function showStop(reqId: number, tl: Timeline, base: SimulationState, scan: CycleScan, ordinal: number, drop?: readonly TickEventKind[]) {
+  const cap = engine.replayCycle(base, (_s, i) => i === ordinal).capture!;
   at = { cycle: base.cycle, ordinal };
-  const matching = r.stops.map((s, i) => [s, i] as const).filter(([s]) => kinds.includes(s.kind));
-  const position: StopPosition = {
-    cycle: base.cycle,
-    stop: cap.stop,
-    ordinal,
-    index: matching.filter(([, i]) => i <= ordinal).length,
-    count: matching.length,
-  };
-  post({ type: "stopped", reqId, snapshot: snapshot(cap.state), position, events: stepEvents(r.stops, r.eventsAt, cap.events, ordinal, kinds, drop), history: tl.info() });
+  let index = 0;
+  let count = 0;
+  for (let i = 0; i < scan.chosen.length; i++) {
+    if (!scan.chosen[i]) continue;
+    count++;
+    if (i <= ordinal) index++;
+  }
+  const position: StopPosition = { cycle: base.cycle, stop: cap.stop, ordinal, index, count };
+  post({ type: "stopped", reqId, snapshot: snapshot(cap.state), position, events: stepEvents(scan, cap.events, ordinal, drop), history: tl.info() });
 }
 
-/** Step to the next / previous stop of one of `kinds` (see the protocol's `stop` request). */
-function stepStop(reqId: number, tl: Timeline, dir: "next" | "prev", kinds: StopKind[], drop?: TickEventKind[]) {
+const atStart = (reqId: number, tl: Timeline, base: SimulationState) => {
+  at = null;
+  post({ type: "stopped", reqId, snapshot: snapshot(base), position: null, events: [], history: tl.info() });
+};
+
+/** Step to the next / previous stop `filter` picks (see the protocol's `stepStop` request). */
+function stepStop(reqId: number, tl: Timeline, dir: "next" | "prev", filter: StopFilter, drop?: TickEventKind[]) {
   let base = tl.current();
   const here = at && at.cycle === base.cycle ? at.ordinal : -1;
   if (dir === "next") {
-    const r = engine.replayCycle(base, (s, i) => i > here && kinds.includes(s.kind));
-    if (r.capture) {
-      showStop(reqId, tl, base, r.capture.ordinal, kinds, drop);
+    const scan = scanCycle(engine, base, filter);
+    const next = scan.chosen.findIndex((c, i) => c && i > here);
+    if (next >= 0) {
+      showStop(reqId, tl, base, scan, next, drop);
       return;
     }
-    // Past the cycle's last such stop: finish the cycle, exactly like a Step.
+    // Past the cycle's last chosen stop: finish the cycle, exactly like a Step.
     tl.beginRun();
     const done = engine.run(base, 1, { retainEvents: "all" });
     tl.endRun(done.state, done.cyclesRun);
     at = null;
     const events = drop?.length ? done.events.filter((e) => !drop.includes(e.kind)) : done.events;
     // The grid marks show what happened since the stop shown before; the log gets the whole cycle.
-    const since = here >= 0 ? stepEvents(r.stops, r.eventsAt, done.events, r.stops.length, kinds, drop) : events;
+    const since = here >= 0 ? stepEvents(scan, done.events, scan.stops.length, drop) : events;
     post({ type: "result", reqId, snapshot: snapshot(done.state), events, eventCounts: done.eventCounts, cyclesRun: done.cyclesRun, truncated: done.truncated, history: tl.info(), marks: since });
     return;
   }
-  // Previous: the chosen-kind stop before this one in the same cycle, else the cycle's start, else
-  // (already at a start) the last such stop of the cycle before.
+  // Previous: the chosen stop before this one in the same cycle, else the cycle's start, else
+  // (already at a start) the last chosen stop of the cycle before.
   if (here >= 0) {
-    const { stops } = engine.replayCycle(base);
+    const scan = scanCycle(engine, base, filter);
     let prev = -1;
-    for (let i = here - 1; i >= 0; i--) if (kinds.includes(stops[i].kind)) {
+    for (let i = here - 1; i >= 0; i--) if (scan.chosen[i]) {
       prev = i;
       break;
     }
-    if (prev >= 0) {
-      showStop(reqId, tl, base, prev, kinds, drop);
-      return;
-    }
-    at = null;
-    post({ type: "stopped", reqId, snapshot: snapshot(base), position: null, events: [], history: tl.info() });
+    if (prev >= 0) showStop(reqId, tl, base, scan, prev, drop);
+    else atStart(reqId, tl, base);
     return;
   }
   const back = tl.stepBack();
   if (!back) throw new Error("Already at the start");
   base = back;
-  const { stops } = engine.replayCycle(base);
-  let last = -1;
-  for (let i = stops.length - 1; i >= 0; i--) if (kinds.includes(stops[i].kind)) {
-    last = i;
-    break;
-  }
-  if (last >= 0) showStop(reqId, tl, base, last, kinds, drop);
-  else {
-    at = null;
-    post({ type: "stopped", reqId, snapshot: snapshot(base), position: null, events: [], history: tl.info() });
-  }
+  const scan = scanCycle(engine, base, filter);
+  const last = scan.chosen.lastIndexOf(true);
+  if (last >= 0) showStop(reqId, tl, base, scan, last, drop);
+  else atStart(reqId, tl, base);
 }
-
 function fail(reqId: number, err: unknown) {
   post({
     type: "error",
@@ -147,7 +140,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const tl = timeline;
     if (msg.type === "stepStop") {
       if (busy) throw new Error("A run is in progress");
-      stepStop(msg.reqId, tl, msg.dir, msg.kinds, msg.dropKinds);
+      stepStop(msg.reqId, tl, msg.dir, msg.filter, msg.dropKinds);
       return;
     }
     // Everything else works on the states between cycles: a mid-cycle position is left. Back from
