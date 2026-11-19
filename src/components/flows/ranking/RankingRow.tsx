@@ -401,12 +401,6 @@ export const FlowRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = 
             <span className="hidden @min-[60rem]:inline">
               <EffortMeter avg={row.effortAvg} peak={row.effortPeak} noTitle />
             </span>
-            {row.effortAvg !== null && (
-              <span className="text-meta tabular-nums text-fg-meta" data-testid="row-effort-number">
-                {Math.round(row.effortAvg)}
-                <span className="hidden @min-[60rem]:inline"> / login</span>
-              </span>
-            )}
           </span>
         </KitTooltip>
         <div className="flex min-w-0 items-center gap-1.5">

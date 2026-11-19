@@ -58,16 +58,16 @@ export function topRarity(ids: readonly string[]): string | null {
 }
 
 /**
- * Effort per login on a rough log scale: 5 bars, from a quick harvest to a full rebuild. Neutral at
- * every level: effort is a cost to weigh, not a warning or a problem.
+ * Effort per login on a rough log scale: 5 bars, from a quick harvest to a full rebuild. Each tier
+ * has its own colour on the `effort-*` data scale (green = relaxed → red = intense).
  */
-export function effortLevel(avg: number | null): { bars: number; label: string; tone: string } {
-  if (avg === null) return { bars: 0, label: "unknown", tone: "text-fg-meta" };
-  if (avg < 25) return { bars: 1, label: "Relaxed", tone: "text-fg-muted" };
-  if (avg < 50) return { bars: 2, label: "Light", tone: "text-fg-muted" };
-  if (avg < 100) return { bars: 3, label: "Moderate", tone: "text-fg-muted" };
-  if (avg < 150) return { bars: 4, label: "Busy", tone: "text-fg-muted" };
-  return { bars: 5, label: "Intense", tone: "text-fg-muted" };
+export function effortLevel(avg: number | null): { bars: number; label: string; tone: string; bar: string } {
+  if (avg === null) return { bars: 0, label: "unknown", tone: "text-fg-meta", bar: "bg-fg-muted" };
+  if (avg < 25) return { bars: 1, label: "Relaxed", tone: "text-effort-1", bar: "bg-effort-1" };
+  if (avg < 50) return { bars: 2, label: "Light", tone: "text-effort-2", bar: "bg-effort-2" };
+  if (avg < 100) return { bars: 3, label: "Moderate", tone: "text-effort-3", bar: "bg-effort-3" };
+  if (avg < 150) return { bars: 4, label: "Busy", tone: "text-effort-4", bar: "bg-effort-4" };
+  return { bars: 5, label: "Intense", tone: "text-effort-5", bar: "bg-effort-5" };
 }
 
 /** Plot-level static numbers for the detail hero ("3 plots · 7 steps · scripted"). */

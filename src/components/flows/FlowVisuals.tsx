@@ -216,14 +216,14 @@ export const MutationChip: React.FC<{ id: string; count?: number; size?: "sm" | 
 
 // ---- Effort meter --------------------------------------------------------------------------
 
-/** Effort per login: 5 neutral bars and the level's word. A cost to weigh, never a warning colour. */
+/** Effort per login: 5 bars and the level's word, coloured by tier (`effortLevel`). */
 export const EffortMeter: React.FC<{ avg: number | null; peak: number | null; compact?: boolean; /** No native title (a KitTooltip explains it). */ noTitle?: boolean }> = ({ avg, peak, compact = false, noTitle = false }) => {
   const lvl = effortLevel(avg);
   return (
     <span className="inline-flex items-center gap-1.5" title={noTitle ? undefined : avg === null ? "Effort unknown" : `Effort per login: ${Math.round(avg)} on average, ${Math.round(peak ?? 0)} at the heaviest`}>
       <span className="inline-flex items-end gap-[2px]" aria-hidden>
         {[1, 2, 3, 4, 5].map((i) => (
-          <span key={i} className={cn("w-1 rounded-full", i <= lvl.bars ? "bg-fg-muted" : "bg-line")} style={{ height: 4 + i * 2 }} />
+          <span key={i} className={cn("w-1 rounded-full", i <= lvl.bars ? lvl.bar : "bg-line")} style={{ height: 4 + i * 2 }} />
         ))}
       </span>
       {compact ? <span className="sr-only">Effort: {lvl.label}</span> : <span className={cn("text-meta", lvl.tone)}>{lvl.label}</span>}
