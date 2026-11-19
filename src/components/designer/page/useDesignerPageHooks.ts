@@ -1,65 +1,39 @@
-import { useCallback, useEffect, useState, type RefObject } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useDesigner, useGreenhouseData } from "../../../context";
 import { useToast } from "../../ui/toastContext";
 import { decodeDesign } from "../../../utilities";
-import { captureGridAsPng, aggregateCropInfo } from "../../../utilities/gridExport";
-import type { DesignerGridHandle } from "../DesignerGrid";
+import { LAYOUT_IMAGE_TITLE } from "../../../utilities/layoutImage";
+import { blobToDataUrl, renderLayoutImage, toImagePlacements } from "../../../utilities/layoutImageBrowser";
 
 /**
- * The share-image renderer's contract (SkyShards-API utils/image_generator.py, D73–D77). It opens
- * /designer at 1200×900, waits for `[data-grid-container]`, then calls `window.loadLayoutFromCode(code)`,
- * waits for `window.layoutLoadState !== "pending"`, and calls `window.exportGrid()` for a PNG data URL.
- * Keep the names, the return shapes and the "Failed to decode design" error text.
- * Also loads `?layout=<code>` once, after the greenhouse data (D73).
+ * Window hooks for tooling (research/designer-v2/verify, screenshots): `window.loadLayoutFromCode(code)`,
+ * `window.layoutLoadState` ("pending" | "loaded" | "error" | "no-layout") and `window.exportGrid()`, which
+ * returns the layout image (layoutImage.ts) as a PNG data URL. Share embeds no longer use them: the API
+ * draws the same image itself (tools/share-render, no browser). Also loads `?layout=<code>` once, after
+ * the greenhouse data.
  */
-export function useDesignerPageHooks(gridRef: RefObject<DesignerGridHandle | null>, showTargets: boolean) {
+export function useDesignerPageHooks() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { inputPlacements, targetPlacements, loadFromSolverResult } = useDesigner();
+  const { inputPlacements, targetPlacements, groundTiles, loadFromSolverResult } = useDesigner();
   const { getCropDef, getMutationDef, isLoading: isDataLoading } = useGreenhouseData();
   const [hasLoadedFromUrl, setHasLoadedFromUrl] = useState(false);
 
-  // Share image, called by the renderer via window.exportGrid.
-  const exportGridForShare = useCallback(async (): Promise<string> => {
-    if (!gridRef.current) throw new Error("Grid not available");
-    const gridElement = gridRef.current.getGridElement();
-    if (!gridElement) throw new Error("Grid element not found");
-
-    // Crop info for the watermark.
-    const inputCrops = aggregateCropInfo(
-      inputPlacements.map((p) => {
-        const def = getCropDef(p.cropId) || getMutationDef(p.cropId);
-        return { cropId: p.cropId, cropName: def?.name || p.cropId.replace(/_/g, " ") };
-      }),
-    );
-    // Target crops always count, even when hidden.
-    const targetCrops = aggregateCropInfo(
-      targetPlacements.map((p) => {
-        const def = getMutationDef(p.cropId) || getCropDef(p.cropId);
-        return { cropId: p.cropId, cropName: def?.name || p.cropId.replace(/_/g, " ") };
-      }),
-    );
-    const result = await captureGridAsPng(gridElement, {
-      scale: 2, // Discord targets ~800px; larger images get heavily compressed.
-      includeWatermark: true,
-      watermarkUrl: "greenhouse.skyshards.com",
-      watermarkTitle: "Greenhouse Designer",
-      inputCrops,
-      targetCrops,
-      showTargets,
-    });
-    return result.dataUrl;
-  }, [gridRef, inputPlacements, targetPlacements, showTargets, getCropDef, getMutationDef]);
+  const exportGrid = useCallback(async (): Promise<string> => {
+    const groundOf = (id: string) => getCropDef(id)?.ground || getMutationDef(id)?.ground || "farmland";
+    const { blob, url } = await renderLayoutImage({ title: LAYOUT_IMAGE_TITLE, placements: toImagePlacements(inputPlacements, targetPlacements, groundOf), groundTiles });
+    URL.revokeObjectURL(url);
+    return blobToDataUrl(blob);
+  }, [inputPlacements, targetPlacements, groundTiles, getCropDef, getMutationDef]);
 
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>;
-    w.exportGrid = exportGridForShare;
+    w.exportGrid = exportGrid;
     return () => {
       delete w.exportGrid;
     };
-  }, [exportGridForShare]);
-
+  }, [exportGrid]);
   // Layout load state, read by the renderer via window.layoutLoadState. It's written to window at once
   // as well as through the effect below: the renderer polls right after loadLayoutFromCode settles, and a
   // state that only lands on the next render would still read the previous one ("error" after a bad code).

@@ -52,7 +52,7 @@ export const DesignerPhone: React.FC<{
           <DesignerFacts compact className="ml-auto" />
         </header>
         <div className="sticky top-0 z-(--z-sticky) mb-2 border-y border-line bg-surface-page px-0.5 py-1">
-          <DesignerActions gridRef={gridRef} showTargets={showTargets} variant="toolbar" onReady={onActionsReady} />
+          <DesignerActions showInputs={showInputs} showTargets={showTargets} variant="toolbar" onReady={onActionsReady} />
         </div>
         <GridStage
           gridRef={gridRef}

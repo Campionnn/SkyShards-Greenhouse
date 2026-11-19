@@ -53,11 +53,11 @@ describe("DesignerActions (rail)", () => {
   const html = within(LAYOUT, <DesignerActions />);
 
   it("shows the approved labels, top to bottom", () => {
-    const order = ["Undo", "Redo", "Save", "Load", "Share", "Simulate", "PNG", "GIF", "Nudge left one cell", "Mirror top to bottom", "Clear"];
+    const order = ["Undo", "Redo", "Save", "Load", "Share", "Simulate", "Export image", "Nudge left one cell", "Mirror top to bottom", "Clear"];
     const at = order.map((l) => button(html, l)?.at ?? -1);
     expect(at.every((i) => i >= 0), JSON.stringify(buttons(html).map((b) => b.name))).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    expect(html).not.toMatch(/Share Layout|Export Image|Clear All/);
+    expect(html).not.toMatch(/Share Layout|Clear All|>GIF</);
   });
 
   it("has one Undo / Redo group and no Save / Load dialog until asked", () => {
@@ -67,13 +67,13 @@ describe("DesignerActions (rail)", () => {
   });
 
   it("enables the layout actions when there is something to act on", () => {
-    for (const l of ["Save", "Load", "Share", "Simulate", "PNG", "GIF"]) expect(disabled(html, l), l).toBe(false);
+    for (const l of ["Save", "Load", "Share", "Simulate", "Export image"]) expect(disabled(html, l), l).toBe(false);
     expect(disabled(html, "Undo")).toBe(true); // a fresh history
   });
 
   it("disables everything but Load on an empty layout", () => {
     const empty = within(EMPTY, <DesignerActions />);
-    for (const l of ["Save", "Share", "Simulate", "PNG", "GIF", "Rotate 90° clockwise"]) expect(disabled(empty, l), l).toBe(true);
+    for (const l of ["Save", "Share", "Simulate", "Export image", "Rotate 90° clockwise"]) expect(disabled(empty, l), l).toBe(true);
     expect(disabled(empty, "Load")).toBe(false);
     expect(buttons(empty).find((b) => b.tag.includes('aria-haspopup="menu"'))?.tag).toContain('disabled=""'); // Clear ▾
   });
@@ -86,7 +86,7 @@ describe("DesignerActions (rail)", () => {
 describe("DesignerActions (phone toolbar)", () => {
   const html = within(LAYOUT, <DesignerActions variant="toolbar" />);
 
-  it("is one row of eight 44px icon buttons, PNG and GIF merged into Export", () => {
+  it("is one row of eight 44px icon buttons", () => {
     const labels = buttons(html)
       .filter((b) => /class="[^"]*\bsize-11\b/.test(b.tag))
       .map((b) => b.name);

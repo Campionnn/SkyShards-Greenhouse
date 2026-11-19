@@ -6,8 +6,8 @@
  * palette in a sticky right rail. Column widths come from the page's own width (designerFrame.ts). Phone:
  * a top icon toolbar, the grid full width, and a bottom sheet with Palette | Check above the adhesion ad.
  *
- * The share-image renderer (SkyShards-API) loads this page at 1200×900 and drives it through the window
- * hooks in useDesignerPageHooks.ts: the grid must render on first paint.
+ * Tooling drives it through the window hooks in useDesignerPageHooks.ts. Share embeds don't load this
+ * page: the API draws them from the share code (utilities/layoutImage.ts).
  */
 import React, { useCallback, useRef, useState } from "react";
 import { DesignerActions, LayoutCropSummary, MutationValidator, CropSelectionPalette } from "../components/designer";
@@ -33,7 +33,7 @@ export const DesignerPage: React.FC = () => {
   const [showTargets, setShowTargets] = useTargetsVisible();
   const [showInputs, setShowInputs] = useInputsVisible();
   const gridRef = useRef<DesignerGridHandle>(null);
-  useDesignerPageHooks(gridRef, showTargets);
+  useDesignerPageHooks();
 
   const { inputPlacements, targetPlacements, groundTiles, selectedCropForPlacement, selectedGround } = useDesigner();
   const empty = inputPlacements.length + targetPlacements.length + groundTiles.length === 0;
@@ -103,7 +103,7 @@ export const DesignerPage: React.FC = () => {
         {/* Left: the actions, then Check. Sticky; the Check rows scroll on their own. */}
         <aside ref={leftOuter} aria-label="Layout tools" className="min-w-0 self-stretch contain-size">
           <div ref={leftInner} className={cn("sticky top-4 flex min-h-0 flex-col gap-3 overflow-hidden rounded-container border border-line bg-surface-panel", f.narrow ? "p-1.5" : "p-2")}>
-            <DesignerActions gridRef={gridRef} showTargets={showTargets} variant="rail" railRef={leftInner} onReady={onActionsReady} className="shrink-0" />
+            <DesignerActions showInputs={showInputs} showTargets={showTargets} variant="rail" railRef={leftInner} onReady={onActionsReady} className="shrink-0" />
             {rule}
             <MutationValidator check={check} fill className="min-h-0 flex-1" />
           </div>

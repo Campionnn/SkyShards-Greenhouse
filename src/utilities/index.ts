@@ -25,7 +25,6 @@ export * from "./designEncoding";
 export * from "./layoutStorage";
 export * from "./mutationLayoutGenerator";
 export * from "./localStorageManager";
-export * from "./gridExport";
 export * from "./effectSimulation";
 export * from "./layoutTransform";
 export * from "./layoutHistory";

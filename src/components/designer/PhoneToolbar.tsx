@@ -33,7 +33,7 @@ BarButton.displayName = "BarButton";
 
 /**
  * The phone's actions in one row of eight 44px icons: Undo Redo | Save Load | Share Export | Clear More.
- * PNG and GIF are one Export button (its popover has the PNG | GIF switch); Transform and Simulate are
+ * Export opens the image popover; Transform and Simulate are
  * under More. It owns the Ctrl+Z listener (the desktop rail's LayoutHistoryControls does on desktop).
  * The Share and Export popovers are DesignerActions'; the menus hang here.
  */
@@ -53,7 +53,7 @@ export const PhoneToolbar: React.FC<{ actions: LayoutActions; pops: ActionPops; 
         <BarButton label="Load" icon={<FolderOpen />} onClick={actions.openLoad} />
         {divider}
         <BarButton ref={ref("share")} label="Share" icon={<Share2 />} hint="Copies a link for Discord" haspopup="dialog" expanded={pop === "share"} disabled={empty} onClick={() => open("share")} />
-        <BarButton ref={ref("export")} label="Export image" icon={<ImageIcon />} hint="PNG or GIF" haspopup="dialog" expanded={pop === "export" || pop === "gif"} disabled={empty} onClick={() => open("export")} />
+        <BarButton ref={ref("export")} label="Export image" icon={<ImageIcon />} hint="A picture to copy or download" haspopup="dialog" expanded={pop === "export"} disabled={empty} onClick={() => open("export")} />
         {divider}
         <BarButton ref={ref("clear")} label="Clear" icon={<Eraser />} haspopup="menu" expanded={pop === "clear"} disabled={empty} onClick={() => open("clear")} />
         <BarButton ref={ref("more")} label="More" icon={<Ellipsis />} haspopup="menu" expanded={pop === "more" || pop === "transform"} onClick={() => open("more")} />

@@ -1,31 +1,29 @@
-import React, { useCallback, useEffect, type RefObject } from "react";
-import { Film, FlaskConical, FolderOpen, Image as ImageIcon, Save, Share2 } from "lucide-react";
+import React, { useEffect, type RefObject } from "react";
+import { FlaskConical, FolderOpen, Image as ImageIcon, Save, Share2 } from "lucide-react";
 import { KitButton } from "../ui/kit";
 import { cn } from "../ui/cn";
-import type { DesignerGridHandle } from "./DesignerGrid";
 import { ActionTip, LayoutClearControls, LayoutHistoryControls, LayoutTransformControls } from "./LayoutTools";
 import { SaveLayoutModal } from "./SaveLayoutModal";
 import { LoadLayoutModal } from "./LoadLayoutModal";
 import { SharePopover } from "./SharePopover";
 import { ExportPopover } from "./ExportPopover";
 import { PhoneToolbar } from "./PhoneToolbar";
-import { useActionPops, useActionsApi, useExportCropIds, useExportOptions, useLayoutActions, type DesignerActionsApi } from "./actionsModel";
+import { useActionPops, useActionsApi, useExportModel, useLayoutActions, type DesignerActionsApi } from "./actionsModel";
 
 interface DesignerActionsProps {
   className?: string;
-  /** The grid to export (a ref object; a callback ref can't be read, so it exports nothing). */
-  gridRef?: React.Ref<DesignerGridHandle>;
-  /** Whether the grid shows the targets (the export draws what the grid shows; its target list always counts them). */
+  /** Whether the grid shows the inputs / targets: the exported image draws what the grid shows (its lists always count both). */
+  showInputs?: boolean;
   showTargets?: boolean;
   /**
    * `rail` (default): the desktop left rail, top to bottom: Undo · Redo | Save · Load, Share · Simulate,
-   * PNG · GIF | Transform, Clear ▾. Natural height, no scroll of its own. `toolbar`: the phone's row of
-   * eight 44px icons (one Export button; Transform and Simulate under More).
+   * Export image | Transform, Clear ▾. Natural height, no scroll of its own. `toolbar`: the phone's row of
+   * eight 44px icons (Transform and Simulate under More).
    */
   variant?: "rail" | "toolbar";
   /** The rail column: the Share and Export popovers open beside it. */
   railRef?: RefObject<HTMLElement | null>;
-  /** Open a popover on load: share | export | png | gif | clear | transform (the `#pop=` screenshot states). */
+  /** Open a popover on load: share | export | png | clear | transform (the `#pop=` screenshot states). */
   initialPop?: string;
   /** Hands the page the actions its empty-grid card needs (Load, Last Calculator result). */
   onReady?: (api: DesignerActionsApi) => void;
@@ -33,19 +31,17 @@ interface DesignerActionsProps {
 
 /**
  * The Designer's page actions (D04–D17): Undo / Redo (and their shortcut), Save, Load, Share, Simulate,
- * Export PNG / GIF, Transform and Clear, on the nearest DesignerProvider. It also renders the Save and
+ * Export image, Transform and Clear, on the nearest DesignerProvider. It also renders the Save and
  * Load dialogs. Mount one per provider: it owns the Ctrl+Z listener.
  */
-export const DesignerActions: React.FC<DesignerActionsProps> = ({ className, gridRef, showTargets = true, variant = "rail", railRef, initialPop, onReady }) => {
+export const DesignerActions: React.FC<DesignerActionsProps> = ({ className, showInputs = true, showTargets = true, variant = "rail", railRef, initialPop, onReady }) => {
   const actions = useLayoutActions();
   const api = useActionsApi(actions);
   useEffect(() => {
     onReady?.(api);
   }, [onReady, api]);
   const pops = useActionPops(initialPop);
-  const exportOptions = useExportOptions(showTargets);
-  const cropIds = useExportCropIds(showTargets);
-  const gridEl = useCallback(() => (gridRef && typeof gridRef === "object" ? (gridRef.current?.getGridElement() ?? null) : null), [gridRef]);
+  const exportModel = useExportModel(showInputs, showTargets);
   const { pop, ref, open, close, anchor } = pops;
   const empty = actions.empty;
 
@@ -55,12 +51,9 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({ className, gri
       <ExportPopover
         anchor={anchor}
         beside={railRef?.current}
-        open={(pop === "export" || pop === "gif") && !empty}
+        open={pop === "export" && !empty}
         onClose={close}
-        initial={pop === "gif" ? "gif" : "png"}
-        gridEl={gridEl}
-        options={exportOptions}
-        cropIds={cropIds}
+        model={exportModel}
         onDone={close}
       />
     </>
@@ -122,18 +115,11 @@ export const DesignerActions: React.FC<DesignerActionsProps> = ({ className, gri
           </KitButton>
         </ActionTip>
       </div>
-      <div className={pair}>
-        <ActionTip label="Export PNG" hint="A picture to copy or download">
-          <KitButton ref={ref("export")} disabled={empty} aria-haspopup="dialog" aria-expanded={pop === "export"} onClick={() => open("export")} className={cn("w-full px-2", on("export"))}>
-            <ImageIcon /> PNG
-          </KitButton>
-        </ActionTip>
-        <ActionTip label="Export GIF" hint="Animated crops move; downloads">
-          <KitButton ref={ref("gif")} disabled={empty} aria-haspopup="dialog" aria-expanded={pop === "gif"} onClick={() => open("gif")} className={cn("w-full px-2", on("gif"))}>
-            <Film /> GIF
-          </KitButton>
-        </ActionTip>
-      </div>
+      <ActionTip label="Export image" hint={empty ? "Place something first" : "A picture to copy or download"}>
+        <KitButton ref={ref("export")} disabled={empty} aria-haspopup="dialog" aria-expanded={pop === "export"} onClick={() => open("export")} className={cn("w-full px-2", on("export"))}>
+          <ImageIcon /> Export image
+        </KitButton>
+      </ActionTip>
       {rule}
       <LayoutTransformControls />
       <LayoutClearControls defaultOpen={initialPop === "clear"} />

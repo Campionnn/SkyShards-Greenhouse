@@ -1,6 +1,6 @@
 // The Designer's page actions as hooks and helpers (research/designer-v2, the approved mockup's MockLib):
 // the Ctrl+Z listener, Save / Load / Rename / Delete on the browser's saved layouts, loading a layout as
-// one undo step, Share, Simulate, what the PNG / GIF export draws, and which popover of the rail or the
+// one undo step, Share, Simulate, what the image export draws, and which popover of the rail or the
 // phone toolbar is open. The components are DesignerActions.tsx, LayoutTools.tsx, ExportPopover.tsx,
 // SharePopover.tsx and PhoneToolbar.tsx (react-refresh: a .tsx file exports components only).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -8,7 +8,8 @@ import { useNavigate } from "react-router-dom";
 import { useDesigner, useGreenhouseData } from "../../context";
 import { useToast } from "../ui/toastContext";
 import { decodeDesign, encodeDesign, LocalStorageManager, makeIncomingLayout, simulatorHandoffState, type GroundTile } from "../../utilities";
-import { aggregateCropInfo, type ExportOptions } from "../../utilities/gridExport";
+import { LAYOUT_IMAGE_TITLE, type LayoutImageModel } from "../../utilities/layoutImage";
+import { toImagePlacements } from "../../utilities/layoutImageBrowser";
 import { deleteLayout, generateLayoutId, loadLayouts, renameLayout, restoreLayout, saveLayouts, updateLayout } from "../../utilities/layoutStorage";
 import type { OptimizedPlacement, SavedLayout } from "../../types/layout";
 
@@ -256,54 +257,33 @@ export function useActionsApi(actions: LayoutActions): DesignerActionsApi {
 
 // ---- Export -------------------------------------------------------------------------------------------
 
-/** What the PNG / GIF export draws (D10): 2×, the "Greenhouse Designer" watermark; targets are listed even when hidden. */
-export function useExportOptions(showTargets: boolean): () => ExportOptions {
-  const { inputPlacements, targetPlacements } = useDesigner();
+/**
+ * What the image export draws (layoutImage.ts, the same picture as a share link's Discord embed): the
+ * layout as the grid shows it (hidden inputs / targets draw only their ground), both lists always.
+ */
+export function useExportModel(showInputs: boolean, showTargets: boolean): () => LayoutImageModel {
+  const { inputPlacements, targetPlacements, groundTiles } = useDesigner();
+  const { getCropDef, getMutationDef } = useGreenhouseData();
   return useCallback(
     () => ({
-      scale: 2,
-      includeWatermark: true,
-      watermarkUrl: "greenhouse.skyshards.com",
-      watermarkTitle: "Greenhouse Designer",
-      inputCrops: aggregateCropInfo(inputPlacements),
-      targetCrops: aggregateCropInfo(targetPlacements),
+      title: LAYOUT_IMAGE_TITLE,
+      placements: toImagePlacements(inputPlacements, targetPlacements, (id) => getCropDef(id)?.ground || getMutationDef(id)?.ground || "farmland"),
+      groundTiles,
+      showInputs,
       showTargets,
     }),
-    [inputPlacements, targetPlacements, showTargets],
+    [inputPlacements, targetPlacements, groundTiles, showInputs, showTargets, getCropDef, getMutationDef],
   );
-}
-
-/** The crops a GIF animates: the inputs, and the targets when they are shown. */
-export function useExportCropIds(showTargets: boolean): () => string[] {
-  const { inputPlacements, targetPlacements } = useDesigner();
-  return useCallback(() => [...inputPlacements.map((p) => p.cropId), ...(showTargets ? targetPlacements.map((p) => p.cropId) : [])], [inputPlacements, targetPlacements, showTargets]);
-}
-
-export const twoFrames = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-
-/**
- * After clearing a list highlight, waits until the grid has repainted and the fade back (placementStyles
- * FOCUS_TRANSITION, 150ms) has finished, so a capture right after a pin isn't half-faded.
- */
-export async function focusSettled() {
-  await twoFrames();
-  await new Promise((r) => setTimeout(r, 170));
-}
-
-/** Waits (up to `ms`) for the grid's images, so the capture doesn't miss a crop that is still loading. */
-export async function imagesReady(el: HTMLElement, ms = 4000) {
-  const t = Date.now();
-  while ([...el.querySelectorAll("img")].some((i) => !i.complete) && Date.now() - t < ms) await new Promise((r) => setTimeout(r, 100));
 }
 
 // ---- Popovers of the rail and the phone toolbar ------------------------------------------------------------
 
-export type ActionPop = "share" | "export" | "gif" | "clear" | "transform" | "more";
+export type ActionPop = "share" | "export" | "clear" | "transform" | "more";
 
 /**
  * Which popover is open and the button it hangs from. `open(p)` toggles; `open(p, via)` anchors it to
- * another button (the phone's More → Transform, its one Export button → GIF). `initialPop` opens one on
- * load (the `#pop=` screenshot states: share | export | png | gif | clear | transform).
+ * another button (the phone's More → Transform). `initialPop` opens one on
+ * load (the `#pop=` screenshot states: share | export | png | clear | transform).
  */
 export function useActionPops(initialPop?: string) {
   const [pop, setPop] = useState<ActionPop | null>(null);
@@ -325,11 +305,11 @@ export function useActionPops(initialPop?: string) {
   const close = useCallback(() => setPop(null), []);
   useEffect(() => {
     const p = initialPop === "png" ? "export" : initialPop;
-    if (!p || !["share", "export", "gif", "clear", "transform"].includes(p)) return;
+    if (!p || !["share", "export", "clear", "transform"].includes(p)) return;
     const k = p as ActionPop;
-    // Once the anchors exist (the phone's one Export button serves GIF too; Transform hangs from More there).
+    // Once the anchors exist (Transform hangs from More on the phone).
     const id = window.setTimeout(() => {
-      const el = refs.current[k] ?? (k === "transform" ? refs.current.more : k === "gif" ? refs.current.export : null);
+      const el = refs.current[k] ?? (k === "transform" ? refs.current.more : null);
       if (!el) return;
       setAnchor(el);
       setPop(k);
