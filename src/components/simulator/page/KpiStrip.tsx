@@ -3,17 +3,18 @@ import type { SimulationView } from "../../../hooks/useSimulation";
 import { COINS_METRIC, type RankMetric } from "../../../leaderboard/metric";
 import { uptimeRatio } from "../../../simulator";
 import { cn } from "../../ui/cn";
-import { formatFocus, focusUnit } from "../focusMetricUi";
+import { formatFocus } from "../focusMetricUi";
 import { formatCoins, formatDuration, formatPercent, spotFailureText } from "../format";
-import { FocusName, FocusPicker } from "./FocusPicker";
-import { focusValues, kpiValues, statusText, type PriceSummary } from "./pageHelpers";
+import { FocusName, FocusPicker, MetricTiles } from "./FocusPicker";
+import { focusValues, kpiValues, metricTiles, statusText, type PriceSummary } from "./pageHelpers";
 
-// The numbers under the command bar: the focus metric per day (the hero, its label opens the focus
-// picker), the other metrics per day as smaller numbers, profit, simulated time and uptime, plus a
-// one-line status. While a run is in flight they follow the worker's running totals.
+// The numbers under the command bar: the four metric tiles per day (coins, Sowdust, Farming XP, one
+// crop's collection; the focused one is larger, on a highlight that slides to the tile you click),
+// then profit, simulated time and uptime, plus a one-line status. While a run is in flight they
+// follow the worker's running totals.
 //
-// Fits by the header's own width (it is an @container): the status line goes first, then the
-// Simulated time detail, then Profit when coins/day is already shown beside the hero.
+// Fits by the header's own width (it is an @container): the status line goes first, then Profit,
+// the Simulated time detail, and the Collection tile.
 
 export interface KpiStripProps {
   view: SimulationView;
@@ -22,8 +23,10 @@ export interface KpiStripProps {
   priceSummary?: PriceSummary;
   /** What the hero shows and the Monte Carlo test measures (default coins). */
   focus?: RankMetric;
-  /** Changes the focus (the hero label becomes a picker); omitted, the label is plain. */
+  /** Changes the focus (the metric tiles become the picker); omitted, only the focus shows, plain. */
   onFocusChange?: (m: RankMetric) => void;
+  /** The Collection tile's crop while another metric is the focus (default: the focus's crop). */
+  collectionCrop?: string;
 }
 
 const Kpi: React.FC<{ label: React.ReactNode; hero?: boolean; children: React.ReactNode; title?: string; className?: string; labelClassName?: string; testId?: string }> = ({
@@ -41,59 +44,35 @@ const Kpi: React.FC<{ label: React.ReactNode; hero?: boolean; children: React.Re
   </div>
 );
 
-const signed = (metric: RankMetric, d: number) => `${d > 0 ? "+" : "−"}${formatFocus(metric, Math.abs(d))}`;
-
-export const KpiStrip: React.FC<KpiStripProps> = ({ view, plotCount, priceSummary, focus = COINS_METRIC, onFocusChange }) => {
+export const KpiStrip: React.FC<KpiStripProps> = ({ view, plotCount, priceSummary, focus = COINS_METRIC, onFocusChange, collectionCrop }) => {
   const { summary, profit, priced } = kpiValues(view, priceSummary);
-  const { value, delta, side } = focusValues(view, focus, priceSummary);
   const u = summary?.uptime;
   const report = view.status === "running" ? null : view.snapshot?.report;
   const unsustainable = !!u && u.watched > 0 && u.requirements > 0;
   const first = report?.firstFailure;
   const status = statusText(view, plotCount);
-  const coins = focus.by === "coins";
-  const heroLabel = <FocusName metric={focus} />;
-  // A delta smaller than the number's last shown digit reads "+0": hide it.
-  const showDelta = delta !== null && formatFocus(focus, Math.abs(delta)) !== "0";
+  const tiles = metricTiles(view, focus.by === "collection" ? focus.crop : (collectionCrop ?? focus.crop), priceSummary);
   return (
-    <div className="flex items-end gap-7 px-1 pb-2.5 sm:px-2 max-md:hidden @max-[1240px]:gap-5 @max-[860px]:gap-4" data-testid="kpi-strip">
-      <Kpi
-        testId="kpi-hero"
-        hero
-        title={coins ? (priced ? "Profit per day at Bazaar prices" : "Profit per day at NPC prices") : `${focusUnit(focus)}: harvested per simulated day`}
-        label={onFocusChange ? <FocusPicker value={focus} onChange={onFocusChange} className="-ml-0.5" /> : heroLabel}
-        labelClassName={onFocusChange ? "h-6 normal-case" : undefined}
-      >
-        <span className={value < 0 ? "text-problem" : undefined}>{formatFocus(focus, value)}</span>
-        {showDelta && (
-          <span className="ml-2 text-meta font-medium text-fg-muted">
-            {signed(focus, delta!)}
-            <span className="@max-[900px]:hidden"> last run</span>
-          </span>
-        )}
-      </Kpi>
-      {side.map(({ metric, value: v }) => (
-        <Kpi
-          key={metric.by}
-          label={focusUnit(metric)}
-          testId={`kpi-${metric.by}`}
-          title={metric.by === "coins" ? (priced ? "Profit per day at Bazaar prices" : "Profit per day at NPC prices") : `${focusUnit(metric)}: earned per simulated day`}
-        >
-          <span className={v < 0 ? "text-problem" : undefined}>{metric.by === "coins" ? formatCoins(v) : formatFocus(metric, v)}</span>
+    <div className="flex items-end gap-6 px-1 pb-2 sm:px-1.5 max-md:hidden @max-[1240px]:gap-4 @max-[860px]:gap-3" data-testid="kpi-strip">
+      {onFocusChange ? (
+        <MetricTiles tiles={tiles} focus={focus} onFocus={onFocusChange} priced={priced} />
+      ) : (
+        <Kpi label={<FocusName metric={focus} />} hero testId="kpi-hero" className="pl-2.5">
+          {formatFocus(focus, tiles.find((t) => t.metric.by === focus.by)?.value ?? 0)}
         </Kpi>
-      ))}
-      {/* Coins/day already sits beside the hero when another metric is the focus: Profit goes first when narrow. */}
-      <Kpi label="Profit" className={coins ? undefined : "@max-[1180px]:hidden"}>
+      )}
+      <span aria-hidden className="mb-2 h-8 w-px shrink-0 self-end bg-line" />
+      <Kpi label="Profit" className="pb-2 @max-[1180px]:hidden">
         <span className={profit < 0 ? "text-problem" : "text-coin"}>{formatCoins(profit)}</span>
       </Kpi>
-      <Kpi label="Simulated" title={`${(summary?.cyclesRun ?? 0).toLocaleString("en-US")} cycles · ${formatDuration(summary?.elapsedSeconds ?? 0)}`}>
+      <Kpi label="Simulated" className="pb-2" title={`${(summary?.cyclesRun ?? 0).toLocaleString("en-US")} cycles · ${formatDuration(summary?.elapsedSeconds ?? 0)}`}>
         <span className="@max-[1100px]:hidden">{(summary?.cyclesRun ?? 0).toLocaleString("en-US")}</span>
         <span className="ml-1 text-secondary font-medium text-fg-meta @max-[1100px]:hidden">cycles ·</span>
         <span className="ml-1 text-secondary font-medium text-fg-meta @max-[1100px]:ml-0 @max-[1100px]:text-title @max-[1100px]:font-semibold @max-[1100px]:text-fg">
           {formatDuration(summary?.elapsedSeconds ?? 0)}
         </span>
       </Kpi>
-      <Kpi label="Uptime" title={first ? spotFailureText(first) : "Checked target cells growing or ready to spawn"}>
+      <Kpi label="Uptime" className="pb-2" title={first ? spotFailureText(first) : "Checked target cells growing or ready to spawn"}>
         {!u || u.watched === 0 ? (
           <span className="text-body font-medium text-fg-meta">no targets checked</span>
         ) : (
@@ -147,7 +126,7 @@ export const KpiCompact: React.FC<KpiStripProps> = ({ view, priceSummary, focus 
     <span className="ml-auto flex min-w-0 items-baseline gap-2 md:hidden" data-testid="kpi-compact">
       <span className={cn("shrink-0 text-title tabular-nums", value < 0 ? "text-problem" : "text-fg")}>{formatFocus(focus, value)}</span>
       {onFocusChange ? (
-        <FocusPicker value={focus} onChange={onFocusChange} align="end" compact className="min-w-0 self-center" />
+        <FocusPicker value={focus} onChange={onFocusChange} align="end" className="min-w-0 self-center" />
       ) : (
         <span className="min-w-0 text-meta text-fg-meta">{unit}</span>
       )}

@@ -385,7 +385,7 @@ describe("simulator panels render", () => {
     expect(text(COINS_METRIC)).toContain("Profit by online frequency");
   });
 
-  it("the KPI hero shows the focus metric and its picker; the other metrics stay as smaller numbers", () => {
+  it("the KPI strip's metric tiles are the focus picker: all four show, the focused one is checked and larger", () => {
     const s = view.snapshot!.state.summary;
     expect(collectionTotal(s, "wheat")).toBe(view.snapshot!.state.ledger.wheat?.produced ?? 0);
     const days = s.elapsedSeconds / 86400;
@@ -393,32 +393,36 @@ describe("simulator panels render", () => {
       wrap(<KpiStrip view={view} plotCount={2} focus={focus} onFocusChange={() => {}} />)
         .replace(/<!-- -->/g, "")
         .replace(/&#x27;/g, "'");
-    // Coins focused: hero = coins/day, Sowdust and Farming XP beside it, no second coins figure.
+    /** The tile's radio: `aria-checked` of the button inside `data-testid="kpi-<by>"`. */
+    const checked = (html: string, by: string) => new RegExp(`data-testid="kpi-${by}"[^>]*>\\s*<button[^>]*role="radio"[^>]*aria-checked="true"`).test(html);
+    // Coins focused: a radio group of four tiles, coins checked, the others not; coins/day once.
     const coins = strip(COINS_METRIC);
-    expect(coins).toContain('aria-haspopup="menu"');
-    expect(coins).toContain("Focus: Coins/day");
-    expect(coins).toMatch(/data-testid="kpi-hero"[\s\S]*Coins\/day/);
-    expect(coins).toContain('data-testid="kpi-sowdust"');
-    expect(coins).toContain('data-testid="kpi-xp"');
-    expect(coins).not.toContain('data-testid="kpi-coins"');
-    // A collection focused: the crop's icon and name in the hero, its harvested units per day; coins/day beside it.
+    expect(coins).toContain('role="radiogroup"');
+    for (const by of ["coins", "sowdust", "xp", "collection"]) expect(coins).toContain(`data-testid="kpi-${by}"`);
+    expect(checked(coins, "coins")).toBe(true);
+    expect(checked(coins, "sowdust") || checked(coins, "xp") || checked(coins, "collection")).toBe(false);
+    expect(coins).toContain(formatCoins(s.coinsPerDay));
+    // The Collection tile carries its crop (icon, name) with the crop menu on it, and its units per day.
     const wheat = strip({ by: "collection", crop: "wheat" });
-    expect(wheat).toContain("Focus: Wheat/day");
+    expect(checked(wheat, "collection")).toBe(true);
     expect(wheat).toContain("/greenhouse/crops/wheat.png");
+    expect(wheat).toContain("Collection crop: Wheat");
     expect(wheat).toContain(formatMetric({ by: "collection", crop: "wheat" }, collectionTotal(s, "wheat") / days));
-    expect(wheat).toContain('data-testid="kpi-coins"');
     expect(wheat).toContain(formatCoins(s.coinsPerDay));
-    // Sowdust focused: summed over crops per day; XP and coins beside it.
-    const sowdust = strip({ by: "sowdust", crop: "wheat" });
-    expect(sowdust).toMatch(/data-testid="kpi-hero"[\s\S]*Sowdust\/day/);
-    expect(sowdust).not.toContain('data-testid="kpi-sowdust"');
-    expect(sowdust).toContain('data-testid="kpi-coins"');
+    // Sowdust focused: summed over crops per day; the collection tile keeps the crop it had.
+    const sowdust = strip({ by: "sowdust", crop: "melon" });
+    expect(checked(sowdust, "sowdust")).toBe(true);
+    expect(sowdust).toContain("Collection crop: Melon");
+    expect(sowdust).toContain(formatMetric({ by: "sowdust", crop: "wheat" }, sowdustTotal(s) / days));
     // Phone header: the focus metric with its unit as the picker.
     const phone = wrap(<KpiCompact view={view} plotCount={2} focus={{ by: "xp", crop: "wheat" }} onFocusChange={() => {}} />).replace(/<!-- -->/g, "");
     expect(phone).toContain("Farming XP/day");
     expect(phone).toContain(formatMetric({ by: "xp", crop: "wheat" }, (s.farmingXp ?? 0) / days));
-    // Without a picker the label is plain text (read-only).
-    expect(wrap(<KpiStrip view={view} plotCount={2} />)).not.toContain('aria-haspopup="menu"');
+    expect(phone).toContain('aria-haspopup="menu"');
+    // Without a picker only the focus shows, as plain text (read-only).
+    const plain = wrap(<KpiStrip view={view} plotCount={2} />);
+    expect(plain).not.toContain('role="radiogroup"');
+    expect(plain).toContain('data-testid="kpi-hero"');
   });
 
   it("the focus is remembered and unknown saves fall back to coins", () => {

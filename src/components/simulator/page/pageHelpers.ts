@@ -62,6 +62,31 @@ export function focusValues(view: SimulationView, metric: RankMetric, priceSumma
   return { value, delta: prev === null ? null : value - prev, side };
 }
 
+/** One metric tile of the KPI strip: its value per day and the change since the last Step / Run. */
+export interface MetricTile {
+  metric: RankMetric;
+  value: number;
+  delta: number | null;
+}
+
+/**
+ * The KPI strip's metric tiles, in order: coins, Sowdust, Farming XP, then one crop's collection
+ * (`crop`: the focused crop, else the last one picked). Coins use the same valuation as `kpiValues`.
+ */
+export function metricTiles(view: SimulationView, crop: string, priceSummary?: PriceSummary): MetricTile[] {
+  const running = view.status === "running";
+  const summary = (running && view.progress?.summary) || view.snapshot?.state.summary || null;
+  const prevSummary = !running ? view.previousSummary : null;
+  const coins = (s: RunSummary) => priceSummary?.(s)?.perDay ?? s.coinsPerDay;
+  // Every tile carries the crop, so focusing coins and back keeps the collection's crop.
+  const metrics: RankMetric[] = [{ by: "coins", crop }, { by: "sowdust", crop }, { by: "xp", crop }, { by: "collection", crop }];
+  return metrics.map((metric) => {
+    const value = summary ? metricPerDay(summary, metric, coins) : 0;
+    const prev = prevSummary ? metricPerDay(prevSummary, metric, coins) : null;
+    return { metric, value, delta: prev === null ? null : value - prev };
+  });
+}
+
 /** The metrics shown beside the hero when they aren't the focus (a collection only shows as the focus). */
 const SIDE_METRICS: RankMetric[] = [COINS_METRIC, { ...COINS_METRIC, by: "sowdust" }, { ...COINS_METRIC, by: "xp" }];
 
