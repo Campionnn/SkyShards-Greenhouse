@@ -26,16 +26,17 @@ export interface KpiStripProps {
   onFocusChange?: (m: RankMetric) => void;
 }
 
-const Kpi: React.FC<{ label: React.ReactNode; hero?: boolean; children: React.ReactNode; title?: string; className?: string; testId?: string }> = ({
+const Kpi: React.FC<{ label: React.ReactNode; hero?: boolean; children: React.ReactNode; title?: string; className?: string; labelClassName?: string; testId?: string }> = ({
   label,
   hero,
   children,
   title,
   className,
+  labelClassName,
   testId,
 }) => (
   <div className={cn("flex min-w-0 shrink-0 flex-col leading-none", className)} title={title} data-testid={testId}>
-    <span className="flex h-3.5 items-center text-label uppercase text-fg-meta">{label}</span>
+    <span className={cn("flex h-3.5 items-center text-label uppercase text-fg-meta", labelClassName)}>{label}</span>
     <span className={cn("mt-1.5 whitespace-nowrap font-semibold tabular-nums text-fg", hero ? "text-hero" : "text-title")}>{children}</span>
   </div>
 );
@@ -60,13 +61,8 @@ export const KpiStrip: React.FC<KpiStripProps> = ({ view, plotCount, priceSummar
         testId="kpi-hero"
         hero
         title={coins ? (priced ? "Profit per day at Bazaar prices" : "Profit per day at NPC prices") : `${focusUnit(focus)}: harvested per simulated day`}
-        label={
-          onFocusChange ? (
-            <FocusPicker value={focus} onChange={onFocusChange} button={heroLabel} className="-mx-1 px-1 uppercase text-fg-meta" />
-          ) : (
-            heroLabel
-          )
-        }
+        label={onFocusChange ? <FocusPicker value={focus} onChange={onFocusChange} className="-ml-0.5" /> : heroLabel}
+        labelClassName={onFocusChange ? "h-6 normal-case" : undefined}
       >
         <span className={value < 0 ? "text-problem" : undefined}>{formatFocus(focus, value)}</span>
         {showDelta && (
@@ -146,11 +142,12 @@ export const KpiCompact: React.FC<KpiStripProps> = ({ view, priceSummary, focus 
   const u = summary?.uptime;
   const bad = !!u && u.watched > 0 && u.requirements > 0;
   const unit = focus.by === "coins" ? <span>/day</span> : <FocusName metric={focus} size={14} />;
+  // The phone picker: the same pill, smaller (it says the unit, so no separate "/day").
   return (
     <span className="ml-auto flex min-w-0 items-baseline gap-2 md:hidden" data-testid="kpi-compact">
       <span className={cn("shrink-0 text-title tabular-nums", value < 0 ? "text-problem" : "text-fg")}>{formatFocus(focus, value)}</span>
       {onFocusChange ? (
-        <FocusPicker value={focus} onChange={onFocusChange} align="end" button={unit} className="min-w-0 self-center text-meta text-fg-meta" />
+        <FocusPicker value={focus} onChange={onFocusChange} align="end" compact className="min-w-0 self-center" />
       ) : (
         <span className="min-w-0 text-meta text-fg-meta">{unit}</span>
       )}

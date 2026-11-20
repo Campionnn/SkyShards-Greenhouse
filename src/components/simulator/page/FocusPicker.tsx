@@ -1,4 +1,5 @@
 import React from "react";
+import { Crosshair } from "lucide-react";
 import { COLLECTION_CROPS, RANK_BY_LABEL, sameMetric, type RankBy, type RankMetric } from "../../../leaderboard/metric";
 import { CropImage } from "../../shared";
 import { cn } from "../../ui/cn";
@@ -23,14 +24,31 @@ export const FocusName: React.FC<{ metric: RankMetric; size?: number; className?
   </span>
 );
 
+/**
+ * The picker's trigger: a pill (target icon, the metric, a chevron) that reads as a control, like the
+ * command bar's chips. `compact` is the phone header's smaller one.
+ */
+export const FocusTrigger: React.FC<{ metric: RankMetric; compact?: boolean }> = ({ metric, compact }) => (
+  <>
+    <Crosshair aria-hidden className={cn("shrink-0 text-go-fg", compact ? "size-3" : "size-3.5")} />
+    <FocusName metric={metric} size={compact ? 13 : 14} />
+  </>
+);
+
+/** The trigger's look: a field-like pill (border, well) that brightens on hover and while open. */
+const TRIGGER =
+  "inline-flex min-w-0 items-center gap-1.5 rounded-control border border-line-control bg-surface-well font-medium normal-case text-fg-body transition-colors duration-(--duration-hover) hover:border-fg-meta hover:bg-surface-panel hover:text-fg aria-expanded:border-select/60 aria-expanded:text-fg";
+
 export const FocusPicker: React.FC<{
   value: RankMetric;
   onChange: (m: RankMetric) => void;
-  /** The trigger's content (the hero label, the phone unit). */
-  button: React.ReactNode;
+  /** The trigger's content; default the pill (`FocusTrigger`). */
+  button?: React.ReactNode;
+  /** The phone header's smaller pill. */
+  compact?: boolean;
   className?: string;
   align?: "start" | "end";
-}> = ({ value, onChange, button, className, align }) => {
+}> = ({ value, onChange, button, compact, className, align }) => {
   const item = (by: Exclude<RankBy, "collection">, close: () => void) => (
     <MenuItem key={by} checked={value.by === by} hint={HINT[by]} onSelect={() => (onChange({ ...value, by }), close())}>
       {RANK_BY_LABEL[by]}
@@ -39,12 +57,12 @@ export const FocusPicker: React.FC<{
   return (
     <Dropdown
       label={`Focus: ${focusUnit(value)}. Change what the headline and the frequency test measure`}
-      title="What you're optimising for: the headline number and the Monte Carlo test measure it"
+      title="Click to choose what you're optimising for: coins, a crop's collection, Sowdust or Farming XP. The big number and the frequency test measure it."
       look="plain"
       align={align}
       width={272}
-      className={cn("hit-area inline-flex min-w-0 items-center gap-1 rounded-inner transition-colors duration-(--duration-hover) hover:text-fg-body aria-expanded:text-fg-body", className)}
-      button={button}
+      className={cn(TRIGGER, compact ? "hit-area h-6 px-1.5 text-meta" : "h-6 px-2 text-secondary", className)}
+      button={button ?? <FocusTrigger metric={value} compact={compact} />}
     >
       {(close) => (
         <div data-testid="focus-menu">
