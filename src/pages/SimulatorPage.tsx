@@ -23,6 +23,7 @@ import { addPlot, duplicatePlot, importFlows, isBlankScenario, nextPlotId, place
 import { spotFailureText } from "../components/simulator/format";
 import { CommandBar, FlowsMenuItems, type PageProblem } from "../components/simulator/page/CommandBar";
 import { KpiCompact, KpiCompactDetail, KpiStrip } from "../components/simulator/page/KpiStrip";
+import { useFocusMetric } from "../components/simulator/focusMetricUi";
 import { MobileChips, MobileRunBar } from "../components/simulator/page/Mobile";
 import { PlotsRow } from "../components/simulator/page/PlotsRow";
 import { plotUptime } from "../components/simulator/page/plotUptime";
@@ -177,6 +178,8 @@ export const SimulatorPage: React.FC = () => {
   const [scripting, setScripting] = useState<ScriptTarget | null>(null);
   // Ironman / normal profile: a site-wide setting (localStorage), applied to the scenario the engine runs.
   const [profile, setProfile] = useProfileMode();
+  /** What the user optimises for: the headline number and the Monte Carlo test (remembered). */
+  const [focus, setFocus] = useFocusMetric();
   const bazaar = useBazaarPrices(profile === "normal");
   /** Re-renders the price age once a minute. */
   const now = useNow(profile === "normal" ? 60_000 : null);
@@ -581,10 +584,10 @@ export const SimulatorPage: React.FC = () => {
         />
         <div className="flex h-12 items-center gap-3 px-3 md:hidden">
           <span className="text-body font-semibold text-fg">Simulator</span>
-          <KpiCompact view={view} plotCount={plotCount} priceSummary={priceSummary} />
+          <KpiCompact view={view} plotCount={plotCount} priceSummary={priceSummary} focus={focus} onFocusChange={setFocus} />
         </div>
         <KpiCompactDetail view={view} plotCount={plotCount} priceSummary={priceSummary} />
-        <KpiStrip view={view} plotCount={plotCount} priceSummary={priceSummary} />
+        <KpiStrip view={view} plotCount={plotCount} priceSummary={priceSummary} focus={focus} onFocusChange={setFocus} />
         {view.status === "running" && view.progress && (
           <div className="absolute inset-x-0 -bottom-px h-0.5 overflow-hidden" aria-hidden>
             <div className="h-full bg-go" style={{ width: `${(view.progress.done / Math.max(1, view.progress.total)) * 100}%` }} />
@@ -668,6 +671,7 @@ export const SimulatorPage: React.FC = () => {
                 <FrequencyPanel
                   scenario={engineScenario}
                   priceSummary={priceSummary}
+                  metric={focus}
                   onUseEvery={preview ? undefined : (n: number) => setScenario((sc) => ({ ...sc, settings: { ...sc.settings, activity: { kind: "everyN", n, offset: 0 } } }))}
                 />
                 <EarningsPanel summary={state.summary} quotes={state.summary.market ? quotes : null} pricing={state.summary.market ? bazaar.pricing : null} />

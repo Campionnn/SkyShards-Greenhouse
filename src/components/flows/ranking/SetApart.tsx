@@ -5,6 +5,9 @@ import { haveText, prepText, upkeepNeedText, upkeepText, type FlowRow } from "..
 import { cn } from "../../ui/cn";
 import { InfoHint } from "../../ui/InfoHint";
 import { LinkButton } from "../../ui/Card";
+import type { ItemId } from "../../../simulator/data/types";
+import { CropImage } from "../../shared";
+import { nameOf } from "../../simulator/format";
 import { LayoutBoxes } from "../FlowVisuals";
 import { Coins } from "./RankingRow";
 import { thumbOf, type RankingLinkState } from "./rankingHelpers";
@@ -122,6 +125,43 @@ export const CantMakeRow: React.FC<{ row: FlowRow; rankingSearch?: string; phone
         <ArrowUpRight aria-hidden className="size-3 self-center" />
       </Link>
     </li>
+  );
+};
+
+/**
+ * Ranked by a collection: the flows that make none of the crop ("Don't make Wheat (4)"), closed by
+ * default (open when nothing else is ranked). Same header as the other set-apart sections, neutral
+ * (it isn't a problem with the flow); the rows inside are the page's own rows (`children`), so they
+ * still open and link like ranked ones, with no rank.
+ */
+export const NoneOfSection: React.FC<{ crop: ItemId; count: number; defaultOpen?: boolean; children: React.ReactNode }> = ({ crop, count, defaultOpen = false, children }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  const name = nameOf(crop);
+  return (
+    <section className="@container mt-3 border-t border-line pt-1" data-testid="none-of-section">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="focus-ring flex min-h-8 cursor-pointer items-center gap-1.5 rounded-control px-2 transition-colors duration-(--duration-hover) hover:bg-surface-hover pointer-coarse:min-h-11"
+        >
+          <ChevronRight aria-hidden className={cn("size-3.5 text-fg-meta transition-transform duration-(--duration-ink)", open && "rotate-90")} />
+          <CropImage cropId={crop} cropName={name} size="custom" width={16} height={16} showFallback />
+          <span className="text-body font-medium text-fg-body">
+            Don't make {name} ({count})
+          </span>
+        </button>
+        <InfoHint title={`Don't make ${name}`} label="Why these aren't ranked">
+          These flows harvest no {name}, so they take no place in a {name} ranking. Their coins and other numbers are still in each row.
+        </InfoHint>
+      </div>
+      {open && (
+        <ol className="kit-fade-in" data-testid="none-of-list">
+          {children}
+        </ol>
+      )}
+    </section>
   );
 };
 

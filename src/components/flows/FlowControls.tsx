@@ -72,6 +72,8 @@ const SIM_FIELDS: StatKey[] = ["cropGrowth", "growthUpgradeTier", "speedAttribut
 /** Yield-only stats: these scale the stored counts directly. Per-crop fortune goes after Farming Fortune. */
 const YIELD_FIELDS_TOP: StatKey[] = ["farmingFortune"];
 const YIELD_FIELDS_REST: StatKey[] = ["plantYieldUpgrade", "overbloom", "evergreenChip"];
+/** After the armor (pairs with it in the two-column grid): only scales Farming XP. */
+const YIELD_FIELDS_END: StatKey[] = ["farmingWisdom"];
 
 /** A plain number input that commits on blur / Enter (per-crop fortune). The hint sits beside the label, not inside it. */
 const NumberStat: React.FC<{ id: string; label: string; min: number; max: number; step?: number; value: number; onChange: (v: number) => void }> = ({ id, label, min, max, step, value, onChange }) => {
@@ -412,7 +414,7 @@ export const StatsForm: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
         hint={
           <InfoHint title="Yield stats" width={300}>
             The server runs every flow at the wiki maxima, with no crop bonus or tools. These scale the stored crop and rare-crop counts to you; mutation items
-            aren't affected. An estimate, marked as such.
+            aren't affected. Fortune also scales Sowdust, and Farming Wisdom scales Farming XP. An estimate, marked as such.
           </InfoHint>
         }
       >
@@ -425,6 +427,9 @@ export const StatsForm: React.FC<{ viewer: FlowViewer }> = ({ viewer }) => {
             <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" className={STAT_FIELDS[k].kind === "chip" ? "@md:col-span-2" : undefined} value={s[k]} onChange={set(k)} />
           ))}
           <ArmorField viewer={viewer} />
+          {YIELD_FIELDS_END.map((k) => (
+            <StatInput key={k} def={STAT_FIELDS[k]} variant="stacked" commitOn="blur" value={s[k]} onChange={set(k)} />
+          ))}
         </div>
       </Section>
       {viewer.board === "normal" && <BazaarPricing viewer={viewer} />}

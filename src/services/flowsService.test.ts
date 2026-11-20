@@ -135,6 +135,22 @@ describe("normalizeDetail", () => {
     expect(rows[0].prep).toEqual({ kit: { zombud: 2 }, cycles: 50, days: 3.6, done: true, mode: "real" });
     expect(rows[1]).toMatchObject({ altPoint: null, borrowPoint: null, prep: null, cell: null });
   });
+
+  it("gains (Farming XP / Sowdust) survive on cells, curve points and altPoint; old ones have none; junk dropped", () => {
+    const gains = { farming_xp: 288, "sowdust:wheat": 40 };
+    const rows = normalizeListEntries([
+      { id: "a", cell: { produced: { wheat: 1 }, gains }, curve: { "1": { produced: { wheat: 1 }, bought: {}, consumed: {}, gains: { ...gains, bad: "x" } }, "2": { produced: {}, bought: {}, consumed: {} }, "3": "junk" }, altPoint: { produced: {}, bought: {}, consumed: {}, gains } },
+      { id: "b", cell: { produced: { wheat: 1 } }, curve: { "1": { produced: {}, bought: {}, consumed: {}, gains: "x" } } },
+    ]);
+    expect(rows[0].cell!.gains).toEqual(gains);
+    expect(rows[0].curve!["1"].gains).toEqual(gains);
+    expect("gains" in rows[0].curve!["2"]).toBe(false);
+    expect(rows[0].curve!["3"]).toBeUndefined();
+    expect(rows[0].altPoint!.gains).toEqual(gains);
+    expect(rows[1].cell!.gains).toBeUndefined();
+    expect("gains" in rows[1].curve!["1"]).toBe(false);
+    expect(normalizeResult({ produced: {}, gains })!.gains).toEqual(gains);
+  });
 });
 
 describe("the mock matches the API's shapes", () => {
@@ -169,6 +185,13 @@ describe("the mock matches the API's shapes", () => {
     expect(gods.prep).toMatchObject({ done: false, have: { godseed: 0 }, doneSeeds: [0, 5] });
     expect(fromNothing.entries.some((e) => e.cell?.bySource?.chorus_fruit)).toBe(true);
     expect(normal.entries.every((e) => e.cell?.startItems === undefined)).toBe(true);
+    // Farming XP / Sowdust in the API's shape: on the cell, every curve point and altPoint; the stale (old engine) flow has none.
+    const live = kit.entries.filter((e) => !e.stale);
+    expect(live.every((e) => e.cell!.gains && Object.keys(e.cell!.gains).every((k) => k === "farming_xp" || k.startsWith("sowdust:")))).toBe(true);
+    expect(live.every((e) => Object.values(e.curve!).every((p) => p.gains) && e.altPoint!.gains)).toBe(true);
+    const stale = kit.entries.find((e) => e.stale)!;
+    expect(stale.cell!.gains).toBeUndefined();
+    expect(Object.values(stale.curve!).some((p) => p.gains)).toBe(false);
   });
 
   it("detail: cells and seeds carry cellKind + runKind + board for all three cell kinds; status jobs too", async () => {

@@ -1,5 +1,7 @@
 import type { SimulationView } from "../../../hooks/useSimulation";
 import { CONFIG_META, DEFAULT_CONFIG, type RunSummary, type Scenario } from "../../../simulator";
+import { COINS_METRIC, type RankMetric } from "../../../leaderboard/metric";
+import { metricPerDay } from "../focusMetric";
 import { describeStop, stopPlace } from "./stepBy";
 
 // Plain helpers shared by the simulator page's components (kept out of .tsx files so React fast
@@ -38,6 +40,30 @@ export function kpiValues(view: SimulationView, priceSummary?: PriceSummary) {
   const prev = !running && view.previousSummary ? (priceSummary?.(view.previousSummary)?.perDay ?? view.previousSummary.coinsPerDay) : null;
   return { running, summary, perDay, profit, delta: prev === null ? null : perDay - prev, priced: !!priced };
 }
+
+/** One smaller number beside the hero: a metric that isn't the focus. */
+export interface SideMetric {
+  metric: RankMetric;
+  value: number;
+}
+
+/**
+ * The focus metric's numbers for the KPI strip: its value per day, the change since the last
+ * Step / Run, and the other metrics (coins when not focused, Sowdust, Farming XP) per day.
+ * Coins use the same valuation as `kpiValues` (Bazaar when priced, else NPC).
+ */
+export function focusValues(view: SimulationView, metric: RankMetric, priceSummary?: PriceSummary) {
+  const running = view.status === "running";
+  const summary = (running && view.progress?.summary) || view.snapshot?.state.summary || null;
+  const coins = (s: RunSummary) => priceSummary?.(s)?.perDay ?? s.coinsPerDay;
+  const value = summary ? metricPerDay(summary, metric, coins) : 0;
+  const prev = !running && view.previousSummary ? metricPerDay(view.previousSummary, metric, coins) : null;
+  const side: SideMetric[] = SIDE_METRICS.filter((m) => m.by !== metric.by).map((m) => ({ metric: m, value: summary ? metricPerDay(summary, m, coins) : 0 }));
+  return { value, delta: prev === null ? null : value - prev, side };
+}
+
+/** The metrics shown beside the hero when they aren't the focus (a collection only shows as the focus). */
+const SIDE_METRICS: RankMetric[] = [COINS_METRIC, { ...COINS_METRIC, by: "sowdust" }, { ...COINS_METRIC, by: "xp" }];
 
 export function statusText(view: SimulationView, plotCount: number): string {
   const running = view.status === "running";

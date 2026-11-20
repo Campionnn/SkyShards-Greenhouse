@@ -215,6 +215,11 @@ export interface PlayerStats {
    * missing in old saves (`withDefaults` fills it) = 0.
    */
   mutationSerendipity?: number;
+  /**
+   * Farming Wisdom: every harvest's Farming XP × (1 + wisdom / 100) (economy/sowdust.ts). Greenhouse
+   * XP only; it doesn't touch drops or Sowdust. Optional: missing in old saves = 0.
+   */
+  farmingWisdom?: number;
 }
 
 /** When the player is online. All harvesting, watering, upkeep and gate interaction happens then. */
@@ -356,6 +361,17 @@ export interface RunSummary {
    * an All-in Aloe in the same harvest count as `all_in_aloe`). Created on the first harvest.
    */
   bySource?: Record<KindId, Record<ItemId, number>>;
+  /**
+   * Sowdust earned by harvests, by crop item (economy/sowdust.ts `harvestSowdust`: the crop bundle
+   * before yield, scaled by that item's fortune only). Present in new states; old states may lack it
+   * (created on the first harvest).
+   */
+  sowdust?: Record<ItemId, number>;
+  /**
+   * Farming XP earned by harvests (`harvestFarmingXp`: 1600 × loot multiplier × XP effects ×
+   * Farming Wisdom). Present in new states; old states may lack it (read as 0).
+   */
+  farmingXp?: number;
 }
 
 /** The player's action kinds the effort score counts (weights in `EFFORT_WEIGHTS`). */

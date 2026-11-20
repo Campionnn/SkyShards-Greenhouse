@@ -6,6 +6,7 @@ import { defaultNpcPrice } from "../simulator/economy/prices";
 import { ARMOR_SET_DROPS, GREENHOUSE_RARE_CROP_CHANCE, overbloomMultiplier, RARE_CROP_ITEMS, type ArmorSet } from "../simulator/economy/rareCrops";
 import { farmingFortuneMultiplier } from "../simulator/economy/yield";
 import type { PlayerStats } from "../simulator/sim/state";
+import { GAIN_XP, SOWDUST_PREFIX } from "./gains";
 import type { PerDay, RunResult } from "./result";
 import type { Board } from "./rules";
 import { YIELD_STATS } from "./tiers";
@@ -80,7 +81,7 @@ export function valueResult(data: GameData, r: RunResult, board: Board, quotes: 
  * The yield-only stats. `cropFortune` / `tools` are the per-crop terms (economy/fortune.ts); the
  * server runs without them (YIELD_STATS), so a viewer's crop bonus and tools scale up from there.
  */
-export type YieldStats = Pick<PlayerStats, "farmingFortune" | "plantYieldUpgrade" | "evergreenChip" | "overbloom" | "armorSet" | "cropFortune" | "tools">;
+export type YieldStats = Pick<PlayerStats, "farmingFortune" | "plantYieldUpgrade" | "evergreenChip" | "overbloom" | "armorSet" | "cropFortune" | "tools" | "farmingWisdom">;
 
 /** Mutation items, Harvest Bounty drops and Ethereal Vine are not yield-scaled in the current game. */
 function isCropBundleItem(data: GameData, item: ItemId): boolean {
@@ -226,10 +227,37 @@ export function scaleResult(data: GameData, r: RunResult, viewer: YieldStats, se
     ...r,
     produced: scaleBy(r.produced, itemFactor),
     ...(r.bySource ? { bySource: Object.fromEntries(Object.entries(r.bySource).map(([k, items]) => [k, scaleSource(items, k)])) } : {}),
+    ...(r.gains ? { gains: scaleGains(r.gains, viewer, server) } : {}),
   };
 }
 
 const finiteOr0 = (v: number | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+
+/** (1 + fortune / 100) of one crop item, with the tool that has the most fortune on its crop (negative fortune counts as 0, as the engine's Sowdust does). */
+function sowdustFortuneFactor(stats: YieldStats, item: ItemId): number {
+  const tool = bestTool({ [item]: 1 }, stats.tools, () => 1);
+  return 1 + Math.max(0, itemFortune(stats, item, tool)) / 100;
+}
+
+/**
+ * A result's gains (gains.ts) scaled from the server's stats to the viewer's: Sowdust by each crop
+ * item's fortune ratio (only fortune scales Sowdust), Farming XP by the Farming Wisdom ratio.
+ */
+export function scaleGains(gains: Readonly<PerDay>, viewer: YieldStats, server: YieldStats = YIELD_STATS): PerDay {
+  const wisdom = (1 + Math.max(0, finiteOr0(viewer.farmingWisdom)) / 100) / (1 + Math.max(0, finiteOr0(server.farmingWisdom)) / 100);
+  const out: PerDay = {};
+  for (const [key, n] of Object.entries(gains)) {
+    let f = 1;
+    if (key === GAIN_XP) f = wisdom;
+    else if (key.startsWith(SOWDUST_PREFIX)) {
+      const item = key.slice(SOWDUST_PREFIX.length);
+      f = sowdustFortuneFactor(viewer, item) / sowdustFortuneFactor(server, item);
+    }
+    const v = n * f;
+    if (v > 0) out[key] = v;
+  }
+  return out;
+}
 
 /** The per-crop terms as a comparable string (a missing crop and 0 are the same). */
 function perCropKey(s: YieldStats): string {
@@ -241,7 +269,7 @@ const BASE_YIELD_KEYS = ["farmingFortune", "plantYieldUpgrade", "evergreenChip",
 
 /** Whether the viewer's yield stats differ from the server's (the "estimated" badge). Crop fortune and tools compare by value. */
 export function yieldStatsDiffer(viewer: YieldStats, server: YieldStats = YIELD_STATS): boolean {
-  return BASE_YIELD_KEYS.some((k) => viewer[k] !== server[k]) || perCropKey(viewer) !== perCropKey(server);
+  return BASE_YIELD_KEYS.some((k) => viewer[k] !== server[k]) || finiteOr0(viewer.farmingWisdom) !== finiteOr0(server.farmingWisdom) || perCropKey(viewer) !== perCropKey(server);
 }
 
 // ---- Slack: how forgiving a flow is when harvested late (metrics note, without the u(j) term) ----

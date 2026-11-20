@@ -2,14 +2,15 @@ import React, { useState } from "react";
 import { ArrowUpRight, ChevronDown, Coins, Pencil, RefreshCw } from "lucide-react";
 import type { FlowViewer } from "../../../hooks/useFlowViewer";
 import { EVERY } from "../../../leaderboard/tiers";
-import { SORT_LABEL, type SortKey } from "../../../leaderboard/view";
+import { COINS_METRIC } from "../../../leaderboard/metric";
+import { metricName, SORT_LABEL, type RankMetric, type SortKey } from "../../../leaderboard/view";
 import { priceAge } from "../../simulator/bazaarFormat";
 import { cn } from "../../ui/cn";
 import { Bone, ButtonLink, IconButton, KitButton, KitLabel, Switch } from "../../ui/kit";
 import { Dropdown, MenuItem, Popover } from "../../ui/Popover";
 import { EffortBars } from "../FlowVisuals";
 import { EFFORT_HINT, EFFORT_TIERS, SPLIT_STYLE } from "../flowsDisplay";
-import { FORGIVING_HINT, ROW_COLS, SORT_HINT } from "./rankingHelpers";
+import { FORGIVING_HINT, ROW_COLS, SORT_HINT, sortHint, sortLabel } from "./rankingHelpers";
 
 /** The ranking's smaller parts: the prices-and-key popover, the sort heads and menu, the list states. */
 
@@ -154,7 +155,7 @@ export const ReloadButton: React.FC<{ loading: boolean; onReload: () => void }> 
 const SORTS = Object.keys(SORT_LABEL) as SortKey[];
 
 /** A column head that sorts: aria-pressed, the column's aria-sort, the hint as its title. */
-export const SortHead: React.FC<{ sort: SortKey; k: SortKey; onSort: (k: SortKey) => void; label: string; align?: "end"; /** An InfoHint after the head. */ hint?: React.ReactNode; children: React.ReactNode }> = ({ sort, k, onSort, label, align, hint, children }) => {
+export const SortHead: React.FC<{ sort: SortKey; k: SortKey; onSort: (k: SortKey) => void; label: string; align?: "end"; /** An InfoHint after the head. */ hint?: React.ReactNode; /** The title (default SORT_HINT[k]). */ hintText?: string; children: React.ReactNode }> = ({ sort, k, onSort, label, align, hint, hintText, children }) => {
   const on = sort === k || (k === "liked" && sort === "liked30d");
   return (
     <div role="columnheader" aria-sort={on ? (k === "effort" ? "ascending" : "descending") : "none"} className={cn("flex min-w-0 items-center gap-1", align === "end" && "justify-end")}>
@@ -162,10 +163,10 @@ export const SortHead: React.FC<{ sort: SortKey; k: SortKey; onSort: (k: SortKey
         type="button"
         aria-pressed={on}
         aria-label={`Sort by ${label}`}
-        title={SORT_HINT[k]}
+        title={hintText ?? SORT_HINT[k]}
         onClick={() => onSort(k)}
         className={cn(
-          "hit-area focus-ring inline-flex h-6 cursor-pointer items-center gap-0.5 rounded-inner text-label uppercase transition-colors duration-(--duration-hover)",
+          "hit-area focus-ring inline-flex h-6 min-w-0 cursor-pointer items-center gap-0.5 rounded-inner text-label uppercase transition-colors duration-(--duration-hover)",
           on ? "text-select-fg" : "text-fg-meta hover:text-fg-body",
         )}
       >
@@ -177,8 +178,8 @@ export const SortHead: React.FC<{ sort: SortKey; k: SortKey; onSort: (k: SortKey
   );
 };
 
-/** The sorts that have no column ("More sorts"), or every sort on a phone (`all`). The rank stays the profit rank. */
-export const SortMenu: React.FC<{ sort: SortKey; onSort: (k: SortKey) => void; all?: boolean; className?: string }> = ({ sort, onSort, all, className }) => {
+/** The sorts that have no column ("More sorts"), or every sort on a phone (`all`). The rank stays the ranked metric's rank. */
+export const SortMenu: React.FC<{ sort: SortKey; onSort: (k: SortKey) => void; all?: boolean; className?: string; metric?: RankMetric }> = ({ sort, onSort, all, className, metric = COINS_METRIC }) => {
   const keys: SortKey[] = all ? SORTS : ["perEffort", "liked30d", "newest"];
   const on = keys.includes(sort);
   return (
@@ -196,10 +197,10 @@ export const SortMenu: React.FC<{ sort: SortKey; onSort: (k: SortKey) => void; a
       button={
         all ? (
           <span className="whitespace-nowrap">
-            <span className="text-fg-meta">Sort</span> {SORT_LABEL[sort]}
+            <span className="text-fg-meta">Sort</span> {sortLabel(sort, metric)}
           </span>
         ) : on ? (
-          SORT_LABEL[sort]
+          sortLabel(sort, metric)
         ) : (
           "More sorts"
         )
@@ -208,11 +209,11 @@ export const SortMenu: React.FC<{ sort: SortKey; onSort: (k: SortKey) => void; a
       {(close) => (
         <>
           {keys.map((k) => (
-            <MenuItem key={k} checked={sort === k} hint={SORT_HINT[k]} onSelect={() => (onSort(k), close())}>
-              {SORT_LABEL[k]}
+            <MenuItem key={k} checked={sort === k} hint={sortHint(k, metric)} onSelect={() => (onSort(k), close())}>
+              {sortLabel(k, metric)}
             </MenuItem>
           ))}
-          <p className="px-2 pt-1 pb-1.5 text-meta text-fg-meta">The # stays the profit rank whatever the sort.</p>
+          <p className="px-2 pt-1 pb-1.5 text-meta text-fg-meta">The # stays the {metric.by === "coins" ? "profit" : metricName(metric)} rank whatever the sort.</p>
         </>
       )}
     </Dropdown>

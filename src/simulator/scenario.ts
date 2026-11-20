@@ -30,6 +30,8 @@ export const DEFAULT_PLAYER_STATS: PlayerStats = {
   floraShard: 10,
   /** Mutation Serendipity attribute (Zombuddy Shard), max 10 = 1% re-mutate chance. */
   mutationSerendipity: 10,
+  /** Farming Wisdom: Farming XP × (1 + wisdom / 100). Default 0 (XP only; no effect on coins). */
+  farmingWisdom: 0,
 };
 
 export function defaultSettings(): Settings {

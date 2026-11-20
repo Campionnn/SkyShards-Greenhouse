@@ -59,6 +59,8 @@ export interface CurvePoint {
   effort?: { avg: number | null; peak: number | null };
   /** The cell is scored at its trailing rate (most seeds slowed down at the end). */
   slowing?: true;
+  /** Farming XP and Sowdust per day (`RunResult.gains`, gains.ts); absent on older cells and APIs. */
+  gains?: Record<string, number>;
 }
 
 export interface FlowListEntry {

@@ -247,8 +247,8 @@ function kitFields(r: RunResult): Pick<RunResult, "startItems" | "sessionOnly" |
 
 /** A result's non-count fields for a timeline (`stitch`'s `rest`), without `cantStart` (v3 replaces it with `prep.done`). */
 function restOf(r: RunResult): TimelineRest {
-  const { cycles: _c, days: _d, window: _w, produced: _p, consumed: _co, bought: _b, shortfall: _s, bySource: _bs, trail: _t, prep: _pr, cantStart: _cs, ...rest } = r;
-  void [_c, _d, _w, _p, _co, _b, _s, _bs, _t, _pr, _cs];
+  const { cycles: _c, days: _d, window: _w, produced: _p, consumed: _co, bought: _b, shortfall: _s, bySource: _bs, gains: _g, trail: _t, prep: _pr, cantStart: _cs, ...rest } = r;
+  void [_c, _d, _w, _p, _co, _b, _s, _bs, _g, _t, _pr, _cs];
   return rest;
 }
 
@@ -387,7 +387,7 @@ export function runIronman(engine: Engine, submission: Submission, tier: TierId,
   // Not done by C: the flow can't start in time. An empty result (nothing of the builder's is
   // scored); the page lists it apart, with what the builder had made by then.
   if (!prep.done && prepRun) {
-    const empty: RunResult = { ...restOf(kitResult), ...kitFields(kitResult), cycles: total, days: prepRun.days, window: { from: C, to: total, cuts: 0 }, produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {}, built: {} };
+    const empty: RunResult = { ...restOf(kitResult), ...kitFields(kitResult), cycles: total, days: prepRun.days, window: { from: C, to: total, cuts: 0 }, produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {}, gains: {}, built: {} };
     delete empty.stepTime;
     delete empty.starved;
     delete empty.ramp;
@@ -405,7 +405,7 @@ export function runIronman(engine: Engine, submission: Submission, tier: TierId,
   // 3. The flow part from T*: stitched from the borrow run, or a real strict run from exactly the kit.
   // Each gives two results over the same cuts (see `score`): A, the timeline (the builder's days
   // and crops, then the flow), and F, the flow alone at the same ages (no builder at all).
-  const NONE: CountSnapshot = { cycle: 0, seconds: 0, produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {} };
+  const NONE: CountSnapshot = { cycle: 0, seconds: 0, produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {}, gains: {} };
   const pair = (flowAt: (n: number) => CountSnapshot | undefined, rest: TimelineRest, mode: PrepInfo["mode"]): { A: RunResult; F: RunResult } => {
     const p = { ...prep, mode };
     return {

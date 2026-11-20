@@ -1,5 +1,5 @@
 import type { Board } from "../../../leaderboard/rules";
-import { kitCount, percent, prepDays, suppliesText, upkeepLines, type FlowRow, type RowFilters, type SortKey } from "../../../leaderboard/view";
+import { formatMetric, kitCount, metricName, metricUnit, percent, prepDays, SORT_LABEL, suppliesText, upkeepLines, type FlowRow, type RankMetric, type RowFilters, type SortKey } from "../../../leaderboard/view";
 import type { StepLayout } from "../../../simulator/flow/types";
 import { formatCoins, nameOf } from "../../simulator/format";
 
@@ -23,6 +23,33 @@ export const SORT_HINT: Record<SortKey, string> = {
   newest: "Most recently submitted first.",
 };
 
+/** A sort's menu label under the ranked metric: "Profit" / "Profit per effort" for coins, "Wheat" / "Wheat per effort" otherwise. */
+export function sortLabel(k: SortKey, metric: RankMetric): string {
+  if (metric.by === "coins") return SORT_LABEL[k];
+  if (k === "profit") return metricName(metric);
+  if (k === "perEffort") return `${metricName(metric)} per effort`;
+  return SORT_LABEL[k];
+}
+
+/** A sort's hint under the ranked metric. */
+export function sortHint(k: SortKey, metric: RankMetric): string {
+  if (metric.by === "coins") return SORT_HINT[k];
+  const unit = metricUnit(metric);
+  if (k === "profit") return `${unit} at your stats.`;
+  if (k === "perEffort") return `${unit} for each point of work per login.`;
+  if (k === "forgiving") return `How much of the ${metricName(metric)} per day survives logging in late.`;
+  return SORT_HINT[k];
+}
+
+/**
+ * FrequencyChart / Sparkline props for a metric: nothing for coins (their defaults), else its
+ * formatter, unit and name (numbers then render in `text-fg`, not the coin colour).
+ */
+export function metricChartProps(metric: RankMetric): { format?: (n: number) => string; unit?: string; label?: string } {
+  if (metric.by === "coins") return {};
+  return { format: (n) => formatMetric(metric, n), unit: metricUnit(metric), label: metricName(metric) };
+}
+
 export const BOARD_INTRO: Record<"ironman" | "ironman_kit" | "normal", string> = {
   ironman: "From nothing: each flow's starting items are made first with the site's builder flow, then the flow runs; the time it takes counts. Upkeep is what it keeps needing every day.",
   ironman_kit: "As if you already own each flow's starting items. Upkeep is what it keeps needing every day.",
@@ -37,7 +64,9 @@ export interface RankingLinkState {
   rankingSearch: string;
 }
 
-export const flowHref = (id: string, board: Board, kit: boolean) => `/flows/${encodeURIComponent(id)}${boardQuery(board, kit)}`;
+/** The detail page's link; a collection metric goes along (`by=collection&crop=…`) so the page shows that crop's number too. */
+export const flowHref = (id: string, board: Board, kit: boolean, metric?: RankMetric) =>
+  `/flows/${encodeURIComponent(id)}${boardQuery(board, kit)}${metric?.by === "collection" ? `&by=collection&crop=${encodeURIComponent(metric.crop)}` : ""}`;
 /**
  * The simulator link for an entry; `at` also opens that plot's step in the layout editor once the
  * flow is loaded (`plot` = plot id, `step` = 0-based step index; SimulatorPage reads both).

@@ -2,7 +2,8 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, FlaskConical, RefreshCcw } from "lucide-react";
 import type { Board } from "../../../leaderboard/rules";
-import { BADGE_TITLE, kitListText, percent, starvedText, upkeepText, type FlowRow, type SortKey } from "../../../leaderboard/view";
+import { COINS_METRIC } from "../../../leaderboard/metric";
+import { BADGE_TITLE, formatMetric, kitListText, metricName, metricUnit, percent, starvedText, upkeepText, type FlowRow, type RankMetric, type SortKey } from "../../../leaderboard/view";
 import { formatCoins, nameOf } from "../../simulator/format";
 import { cn } from "../../ui/cn";
 import { ButtonLink, IconButton } from "../../ui/kit";
@@ -13,7 +14,7 @@ import { FrequencyChart } from "../FrequencyChart";
 import { effortLevel, SPLIT_STYLE } from "../flowsDisplay";
 import { InfoHint } from "../../ui/InfoHint";
 import { KitTooltip } from "../../ui/Hint";
-import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, peekLayouts, shapeText, simHref, startShort, supplyText, thumbOf, upkeepShort, ROW_COLS, type RankingLinkState } from "./rankingHelpers";
+import { excerptOf, flowHref, FORGIVING_HINT, forgivingText, metricChartProps, peekLayouts, shapeText, simHref, startShort, supplyText, thumbOf, upkeepShort, ROW_COLS, type RankingLinkState } from "./rankingHelpers";
 
 /**
  * One ranked flow (F27–F42). The title is the row's real link, stretched over the whole row with
@@ -33,8 +34,10 @@ export interface RowLike {
 
 export interface RowProps {
   row: FlowRow;
-  /** The largest profit on the board (the split bar's scale). */
+  /** The largest ranked value on the board (the bar's scale). */
   top: number;
+  /** What the ranking measures (default coins): the value cell, its bar, the sparkline and the peek's chart follow it. */
+  metric?: RankMetric;
   /** The viewer's grid frequency (the sparkline's bright bar). */
   every: number;
   board: Board;
@@ -106,16 +109,79 @@ export const Coins: React.FC<{ value: number | null; className?: string; title?:
   </span>
 );
 
-const fraction = (row: FlowRow, top: number) => (top > 0 && row.profitPerDay !== null ? row.profitPerDay / top : 0);
+/** A non-coin metric's number: neutral `text-fg` (gold is for coins), "—" without data. */
+export const MetricValue: React.FC<{ value: number | null; metric: RankMetric; className?: string }> = ({ value, metric, className }) =>
+  metric.by === "coins" ? (
+    <Coins value={value} className={className} />
+  ) : (
+    <span className={cn("font-semibold tabular-nums", value === null ? "text-fg-meta" : value === 0 ? "text-fg-muted" : "text-fg", className)}>{formatMetric(metric, value)}</span>
+  );
+
+/**
+ * The ranking's value cell. Coins: the coin number, "coins/day", the split bar (crops / mutations /
+ * rare). Another metric: its number and unit ("12.3k" / "Wheat/day"), a neutral bar for its share of
+ * the top flow, and coins/day as a small second line.
+ */
+const ValueCell: React.FC<{ row: FlowRow; top: number; metric: RankMetric }> = ({ row, top, metric }) => {
+  const est = row.scaled ? " · est." : "";
+  if (metric.by === "coins")
+    return (
+      <div className="w-full min-w-0 cursor-default text-right" data-testid="row-profit">
+        <Coins value={row.profitPerDay} className="text-title" />
+        <div className="text-meta text-fg-meta">coins/day{est}</div>
+        <SplitBar split={row.split} fraction={fraction(row, top)} className="mt-1.5" />
+      </div>
+    );
+  return (
+    <div className="w-full min-w-0 cursor-default text-right" data-testid="row-profit">
+      <MetricValue value={row.value} metric={metric} className="text-title" />
+      <div className="truncate text-meta text-fg-meta">
+        {metricUnit(metric)}
+        {est}
+      </div>
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-line" aria-hidden>
+        <div className="h-full rounded-full bg-fg-meta" style={{ width: `${Math.max(0, Math.min(1, fraction(row, top))) * 100}%` }} />
+      </div>
+      {row.profitPerDay !== null && (
+        <div className="mt-1 truncate text-meta tabular-nums text-fg-meta" data-testid="row-coins">
+          <span className={row.profitPerDay < 0 ? "text-problem" : "text-coin"}>{formatCoins(row.profitPerDay)}</span> coins/day
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** The rank, or "–" for a row set apart (rank 0: none of the collection crop). */
+const rankText = (row: FlowRow) => (row.rank > 0 ? row.rank : "–");
+
+/** The row's share of the top flow's ranked value (the bar's length). */
+const fraction = (row: FlowRow, top: number) => (top > 0 && row.value !== null ? row.value / top : 0);
 const headlineTitle = (row: FlowRow, board: Board, kit: boolean) =>
   board === "ironman" && kit && row.altPerDay !== null ? `From nothing: ${formatCoins(row.altPerDay)}/day (making the starting items first)` : undefined;
 
-const profitLabel = (row: FlowRow) => (row.profitPerDay === null ? "Not verified yet" : `${formatCoins(row.profitPerDay)} coins/day${row.scaled ? " (estimated)" : ""}`);
+/** The value cell's tooltip name: "64.9M coins/day", "12.3k Wheat/day (estimated)", or why there is no number. */
+const valueLabel = (row: FlowRow, metric: RankMetric) => {
+  if (row.profitPerDay === null) return "Not verified yet";
+  if (row.value === null) return `No ${metricName(metric)} numbers yet: verified before they were recorded`;
+  const unit = metric.by === "coins" ? "coins/day" : metricUnit(metric);
+  return `${formatMetric(metric, row.value)} ${unit}${row.scaled ? " (estimated)" : ""}`;
+};
+
+/** The non-ranked metrics of a row as [label, text] pairs (the tooltip and the peek): coins, Sowdust and Farming XP per day. */
+const otherNumbers = (row: FlowRow, metric: RankMetric): [string, string][] => {
+  const out: [string, string][] = [];
+  if (metric.by !== "coins" && row.profitPerDay !== null) out.push(["Coins", `${formatCoins(row.profitPerDay)}/day`]);
+  if (metric.by !== "sowdust" && row.sowdustPerDay !== null) out.push(["Sowdust", `${formatMetric({ ...metric, by: "sowdust" }, row.sowdustPerDay)}/day`]);
+  if (metric.by !== "xp" && row.xpPerDay !== null) out.push(["Farming XP", `${formatMetric({ ...metric, by: "xp" }, row.xpPerDay)}/day`]);
+  return out;
+};
 
 /** The profit cell's tooltip: where the money comes from, share of the top flow, the from-nothing number. */
-const ProfitTipBody: React.FC<{ row: FlowRow; top: number; board: Board; kit: boolean }> = ({ row, top, board, kit }) => {
-  const parts = row.split ? (["crops", "mutations", "rare"] as const).filter((k) => row.split![k] > 0) : [];
-  const alt = headlineTitle(row, board, kit);
+const ProfitTipBody: React.FC<{ row: FlowRow; top: number; board: Board; kit: boolean; metric: RankMetric }> = ({ row, top, board, kit, metric }) => {
+  const coins = metric.by === "coins";
+  const parts = coins && row.split ? (["crops", "mutations", "rare"] as const).filter((k) => row.split![k] > 0) : [];
+  const alt = coins ? headlineTitle(row, board, kit) : undefined;
+  const others = otherNumbers(row, metric);
   return (
     <span className="block space-y-0.5 tabular-nums">
       {parts.map((k) => (
@@ -125,7 +191,13 @@ const ProfitTipBody: React.FC<{ row: FlowRow; top: number; board: Board; kit: bo
           <span className="ml-auto pl-3 text-fg-body">{formatCoins(row.split![k])}/day</span>
         </span>
       ))}
-      {row.profitPerDay !== null && top > 0 && <span className="block">{percent(Math.max(0, fraction(row, top)))} of the top flow</span>}
+      {others.map(([label, text]) => (
+        <span key={label} className="flex items-center gap-1.5 whitespace-nowrap">
+          <span>{label}</span>
+          <span className={cn("ml-auto pl-3", label === "Coins" ? "text-coin" : "text-fg-body")}>{text}</span>
+        </span>
+      ))}
+      {row.value !== null && top > 0 && <span className="block">{percent(Math.max(0, fraction(row, top)))} of the top flow</span>}
       {row.scaled && <span className="block">Scaled to your stats</span>}
       {alt && <span className="block">{alt}</span>}
     </span>
@@ -212,6 +284,7 @@ const PeekPictures: React.FC<{ row: FlowRow; cellSize?: number; className?: stri
 export const RowPeek: React.FC<{
   row: FlowRow;
   top: number;
+  metric?: RankMetric;
   every: number;
   board: Board;
   kit: boolean;
@@ -221,8 +294,10 @@ export const RowPeek: React.FC<{
   className?: string;
   /** A fixed cell size for the layout pictures (px; phones). Omitted, they share the row's width. */
   pictureCell?: number;
-}> = ({ row, top, every, board, kit, rankingSearch, hoursPerCycle = 1.75, onEvery, className, pictureCell }) => {
+}> = ({ row, top, metric = COINS_METRIC, every, board, kit, rankingSearch, hoursPerCycle = 1.75, onEvery, className, pictureCell }) => {
   const { entry } = row;
+  const coins = metric.by === "coins";
+  const chartName = coins ? "Profit" : metricName(metric);
   const ex = excerptOf(row);
   const supply = supplyText(row, board);
   const ironman = board === "ironman";
@@ -251,8 +326,8 @@ export const RowPeek: React.FC<{
         )}
         {rest.length > 0 && <p className="text-meta text-fg-meta">Also: {rest.map((t) => nameOf(t.id)).join(", ")}</p>}
         <div className="max-w-sm">
-          <SplitBar split={row.split} fraction={fraction(row, top)} />
-          <SplitLegend split={row.split} className="mt-1" />
+          {coins && <SplitBar split={row.split} fraction={fraction(row, top)} />}
+          <SplitLegend split={row.split} className={cn(coins && "mt-1")} />
         </div>
       </div>
       <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] content-start gap-x-3 gap-y-1 text-secondary">
@@ -294,6 +369,12 @@ export const RowPeek: React.FC<{
             </dd>
           </>
         )}
+        {otherNumbers(row, metric).map(([label, text]) => (
+          <React.Fragment key={label}>
+            <dt className="text-fg-meta">{label}</dt>
+            <dd className={cn("tabular-nums", label === "Coins" ? "font-semibold text-coin" : "text-fg-body")}>{text}</dd>
+          </React.Fragment>
+        ))}
         <dt className="text-fg-meta">Effort per login</dt>
         <dd className="tabular-nums text-fg-body">
           {row.effortAvg === null ? "unknown" : `${Math.round(row.effortAvg)} average · ${Math.round(row.effortPeak ?? 0)} at the heaviest`}
@@ -308,19 +389,19 @@ export const RowPeek: React.FC<{
           <ButtonLink variant="primary" size="md" to={simHref(entry.id, board, kit)}>
             <FlaskConical aria-hidden /> Open in simulator
           </ButtonLink>
-          <ButtonLink size="md" to={flowHref(entry.id, board, kit)} state={{ rankingSearch: rankingSearch ?? "" } satisfies RankingLinkState}>
+          <ButtonLink size="md" to={flowHref(entry.id, board, kit, metric)} state={{ rankingSearch: rankingSearch ?? "" } satisfies RankingLinkState}>
             Details
           </ButtonLink>
         </dd>
       </dl>
       {row.curve.some((p) => p.profitPerDay !== null) && (
-        <section className="min-w-0 @min-[40rem]:col-span-2" aria-label="Profit by how often you log in">
+        <section className="min-w-0 @min-[40rem]:col-span-2" aria-label={`${chartName} by how often you log in`}>
           <h4 className="mb-1 flex items-center gap-1.5 text-secondary font-medium text-fg-body">
-            Profit by how often you log in
+            {chartName} by how often you log in
             <span className="font-normal text-fg-meta">· {forgivingText(row.slack)} forgiving</span>
-            <InfoHint label="Profit by how often you log in">{FORGIVING_HINT} Hover a point for its numbers; click one to rank every flow at that frequency.</InfoHint>
+            <InfoHint label={`${chartName} by how often you log in`}>{FORGIVING_HINT} Hover a point for its numbers; click one to rank every flow at that frequency.</InfoHint>
           </h4>
-          <FrequencyChart points={row.curve} selected={every} hoursPerCycle={hoursPerCycle} onSelect={onEvery} height={120} />
+          <FrequencyChart points={row.curve} selected={every} hoursPerCycle={hoursPerCycle} onSelect={onEvery} height={120} {...metricChartProps(metric)} />
         </section>
       )}
     </div>
@@ -345,7 +426,7 @@ const PeekButton: React.FC<{ row: FlowRow; open: boolean; onPeek?: () => void; c
 );
 
 /** The desktop row (a grid row of the ranking table). */
-export const FlowRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = false, index, like, sort, open = false, onPeek, rankingSearch, hoursPerCycle, onEvery }) => {
+export const FlowRowItem: React.FC<RowProps> = ({ row, top, metric = COINS_METRIC, every, board, kit = false, index, like, sort, open = false, onPeek, rankingSearch, hoursPerCycle, onEvery }) => {
   const { entry } = row;
   const ironman = board === "ironman";
   const sub = ironman ? startShort(row) : supplyText(row, board);
@@ -353,14 +434,14 @@ export const FlowRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = 
   return (
     <li className={cn("flows-row-in border-b border-line", open && "bg-surface-card")} style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }} data-testid="flow-row">
       <div className={cn("group relative grid min-h-24 items-center gap-x-3 px-2 py-2 transition-colors duration-(--duration-hover) hover:bg-surface-hover/50", ROW_COLS)}>
-        <span className="text-right text-secondary tabular-nums text-fg-meta">{row.rank}</span>
+        <span className="text-right text-secondary tabular-nums text-fg-meta" title={row.rank ? undefined : "Not ranked"}>{rankText(row)}</span>
         <span title={entry.thumb ? `Plot ${entry.thumb.plot}'s most-used layout (${percent(entry.thumb.share)} of the time)` : undefined}>
           <LayoutBoxes layout={thumbOf(row)} cell={6} />
         </span>
         <div className="min-w-0 space-y-0.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
             <Link
-              to={flowHref(entry.id, board, kit)}
+              to={flowHref(entry.id, board, kit, metric)}
               state={{ rankingSearch: rankingSearch ?? "" } satisfies RankingLinkState}
               className="focus-ring line-clamp-2 min-w-0 rounded-inner text-body font-medium text-fg after:absolute after:inset-0 after:content-[''] group-hover:underline"
             >
@@ -388,12 +469,8 @@ export const FlowRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = 
           <TopEarners row={row} />
           <UpkeepLine row={row} board={board} bare />
         </div>
-        <KitTooltip label={profitLabel(row)} hint={<ProfitTipBody row={row} top={top} board={board} kit={kit} />} side="top" className="relative z-10 min-w-0 justify-end">
-          <div className="w-full min-w-0 cursor-default text-right" data-testid="row-profit">
-            <Coins value={row.profitPerDay} className="text-title" />
-            <div className="text-meta text-fg-meta">{row.scaled ? "coins/day · est." : "coins/day"}</div>
-            <SplitBar split={row.split} fraction={fraction(row, top)} className="mt-1.5" />
-          </div>
+        <KitTooltip label={valueLabel(row, metric)} hint={<ProfitTipBody row={row} top={top} board={board} kit={kit} metric={metric} />} side="top" className="relative z-10 min-w-0 justify-end">
+          <ValueCell row={row} top={top} metric={metric} />
         </KitTooltip>
         <KitTooltip label={effortTipLabel(row)} hint={effortTipHint(row)} side="top" className="relative z-10 min-w-0">
           <span className="flex min-w-0 cursor-default flex-col items-start gap-0.5" data-testid="row-effort">
@@ -406,7 +483,7 @@ export const FlowRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = 
           </span>
         </KitTooltip>
         <div className="flex min-w-0 items-center gap-1.5">
-          <Sparkline points={row.curve} selected={every} hoursPerCycle={hoursPerCycle} />
+          <Sparkline points={row.curve} selected={every} hoursPerCycle={hoursPerCycle} {...metricChartProps(metric)} />
           <span className="text-secondary tabular-nums text-fg-body" title={FORGIVING_HINT}>
             {forgivingText(row.slack)}
           </span>
@@ -418,24 +495,24 @@ export const FlowRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = 
         <PeekButton row={row} open={open} onPeek={onPeek} className="z-10" />
       </div>
       {open && (
-        <RowPeek row={row} top={top} every={every} board={board} kit={kit} rankingSearch={rankingSearch} hoursPerCycle={hoursPerCycle} onEvery={onEvery} className="px-2 pt-1 pb-3 @min-[40rem]:pl-8" />
+        <RowPeek row={row} top={top} metric={metric} every={every} board={board} kit={kit} rankingSearch={rankingSearch} hoursPerCycle={hoursPerCycle} onEvery={onEvery} className="px-2 pt-1 pb-3 @min-[40rem]:pl-8" />
       )}
     </li>
   );
 };
 
 /** The phone row: title (stretched link), top earner and author, coins and effort, open-in-simulator and peek at 44px. */
-export const PhoneRowItem: React.FC<RowProps> = ({ row, top, every, board, kit = false, index, like, sort, open = false, onPeek, rankingSearch, hoursPerCycle, onEvery }) => {
+export const PhoneRowItem: React.FC<RowProps> = ({ row, top, metric = COINS_METRIC, every, board, kit = false, index, like, sort, open = false, onPeek, rankingSearch, hoursPerCycle, onEvery }) => {
   const { entry } = row;
   const badges = row.badges.new || row.badges.stale || row.badges.estimated || row.profitPerDay === null || row.stall || row.slowing || entry.summary?.scripted;
   return (
     <li className={cn("flows-row-in border-b border-line", open && "bg-surface-card")} style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }} data-testid="flow-row">
       <div className="relative grid min-h-14 grid-cols-[1.25rem_minmax(0,1fr)_auto_auto] items-center gap-x-1.5 py-1">
-        <span className="self-start pt-1 text-right text-secondary tabular-nums text-fg-meta">{row.rank}</span>
+        <span className="self-start pt-1 text-right text-secondary tabular-nums text-fg-meta" title={row.rank ? undefined : "Not ranked"}>{rankText(row)}</span>
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5">
             <Link
-              to={flowHref(entry.id, board, kit)}
+              to={flowHref(entry.id, board, kit, metric)}
               state={{ rankingSearch: rankingSearch ?? "" } satisfies RankingLinkState}
               className="focus-ring min-w-0 truncate rounded-inner text-body font-medium text-fg after:absolute after:inset-0 after:content-['']"
             >
@@ -454,10 +531,20 @@ export const PhoneRowItem: React.FC<RowProps> = ({ row, top, every, board, kit =
           <UpkeepLine row={row} board={board} />
         </div>
         <div className="flex flex-col items-end gap-0.5">
-          <span className="whitespace-nowrap">
-            <Coins value={row.profitPerDay} className="text-body" title={headlineTitle(row, board, kit)} />
-            {row.scaled && <span className="text-meta text-fg-meta"> est.</span>}
-          </span>
+          {metric.by === "coins" ? (
+            <span className="whitespace-nowrap">
+              <Coins value={row.profitPerDay} className="text-body" title={headlineTitle(row, board, kit)} />
+              {row.scaled && <span className="text-meta text-fg-meta"> est.</span>}
+            </span>
+          ) : (
+            <span className="flex flex-col items-end whitespace-nowrap" title={valueLabel(row, metric)} data-testid="row-value">
+              <MetricValue value={row.value} metric={metric} className="text-body" />
+              <span className="text-meta text-fg-meta">
+                {metricUnit(metric)}
+                {row.scaled && " · est."}
+              </span>
+            </span>
+          )}
           <EffortMeter avg={row.effortAvg} peak={row.effortPeak} compact />
         </div>
         <div className="relative z-10 flex items-center">
@@ -475,7 +562,7 @@ export const PhoneRowItem: React.FC<RowProps> = ({ row, top, every, board, kit =
               <RowLikeButton row={row} like={like} sort={sort} />
             </span>
           </div>
-          <RowPeek row={row} top={top} every={every} board={board} kit={kit} rankingSearch={rankingSearch} hoursPerCycle={hoursPerCycle} onEvery={onEvery} pictureCell={26} />
+          <RowPeek row={row} top={top} metric={metric} every={every} board={board} kit={kit} rankingSearch={rankingSearch} hoursPerCycle={hoursPerCycle} onEvery={onEvery} pictureCell={26} />
         </div>
       )}
     </li>

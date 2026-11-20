@@ -21,7 +21,11 @@ import { StepList } from "./flowgraph/StepList";
 import { explicitExits } from "./flowgraph/model";
 import { EventLog, FlowTimeline } from "./RunPanels";
 import { CommandBar } from "./page/CommandBar";
-import { KpiStrip } from "./page/KpiStrip";
+import { KpiCompact, KpiStrip } from "./page/KpiStrip";
+import { COINS_METRIC, type RankMetric } from "../../leaderboard/metric";
+import { formatCompact, formatMetric } from "../../leaderboard/view";
+import { collectionTotal, sowdustTotal } from "./focusMetric";
+import { FOCUS_KEY, loadFocus } from "./focusMetricUi";
 import { ScenarioTab } from "./page/ScenarioTab";
 import { AloeHarvestPreview, SettingsPanel } from "./ScenarioPanels";
 import { SimTooltip } from "./SimTooltip";
@@ -371,6 +375,76 @@ describe("simulator panels render", () => {
     expect(text).toContain("Compute");
     expect(text).toContain("140 runs (7 frequencies × 20 seeds)");
     for (const s of ["Quick", "Standard", "Thorough", "Deep"]) expect(text).toContain(s);
+  });
+
+  it("the frequency panel is titled by the focus metric", () => {
+    const text = (m: RankMetric) => wrap(<FrequencyPanel scenario={sc} metric={m} />).replace(/<!-- -->/g, "");
+    expect(text({ by: "sowdust", crop: "wheat" })).toContain("Sowdust by online frequency");
+    expect(text({ by: "xp", crop: "wheat" })).toContain("Farming XP by online frequency");
+    expect(text({ by: "collection", crop: "melon" })).toContain("Melon collection by online frequency");
+    expect(text(COINS_METRIC)).toContain("Profit by online frequency");
+  });
+
+  it("the KPI hero shows the focus metric and its picker; the other metrics stay as smaller numbers", () => {
+    const s = view.snapshot!.state.summary;
+    expect(collectionTotal(s, "wheat")).toBe(view.snapshot!.state.ledger.wheat?.produced ?? 0);
+    const days = s.elapsedSeconds / 86400;
+    const strip = (focus: RankMetric) =>
+      wrap(<KpiStrip view={view} plotCount={2} focus={focus} onFocusChange={() => {}} />)
+        .replace(/<!-- -->/g, "")
+        .replace(/&#x27;/g, "'");
+    // Coins focused: hero = coins/day, Sowdust and Farming XP beside it, no second coins figure.
+    const coins = strip(COINS_METRIC);
+    expect(coins).toContain('aria-haspopup="menu"');
+    expect(coins).toContain("Focus: Coins/day");
+    expect(coins).toMatch(/data-testid="kpi-hero"[\s\S]*Coins\/day/);
+    expect(coins).toContain('data-testid="kpi-sowdust"');
+    expect(coins).toContain('data-testid="kpi-xp"');
+    expect(coins).not.toContain('data-testid="kpi-coins"');
+    // A collection focused: the crop's icon and name in the hero, its harvested units per day; coins/day beside it.
+    const wheat = strip({ by: "collection", crop: "wheat" });
+    expect(wheat).toContain("Focus: Wheat/day");
+    expect(wheat).toContain("/greenhouse/crops/wheat.png");
+    expect(wheat).toContain(formatMetric({ by: "collection", crop: "wheat" }, collectionTotal(s, "wheat") / days));
+    expect(wheat).toContain('data-testid="kpi-coins"');
+    expect(wheat).toContain(formatCoins(s.coinsPerDay));
+    // Sowdust focused: summed over crops per day; XP and coins beside it.
+    const sowdust = strip({ by: "sowdust", crop: "wheat" });
+    expect(sowdust).toMatch(/data-testid="kpi-hero"[\s\S]*Sowdust\/day/);
+    expect(sowdust).not.toContain('data-testid="kpi-sowdust"');
+    expect(sowdust).toContain('data-testid="kpi-coins"');
+    // Phone header: the focus metric with its unit as the picker.
+    const phone = wrap(<KpiCompact view={view} plotCount={2} focus={{ by: "xp", crop: "wheat" }} onFocusChange={() => {}} />).replace(/<!-- -->/g, "");
+    expect(phone).toContain("Farming XP/day");
+    expect(phone).toContain(formatMetric({ by: "xp", crop: "wheat" }, (s.farmingXp ?? 0) / days));
+    // Without a picker the label is plain text (read-only).
+    expect(wrap(<KpiStrip view={view} plotCount={2} />)).not.toContain('aria-haspopup="menu"');
+  });
+
+  it("the focus is remembered and unknown saves fall back to coins", () => {
+    const store = new Map<string, string>();
+    const g = globalThis as { localStorage?: unknown };
+    const old = g.localStorage;
+    g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+    try {
+      expect(loadFocus()).toEqual(COINS_METRIC);
+      store.set(FOCUS_KEY, JSON.stringify({ by: "collection", crop: "cactus" }));
+      expect(loadFocus()).toEqual({ by: "collection", crop: "cactus" });
+      store.set(FOCUS_KEY, JSON.stringify({ by: "collection", crop: "starfruit" }));
+      expect(loadFocus()).toEqual({ by: "collection", crop: "wheat" });
+      store.set(FOCUS_KEY, "not json");
+      expect(loadFocus()).toEqual(COINS_METRIC);
+    } finally {
+      if (old === undefined) delete g.localStorage;
+      else g.localStorage = old;
+    }
+  });
+
+  it("the money card lists Sowdust and Farming XP as facts", () => {
+    const html = wrap(<MoneyPanel summary={state.summary} previous={before.summary} />).replace(/<!-- -->/g, "");
+    expect(html).toContain("Sowdust");
+    expect(html).toContain("Farming XP");
+    expect(html).toContain(formatCompact(sowdustTotal(state.summary)));
   });
 
   it("report panels", () => {

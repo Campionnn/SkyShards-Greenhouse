@@ -107,6 +107,7 @@ export const BASELINE_TEST_STATS: PlayerStats = {
   floraShard: 0,
   /** 0: no re-mutation rolls, so harvest RNG is unchanged. */
   mutationSerendipity: 0,
+  farmingWisdom: 0,
 };
 
 export function scenario(flows: Flow[], opts: ScenarioOptions = {}): Scenario {

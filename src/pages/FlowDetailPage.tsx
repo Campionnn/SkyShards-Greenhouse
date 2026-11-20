@@ -29,6 +29,7 @@ import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
 import { useFlowViewer, type FlowViewer } from "../hooks/useFlowViewer";
 import type { FlowDetail } from "../leaderboard/api";
 import type { StepLayout } from "../simulator/flow/types";
+import { readMetric } from "../leaderboard/metric";
 import { boardFrom, kitFromBoard, type CellKind } from "../leaderboard/rules";
 import { BADGE_TITLE, BOARD_LABEL, CELL_KIND_LABEL, DESCRIPTION_MAX, formatDate, percent, starvedText, TIER_LABEL, TITLE_MAX, tradedItems } from "../leaderboard/view";
 import { adminDelete, adminHide, adminUnhide, getAdminKey, hiddenReasonLabel } from "../services/adminService";
@@ -356,6 +357,9 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
     // The Normal number sits next to the ironman ones, so its prices are needed on every board.
     bazaarAlways: true,
   });
+  // From a ranking by collection (`by=collection&crop=…`): that crop's number is one more fact.
+  const rankedMetric = readMetric(search.get("by"), search.get("crop"));
+  const rankedCrop = rankedMetric.by === "collection" ? rankedMetric.crop : null;
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, loading: authLoading, login } = useAuth();
@@ -562,7 +566,7 @@ export const FlowDetailView: React.FC<{ detail: FlowDetail; onChange: (d: FlowDe
         )}
       </header>
 
-      <SummaryStrip viewer={viewer} m={m} phone={phone} onKind={selectKind} onEditStats={() => setStatsOpen(true)} onImport={() => setImporting(true)} />
+      <SummaryStrip viewer={viewer} m={m} phone={phone} onKind={selectKind} onEditStats={() => setStatsOpen(true)} onImport={() => setImporting(true)} crop={rankedCrop} />
 
       {notes.length > 0 && (
         <div className="space-y-1" role="status">

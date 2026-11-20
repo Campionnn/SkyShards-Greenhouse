@@ -47,6 +47,7 @@ const PLAYER_STAT_KEYS: NumericStatKey[] = [
   "speedAttribute",
   "growthUpgradeTier",
   "farmingFortune",
+  "farmingWisdom",
   "plantYieldUpgrade",
   "evergreenChip",
   "mutationChanceBonus",

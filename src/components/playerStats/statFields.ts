@@ -113,6 +113,7 @@ export const STAT_FIELDS: Record<NumericStatKey, StatFieldDef> = {
   evergreenChip: { key: "evergreenChip", kind: "chip", label: "Evergreen Chip", chip: EVERGREEN_CHIP, hint: "More base crops from Greenhouse harvests: +2% / +2.5% / +3% per level (Rare / Epic / Legendary)." },
   overbloom: { key: "overbloom", kind: "number", label: "Overbloom", min: 0, max: 1000, step: 1, hint: "Rare Crop chance × (1 + Overbloom/100), capped at 100% per roll." },
   mutationSerendipity: { key: "mutationSerendipity", kind: "select", label: "Mutation Serendipity attribute", options: SERENDIPITY_OPTIONS, hint: "Zombuddy Shard. A harvested mutation may re-mutate in its cell at stage 1." },
+  farmingWisdom: { key: "farmingWisdom", kind: "number", label: "Farming Wisdom", min: 0, max: 500, step: 1, hint: "Farming XP × (1 + Wisdom/100). Greenhouse XP only; Sowdust modifiers don't apply in the Greenhouse." },
   startTimeOfDay: { key: "startTimeOfDay", kind: "number", label: "Start time of day", min: 0, max: 24, step: 0.5 },
 };
 

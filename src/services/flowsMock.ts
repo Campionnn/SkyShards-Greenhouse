@@ -10,6 +10,8 @@ import { boardFrom, BOARDS, CELL_KIND_RUN_KIND, CELL_KINDS, cellKindOf, kitFromB
 import { summarizeSubmission, type FlowSummary } from "../leaderboard/summary";
 import { EVERY, TIERS, type TierId } from "../leaderboard/tiers";
 import { defaultGameData } from "../simulator/data/default";
+import { SOWDUST_CROP_MULTIPLIER } from "../simulator/economy/sowdust";
+import { GAIN_XP, SOWDUST_PREFIX } from "../leaderboard/gains";
 
 export const MOCK_KEY = "skyshards-flows-mock";
 export const MOCK_TOKEN = "mock-token";
@@ -352,9 +354,38 @@ function resultFor(s: Spec, kind: CellKind, tier: TierId, every: number, noise =
       delete r.ramp;
     }
   }
-  if (seed && k.slowing) r.trail = { from: Math.floor(end * 0.8), produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {} };
+  // Stale cells come from an engine before Farming XP / Sowdust were recorded: no gains (as on the API).
+  if (!s.stale) r.gains = gainsOf(r.produced);
+  if (seed && k.slowing) r.trail = { from: Math.floor(end * 0.8), produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {}, ...(s.stale ? {} : { gains: {} }) };
   if (!seed && k.slowing) r.slowing = true;
   return r;
+}
+
+/**
+ * Plausible Farming XP and Sowdust per day for produced counts (the API's `gains` shape): Sowdust
+ * per crop item from its count (about 0.43 / crop multiplier per unit at the server's fortune), XP
+ * 1600 × loot multiplier per mutation harvest plus ~1 XP per crop unit.
+ */
+function gainsOf(produced: Record<string, number>): Record<string, number> {
+  const data = defaultGameData();
+  const out: Record<string, number> = {};
+  let xp = 0;
+  for (const [item, n] of Object.entries(produced)) {
+    const mult = SOWDUST_CROP_MULTIPLIER[item];
+    if (mult && n > 0) {
+      out[SOWDUST_PREFIX + item] = (n * 0.43) / mult;
+      xp += n;
+    }
+    const m = data.mutations[item];
+    if (m && n > 0) {
+      xp += n * 1600 * m.multiplier;
+      // A mutation's own bundle: 400 × its multiplier of Sowdust, on its first crop drop.
+      const crop = Object.keys(m.drops ?? {}).find((d) => SOWDUST_CROP_MULTIPLIER[d]);
+      if (crop) out[SOWDUST_PREFIX + crop] = (out[SOWDUST_PREFIX + crop] ?? 0) + n * 400 * m.multiplier;
+    }
+  }
+  if (xp > 0) out[GAIN_XP] = xp;
+  return out;
 }
 
 /** Split produced items over plausible sources: each mutation item to itself, crops and rares to the mutations and wheat. */
@@ -409,7 +440,7 @@ const thumbOf = (s: Spec): FlowThumb => {
   return { plot: 1, step: "step-1", layout: payload.plots[s.plots > 1 ? 1 : 0].flow.steps[0].layout, share: 0.72, plots };
 };
 
-const curvePoint = (r: RunResult): CurvePoint => ({ produced: r.produced, bought: r.bought, consumed: r.consumed, effort: { avg: r.effort.avg, peak: r.effort.peak }, ...(r.slowing ? { slowing: true as const } : {}) });
+const curvePoint = (r: RunResult): CurvePoint => ({ produced: r.produced, bought: r.bought, consumed: r.consumed, effort: { avg: r.effort.avg, peak: r.effort.peak }, ...(r.slowing ? { slowing: true as const } : {}), ...(r.gains ? { gains: r.gains } : {}) });
 
 /**
  * The list endpoint (`GET /flows?board&kit`): one cell kind's cells and curve; ironman rows add the

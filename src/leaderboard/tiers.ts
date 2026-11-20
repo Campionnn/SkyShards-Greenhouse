@@ -23,12 +23,14 @@ export const TIER_STATS: Readonly<Record<TierId, SimStats>> = {
 };
 
 /** The yield-only stats every server run uses (wiki maxima); the page scales results for other values. */
-export const YIELD_STATS: Pick<PlayerStats, "farmingFortune" | "plantYieldUpgrade" | "evergreenChip" | "overbloom" | "armorSet"> = {
+export const YIELD_STATS: Pick<PlayerStats, "farmingFortune" | "plantYieldUpgrade" | "evergreenChip" | "overbloom" | "armorSet" | "farmingWisdom"> = {
   farmingFortune: DEFAULT_PLAYER_STATS.farmingFortune,
   plantYieldUpgrade: DEFAULT_PLAYER_STATS.plantYieldUpgrade,
   evergreenChip: DEFAULT_PLAYER_STATS.evergreenChip,
   overbloom: DEFAULT_PLAYER_STATS.overbloom,
   armorSet: DEFAULT_PLAYER_STATS.armorSet,
+  /** Farming XP only (no effect on items): the page scales `gains.farming_xp` for the viewer's. */
+  farmingWisdom: 0,
 };
 
 /** The complete player stats of a tier. */

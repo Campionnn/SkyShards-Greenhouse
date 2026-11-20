@@ -5,7 +5,8 @@ import { DEFAULT_POLICIES } from "../simulator/flow/policies";
 import { defaultSettings } from "../simulator/scenario";
 import { flow, layout, scenario, step, TIMER_ONLY } from "../simulator/testHelpers";
 import { handle } from "./cli";
-import { scaleProduced, scaleResult, slack, valueResult, yieldStatsDiffer } from "./pricing";
+import { sowdustByCrop, sowdustPerDay, xpPerDay } from "./gains";
+import { scaleGains, scaleProduced, scaleResult, slack, valueResult, yieldStatsDiffer } from "./pricing";
 import { cellResult, median, RunRecorder, runResult, seedSlowing, spreadRatio, trailResult, type RunResult } from "./result";
 import {
   applyRules,
@@ -422,6 +423,30 @@ describe("pricing", () => {
     expect(r.bySource!.wheat.wheat + r.bySource!.chloronite.wheat).toBeCloseTo(per.wheat);
   });
 
+  it("scales gains: Sowdust by each crop's fortune ratio (best tool on that crop), Farming XP by Farming Wisdom", () => {
+    const ff = YIELD_STATS.farmingFortune;
+    const m = (x: number) => 1 + x / 100;
+    const gains = { farming_xp: 1000, "sowdust:wheat": 100, "sowdust:red_mushroom": 10, "sowdust:carrot": 40 };
+    const r = result({ wheat: 1000 }, { gains });
+    // The server's stats: unchanged, and a result without gains gets none.
+    expect(scaleResult(engine.data, r, YIELD_STATS).gains).toEqual(gains);
+    expect(scaleResult(engine.data, result({ wheat: 1 }), { ...YIELD_STATS, farmingWisdom: 50 }).gains).toBeUndefined();
+    expect(scaleGains(gains, { ...YIELD_STATS, farmingWisdom: 50 })).toEqual({ ...gains, farming_xp: 1500 });
+    const viewer = { ...YIELD_STATS, farmingFortune: ff - 100, cropFortune: { mushroom: 50 }, tools: [{ name: "Wheat Hoe", fortune: { wheat: 300 } }, { name: "Carrot Hoe", farmingFortune: 20, fortune: { carrot: 100 } }] };
+    const out = scaleResult(engine.data, r, viewer).gains!;
+    expect(out.farming_xp).toBe(1000);
+    expect(out["sowdust:wheat"]).toBeCloseTo((100 * m(ff - 100 + 300)) / m(ff));
+    expect(out["sowdust:carrot"]).toBeCloseTo((40 * m(ff - 100 + 120)) / m(ff));
+    // Mushrooms: no tool fortune there; the Carrot Hoe's general 20 is the most on them.
+    expect(out["sowdust:red_mushroom"]).toBeCloseTo((10 * m(ff - 100 + 50 + 20)) / m(ff));
+    // Farming Wisdom is a yield stat: missing = 0.
+    expect(yieldStatsDiffer({ ...YIELD_STATS, farmingWisdom: 10 })).toBe(true);
+    const { farmingWisdom: _w, ...noWisdom } = YIELD_STATS;
+    void _w;
+    expect(yieldStatsDiffer(noWisdom)).toBe(false);
+    expect(tierStats("max").farmingWisdom).toBe(0);
+  });
+
   it("slack weights the points just after k the most and ignores points outside (k, 2k]", () => {
     const values: Record<number, number> = { 1: 100, 2: 95, 3: 90, 4: 85, 6: 80, 8: 70, 12: 50 };
     const at = (e: number) => values[e];
@@ -473,13 +498,40 @@ describe("verify", () => {
     expect(res.window).toEqual({ from: 100, to: 125, cuts: 2 });
     let state = engine.initState(ruleScenario(sub, { rules: "strict", tier: "max", every: 1, seed: 5 })).state;
     const rates: number[] = [];
+    const xpRates: number[] = [];
+    const dustRates: number[] = [];
+    const ends: { seconds: number; xp: number; dust: number }[] = [];
     for (const t of [100, 125]) {
       state = engine.run(state, t - state.cycle).state;
-      rates.push(state.ledger.potato.produced / (state.elapsedSeconds / 86400));
+      const days = state.elapsedSeconds / 86400;
+      rates.push(state.ledger.potato.produced / days);
+      xpRates.push((state.summary.farmingXp ?? 0) / days);
+      dustRates.push((state.summary.sowdust?.potato ?? 0) / days);
+      ends.push({ seconds: state.elapsedSeconds, xp: state.summary.farmingXp ?? 0, dust: state.summary.sowdust?.potato ?? 0 });
     }
     expect(res.produced.potato).toBeCloseTo((rates[0] + rates[1]) / 2, 9);
     // The trailing 20% rates are measured over [100, 125].
     expect(res.trail!.from).toBe(100);
+    // Farming XP and Sowdust: window means like produced, and their own trail.
+    expect(xpRates[1]).toBeGreaterThan(0);
+    expect(dustRates[1]).toBeGreaterThan(0);
+    expect(res.gains!.farming_xp).toBeCloseTo((xpRates[0] + xpRates[1]) / 2, 9);
+    expect(res.gains!["sowdust:potato"]).toBeCloseTo((dustRates[0] + dustRates[1]) / 2, 9);
+    expect(Object.keys(res.gains!).sort()).toEqual(["farming_xp", "sowdust:potato"]);
+    expect(sowdustPerDay(res.gains)).toBeCloseTo(res.gains!["sowdust:potato"], 9);
+    expect(xpPerDay(res.gains)).toBe(res.gains!.farming_xp);
+    expect(sowdustByCrop(res.gains)).toEqual({ potato: res.gains!["sowdust:potato"] });
+    const d = (ends[1].seconds - ends[0].seconds) / 86400;
+    expect(res.trail!.gains!.farming_xp).toBeCloseTo((ends[1].xp - ends[0].xp) / d, 9);
+    expect(res.trail!.gains!["sowdust:potato"]).toBeCloseTo((ends[1].dust - ends[0].dust) / d, 9);
+    // A slowing cell holds the trail's gains; a cell keeps its median seed's gains.
+    expect(trailResult(res).gains).toEqual(res.trail!.gains);
+    const npc = (x: RunResult) => valueResult(engine.data, x, "ironman").profitPerDay;
+    expect(cellResult([res, res, res], npc).gains).toEqual(res.gains);
+    // A trail without gains keeps the window's (as the API's stats.trail_result).
+    const { gains: _tg, ...oldTrail } = res.trail!;
+    void _tg;
+    expect(trailResult({ ...res, trail: oldTrail }).gains).toEqual(res.gains);
   });
 
   it("strict runs pay the starting layout from the empty stock; borrow runs record what they owe; normal runs neither", () => {

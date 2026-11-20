@@ -57,7 +57,18 @@ export const FrequencyChart: React.FC<{
   emptyText?: string;
   /** Plot height in px (default 200). */
   height?: number;
-}> = ({ points, selected, hoursPerCycle, onSelect, selectedLabel = "yours", emptyText, height = 200 }) => {
+  /** Formats a value (default `formatCoins`). */
+  format?: (n: number) => string;
+  /** The per-day unit after a value ("Wheat/day"); omitted, coins read "64M/day". */
+  unit?: string;
+  /** The measured thing's name for screen readers ("Profit" by default). */
+  label?: string;
+  /** Values in the coin colour (default: when no `format` is given, i.e. coins). */
+  coin?: boolean;
+}> = ({ points, selected, hoursPerCycle, onSelect, selectedLabel = "yours", emptyText, height = 200, format, unit, label = "Profit", coin }) => {
+  const fmt = format ?? formatCoins;
+  const gold = coin ?? !format;
+  const perDay = unit ? ` ${unit}` : "/day";
   const wrap = useRef<HTMLDivElement>(null);
   const axis = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -139,7 +150,7 @@ export const FrequencyChart: React.FC<{
         {mine !== null && (
           <>
             <span className="text-select-fg">{selectedLabel[0].toUpperCase() + selectedLabel.slice(1)}</span>: every {selected} · ≈{fmtHours(selected * hoursPerCycle)} ·{" "}
-            <b className="font-semibold text-coin">{formatCoins(mine)}</b>/day
+            <b className={cn("font-semibold", gold ? "text-coin" : "text-fg")}>{fmt(mine)}</b>{perDay}
             {best > 0 && <> · {Math.round((mine / best) * 100)}% of the best</>}
           </>
         )}
@@ -157,7 +168,7 @@ export const FrequencyChart: React.FC<{
             height={height}
             className="block"
             role="img"
-            aria-label="Profit per day by online frequency"
+            aria-label={`${label} per day by online frequency`}
             onClick={(e) => {
               const n = nearest(e.clientX);
               if (n !== null) onSelect?.(n);
@@ -178,7 +189,7 @@ export const FrequencyChart: React.FC<{
                 <line x1={pad.l} x2={width - pad.r} y1={yOf(f * top)} y2={yOf(f * top)} stroke={f ? "var(--color-line)" : "var(--color-line-strong)"} strokeDasharray={f ? "2 4" : undefined} />
                 {(f === 0 || f === 0.5 || f === 1 || height >= 180) && (
                   <text x={pad.l - 6} y={yOf(f * top) + 4} textAnchor="end" fontSize={11} fill="var(--color-fg-meta)">
-                    {f ? formatCoins(f * top) : "0"}
+                    {f ? fmt(f * top) : "0"}
                   </text>
                 )}
               </g>
@@ -225,8 +236,8 @@ export const FrequencyChart: React.FC<{
             ) : (
               <>
                 <span className="mt-0.5 flex items-baseline gap-1 tabular-nums">
-                  <span className="text-title font-semibold text-coin">{formatCoins(focus.profitPerDay)}</span>
-                  <span className="text-fg-meta">/ day</span>
+                  <span className={cn("text-title font-semibold", gold ? "text-coin" : "text-fg")}>{fmt(focus.profitPerDay)}</span>
+                  <span className="text-fg-meta">{unit ?? "/ day"}</span>
                 </span>
                 <span className="block tabular-nums text-fg-muted">
                   {best > 0 && `${Math.round((focus.profitPerDay / best) * 100)}% of the best`}
@@ -234,12 +245,12 @@ export const FrequencyChart: React.FC<{
                 </span>
                 {typeof focus.mean === "number" && (focus.n ?? 0) > 1 && (
                   <span className="mt-0.5 block tabular-nums text-fg-muted">
-                    Median · average <span className="text-fg-body">{formatCoins(focus.mean)}</span>
+                    Median · average <span className="text-fg-body">{fmt(focus.mean)}</span>
                   </span>
                 )}
                 {typeof focus.lo === "number" && typeof focus.hi === "number" && (focus.n ?? 0) > 1 && (
                   <span className="block tabular-nums text-fg-muted">
-                    90% of seeds <span className="text-fg-body">{formatCoins(focus.lo)}</span> to <span className="text-fg-body">{formatCoins(focus.hi)}</span>
+                    90% of seeds <span className="text-fg-body">{fmt(focus.lo)}</span> to <span className="text-fg-body">{fmt(focus.hi)}</span>
                   </span>
                 )}
                 {typeof focus.n === "number" && (
@@ -263,7 +274,7 @@ export const FrequencyChart: React.FC<{
                   type="button"
                   role={onSelect ? "radio" : undefined}
                   aria-checked={onSelect ? on : undefined}
-                  aria-label={`Online every ${p.every} (about every ${fmtHours(p.every * hoursPerCycle)}): ${p.profitPerDay === null ? "not verified" : `${formatCoins(p.profitPerDay)} a day`}`}
+                  aria-label={`Online every ${p.every} (about every ${fmtHours(p.every * hoursPerCycle)}): ${p.profitPerDay === null ? "not verified" : `${fmt(p.profitPerDay)}${unit ? ` ${unit}` : " a day"}`}`}
                   data-every={p.every}
                   tabIndex={onSelect && on ? 0 : -1}
                   onClick={() => onSelect?.(p.every)}

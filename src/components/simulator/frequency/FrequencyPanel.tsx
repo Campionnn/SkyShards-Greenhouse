@@ -8,6 +8,9 @@ import { MonteCarloTable } from "../../flows/MonteCarloTable";
 import { KitButton, Segmented } from "../../ui/kit";
 import { NumberInput } from "../controls";
 import { formatCoins } from "../format";
+import { COINS_METRIC, type RankMetric } from "../../../leaderboard/metric";
+import { metricChartProps } from "../../flows/ranking/rankingHelpers";
+import { focusNoun, focusSweepTitle, focusUnit, formatFocus } from "../focusMetricUi";
 import { Fact, LinkButton, ResultCard } from "../page/ResultCard";
 import {
   clampSweepParams,
@@ -24,6 +27,7 @@ import {
   sweepKey,
   sweepPoints,
   sweepSeeds,
+  sweepValue,
   type SweepParams,
   type SweepRun,
 } from "./sweep";
@@ -65,8 +69,10 @@ export const FrequencyPanel: React.FC<{
   priceSummary?: (s: RunSummary) => { perDay: number } | null;
   /** Switch the scenario to "online every N cycles" (shown beside the Forgiving line). */
   onUseEvery?: (n: number) => void;
+  /** What the test measures (default coins): re-values the finished runs at once, no re-run. */
+  metric?: RankMetric;
   className?: string;
-}> = ({ scenario, priceSummary, onUseEvery, className }) => {
+}> = ({ scenario, priceSummary, onUseEvery, metric = COINS_METRIC, className }) => {
   const [params, setParamsRaw] = useState<SweepParams>(loadParams);
   const setParams = (f: (p: SweepParams) => SweepParams) =>
     setParamsRaw((p) => {
@@ -99,7 +105,12 @@ export const FrequencyPanel: React.FC<{
   const shown = selected ?? ownEvery ?? 1;
 
   const price = useMemo(() => (priceSummary ? (s: RunSummary) => priceSummary(s)?.perDay ?? summaryProfitPerDay(s) : summaryProfitPerDay), [priceSummary]);
-  const points = useMemo(() => sweepPoints(result?.runs ?? [], price), [result, price]);
+  const value = useMemo(() => sweepValue(metric, price), [metric, price]);
+  const points = useMemo(() => sweepPoints(result?.runs ?? [], value), [result, value]);
+  const coins = metric.by === "coins";
+  const fmt = (n: number) => formatFocus(metric, n);
+  const chartProps = metricChartProps(metric);
+  const noun = focusNoun(metric);
   const hours = useMemo(() => sweepHoursPerCycle(result?.runs ?? []), [result]);
   const forgiving = result ? slackFrom(points, shown) : null;
   const failures = (result?.runs ?? []).filter((r) => !r.ok);
@@ -159,7 +170,7 @@ export const FrequencyPanel: React.FC<{
   const elapsed = now - startedAt;
   const remaining = running && done > 0.02 && elapsed > 1500 ? (elapsed / done) * (1 - done) : null;
 
-  // "Set online to every N": the point you picked, else the most profitable one, when it isn't the schedule already.
+  // "Set online to every N": the point you picked, else the best one for the metric, when it isn't the schedule already.
   const best = points.reduce<{ every: number; v: number } | null>((b, p) => (p.profitPerDay !== null && (!b || p.profitPerDay > b.v) ? { every: p.every, v: p.profitPerDay } : b), null);
   const useTarget = selected ?? best?.every ?? null;
   const activity = scenario.settings.activity;
@@ -169,7 +180,7 @@ export const FrequencyPanel: React.FC<{
 
   return (
     <ResultCard
-      title="Profit by online frequency"
+      title={focusSweepTitle(metric)}
       className={className}
       hint={
         <>
@@ -182,9 +193,9 @@ export const FrequencyPanel: React.FC<{
             read, 50+ for a close call.
           </p>
           <p>
-            Forgiving: how much of your profit you keep when you come back later than planned. It compares the points in the shaded Forgiving range (the selected
+            Forgiving: how much of your {noun} you keep when you come back later than planned. It compares the points in the shaded Forgiving range (the selected
             frequency up to twice it) with the selected one, counting the slightly-late ones the most. 100% means being late costs nothing; a low % means the flow
-            falls apart if you miss a login. Shows n/a at 12 cycles (nothing slower is simulated) or with no profit.
+            falls apart if you miss a login. Shows n/a at 12 cycles (nothing slower is simulated) or with none at all.
           </p>
         </>
       }
@@ -240,16 +251,18 @@ export const FrequencyPanel: React.FC<{
         )}
 
         {result && !running && noProfit ? (
-          <p className="text-body text-fg-meta">The scenario makes no profit at any frequency, so there is nothing to chart.</p>
+          <p className="text-body text-fg-meta">
+            {coins ? "The scenario makes no profit at any frequency, so there is nothing to chart." : `The scenario makes no ${noun} at any frequency, so there is nothing to chart.`}
+          </p>
         ) : result ? (
           <div className={stale && !running ? "space-y-4 opacity-60" : "space-y-4"}>
             {at && (
               <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1" data-testid="sweep-stats">
-                <Fact label={`Median · every ${shown}`} value={<span className="text-coin">{formatCoins(at.median)}</span>} suffix="/ day" />
-                <Fact label="Average" value={formatCoins(at.mean)} suffix={at.n > 1 ? `± ${formatCoins(at.meanMargin)}` : undefined} title="Mean over the seeds, ± its 95% margin of error" />
-                <Fact label={RANGE_LABEL} value={`${formatCoins(at.lo)} – ${formatCoins(at.hi)}`} title="5th to 95th percentile: 90% of seeds land here" />
-                <Fact label="Worst / best" value={`${formatCoins(at.min)} / ${formatCoins(at.max)}`} tone={at.min < 0 ? "bad" : undefined} />
-                <Fact label="Seeds" value={String(at.n)} suffix={at.lossShare > 0 ? `· ${Math.round(at.lossShare * 100)}% lose money` : undefined} />
+                <Fact label={`Median · every ${shown}`} value={coins ? <span className="text-coin">{formatCoins(at.median)}</span> : fmt(at.median)} suffix={coins ? "/ day" : focusUnit(metric)} />
+                <Fact label="Average" value={fmt(at.mean)} suffix={at.n > 1 ? `± ${fmt(at.meanMargin)}` : undefined} title="Mean over the seeds, ± its 95% margin of error" />
+                <Fact label={RANGE_LABEL} value={`${fmt(at.lo)} – ${fmt(at.hi)}`} title="5th to 95th percentile: 90% of seeds land here" />
+                <Fact label="Worst / best" value={`${fmt(at.min)} / ${fmt(at.max)}`} tone={at.min < 0 ? "bad" : undefined} />
+                <Fact label="Seeds" value={String(at.n)} suffix={coins && at.lossShare > 0 ? `· ${Math.round(at.lossShare * 100)}% lose money` : undefined} />
               </div>
             )}
             <FrequencyChart
@@ -259,8 +272,9 @@ export const FrequencyPanel: React.FC<{
               onSelect={setSelected}
               selectedLabel={selected === null && ownEvery !== null ? "your schedule" : "selected"}
               emptyText={running ? "Waiting for the first runs to finish..." : "No run finished."}
+              {...chartProps}
             />
-            {!running && <MonteCarloTable points={points} selected={shown} onSelect={setSelected} hoursPerCycle={hours ?? undefined} />}
+            {!running && <MonteCarloTable points={points} selected={shown} onSelect={setSelected} hoursPerCycle={hours ?? undefined} {...chartProps} />}
           </div>
         ) : (
           <p className="text-body text-fg-meta">
@@ -277,7 +291,7 @@ export const FrequencyPanel: React.FC<{
                 <span className="text-fg-body">n/a</span>
               ) : (
                 <>
-                  you keep <span className="font-semibold tabular-nums text-fg">{percent(forgiving)}</span> of the median profit when you&apos;re late from every {shown}
+                  you keep <span className="font-semibold tabular-nums text-fg">{percent(forgiving)}</span> of the median {noun} when you&apos;re late from every {shown}
                 </>
               )}
               .

@@ -3,7 +3,7 @@
  * cached in memory per (board, kit, tier, every, plots) for the session; `force` refetches (Refresh).
  * In development, `localStorage["skyshards-flows-mock"] = "1"` serves canned data (flowsMock.ts).
  */
-import type { FlowCell, FlowDetail, FlowListResponse, FlowSeedResult, FlowStatusResponse, FlowSubmitBody } from "../leaderboard/api";
+import type { CurvePoint, FlowCell, FlowDetail, FlowListResponse, FlowSeedResult, FlowStatusResponse, FlowSubmitBody } from "../leaderboard/api";
 import type { RunResult } from "../leaderboard/result";
 import { BOARDS, CELL_KIND_RUN_KIND, cellKindFrom, type Board, type CellKind, type RunKind } from "../leaderboard/rules";
 import { boardOfCellKind, readPrep } from "../leaderboard/view";
@@ -152,6 +152,9 @@ export function normalizeResult(raw: unknown): RunResult | null {
   };
   if (isObj(src.bySource)) result.bySource = Object.fromEntries(Object.entries(src.bySource).filter(([, m]) => isObj(m)).map(([k, m]) => [k, counts(m)!]));
   if (isObj(src.stepTime)) result.stepTime = src.stepTime as RunResult["stepTime"];
+  // Farming XP / Sowdust per day (gains.ts); absent on cells from before 2026-11-19.
+  const gains = counts(src.gains);
+  if (gains) result.gains = gains;
   if (isObj(src.window) && isNum(src.window.from) && isNum(src.window.to)) result.window = { from: src.window.from, to: src.window.to, cuts: isNum(src.window.cuts) ? src.window.cuts : 0 };
   for (const key of ["startItems", "usedUp", "upkeep"] as const) {
     const m = counts(src[key]);
@@ -225,6 +228,14 @@ export function normalizeDetail(d: FlowDetail): FlowDetail {
   };
 }
 
+/** A curve point with a malformed `gains` map dropped (old points have none: the page shows no Sowdust / XP for them). */
+function normalizePoint(p: CurvePoint): CurvePoint {
+  if (!("gains" in p)) return p;
+  const { gains: raw, ...rest } = p;
+  const gains = counts(raw);
+  return gains ? { ...rest, gains } : rest;
+}
+
 /** List rows: drop the retired payback fields and malformed fields from each cell; `altPoint` / `borrowPoint` / `prep` checked. */
 export function normalizeListEntries(entries: unknown): FlowListResponse["entries"] {
   if (!Array.isArray(entries)) return [];
@@ -232,13 +243,15 @@ export function normalizeListEntries(entries: unknown): FlowListResponse["entrie
     .filter(isObj)
     .map((e) => {
       const entry = e as unknown as FlowListResponse["entries"][number];
-      return {
+      const out = {
         ...entry,
         cell: entry.cell ? normalizeResult(entry.cell) : null,
-        altPoint: isObj(entry.altPoint) ? entry.altPoint : null,
-        borrowPoint: isObj(entry.borrowPoint) ? entry.borrowPoint : null,
+        altPoint: isObj(entry.altPoint) ? normalizePoint(entry.altPoint) : null,
+        borrowPoint: isObj(entry.borrowPoint) ? normalizePoint(entry.borrowPoint) : null,
         prep: readPrep(entry.prep),
       };
+      if (isObj(entry.curve)) out.curve = Object.fromEntries(Object.entries(entry.curve).filter(([, p]) => isObj(p)).map(([k, p]) => [k, normalizePoint(p)]));
+      return out;
     });
 }
 

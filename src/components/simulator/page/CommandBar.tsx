@@ -349,8 +349,9 @@ export const CommandBar: React.FC<CommandBarProps> = (props) => {
           {(["cropGrowth", "growthUpgradeTier", "speedAttribute", "floraShard"] as const).map((key) => (
             <StatInput key={key} def={STAT_FIELDS[key]} value={settings.playerStats[key]} onChange={(v) => setStats({ [key]: v })} />
           ))}
-          <KitLabel className="pt-2">Yield</KitLabel>
+          <KitLabel className="pt-2">Yield and XP</KitLabel>
           <StatInput def={STAT_FIELDS.farmingFortune} value={settings.playerStats.farmingFortune} onChange={(v) => setStats({ farmingFortune: v })} />
+          <StatInput def={STAT_FIELDS.farmingWisdom} value={settings.playerStats.farmingWisdom ?? 0} onChange={(v) => setStats({ farmingWisdom: v })} />
           <div className="mt-2 border-t border-line pt-2.5">
             <button
               type="button"

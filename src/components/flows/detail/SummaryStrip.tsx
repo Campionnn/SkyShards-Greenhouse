@@ -2,9 +2,11 @@ import React from "react";
 import { SlidersHorizontal, UserRound } from "lucide-react";
 import type { FlowViewer } from "../../../hooks/useFlowViewer";
 import type { CellKind } from "../../../leaderboard/rules";
-import { TIER_LABEL } from "../../../leaderboard/view";
+import { formatCompact, TIER_LABEL } from "../../../leaderboard/view";
 import { ARMOR_SET_LABEL } from "../../../simulator";
-import { formatCoins } from "../../simulator/format";
+import type { ItemId } from "../../../simulator/data/types";
+import { CropImage } from "../../shared";
+import { formatCoins, nameOf } from "../../simulator/format";
 import { cn } from "../../ui/cn";
 import { InfoHint } from "../../ui/InfoHint";
 import { KitButton, Pill } from "../../ui/kit";
@@ -63,6 +65,29 @@ const StatsRow: React.FC<{ viewer: FlowViewer; phone: boolean; onEdit: () => voi
   );
 };
 
+/** "12.3k Sowdust/day · 1.2M Farming XP/day · 45.6k Wheat/day": the non-coin numbers as compact facts (none for old cells). */
+const GainsFacts: React.FC<{ m: DetailModel; crop?: ItemId | null; className?: string }> = ({ m, crop, className }) => {
+  const facts: { key: string; value: string; unit: string; title: string }[] = [];
+  if (crop && m.produced) {
+    const n = m.produced[crop] ?? 0;
+    facts.push({ key: "crop", value: formatCompact(n), unit: `${nameOf(crop)}/day`, title: `${nameOf(crop)} harvested per day (the collection you ranked by)` });
+  }
+  if (m.sowdustPerDay !== null) facts.push({ key: "sowdust", value: formatCompact(m.sowdustPerDay), unit: "Sowdust/day", title: "Sowdust per day from the harvested base crops, at your fortune" });
+  if (m.xpPerDay !== null) facts.push({ key: "xp", value: formatCompact(m.xpPerDay), unit: "Farming XP/day", title: "Farming XP per day from every harvest, at your Farming Wisdom" });
+  if (!facts.length) return null;
+  return (
+    <span className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", className)} data-testid="gains-facts">
+      {facts.map((f) => (
+        <span key={f.key} className="inline-flex items-baseline gap-1 whitespace-nowrap" title={f.title}>
+          {f.key === "crop" && <CropImage cropId={crop!} cropName={nameOf(crop!)} size="custom" width={14} height={14} className="self-center" showFallback />}
+          <span className="font-semibold tabular-nums text-fg">{f.value}</span>
+          <span className="text-fg-meta">{f.unit}</span>
+        </span>
+      ))}
+    </span>
+  );
+};
+
 export const SummaryStrip: React.FC<{
   viewer: FlowViewer;
   m: DetailModel;
@@ -70,7 +95,9 @@ export const SummaryStrip: React.FC<{
   onKind: (k: CellKind) => void;
   onEditStats: () => void;
   onImport: () => void;
-}> = ({ viewer, m, phone, onKind, onEditStats, onImport }) => {
+  /** The collection crop the ranking was sorted by (`by=collection&crop=…`), shown as one more fact. */
+  crop?: ItemId | null;
+}> = ({ viewer, m, phone, onKind, onEditStats, onImport, crop }) => {
   const mine = !isDefaultStats(viewer);
   const deltas = mine
     ? Object.fromEntries(m.numbers.map((n) => [n.kind, deltaText(n.profitPerDay, m.maxNumbers.find((x) => x.kind === n.kind)?.profitPerDay ?? null)]))
@@ -138,6 +165,7 @@ export const SummaryStrip: React.FC<{
           )}
           {!m.exact && m.cell && <Pill tone="warn">max-tier stand-in</Pill>}
         </span>
+        <GainsFacts m={m} crop={crop} className={phone ? "w-full" : "ml-auto"} />
       </div>
     </section>
   );

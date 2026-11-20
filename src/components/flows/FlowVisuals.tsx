@@ -67,11 +67,26 @@ const fmtHours = (h: number) => (h < 1 ? `${Math.round(h * 60)}m` : h < 10 ? `${
  * less". Hovering (or tapping) a bar shows its numbers in a small tooltip; the values are also in the
  * label for screen readers. Sits above a stretched row link, so it lifts itself (`relative z-10`).
  */
-export const Sparkline: React.FC<{ points: FrequencyPoint[]; selected: number; className?: string; hoursPerCycle?: number }> = ({ points, selected, className = "", hoursPerCycle }) => {
+export const Sparkline: React.FC<{
+  points: FrequencyPoint[];
+  selected: number;
+  className?: string;
+  hoursPerCycle?: number;
+  /** Formats a value (default `formatCoins`). */
+  format?: (n: number) => string;
+  /** The per-day unit after a value ("Wheat/day"); omitted, "/day". */
+  unit?: string;
+  /** The measured thing's name for screen readers ("Profit" by default). */
+  label?: string;
+  /** Values in the coin colour (default: when no `format` is given). */
+  coin?: boolean;
+}> = ({ points, selected, className = "", hoursPerCycle, format, unit, label: name = "Profit", coin }) => {
+  const fmt = format ?? formatCoins;
+  const gold = coin ?? !format;
   const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...points.map((p) => p.profitPerDay ?? 0));
   if (!points.some((p) => p.profitPerDay !== null)) return null;
-  const label = `Profit by login frequency: ${points.map((p) => `every ${p.every} ${p.profitPerDay === null ? "not verified" : formatCoins(Math.max(0, p.profitPerDay))}`).join(", ")}`;
+  const label = `${name} by login frequency: ${points.map((p) => `every ${p.every} ${p.profitPerDay === null ? "not verified" : fmt(Math.max(0, p.profitPerDay))}`).join(", ")}`;
   const mine = points.find((p) => p.every === selected)?.profitPerDay ?? null;
   const focus = hover === null ? null : (points.find((p) => p.every === hover) ?? null);
   const delta = focus && focus.profitPerDay !== null && mine && mine > 0 && focus.every !== selected ? (focus.profitPerDay - mine) / mine : null;
@@ -107,8 +122,8 @@ export const Sparkline: React.FC<{ points: FrequencyPoint[]; selected: number; c
               <span className="text-fg-meta">not verified</span>
             ) : (
               <>
-                <span className="font-semibold text-coin">{formatCoins(focus.profitPerDay)}</span>
-                <span className="text-fg-meta">/day</span>
+                <span className={cn("font-semibold", gold ? "text-coin" : "text-fg")}>{fmt(focus.profitPerDay)}</span>
+                <span className="text-fg-meta">{unit ? ` ${unit}` : "/day"}</span>
                 {delta !== null && <span className={delta >= 0 ? "text-go-fg" : "text-problem"}> {`${delta >= 0 ? "+" : ""}${Math.round(delta * 100)}%`}</span>}
               </>
             )}

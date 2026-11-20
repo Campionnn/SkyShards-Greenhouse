@@ -13,7 +13,7 @@ import type { FlowDetail } from "../../leaderboard/api";
 import { AdminCards, AdminTable, FlowsAdminPage } from "../../pages/FlowsAdminPage";
 import { FlowsPage } from "../../pages/FlowsPage";
 import { useFlowViewer } from "../../hooks/useFlowViewer";
-import { DEFAULT_FILTERS, maxProfit, rankEntries, splitRanked, type ViewSettings } from "../../leaderboard/view";
+import { COLLECTION_CROPS, DEFAULT_FILTERS, maxProfit, maxValue, rankEntries, splitRanked, type ViewSettings } from "../../leaderboard/view";
 import type { Board } from "../../leaderboard/rules";
 import { DEFAULT_BAZAAR_PRICING } from "../../simulator";
 import { defaultGameData } from "../../simulator/data/default";
@@ -28,8 +28,9 @@ import { ReportPanel } from "./FlowDetailSections";
 import { FilterBar } from "./FlowFilters";
 import { StatsForm } from "./FlowControls";
 import { FlowRowItem, PhoneRowItem, RowPeek } from "./ranking/RankingRow";
+import { CropPicker, RankByControl } from "./ranking/RankByControl";
 import { facetCounts, peekLayouts } from "./ranking/rankingHelpers";
-import { CantMakeSection } from "./ranking/SetApart";
+import { CantMakeSection, NoneOfSection } from "./ranking/SetApart";
 import { FlowMarkdown } from "./FlowMarkdown";
 
 // Server-render the leaderboard pages and the submit dialog body with a fake fetch, to catch
@@ -130,7 +131,7 @@ describe("leaderboard pages render", () => {
 
   it("the stats form (the drawer's body): tiers, frequency, yield, import", () => {
     const html = text(wrap(<StatsFormHost />));
-    for (const s of ["How often you log in", "Crop Growth", "Farming Fortune", "Per-crop fortune", "Import from Hypixel", "Farming armor", "Scored at", "Bioanalysis", "Artifact · +15%", "Tier 9 · +50%", "Evergreen Chip"]) expect(html).toContain(s);
+    for (const s of ["How often you log in", "Crop Growth", "Farming Fortune", "Per-crop fortune", "Import from Hypixel", "Farming armor", "Scored at", "Bioanalysis", "Artifact · +15%", "Tier 9 · +50%", "Evergreen Chip", "Farming Wisdom"]) expect(html).toContain(s);
     expect(html).toContain('data-testid="tier-meter"');
     expect(html).toContain('data-testid="stats-panel"');
   });
@@ -234,6 +235,94 @@ describe("leaderboard pages render", () => {
     const over = text(wrap(<ol><FlowRowItem row={{ ...row, slack: 1.07 }} top={1} every={1} board="ironman" index={0} like={{ liked: false, busy: false }} sort="profit" /></ol>));
     expect(over).toContain("100%+");
     expect(over).not.toContain("107%");
+  });
+
+  it("the rank-by control: Coins by default; Collection shows the crop picker (URL by/crop), and every metric is in the bar", () => {
+    const coins = text(wrap(<FlowsPage />));
+    expect(coins).toContain('data-testid="rank-by"');
+    expect(coins).toMatch(/role="group" aria-label="Rank by"/);
+    for (const s of ["Coins", "Collection", "Sowdust", "Farming XP"]) expect(coins).toContain(`>${s}</button>`);
+    expect(coins).toMatch(/aria-pressed="true"[^>]*>Coins</);
+    expect(coins).not.toContain('data-testid="crop-picker"');
+    const melon = text(wrap(<FlowsPage />, "/flows?by=collection&crop=melon"));
+    expect(melon).toMatch(/aria-pressed="true"[^>]*>Collection</);
+    expect(melon).toMatch(/data-testid="crop-picker".{0,800}Melon/s);
+    // The value column head names the unit; its sort label follows the metric.
+    expect(melon).toContain('title="Melon/day"');
+    expect(melon).toMatch(/aria-label="Sort by melon"/);
+    // An unknown crop falls back to Wheat; crop without by=collection is ignored.
+    expect(text(wrap(<FlowsPage />, "/flows?by=collection&crop=nope"))).toMatch(/data-testid="crop-picker".{0,800}Wheat/s);
+    const xp = text(wrap(<FlowsPage />, "/flows?by=xp&crop=melon"));
+    expect(xp).toMatch(/aria-pressed="true"[^>]*>Farming XP</);
+    expect(xp).toContain('title="Farming XP/day"');
+    expect(xp).not.toContain('data-testid="crop-picker"');
+    // Phones: the same control, "XP" short.
+    expect(text(wrap(<RankByControl metric={{ by: "sowdust", crop: "wheat" }} onMetric={() => {}} phone />))).toMatch(/aria-pressed="true"[^>]*>Sowdust<.*>XP</s);
+  });
+
+  it("the crop picker menu: the 14 base crops with images, the picked one checked", () => {
+    // SSR renders no open popover: the trigger shows the picked crop with its image.
+    const html = text(wrap(<CropPicker crop="cocoa_beans" onCrop={() => {}} />));
+    expect(html).toContain('aria-label="Collection crop"');
+    expect(html).toContain("Cocoa Beans");
+    expect(html).toMatch(/<img[^>]*alt="Cocoa Beans"/);
+    expect(COLLECTION_CROPS).toHaveLength(14);
+  });
+
+  it("metric rows: the ranked number big in the neutral colour with its unit, coins/day under it, a neutral bar; old cells read —", async () => {
+    const list = await mockList("ironman", "max", 1);
+    const metric = { by: "sowdust", crop: "wheat" } as const;
+    const s: ViewSettings = { board: "ironman", quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false, now: Date.now(), metric };
+    const { ranked } = splitRanked(rankEntries(DATA, list.entries, s, 1));
+    const like = { liked: false, busy: false };
+    const top = maxValue(ranked);
+    const valued = ranked.filter((r) => r.value !== null);
+    expect(valued.length).toBeGreaterThan(0);
+    // Ranked by the metric: best first, rows without gains (re-verifying) last.
+    const values = ranked.map((r) => r.value);
+    expect(values.slice(0, valued.length).every((v, i, a) => i === 0 || (v ?? 0) <= (a[i - 1] ?? 0))).toBe(true);
+    const html = text(
+      wrap(
+        <ol>
+          {ranked.map((r, i) => (
+            <FlowRowItem key={r.entry.id} row={r} top={top} metric={metric} every={1} board="ironman" index={i} like={like} sort="profit" open />
+          ))}
+        </ol>,
+      ),
+    );
+    expect(html).toContain("Sowdust/day");
+    expect(html).toContain('data-testid="row-coins"');
+    expect(html).toMatch(/text-coin[^"]*">[^<]+<\/span> coins\/day/);
+    // The big number is neutral, not gold, and the split bar (crops / mutations / rare) isn't drawn.
+    expect(html).toMatch(/data-testid="row-profit"><span class="[^"]*text-title[^"]*text-fg[^-]|data-testid="row-profit"><span class="[^"]*text-fg[^"]*text-title/);
+    expect(html).toContain("Sowdust by how often you log in");
+    // Coins and Farming XP per day show in the peek.
+    expect(html).toMatch(/<dt[^>]*>Farming XP<\/dt>/);
+    const stale = ranked.find((r) => r.entry.stale);
+    if (stale) {
+      expect(stale.value).toBeNull();
+      const one = text(wrap(<ol><FlowRowItem row={stale} top={top} metric={metric} every={1} board="ironman" index={0} like={like} sort="profit" /></ol>));
+      expect(one).toMatch(/data-testid="row-profit"><span[^>]*>—</);
+    }
+    // Ranked by a crop: the flows without any are unranked rows (rank "–") in a closed "Don't make" section.
+    const wheat = { by: "collection", crop: "wheat" } as const;
+    const split = splitRanked(rankEntries(DATA, list.entries, { ...s, metric: wheat }, 1));
+    expect(split.none.length).toBeGreaterThan(0);
+    expect(split.ranked.map((r) => r.rank)).toEqual(split.ranked.map((_, i) => i + 1).map((n, i, a) => (i > 0 && split.ranked[i].value === split.ranked[i - 1].value ? a[i - 1] : n)));
+    const noneRows = split.none.map((r, i) => <FlowRowItem key={r.entry.id} row={r} top={maxValue(split.ranked)} metric={wheat} every={1} board="ironman" index={i} like={like} sort="profit" />);
+    const closed = text(wrap(<NoneOfSection crop="wheat" count={split.none.length}>{noneRows}</NoneOfSection>));
+    expect(closed).toContain(`Don't make Wheat (${split.none.length})`);
+    expect(closed).toMatch(/aria-expanded="false"/);
+    expect(closed).not.toContain('data-testid="flow-row"');
+    const opened = text(wrap(<NoneOfSection crop="wheat" count={split.none.length} defaultOpen>{noneRows}</NoneOfSection>));
+    expect(opened.match(/data-testid="flow-row"/g)).toHaveLength(split.none.length);
+    expect(opened).toMatch(/title="Not ranked">–</);
+    const phone = text(wrap(<ol><PhoneRowItem row={valued[0]} top={top} metric={metric} every={1} board="ironman" index={0} like={like} sort="profit" /></ol>));
+    expect(phone).toContain('data-testid="row-value"');
+    expect(phone).toContain("Sowdust/day");
+    // A collection metric's detail link carries the crop.
+    const melon = text(wrap(<ol><FlowRowItem row={valued[0]} top={top} metric={{ by: "collection", crop: "melon" }} every={1} board="ironman" index={0} like={like} sort="profit" /></ol>));
+    expect(melon).toMatch(/href="\/flows\/mock\w+\?board=ironman&by=collection&crop=melon"/);
   });
 
   it("the peek's pictures: one per plot, its most-used layout; older APIs fall back to start layouts", async () => {
@@ -347,6 +436,19 @@ describe("leaderboard pages render", () => {
     expect(all).not.toContain("Every N cycles (1 to 48)");
     // Logged out: no owner actions on the page (Report sits in the closed More menu and asks to log in first).
     expect(all).not.toMatch(/Delete…|Report…|Edit title and description/);
+  });
+
+  it("/flows/:id: Sowdust and Farming XP per day as compact facts; a collection link adds that crop", async () => {
+    const detail = normalizeDetail((await mockDetail("mockChloro01"))!);
+    const html = detailAt(detail);
+    expect(html).toContain('data-testid="gains-facts"');
+    expect(html).toContain("Sowdust/day");
+    expect(html).toContain("Farming XP/day");
+    expect(html).not.toContain("Wheat/day");
+    const wheat = detailAt(detail, "/flows/x?by=collection&crop=wheat");
+    expect(wheat).toMatch(/data-testid="gains-facts".{0,1200}Wheat\/day/s);
+    // An unknown crop falls back to wheat, a non-collection metric adds none.
+    expect(detailAt(detail, "/flows/x?by=xp&crop=melon")).not.toContain("Melon/day");
   });
 
   it("/flows/:id with the starting items (and v2's ?board=ironman_borrow): What you need, upkeep, used up, returned each session", async () => {

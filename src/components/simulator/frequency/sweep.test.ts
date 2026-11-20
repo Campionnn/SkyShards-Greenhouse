@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { engine, LAYOUT_A_CODE, scenario, flow, step } from "../../../simulator/testHelpers";
 import type { RunSummary } from "../../../simulator";
 import { slackFrom } from "../../../leaderboard/view";
-import { clampSweepParams, runSweepCell, scheduleEvery, SWEEP_EVERY, sweepKey, sweepPoints, sweepScenario, sweepSeeds, type SweepRun } from "./sweep";
+import { COINS_METRIC, type RankMetric } from "../../../leaderboard/metric";
+import { clampSweepParams, runSweepCell, scheduleEvery, SWEEP_EVERY, sweepKey, sweepPoints, sweepScenario, sweepSeeds, sweepValue, type SweepRun } from "./sweep";
 import { SweepPool, type SweepWorkerLike } from "./sweepPool";
 import type { SweepRequest, SweepResponse } from "./protocol";
 
@@ -66,6 +67,27 @@ describe("frequency sweep", () => {
     // (three seeds: the median is the middle one)
     expect(sweepPoints(runs).find((p) => p.every === 2)?.effortAvg).toBeCloseTo(want);
     expect(sweepPoints(runs).find((p) => p.every === 1)?.profitPerDay).toBeNull();
+  });
+
+  it("measures the focus metric from the kept summaries: the same runs re-value without re-running", () => {
+    const withGains = (every: number, seed: number, wheat: number, sowdust: number, xp: number, profit = 1): SweepRun => ({
+      every,
+      seed,
+      ok: true,
+      error: null,
+      summary: { ...fakeSummary(profit, 2), bySource: { wheat: { wheat: wheat / 2, seeds: 9 }, sunflower: { wheat: wheat / 2 } }, sowdust: { wheat: sowdust / 2, carrot: sowdust / 2 }, farmingXp: xp } as RunSummary,
+    });
+    const runs = [withGains(1, 1, 200, 40, 1000), withGains(1, 2, 400, 80, 3000), withGains(1, 3, 600, 60, 2000)];
+    const at = (m: RankMetric) => sweepPoints(runs, sweepValue(m)).find((p) => p.every === 1)!.profitPerDay;
+    // Per simulated day (2 days): the crop over every source, Sowdust over every crop, XP.
+    expect(at({ by: "collection", crop: "wheat" })).toBe(200);
+    expect(at({ by: "collection", crop: "carrot" })).toBe(0);
+    expect(at({ by: "sowdust", crop: "wheat" })).toBe(30);
+    expect(at({ by: "xp", crop: "wheat" })).toBe(1000);
+    // Coins keep the caller's pricing.
+    expect(sweepPoints(runs, sweepValue(COINS_METRIC, () => 7))[0].profitPerDay).toBe(7);
+    // Old summaries (no sowdust / farmingXp / bySource) read 0, not NaN.
+    expect(sweepPoints([ok(1, 1, 5)], sweepValue({ by: "xp", crop: "wheat" }))[0].profitPerDay).toBe(0);
   });
 
   it("runs one cell with the engine", () => {

@@ -7,6 +7,7 @@ import { canBuy } from "../simulator/sim/market";
 import type { EffortKind, EffortSummary, SimulationState } from "../simulator/sim/state";
 import { uptimeRatio } from "../simulator/sim/summary";
 import type { StepLayout } from "../simulator/flow/types";
+import { GAIN_XP, SOWDUST_PREFIX } from "./gains";
 import { CUT_STEP, TRAIL_MIN, TRAIL_SHARE } from "./rules";
 
 /**
@@ -66,6 +67,8 @@ export interface TrailRates {
   bought: PerDay;
   shortfall: PerDay;
   bySource: Record<string, PerDay>;
+  /** Farming XP and Sowdust per day (see `RunResult.gains`); missing on old results. */
+  gains?: PerDay;
 }
 
 export interface RunResult {
@@ -92,6 +95,12 @@ export interface RunResult {
   halted: boolean;
   /** Harvest drops per day by the plant kind that dropped them: kind -> item -> per day. */
   bySource?: Record<string, PerDay>;
+  /**
+   * What harvests earned besides items, per day (gains.ts): `farming_xp` = Farming XP and
+   * `sowdust:<item>` = Sowdust by the crop item that made it. Built like `produced` (window means,
+   * trail, stitch). Missing on results from before 2026-11-19.
+   */
+  gains?: PerDay;
   /** Share of the run each plot spent in each step: plot id -> step id -> fraction (sums to ~1). */
   stepTime?: Record<string, Record<string, number>>;
   /** Seed results only: the rates over the run's last TRAIL_SHARE (dropped from stored cells). */
@@ -205,6 +214,8 @@ export interface CountSnapshot {
   bought: Record<ItemId, number>;
   shortfall: Record<ItemId, number>;
   bySource: Record<string, Record<ItemId, number>>;
+  /** Cumulative Farming XP (`farming_xp`) and Sowdust by crop item (`sowdust:<item>`), see gains.ts. Optional for older snapshots. */
+  gains?: Record<string, number>;
 }
 
 /** Cumulative counts at one cycle, with what the run owed. */
@@ -245,7 +256,16 @@ export function countSnapshot(state: SimulationState): CountSnapshot {
   }
   const bySource: CountSnapshot["bySource"] = {};
   for (const [k, items] of Object.entries(state.summary.bySource ?? {})) bySource[k] = { ...items };
-  return { cycle: state.cycle, seconds: state.elapsedSeconds, produced, consumed, bought: { ...(state.summary.market?.bought ?? {}) }, shortfall, bySource };
+  return { cycle: state.cycle, seconds: state.elapsedSeconds, produced, consumed, bought: { ...(state.summary.market?.bought ?? {}) }, shortfall, bySource, gains: gainCounts(state) };
+}
+
+/** A state's cumulative gains: Farming XP and Sowdust by crop item (positive only). */
+function gainCounts(state: SimulationState): Record<string, number> {
+  const out: Record<string, number> = {};
+  const xp = state.summary.farmingXp ?? 0;
+  if (xp > 0) out[GAIN_XP] = xp;
+  for (const [item, n] of Object.entries(state.summary.sowdust ?? {})) if (n > 0) out[SOWDUST_PREFIX + item] = n;
+  return out;
 }
 
 /** The first cycle of a run's trailing TRAIL_SHARE, for a run that ends at `to`. */
@@ -258,9 +278,10 @@ interface CutSums {
   bought: PerDay;
   shortfall: PerDay;
   bySource: Record<string, PerDay>;
+  gains: PerDay;
 }
 
-const emptySums = (): CutSums => ({ produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {} });
+const emptySums = (): CutSums => ({ produced: {}, consumed: {}, bought: {}, shortfall: {}, bySource: {}, gains: {} });
 
 /** Add one cut's counts per day to the sums; false (nothing added) when no time has passed. */
 function addCutTo(sums: CutSums, s: CountSnapshot): boolean {
@@ -273,6 +294,7 @@ function addCutTo(sums: CutSums, s: CountSnapshot): boolean {
   add(sums.consumed, s.consumed);
   add(sums.bought, s.bought);
   add(sums.shortfall, s.shortfall);
+  add(sums.gains, s.gains ?? {});
   for (const [k, items] of Object.entries(s.bySource)) add((sums.bySource[k] ??= {}), items);
   return true;
 }
@@ -284,13 +306,40 @@ function meanOf(sums: Readonly<PerDay>, cuts: number): PerDay {
 }
 
 /** The window means of the cut sums. */
-function windowMeans(sums: CutSums, cuts: number): Pick<RunResult, "produced" | "consumed" | "bought" | "shortfall"> & { bySource: Record<string, PerDay> } {
+function windowMeans(sums: CutSums, cuts: number): Pick<RunResult, "produced" | "consumed" | "bought" | "shortfall"> & { bySource: Record<string, PerDay>; gains: PerDay } {
   return {
     produced: meanOf(sums.produced, cuts),
     consumed: meanOf(sums.consumed, cuts),
     bought: meanOf(sums.bought, cuts),
     shortfall: meanOf(sums.shortfall, cuts),
     bySource: Object.fromEntries(Object.entries(sums.bySource).map(([k, m]) => [k, meanOf(m, cuts)])),
+    gains: meanOf(sums.gains, cuts),
+  };
+}
+
+/** Totals per day at one snapshot (a run without a cut in its window). */
+function endMeans(end: CountSnapshot, days: number): ReturnType<typeof windowMeans> {
+  return {
+    produced: perDay(end.produced, days),
+    consumed: perDay(end.consumed, days),
+    bought: perDay(end.bought, days),
+    shortfall: perDay(end.shortfall, days),
+    bySource: Object.fromEntries(Object.entries(end.bySource).map(([k, m]) => [k, perDay(m, days)])),
+    gains: perDay(end.gains ?? {}, days),
+  };
+}
+
+/** The per-day rates between two snapshots (a run's trail). */
+function trailBetween(t: CountSnapshot, end: CountSnapshot): TrailRates {
+  const d = (end.seconds - t.seconds) / 86400;
+  return {
+    from: t.cycle,
+    produced: rateBetween(t.produced, end.produced, d),
+    consumed: rateBetween(t.consumed, end.consumed, d),
+    bought: rateBetween(t.bought, end.bought, d),
+    shortfall: rateBetween(t.shortfall, end.shortfall, d),
+    bySource: nestedRateBetween(t.bySource, end.bySource, d),
+    gains: rateBetween(t.gains ?? {}, end.gains ?? {}, d),
   };
 }
 
@@ -313,11 +362,12 @@ export function joinSnapshots(first: CountSnapshot, s: CountSnapshot, cycle: num
     bought: addCounts(first.bought, s.bought),
     shortfall: addCounts(first.shortfall, s.shortfall),
     bySource,
+    gains: addCounts(first.gains ?? {}, s.gains ?? {}),
   };
 }
 
 /** What a timeline result keeps of its flow part (or, without one, its builder part). */
-export type TimelineRest = Omit<RunResult, "cycles" | "days" | "window" | "produced" | "consumed" | "bought" | "shortfall" | "bySource" | "trail" | "prep">;
+export type TimelineRest = Omit<RunResult, "cycles" | "days" | "window" | "produced" | "consumed" | "bought" | "shortfall" | "bySource" | "gains" | "trail" | "prep">;
 
 /**
  * The "from nothing" timeline's result (docs/plans/leaderboard-v3.md §3.3): the builder ran for
@@ -363,22 +413,14 @@ export function stitch(args: {
   const trailAt = at(trailStart(to));
   if (!end || !trailAt) throw new Error("stitch: no counts at the end or the trail's start");
   const days = end.seconds / 86400;
-  const means = cuts > 0 ? windowMeans(sums, cuts) : { produced: perDay(end.produced, days), consumed: perDay(end.consumed, days), bought: perDay(end.bought, days), shortfall: perDay(end.shortfall, days), bySource: Object.fromEntries(Object.entries(end.bySource).map(([k, m]) => [k, perDay(m, days)])) };
-  const d = (end.seconds - trailAt.seconds) / 86400;
+  const means = cuts > 0 ? windowMeans(sums, cuts) : endMeans(end, days);
   return {
     ...args.rest,
     cycles: to,
     days,
     window: { from, to, cuts },
     ...means,
-    trail: {
-      from: trailAt.cycle,
-      produced: rateBetween(trailAt.produced, end.produced, d),
-      consumed: rateBetween(trailAt.consumed, end.consumed, d),
-      bought: rateBetween(trailAt.bought, end.bought, d),
-      shortfall: rateBetween(trailAt.shortfall, end.shortfall, d),
-      bySource: nestedRateBetween(trailAt.bySource, end.bySource, d),
-    },
+    trail: trailBetween(trailAt, end),
     prep: { ...prep, kit: { ...prep.kit } },
   };
 }
@@ -561,17 +603,8 @@ export class RunRecorder {
     const end = this.snapshot(state);
     const days = state.elapsedSeconds / 86400;
     const reached = state.cycle >= this.plan.to;
-    let produced: PerDay, consumed: PerDay, bought: PerDay, shortfall: PerDay, bySource: Record<string, PerDay>;
-    if (this.cuts > 0) {
-      ({ produced, consumed, bought, shortfall, bySource } = windowMeans(this.sums, this.cuts));
-    } else {
-      // The run stopped before the window (a failed seed): totals per day at the end.
-      produced = perDay(end.produced, days);
-      consumed = perDay(end.consumed, days);
-      bought = perDay(end.bought, days);
-      shortfall = perDay(end.shortfall, days);
-      bySource = Object.fromEntries(Object.entries(end.bySource).map(([k, m]) => [k, perDay(m, days)]));
-    }
+    // Without a cut the run stopped before the window (a failed seed): totals per day at the end.
+    const { produced, consumed, bought, shortfall, bySource, gains } = this.cuts > 0 ? windowMeans(this.sums, this.cuts) : endMeans(end, days);
     const market = state.summary.market;
     const out: RunResult = {
       cycles: state.cycle,
@@ -587,20 +620,10 @@ export class RunRecorder {
       effort: effortResult(state.summary.effort),
       halted: !!state.scripts?.halt,
       bySource,
+      gains,
       stepTime: stepTimeOf(state),
     };
-    if (reached && this.trailSnap) {
-      const t = this.trailSnap;
-      const d = (end.seconds - t.seconds) / 86400;
-      out.trail = {
-        from: t.cycle,
-        produced: rateBetween(t.produced, end.produced, d),
-        consumed: rateBetween(t.consumed, end.consumed, d),
-        bought: rateBetween(t.bought, end.bought, d),
-        shortfall: rateBetween(t.shortfall, end.shortfall, d),
-        bySource: nestedRateBetween(t.bySource, end.bySource, d),
-      };
-    }
+    if (reached && this.trailSnap) out.trail = trailBetween(this.trailSnap, end);
     const config = state.scenario.settings.config;
     if (config.allowMutationDebt === true || config.bootstrapDebt === true) {
       const upkeep: Record<ItemId, number> = {};
@@ -687,7 +710,10 @@ export function median(values: readonly number[]): number {
 export function trailResult(r: RunResult): RunResult {
   const { trail, ...rest } = r;
   if (!trail) return rest;
-  return { ...rest, produced: trail.produced, consumed: trail.consumed, bought: trail.bought, shortfall: trail.shortfall, bySource: trail.bySource };
+  const out: RunResult = { ...rest, produced: trail.produced, consumed: trail.consumed, bought: trail.bought, shortfall: trail.shortfall, bySource: trail.bySource };
+  // A trail without gains (an older result) keeps the window's, as SkyShards-API stats.trail_result does.
+  if (trail.gains) out.gains = trail.gains;
+  return out;
 }
 
 /**

@@ -30,6 +30,8 @@ export interface ViewerStats {
   plantYieldUpgrade: number;
   evergreenChip: number;
   overbloom: number;
+  /** Farming Wisdom: Farming XP × (1 + wisdom / 100). Scales the stored Farming XP only. */
+  farmingWisdom: number;
   armorSet: ArmorSet;
   /** Crop-specific fortune on top of `farmingFortune` (missing crop = 0). Empty = none. */
   cropFortune: CropFortune;
@@ -53,6 +55,7 @@ export function defaultViewerStats(): ViewerStats {
     plantYieldUpgrade: s.plantYieldUpgrade,
     evergreenChip: s.evergreenChip,
     overbloom: s.overbloom,
+    farmingWisdom: 0,
     armorSet: s.armorSet,
     cropFortune: {},
     tools: [],
@@ -105,6 +108,7 @@ export function readViewerStats(raw: unknown): ViewerStats {
     plantYieldUpgrade: num(r.plantYieldUpgrade, d.plantYieldUpgrade),
     evergreenChip: num(r.evergreenChip, d.evergreenChip),
     overbloom: num(r.overbloom, d.overbloom),
+    farmingWisdom: Math.max(0, num(r.farmingWisdom, d.farmingWisdom)),
     armorSet: ARMOR_SETS.includes(r.armorSet as ArmorSet) ? (r.armorSet as ArmorSet) : d.armorSet,
     cropFortune: readCropFortune(r.cropFortune),
     tools: readTools(r.tools),
@@ -132,13 +136,14 @@ function loadViewerStats(): { stats: ViewerStats; source: "saved" | "simulator" 
   return sim ? { stats: sim, source: "simulator" } : { stats: defaultViewerStats(), source: "default" };
 }
 
-/** The yield part of the viewer's stats; the per-crop terms only when set, so none = the server's shape. */
+/** The yield part of the viewer's stats; the per-crop terms and wisdom only when set, so none = the server's shape. */
 export const yieldOf = (s: ViewerStats): YieldStats => ({
   farmingFortune: s.farmingFortune,
   plantYieldUpgrade: s.plantYieldUpgrade,
   evergreenChip: s.evergreenChip,
   overbloom: s.overbloom,
   armorSet: s.armorSet,
+  ...(s.farmingWisdom > 0 ? { farmingWisdom: s.farmingWisdom } : {}),
   ...(Object.keys(s.cropFortune).length ? { cropFortune: s.cropFortune } : {}),
   ...(s.tools.length ? { tools: s.tools } : {}),
 });

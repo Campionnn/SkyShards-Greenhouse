@@ -2,6 +2,8 @@ import type { Engine } from "../../../simulator/engine";
 import { effortPerSession, type ActivitySchedule, type RunSummary, type Scenario } from "../../../simulator";
 import { EVERY } from "../../../leaderboard/tiers";
 import { mcPoints, type McPoint } from "../../../leaderboard/montecarlo";
+import type { RankMetric } from "../../../leaderboard/metric";
+import { metricPerDay } from "../focusMetric";
 
 /**
  * "Profit by online frequency" for the simulator page: the user's own scenario, as is, re-run with
@@ -111,11 +113,22 @@ export function summaryProfitPerDay(s: RunSummary): number {
   return s.elapsedSeconds > 0 ? s.profit / (s.elapsedSeconds / 86400) : 0;
 }
 
+/**
+ * The value a sweep run is measured by under a focus metric (per simulated day): coins priced by
+ * `price` (NPC profit, or the page's Bazaar pricing), else the crop's harvested units, Sowdust or
+ * Farming XP from the run's summary. Runs keep only their summary, so changing the metric
+ * re-values a finished sweep without running it again.
+ */
+export function sweepValue(metric: RankMetric, price: (s: RunSummary) => number = summaryProfitPerDay): (s: RunSummary) => number {
+  return metric.by === "coins" ? price : (s) => metricPerDay(s, metric, price);
+}
+
 export type SweepPoint = McPoint;
 
 /**
- * The chart's points: per frequency, the distribution of profit per day over the finished seeds
- * (median, average, 90% range), priced by `price` (the page passes Bazaar pricing in normal profile).
+ * The chart's points: per frequency, the distribution of the measured value per day over the
+ * finished seeds (median, average, 90% range), valued by `price` (profit per day by default; the
+ * page passes Bazaar pricing in normal profile, or `sweepValue` for another focus metric).
  */
 export function sweepPoints(runs: readonly SweepRun[], price: (s: RunSummary) => number = summaryProfitPerDay, grid: readonly number[] = SWEEP_EVERY): SweepPoint[] {
   return mcPoints(

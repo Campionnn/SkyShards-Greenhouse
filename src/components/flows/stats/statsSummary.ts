@@ -29,6 +29,7 @@ const KEYS: (keyof ViewerStats)[] = [
   "plantYieldUpgrade",
   "evergreenChip",
   "overbloom",
+  "farmingWisdom",
   "armorSet",
 ];
 

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { FlowDetail } from "../../../leaderboard/api";
+import { sowdustPerDay, xpPerDay } from "../../../leaderboard/gains";
 import { valueResult } from "../../../leaderboard/pricing";
 import type { CellKind } from "../../../leaderboard/rules";
 import type { TierId } from "../../../leaderboard/tiers";
@@ -101,6 +102,11 @@ export function detailModel(detail: FlowDetail, viewer: FlowViewer) {
     spread: cell ? spreadAt(cell.spread, viewer.every) : null,
     seedCount: cell?.seeds ?? 0,
 
+    /** Sowdust and Farming XP per day of the shown cell (null: an older cell without them). */
+    sowdustPerDay: shown && shown.result.gains ? sowdustPerDay(shown.result.gains) : null,
+    xpPerDay: shown && shown.result.gains ? xpPerDay(shown.result.gains) : null,
+    /** Every base crop harvested per day, for a collection fact (`by=collection&crop=…` from the ranking). */
+    produced: shown?.result.produced ?? null,
     supplies: shown ? suppliesText(suppliesOf(shown.result)) : "none",
     mutationsPerDay: shown ? mutationsPerDay(DATA, shown.result) : 0,
     kitSummary: median ? kitSummaryText(median) : null,

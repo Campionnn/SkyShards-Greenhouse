@@ -7,8 +7,9 @@ import { FlowRowItem, PhoneRowItem } from "../components/flows/ranking/RankingRo
 import { KeyButton, ListEmpty, ListError, ListNoMatch, ListSkeleton, PricesChip, ReloadButton, SortHead, SortMenu } from "../components/flows/ranking/RankingParts";
 import { EFFORT_HINT } from "../components/flows/flowsDisplay";
 import { BazaarPriceDialog } from "../components/simulator/BazaarPanels";
-import { CantMakeSection } from "../components/flows/ranking/SetApart";
-import { BOARD_INTRO, facetCounts, filtersActive, ROW_COLS } from "../components/flows/ranking/rankingHelpers";
+import { CantMakeSection, NoneOfSection } from "../components/flows/ranking/SetApart";
+import { nameOf } from "../components/simulator/format";
+import { BOARD_INTRO, facetCounts, filtersActive, ROW_COLS, sortHint } from "../components/flows/ranking/rankingHelpers";
 import { PHONE_QUERY, useMedia } from "../components/flows/ranking/useMedia";
 import { FrequencyPicker } from "../components/flows/stats/FrequencyPicker";
 import { StatsDrawer } from "../components/flows/stats/StatsDrawer";
@@ -22,12 +23,16 @@ import { useFlowLikes, useLikeReplay } from "../hooks/useFlowLikes";
 import { useFlowViewer, type FlowViewer } from "../hooks/useFlowViewer";
 import type { FlowListResponse } from "../leaderboard/api";
 import { cycleHours } from "../leaderboard/tiers";
+import { RankByControl } from "../components/flows/ranking/RankByControl";
 import {
   CELL_KIND_LABEL,
   DEFAULT_FILTERS,
   earningOptions,
+  listMetric,
   matchesFilters,
-  maxProfit,
+  maxValue,
+  metricName,
+  metricUnit,
   rankEntries,
   readListParams,
   sortRows,
@@ -37,6 +42,7 @@ import {
   writeListParams,
   type FlowRow,
   type ListParams,
+  type RankMetric,
   type RowFilters,
   type SortKey,
 } from "../leaderboard/view";
@@ -136,6 +142,8 @@ export const FlowsPage: React.FC = () => {
     ),
   );
   const { plots, sort, filters } = params;
+  const metric = useMemo(() => listMetric(params), [params]);
+  const setMetric = (m: RankMetric) => setParams({ by: m.by, crop: m.crop });
   // The search box types into local state; the URL follows (so typing doesn't push history entries per key).
   const [query, setQuery] = useState(filters.query);
   useEffect(() => setQuery(filters.query), [filters.query]);
@@ -174,25 +182,28 @@ export const FlowsPage: React.FC = () => {
   const entries = useMemo(() => withLikeCounts(all, likes.counts), [all, likes.counts]);
   const ranked = useMemo(
     () =>
-      rankEntries(DATA, entries, { board, kit, hideStalling: filters.noStall, quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true, now }, viewer.every),
-    [entries, board, kit, filters.noStall, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.every, now],
+      rankEntries(DATA, entries, { board, kit, hideStalling: filters.noStall, quotes: viewer.quotes, pricing: viewer.bazaar.pricing, viewerStats: viewer.viewerStats, useMyStats: true, now, metric }, viewer.every),
+    [entries, board, kit, filters.noStall, viewer.quotes, viewer.bazaar.pricing, viewer.viewerStats, viewer.every, now, metric],
   );
   const options = useMemo(() => earningOptions(ranked), [ranked]);
   const effective = useMemo<RowFilters>(() => ({ ...filters, query }), [filters, query]);
   const shown = useMemo(() => sortRows(ranked.filter((r) => matchesFilters(r, effective, board)), sort), [ranked, effective, board, sort]);
   // "From nothing": flows whose starting items can't be made (or that stop) take no place; they are listed apart (filtered and sorted the same way).
-  const { ranked: shownRanked, cantMake: shownBlocked } = useMemo(() => splitRanked(shown), [shown]);
+  // Ranked by a collection: flows that make none of the crop take no place either; they are listed after, collapsed.
+  const { ranked: shownRanked, cantMake: shownBlocked, none: shownNone } = useMemo(() => splitRanked(shown), [shown]);
   const allSplit = useMemo(() => splitRanked(ranked), [ranked]);
-  const counts = useMemo(() => facetCounts(allSplit.ranked), [allSplit.ranked]);
+  // Filter counts cover every flow the list can show (a crop ranking's "don't make" rows too), so they don't change with the crop.
+  const listed = useMemo(() => [...allSplit.ranked, ...allSplit.none], [allSplit]);
+  const counts = useMemo(() => facetCounts(listed), [listed]);
   // With the starting items: flows that stall from nothing (they need a large stockpile), counted whether or not they are set apart.
   const stockpileCount = useMemo(() => ranked.filter((r) => r.stallsFromNothing === true).length, [ranked]);
   const stockpileMode = board === "ironman" && kit;
   const plotCounts = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const r of allSplit.ranked) out[String(r.entry.plots)] = (out[String(r.entry.plots)] ?? 0) + 1;
+    for (const r of listed) out[String(r.entry.plots)] = (out[String(r.entry.plots)] ?? 0) + 1;
     return out;
-  }, [allSplit.ranked]);
-  const top = maxProfit(ranked);
+  }, [listed]);
+  const top = maxValue(ranked);
   const filtered = filtersActive(effective, board);
   const clearAll = () => {
     setQuery("");
@@ -215,6 +226,37 @@ export const FlowsPage: React.FC = () => {
 
   const Row = phone ? PhoneRowItem : FlowRowItem;
   const hoursPerCycle = cycleHours(viewer.stats);
+  const rowOf = (row: FlowRow, i: number) => (
+    <Row
+      key={row.entry.id}
+      row={row}
+      top={top}
+      metric={metric}
+      every={viewer.every}
+      board={board}
+      kit={kit}
+      index={i}
+      sort={sort}
+      like={likeFor(row)}
+      open={peek === row.entry.id}
+      onPeek={() => setPeek((p) => (p === row.entry.id ? null : row.entry.id))}
+      rankingSearch={rankingSearch}
+      hoursPerCycle={hoursPerCycle}
+      onEvery={viewer.setEvery}
+    />
+  );
+  const crop = nameOf(metric.crop);
+  const nothingRanked = shownNone.length
+    ? filtered
+      ? `No flow that makes ${crop} matches these filters.`
+      : `No flow makes ${crop} yet.`
+    : stockpileMode
+      ? filtered
+        ? "No flow that runs without a stockpile matches these filters."
+        : "No flow runs without a stockpile yet."
+      : filtered
+        ? "No flow ranked from nothing matches these filters."
+        : "No flow is ranked from nothing yet.";
   const list = loading ? (
     <ListSkeleton phone={phone} />
   ) : result?.error ? (
@@ -225,27 +267,13 @@ export const FlowsPage: React.FC = () => {
     <ListNoMatch query={effective.query} onClear={filtered ? clearAll : undefined} />
   ) : (
     <>
-      {shownRanked.length === 0 && <p className="py-6 text-center text-body text-fg-muted">{stockpileMode ? (filtered ? "No flow that runs without a stockpile matches these filters." : "No flow runs without a stockpile yet.") : filtered ? "No flow ranked from nothing matches these filters." : "No flow is ranked from nothing yet."}</p>}
-      <ol data-testid="flows-list">
-        {shownRanked.map((row, i) => (
-          <Row
-            key={row.entry.id}
-            row={row}
-            top={top}
-            every={viewer.every}
-            board={board}
-            kit={kit}
-            index={i}
-            sort={sort}
-            like={likeFor(row)}
-            open={peek === row.entry.id}
-            onPeek={() => setPeek((p) => (p === row.entry.id ? null : row.entry.id))}
-            rankingSearch={rankingSearch}
-            hoursPerCycle={hoursPerCycle}
-            onEvery={viewer.setEvery}
-          />
-        ))}
-      </ol>
+      {shownRanked.length === 0 && <p className="py-6 text-center text-body text-fg-muted">{nothingRanked}</p>}
+      <ol data-testid="flows-list">{shownRanked.map(rowOf)}</ol>
+      {shownNone.length > 0 && (
+        <NoneOfSection key={`${metric.crop}-${shownRanked.length === 0 ? "only" : "rest"}`} crop={metric.crop} count={shownNone.length} defaultOpen={shownRanked.length === 0}>
+          {shownNone.map(rowOf)}
+        </NoneOfSection>
+      )}
       {shownBlocked.length > 0 && (
         <CantMakeSection
           key={shownRanked.length === 0 ? "only" : "rest"}
@@ -269,6 +297,7 @@ export const FlowsPage: React.FC = () => {
   const counted = !loading && !result?.error && (
     <span className="text-secondary tabular-nums text-fg-meta">
       {allSplit.ranked.length} ranked{allSplit.cantMake.length ? ` · ${allSplit.cantMake.length} set apart` : ""}
+      {allSplit.none.length ? ` · ${allSplit.none.length} without ${nameOf(metric.crop)}` : ""}
     </span>
   );
 
@@ -293,7 +322,7 @@ export const FlowsPage: React.FC = () => {
       onClose={() => setStatsOpen(false)}
       footer={
         <KitButton variant="primary" size={phone ? "touch" : "md"} className="w-full" onClick={() => setStatsOpen(false)}>
-          {loading ? "Show the flows" : `Show ${allSplit.ranked.length} flows`}
+          {loading ? "Show the flows" : `Show ${listed.length} flows`}
         </KitButton>
       }
     />
@@ -336,6 +365,7 @@ export const FlowsPage: React.FC = () => {
           {boardHint}
           <StatsChip viewer={viewer} onOpen={() => setStatsOpen(true)} className="flex-1" />
         </div>
+        <RankByControl metric={metric} onMetric={setMetric} phone />
         <FrequencyPicker viewer={viewer} className="[&>[role=radiogroup]]:flex-1" />
         <SearchBox value={query} onChange={setQuery} />
         <FilterBar
@@ -352,7 +382,7 @@ export const FlowsPage: React.FC = () => {
           className="overflow-x-auto pb-0.5 scrollbar-none"
           lead={
             <>
-              <SortMenu sort={sort} onSort={setSort} all />
+              <SortMenu sort={sort} onSort={setSort} all metric={metric} />
               {board === "ironman" && <KitSwitch viewer={viewer} className="shrink-0 px-1 whitespace-nowrap" />}
             </>
           }
@@ -394,7 +424,8 @@ export const FlowsPage: React.FC = () => {
         {editPrices && <PricesChip viewer={viewer} onOpen={editPrices} />}
         <SearchBox value={query} onChange={setQuery} className="ml-auto max-w-[15rem] min-w-[10rem] flex-1" />
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <RankByControl metric={metric} onMetric={setMetric} />
         <FrequencyPicker viewer={viewer} />
       </div>
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
@@ -410,7 +441,7 @@ export const FlowsPage: React.FC = () => {
           lead={<PlotsField value={plots} onChange={setPlots} counts={plotCounts} />}
         />
         <span className="ml-auto flex items-center gap-1.5">
-          <SortMenu sort={sort} onSort={setSort} />
+          <SortMenu sort={sort} onSort={setSort} metric={metric} />
           <span aria-hidden className="h-4 w-px bg-line" />
           <KeyButton viewer={viewer} now={now} onEditPrices={editPrices} />
           <ReloadButton loading={loading} onReload={() => setReload((n) => n + 1)} />
@@ -419,7 +450,7 @@ export const FlowsPage: React.FC = () => {
       {truncated}
       <div role="table" aria-label="Ranked flows" aria-busy={loading || undefined}>
         <div role="row" className={cn("grid items-center gap-x-3 border-b border-line px-2 pb-1.5", ROW_COLS)}>
-          <span role="columnheader" className="text-right text-label text-fg-meta" title="Profit rank">
+          <span role="columnheader" className="text-right text-label text-fg-meta" title={`Rank by ${metricName(metric).toLowerCase()} per day`}>
             #
           </span>
           <span role="columnheader">
@@ -431,8 +462,11 @@ export const FlowsPage: React.FC = () => {
           <span role="columnheader" className="hidden text-label uppercase text-fg-meta @min-[60rem]:block">
             {board === "ironman" ? "Earns most · upkeep" : "Earns most"}
           </span>
-          <SortHead sort={sort} k="profit" onSort={setSort} label="profit" align="end">
-            Coins/day
+          <SortHead sort={sort} k="profit" onSort={setSort} label={metric.by === "coins" ? "profit" : metricName(metric).toLowerCase()} hintText={sortHint("profit", metric)} align="end">
+            {/* The unit sits under every number, so a long one ("Farming XP/day") is just the name here. */}
+            <span className="truncate" title={metricUnit(metric)}>
+              {metric.by === "coins" ? "Coins/day" : metricName(metric)}
+            </span>
           </SortHead>
           <SortHead sort={sort} k="effort" onSort={setSort} label="least effort" hint={<InfoHint title="Effort" label="What effort means" className="hidden @min-[60rem]:inline-flex">{EFFORT_HINT}</InfoHint>}>
             Effort

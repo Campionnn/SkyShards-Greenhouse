@@ -4,6 +4,7 @@ import { bountyFromRoll, ETHEREAL_VINE_BY_RARITY } from "../economy/bounty";
 import { valueOf } from "../economy/prices";
 import { armorRareCrops, GREENHOUSE_RARE_CROP_CHANCE, overbloomMultiplier, rollRareCount } from "../economy/rareCrops";
 import { bestTool, hasPerCropFortune, itemFortune } from "../economy/fortune";
+import { harvestFarmingXp, harvestSowdust } from "../economy/sowdust";
 import { chloroniteDropCount, farmingFortuneMultiplier, greenhouseYieldSum, harvestYield, jellybeanMultiplier, yieldScaledCount } from "../economy/yield";
 import { chance, nextFloat } from "../rng";
 import { ALOE_FRAGMENT, aloeRow, FRAGMENTS_PER_ALOE } from "../growth/aloe";
@@ -56,11 +57,16 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   // scenario without it keeps the single-multiplier path byte for byte.
   const stats = ctx.stats;
   let ff: number | ((item: string) => number);
+  // The fortune each item's drops get, also what scales its Sowdust.
+  let fortuneOf: (item: string) => number;
   if (hasPerCropFortune(stats)) {
     const tool = bestTool(baseDrops, stats.tools, (item) => ctx.prices.price(item));
-    ff = (item) => farmingFortuneMultiplier(itemFortune(stats, item, tool));
+    fortuneOf = (item) => itemFortune(stats, item, tool);
+    ff = (item) => farmingFortuneMultiplier(fortuneOf(item));
   } else {
-    ff = farmingFortuneMultiplier(stats.farmingFortune);
+    const general = stats.farmingFortune;
+    fortuneOf = () => general;
+    ff = farmingFortuneMultiplier(general);
   }
   const drops = harvestYield(baseDrops, ff, sum, stats.evergreenChip);
   // Patch fix: Plant Yield bonuses no longer apply to mutation items or Ethereal Vine.
@@ -158,6 +164,13 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   summary.revenue.mutationItems += itemValue;
   summary.revenue.crops += coinValue - rareValue - rareCropValue - itemValue;
   for (const item in rareCrops) bump(summary.rareCrops, item, rareCrops[item]);
+  // Sowdust (from the crop bundle before yield, scaled by fortune only) and Farming XP (the kind's
+  // loot multiplier × the bundle's stage multiplier, XP effects, Farming Wisdom). No rolls.
+  // Missing in old states: created on first use.
+  const sowdust = harvestSowdust(baseDrops, fortuneOf);
+  const sowdustSummary = (summary.sowdust ??= {});
+  for (const item in sowdust) bump(sowdustSummary, item, sowdust[item]);
+  summary.farmingXp = (summary.farmingXp ?? 0) + harvestFarmingXp(def.multiplier, effective, stats.farmingWisdom, bundleMult);
   bump(summary.harvested, p.kindId);
   effortHarvest(ctx.state, p.kindId);
   const pp = perPlot(summary, plot.id);

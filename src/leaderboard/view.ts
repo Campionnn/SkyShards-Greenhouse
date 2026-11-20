@@ -5,9 +5,13 @@ import { RARE_CROP_ITEMS } from "../simulator/economy/rareCrops";
 import { formatCoins, nameOf } from "../components/simulator/format";
 import type { AuthUser, CurvePoint, FlowAuthor, FlowCell, FlowListEntry, Spread, SpreadInfo, Timestamp } from "./api";
 import { buyPrice, scaleResult, sellPrice, slack, valueResult, yieldStatsDiffer, type Quotes, type YieldStats } from "./pricing";
+import { sowdustPerDay as sowdustOf, xpPerDay as xpOf } from "./gains";
+import { COINS_METRIC, DEFAULT_COLLECTION_CROP, RANK_BY_LABEL, readMetric, type RankBy, type RankMetric } from "./metric";
 import { CANT_START_CELLS, cellResult, spreadRatio, type PrepInfo, type RunResult, type StarvedCells } from "./result";
 import { boardFrom, CELL_KIND_RUN_KIND, cellKindFrom, cellKindOf, kitFromBoard, type Board, type CellKind, type RuleKind } from "./rules";
 import { EVERY, type TierId } from "./tiers";
+
+export { COLLECTION_CROPS, type RankBy, type RankMetric } from "./metric";
 
 /**
  * The leaderboard page's pure view logic (docs/plans/flow-leaderboard.md §7): price the stored
@@ -142,6 +146,59 @@ export interface ViewSettings {
   useMyStats: boolean;
   /** For the `new` badge. */
   now: number;
+  /** What the ranking measures (docs/plans/sowdust-xp-collection.md); missing = coins. */
+  metric?: RankMetric;
+}
+
+// ---- Rank metrics: coins, one crop's collection, Sowdust, Farming XP ---------------------------
+
+/** The metric names ("Coins", "Collection", "Sowdust", "Farming XP"). */
+export const METRIC_LABEL: Record<RankBy, string> = RANK_BY_LABEL;
+
+/** A metric's own name: the crop's for a collection ("Wheat"), else its label. */
+export const metricName = (m: RankMetric): string => (m.by === "collection" ? nameOf(m.crop) : METRIC_LABEL[m.by]);
+
+/** "Coins/day", "Wheat/day", "Sowdust/day", "Farming XP/day". */
+export const metricUnit = (m: RankMetric): string => `${metricName(m)}/day`;
+
+/** A count in a few characters: "950", "9.5", "12.3k", "123k", "1.2M", "2.35B". */
+export function formatCompact(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  const trim = (s: string) => s.replace(/\.0+$/, "");
+  if (abs >= 1e9) return `${sign}${trim((abs / 1e9).toFixed(2))}B`;
+  if (abs >= 1e6) return `${sign}${trim((abs / 1e6).toFixed(1))}M`;
+  if (abs >= 1e5) return `${sign}${Math.round(abs / 1e3)}k`;
+  if (abs >= 1e3) return `${sign}${trim((abs / 1e3).toFixed(1))}k`;
+  if (abs >= 10) return `${sign}${Math.round(abs)}`;
+  if (abs > 0) return `${sign}${trim(abs.toFixed(1))}`;
+  return "0";
+}
+
+/** A metric's number: coins as `formatCoins`, counts compact ("12.3k"); "—" for null. */
+export function formatMetric(m: RankMetric, n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  return m.by === "coins" ? formatCoins(n) : formatCompact(n);
+}
+
+/**
+ * A result's number per day under a metric: `coins` (the caller's valuation) for coins, the crop's
+ * units for a collection, the summed Sowdust or the Farming XP from `gains`. Null when the result
+ * has no `gains` (older cells) for Sowdust / Farming XP, or for coins without `coins`.
+ */
+export function metricOf(result: Pick<RunResult, "produced" | "gains">, metric: RankMetric, coins: number | null = null): number | null {
+  switch (metric.by) {
+    case "coins":
+      return coins;
+    case "collection": {
+      const n = isRecord(result.produced) ? result.produced[metric.crop] : undefined;
+      return finite(n) && n > 0 ? n : 0;
+    }
+    case "sowdust":
+      return isRecord(result.gains) ? sowdustOf(result.gains) : null;
+    case "xp":
+      return isRecord(result.gains) ? xpOf(result.gains) : null;
+  }
 }
 
 export interface RowBadges {
@@ -161,8 +218,25 @@ export interface RevenueSplit {
 export interface FlowRow {
   entry: FlowListEntry;
   rank: number;
-  /** Null when the entry has no verified cell yet. */
+  /** Coins per day (whatever the metric). Null when the entry has no verified cell yet. */
   profitPerDay: number | null;
+  /**
+   * The ranked number per day under `ViewSettings.metric` (= `profitPerDay` for coins). Null without
+   * a cell, or for Sowdust / Farming XP on a cell from before they were recorded.
+   */
+  value: number | null;
+  /** Sowdust per day (every crop summed); null without a cell or gains. */
+  sowdustPerDay: number | null;
+  /** Farming XP per day; null without a cell or gains. */
+  xpPerDay: number | null;
+  /** The picked crop's units per day when the metric is a collection, else null. */
+  collectionPerDay: number | null;
+  /**
+   * Ranked by a collection, the flow makes none of that crop (verified value 0): it takes no place
+   * (rank 0) and the page lists it apart ("Don't make Wheat"). False for every other metric (every
+   * harvest gives some Sowdust and Farming XP) and for rows without a value.
+   */
+  noneOfMetric: boolean;
   revenuePerDay: number | null;
   boughtPerDay: number | null;
   buildCost: number | null;
@@ -174,14 +248,14 @@ export interface FlowRow {
   mutationsPerDay: number | null;
   effortAvg: number | null;
   effortPeak: number | null;
-  /** Coins per day per unit of effort per login. */
+  /** The ranked value (`value`: coins per day for coins) per unit of effort per login. */
   perEffort: number | null;
   /** Target mutations, most earning first. */
   earning: { id: ItemId; coinsPerDay: number | null }[];
   uptime: number | null;
-  /** From the row's frequency curve (the API's when it sends one). */
+  /** From the row's frequency curve of the ranked metric (the API's when it sends one, coins only). */
   slack: number | null;
-  /** Profit per day at every grid frequency (null where not verified). */
+  /** The ranked value per day at every grid frequency, in `profitPerDay` (null where not verified or unknown). */
   curve: FrequencyPoint[];
   /** Counts were scaled to the viewer's yield stats (an estimate). */
   scaled: boolean;
@@ -222,7 +296,7 @@ export interface FlowRow {
    * large stockpile. Set apart like `cantMake` / `stops` (rank 0, its own section).
    */
   stockpile: boolean;
-  /** Ironman: the other ironman variant at the same tier / every (`altPoint`), priced; null when unknown. */
+  /** Ironman: the other ironman variant at the same tier / every (`altPoint`), priced in coins; null when unknown. */
   altPerDay: number | null;
   /** Ironman: how the starting items are made (the "from nothing" cell's `prep`); null when unknown. */
   prep: PrepInfo | null;
@@ -301,13 +375,28 @@ export function pricePoint(data: GameData, p: Pick<CurvePoint, "produced" | "bou
   return valueResult(data, result, s.board, s.board === "normal" ? s.quotes : {}, s.pricing ?? DEFAULT_BAZAAR_PRICING).profitPerDay;
 }
 
-/** A list row's frequency curve, priced for the viewer (null where the API sent no point). */
+type PointLike = Pick<CurvePoint, "produced" | "bought"> & { consumed?: CurvePoint["consumed"]; gains?: CurvePoint["gains"] };
+
+/**
+ * A curve point's number under a metric, for the viewer (scaled to their stats when asked): coins
+ * = `pricePoint`, else `metricOf` on the scaled point. Null for Sowdust / Farming XP on a point
+ * without `gains` (older APIs and cells).
+ */
+export function pointValue(data: GameData, p: PointLike, s: Pick<ViewSettings, "board" | "quotes" | "pricing" | "viewerStats" | "useMyStats">, metric: RankMetric = COINS_METRIC): number | null {
+  if (metric.by === "coins") return pricePoint(data, p, s);
+  const asResult: RunResult = { ...EMPTY_RESULT, produced: isRecord(p.produced) ? p.produced : {}, bought: isRecord(p.bought) ? p.bought : {}, consumed: isRecord(p.consumed) ? p.consumed : {} };
+  if (isRecord(p.gains)) asResult.gains = p.gains as Record<string, number>;
+  return metricOf(viewerResult(data, asResult, s).result, metric);
+}
+
+/** A list row's frequency curve of the ranked metric, for the viewer (null where the API sent no point, or the point lacks the metric). */
 export function rowCurve(data: GameData, entry: FlowListEntry, s: ViewSettings): FrequencyPoint[] {
   const curve = entry.curve ?? {};
+  const metric = s.metric ?? COINS_METRIC;
   return EVERY.map((every) => {
     const p = curve[String(every)];
     if (!p || typeof p !== "object") return { every, profitPerDay: null };
-    return { every, profitPerDay: pricePoint(data, p, s) };
+    return { every, profitPerDay: pointValue(data, p, s, metric) };
   });
 }
 
@@ -334,6 +423,7 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
     new: Number.isFinite(created) && s.now - created >= 0 && s.now - created < NEW_FOR_MS,
   };
   const effort = entry.effort ?? entry.cell?.effort ?? null;
+  const metric = s.metric ?? COINS_METRIC;
   const curve = rowCurve(data, entry, s);
   const derivedSlack = slackFrom(curve, every);
   const base = {
@@ -342,7 +432,8 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
     effortAvg: effort ? effort.avg : null,
     effortPeak: effort ? effort.peak : null,
     uptime: entry.cell ? entry.cell.uptime : null,
-    slack: typeof entry.slack === "number" ? entry.slack : derivedSlack,
+    // A precomputed Slack would be the coins one: it only stands in when ranking by coins.
+    slack: typeof entry.slack === "number" && metric.by === "coins" ? entry.slack : derivedSlack,
     curve,
     badges,
   };
@@ -352,6 +443,11 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
     return {
       ...base,
       profitPerDay: null,
+      value: null,
+      sowdustPerDay: null,
+      xpPerDay: null,
+      collectionPerDay: null,
+      noneOfMetric: false,
       revenuePerDay: null,
       boughtPerDay: null,
       buildCost: null,
@@ -383,6 +479,8 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
   const altPerDay = alt ? pricePoint(data, alt, s) : null;
   const prep = s.board === "ironman" ? prepOf(entry, cell, !!s.kit) : null;
   const stallsFromNothing = s.board === "ironman" && s.kit ? stallsFromNothingOf(alt, altPerDay, v.profitPerDay, prep, cell) : false;
+  const value = metricOf(result, metric, v.profitPerDay);
+  const hasGains = isRecord(result.gains);
   return {
     ...base,
     cantMake: s.board === "ironman" && !s.kit && prep && !prep.done ? prep : null,
@@ -399,12 +497,17 @@ export function flowRow(data: GameData, entry: FlowListEntry, s: ViewSettings, e
     search,
     earning: earningTargets(data, targets, result.bySource, s.board, quotes, pricing),
     profitPerDay: v.profitPerDay,
+    value,
+    sowdustPerDay: hasGains ? sowdustOf(result.gains) : null,
+    xpPerDay: hasGains ? xpOf(result.gains) : null,
+    collectionPerDay: metric.by === "collection" ? value : null,
+    noneOfMetric: metric.by === "collection" && value !== null && value <= 0,
     revenuePerDay: v.revenuePerDay,
     boughtPerDay: v.boughtPerDay,
     buildCost: v.buildCost,
     split: revenueSplit(data, result, s.board, quotes, pricing),
     mutationsPerDay: mutationsPerDay(data, result),
-    perEffort: effort && effort.avg > 0 ? v.profitPerDay / effort.avg : null,
+    perEffort: effort && effort.avg > 0 && value !== null ? value / effort.avg : null,
     scaled,
     unpriced: v.unpriced,
   };
@@ -581,40 +684,52 @@ export function builderText(p: PrepInfo): string {
  * value share the last rank after every valued one. (`rankEntries` gives rows whose starting
  * items can't be made within the run rank 0 instead.)
  */
-export function rank<T extends { profitPerDay: number | null }>(sorted: readonly T[]): (T & { rank: number })[] {
+export function rank<T extends { profitPerDay?: number | null; value?: number | null }>(sorted: readonly T[]): (T & { rank: number })[] {
   let last: number | null | undefined;
   let lastRank = 0;
   return sorted.map((row, i) => {
-    const r = i > 0 && row.profitPerDay === last ? lastRank : i + 1;
-    last = row.profitPerDay;
+    const v = rankValue(row);
+    const r = i > 0 && v === last ? lastRank : i + 1;
+    last = v;
     lastRank = r;
     return { ...row, rank: r };
   });
 }
 
+/** What a row is ranked by: its `value` (the metric's), else (plain rows) its `profitPerDay`. */
+const rankValue = (row: { profitPerDay?: number | null; value?: number | null }): number | null => ("value" in row ? (row.value ?? null) : (row.profitPerDay ?? null));
+
 /**
- * Rows ranked by profit per day, best first (unverified entries last, by title). The rank is always
- * the profit rank; `sortRows` reorders for other views without changing it. On "from nothing",
- * rows whose starting items can't be made within the run (`cantMake`) take no place: they come
- * last with rank 0 (`splitRanked`).
+ * Rows ranked by the metric's value per day (`ViewSettings.metric`, coins by default), best first
+ * (rows without a value last, by title). The rank is always the metric rank; `sortRows` reorders
+ * for other views without changing it. On "from nothing", rows whose starting items can't be made
+ * within the run (`cantMake`) take no place: they come last with rank 0 (`splitRanked`). Ranked by
+ * a collection, rows that make none of the crop (`noneOfMetric`) take no place either: after those,
+ * rank 0, so the ranked rows are 1..n.
  */
 export function rankEntries(data: GameData, entries: readonly FlowListEntry[], s: ViewSettings, every = 1): FlowRow[] {
   const rows = entries.map((e) => flowRow(data, e, s, every));
   rows.sort((a, b) => {
-    if (a.profitPerDay === null && b.profitPerDay === null) return a.entry.title.localeCompare(b.entry.title);
-    if (a.profitPerDay === null) return 1;
-    if (b.profitPerDay === null) return -1;
-    return b.profitPerDay - a.profitPerDay || a.entry.title.localeCompare(b.entry.title);
+    if (a.value === null && b.value === null) return a.entry.title.localeCompare(b.entry.title);
+    if (a.value === null) return 1;
+    if (b.value === null) return -1;
+    // Ties (e.g. two flows without any of a collection crop) go by coins, then title.
+    return b.value - a.value || (b.profitPerDay ?? 0) - (a.profitPerDay ?? 0) || a.entry.title.localeCompare(b.entry.title);
   });
   const apart = (r: Pick<FlowRow, "cantMake" | "stops" | "stockpile">) => !!r.cantMake || r.stops || r.stockpile;
   const blocked = rows.filter(apart).map((r) => ({ ...r, rank: 0 }));
-  return [...rank(rows.filter((r) => !apart(r))), ...blocked];
+  const none = rows.filter((r) => !apart(r) && r.noneOfMetric).map((r) => ({ ...r, rank: 0 }));
+  return [...rank(rows.filter((r) => !apart(r) && !r.noneOfMetric)), ...blocked, ...none];
 }
 
-/** Ranked rows and the ones set apart (from nothing: can't make its starting items, or stops; with them: `stockpile`; rank 0), each in the given order. */
-export function splitRanked<T extends { cantMake: PrepInfo | null; stops?: boolean; stockpile?: boolean }>(rows: readonly T[]): { ranked: T[]; cantMake: T[] } {
+/**
+ * Ranked rows and the ones set apart, each in the given order (rank 0): `cantMake` (from nothing:
+ * can't make its starting items, or stops; with them: `stockpile`) and `none` (ranked by a
+ * collection, none of the crop: `noneOfMetric`; a row that is both goes to `cantMake`).
+ */
+export function splitRanked<T extends { cantMake: PrepInfo | null; stops?: boolean; stockpile?: boolean; noneOfMetric?: boolean }>(rows: readonly T[]): { ranked: T[]; cantMake: T[]; none: T[] } {
   const apart = (r: T) => !!r.cantMake || r.stops === true || r.stockpile === true;
-  return { ranked: rows.filter((r) => !apart(r)), cantMake: rows.filter(apart) };
+  return { ranked: rows.filter((r) => !apart(r) && r.noneOfMetric !== true), cantMake: rows.filter(apart), none: rows.filter((r) => !apart(r) && r.noneOfMetric === true) };
 }
 
 /** Missing values always sort last, whichever way the key goes. */
@@ -638,7 +753,7 @@ export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
     case "perEffort":
       return out.sort(byKey((r) => r.perEffort, true));
     case "effort":
-      return out.sort(byKey((r) => (r.profitPerDay === null ? null : r.effortAvg), false));
+      return out.sort(byKey((r) => (r.value === null ? null : r.effortAvg), false));
     case "forgiving":
       return out.sort(byKey((r) => r.slack, true));
     case "liked":
@@ -656,6 +771,11 @@ export function sortRows(rows: readonly FlowRow[], key: SortKey): FlowRow[] {
 /** The largest profit in a set of rows (for the relative bars); rows set apart (`cantMake`, `stops`) don't count. */
 export function maxProfit(rows: readonly FlowRow[]): number {
   return rows.reduce((m, r) => (r.cantMake || r.stops || r.stockpile ? m : Math.max(m, r.profitPerDay ?? 0)), 0);
+}
+
+/** The largest ranked value (`FlowRow.value`) in a set of rows, for the relative bars; rows set apart don't count. */
+export function maxValue(rows: readonly FlowRow[]): number {
+  return rows.reduce((m, r) => (r.cantMake || r.stops || r.stockpile ? m : Math.max(m, r.value ?? 0)), 0);
 }
 
 /**
@@ -986,7 +1106,14 @@ export interface ListParams {
   sort: SortKey;
   plots: "any" | "1" | "2" | "3";
   filters: RowFilters;
+  /** What the ranking measures (URL `by=collection|sowdust|xp`; coins is left out). */
+  by: RankBy;
+  /** The collection crop (URL `crop=<id>`, only with `by=collection`; unknown values read as wheat). */
+  crop: ItemId;
 }
+
+/** A list's params as a metric. */
+export const listMetric = (p: Pick<ListParams, "by" | "crop">): RankMetric => ({ by: p.by, crop: p.crop });
 
 const SORT_KEYS = Object.keys(SORT_LABEL) as SortKey[];
 
@@ -997,7 +1124,10 @@ export function readListParams(params: URLSearchParams): ListParams {
   const cap = params.get("maxStart");
   const capN = cap === null || cap === "" ? null : Number(cap);
   const earning = [...new Set(params.getAll("earning").flatMap((v) => v.split(",")).map((v) => v.trim()).filter((v) => /^[a-z0-9_]{1,64}$/.test(v)))];
+  const metric = readMetric(params.get("by"), params.get("crop"));
   return {
+    by: metric.by,
+    crop: metric.by === "collection" ? metric.crop : DEFAULT_COLLECTION_CROP,
     board: boardFrom(params.get("board")),
     kit: kitFromBoard(params.get("board")) ?? params.get("kit") === "1",
     sort: sort && SORT_KEYS.includes(sort) ? sort : "profit",
@@ -1018,6 +1148,8 @@ export function writeListParams(p: ListParams): URLSearchParams {
   const out = new URLSearchParams();
   if (p.board) out.set("board", p.board);
   if (p.kit && p.board !== "normal") out.set("kit", "1");
+  if (p.by && p.by !== "coins") out.set("by", p.by);
+  if (p.by === "collection" && p.crop && p.crop !== DEFAULT_COLLECTION_CROP) out.set("crop", p.crop);
   if (p.sort !== "profit") out.set("sort", p.sort);
   if (p.plots !== "any") out.set("plots", p.plots);
   const f = p.filters;
@@ -1051,6 +1183,8 @@ export interface LocalKindSummary {
   cell: RunResult | null;
   /** The cell's coins per day on the board. */
   profitPerDay: number | null;
+  /** The cell's number under the metric asked for (= `profitPerDay` for coins). */
+  value: number | null;
   /** best / median over the seeds' window gross sales (the outlier check, not net profit). */
   ratio: number | null;
   /** "From nothing": the starting items can't be made within the run (the server lists the flow apart). */
@@ -1062,7 +1196,7 @@ export interface LocalKindSummary {
  * `spreadRatio`): `ironman` reads each seed's `fromNothing`, the others its `result`. A seed
  * fails both ironman variants.
  */
-export function localKindSummary(data: GameData, seeds: readonly (LocalSeed | undefined)[], kind: CellKind, quotes: Quotes, pricing: BazaarPricing): LocalKindSummary {
+export function localKindSummary(data: GameData, seeds: readonly (LocalSeed | undefined)[], kind: CellKind, quotes: Quotes, pricing: BazaarPricing, metric: RankMetric = COINS_METRIC): LocalKindSummary {
   const board = boardOfCellKind(kind);
   const value = (r: RunResult) => valueResult(data, r, board, board === "normal" ? quotes : {}, pricing).profitPerDay;
   const pick = (s: LocalSeed) => (kind === "ironman" ? (s.fromNothing ?? null) : s.result);
@@ -1076,7 +1210,8 @@ export function localKindSummary(data: GameData, seeds: readonly (LocalSeed | un
   const gross = (r: RunResult) => valueResult(data, r, board, board === "normal" ? quotes : {}, pricing).revenuePerDay;
   const ratio = complete ? spreadRatio(results.map(gross)) : null;
   const prep = kind === "ironman" && cell ? readPrep(cell.prep) : null;
-  return { done: finished.length, total: seeds.length, failed, cell, profitPerDay: cell ? value(cell) : null, ratio, cantMake: prep && !prep.done ? prep : null };
+  const coins = cell ? value(cell) : null;
+  return { done: finished.length, total: seeds.length, failed, cell, profitPerDay: coins, value: cell ? metricOf(cell, metric, coins) : null, ratio, cantMake: prep && !prep.done ? prep : null };
 }
 
 // ---- Detail page helpers ----------------------------------------------------------------------
@@ -1103,6 +1238,7 @@ export function spreadAt(spread: Spread | null | undefined, every: number): numb
 
 export interface FrequencyPoint {
   every: number;
+  /** The ranked value per day: coins by default, else the metric's number (`rowCurve`, `profitByEvery` with a metric). */
   profitPerDay: number | null;
   /** Average effort per login at this frequency, when known (shown in the chart's tooltip). */
   effortAvg?: number | null;
@@ -1114,15 +1250,16 @@ export interface FrequencyPoint {
 }
 
 /** Profit per day at every grid frequency of one cell kind / tier (null where no cell exists). */
-export function profitByEvery(data: GameData, cells: readonly FlowCell[], kind: CellKind, tier: TierId, s: Omit<ViewSettings, "board" | "now">): FrequencyPoint[] {
+export function profitByEvery(data: GameData, cells: readonly FlowCell[], kind: CellKind, tier: TierId, s: Omit<ViewSettings, "board" | "now">, metric: RankMetric = s.metric ?? COINS_METRIC): FrequencyPoint[] {
   const board = boardOfCellKind(kind);
   return EVERY.map((every) => {
     const cell = findCell(cells, kind, tier, every);
     if (!cell) return { every, profitPerDay: null };
     const { result } = viewerResult(data, cell.median, s);
+    const coins = valueResult(data, result, board, board === "normal" ? s.quotes : {}, s.pricing).profitPerDay;
     return {
       every,
-      profitPerDay: valueResult(data, result, board, board === "normal" ? s.quotes : {}, s.pricing).profitPerDay,
+      profitPerDay: metricOf(result, metric, coins),
       effortAvg: result.effort?.sessions ? result.effort.avg : null,
     };
   });
@@ -1130,8 +1267,10 @@ export function profitByEvery(data: GameData, cells: readonly FlowCell[], kind: 
 
 export interface BoardNumber {
   kind: CellKind;
-  /** Null when that cell kind has no cell at this tier / every yet. */
+  /** Coins per day; null when that cell kind has no cell at this tier / every yet. */
   profitPerDay: number | null;
+  /** The number under the metric asked for (= `profitPerDay` for coins); null without a cell or the metric's data. */
+  value: number | null;
   boughtPerDay: number;
   buildCost: number;
   slowing: boolean;
@@ -1140,16 +1279,17 @@ export interface BoardNumber {
 }
 
 /** The detail page's three numbers: each cell kind's cell at `tier` (else max) and `every`, priced for the viewer. */
-export function boardNumbers(data: GameData, cells: readonly FlowCell[], tier: TierId, every: number, s: Omit<ViewSettings, "board" | "now">): BoardNumber[] {
+export function boardNumbers(data: GameData, cells: readonly FlowCell[], tier: TierId, every: number, s: Omit<ViewSettings, "board" | "now">, metric: RankMetric = s.metric ?? COINS_METRIC): BoardNumber[] {
   return CELL_KINDS_IN_ORDER.map((kind) => {
     const board = boardOfCellKind(kind);
     const cell = findCell(cells, kind, tier, every) ?? findCell(cells, kind, "max", every);
-    if (!cell) return { kind, profitPerDay: null, boughtPerDay: 0, buildCost: 0, slowing: false, prep: null };
+    if (!cell) return { kind, profitPerDay: null, value: null, boughtPerDay: 0, buildCost: 0, slowing: false, prep: null };
     const { result } = viewerResult(data, cell.median, s);
     const v = valueResult(data, result, board, board === "normal" ? s.quotes : {}, s.pricing);
     return {
       kind,
       profitPerDay: v.profitPerDay,
+      value: metricOf(result, metric, v.profitPerDay),
       boughtPerDay: v.boughtPerDay,
       buildCost: v.buildCost,
       slowing: cell.median.slowing === true,

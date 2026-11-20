@@ -64,18 +64,25 @@ describe("recorder snapshots and the stitched timeline", () => {
     rec.observe(s0);
     const end = engine.run(s0, endCycles(100), { onCycle: (s) => rec.observe(s) }).state;
     const own = rec.result(end, true);
-    const { cycles: _c, days: _d, window: _w, produced: _p, consumed: _co, bought: _b, shortfall: _s, bySource: _bs, trail: _t, ...rest } = own;
-    void [_c, _d, _w, _p, _co, _b, _s, _bs, _t];
+    const { cycles: _c, days: _d, window: _w, produced: _p, consumed: _co, bought: _b, shortfall: _s, bySource: _bs, gains: _g, trail: _t, ...rest } = own;
+    void [_c, _d, _w, _p, _co, _b, _s, _bs, _g, _t];
     const s = stitch({ from: 100, to: endCycles(100), prep: { kit: {}, cycles: 0, days: 0, done: true, mode: "stitched" }, prepEnd: null, flowAt: (n) => rec.snapshots().get(n), rest });
     expect(s.window).toEqual(own.window);
     expect(s.produced.wheat).toBeCloseTo(own.produced.wheat, 9);
     expect(s.trail!.from).toBe(own.trail!.from);
     expect(s.trail!.produced.wheat).toBeCloseTo(own.trail!.produced.wheat, 9);
     expect(s.days).toBeCloseTo(own.days, 9);
+    // Farming XP and Sowdust are stitched like produced.
+    expect(own.gains!.farming_xp).toBeGreaterThan(0);
+    expect(own.gains!["sowdust:wheat"]).toBeGreaterThan(0);
+    for (const k of Object.keys(own.gains!)) {
+      expect(s.gains![k]).toBeCloseTo(own.gains![k], 9);
+      expect(s.trail!.gains![k]).toBeCloseTo(own.trail!.gains![k], 9);
+    }
   });
 
   it("stitch joins the builder's counts to the flow's: counts(t) = prep + flow(t − T*), days(t) = prep days + flow days", () => {
-    const at = (cycle: number, seconds: number, wheat: number): CountSnapshot => ({ cycle, seconds, produced: { wheat }, consumed: {}, bought: {}, shortfall: {}, bySource: { wheat: { wheat } } });
+    const at = (cycle: number, seconds: number, wheat: number): CountSnapshot => ({ cycle, seconds, produced: { wheat }, consumed: {}, bought: {}, shortfall: {}, bySource: { wheat: { wheat } }, gains: { farming_xp: 10 * wheat, "sowdust:wheat": wheat / 2 } });
     const day = 86400;
     // Builder: 25 cycles, 1 day, 10 wheat. Flow: 1 wheat per cycle, a day per 25 cycles.
     const s = stitch({
@@ -90,6 +97,14 @@ describe("recorder snapshots and the stitched timeline", () => {
     expect(s.window).toEqual({ from: 50, to: 75, cuts: 2 });
     expect(s.produced.wheat).toBeCloseTo((35 / 2 + 60 / 3) / 2, 9);
     expect(s.bySource!.wheat.wheat).toBeCloseTo((35 / 2 + 60 / 3) / 2, 9);
+    expect(s.gains!.farming_xp).toBeCloseTo((10 * (35 / 2 + 60 / 3)) / 2, 9);
+    expect(s.gains!["sowdust:wheat"]).toBeCloseTo((35 / 2 + 60 / 3) / 4, 9);
+    // The trail over [60, 75]: flow cycles 35..50, 15 wheat in 15/25 day.
+    expect(s.trail!.gains!.farming_xp).toBeCloseTo(10 * 25, 9);
+    // An old snapshot without gains joins as zero.
+    const { gains: _og, ...noGains } = at(25, day, 10);
+    void _og;
+    expect(stitch({ from: 50, to: 75, prep: s.prep!, prepEnd: noGains, flowAt: (n) => at(n, (n / 25) * day, n), rest: { built: {}, uptime: 1, sustainable: true, effort: s.effort, halted: false } }).gains!.farming_xp).toBeCloseTo((10 * (25 / 2 + 50 / 3)) / 2, 9);
     expect(s.days).toBe(3);
     expect(s.prep).toEqual({ kit: { zombud: 1 }, cycles: 25, days: 1, done: true, mode: "stitched" });
     expect(() => stitch({ from: 50, to: 75, prep: s.prep!, prepEnd: at(25, day, 10), flowAt: () => undefined, rest: { built: {}, uptime: 1, sustainable: true, effort: s.effort, halted: false } })).toThrow(/no counts/);

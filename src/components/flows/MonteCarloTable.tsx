@@ -1,6 +1,6 @@
 import React from "react";
 import { ROUGH_BELOW, type McPoint } from "../../leaderboard/montecarlo";
-import { formatCoins } from "../simulator/format";
+import { formatCoins as formatMoney } from "../simulator/format";
 import { cn } from "../ui/cn";
 import { InfoHint } from "../ui/InfoHint";
 
@@ -16,7 +16,17 @@ export const MonteCarloTable: React.FC<{
   selected?: number | null;
   onSelect?: (every: number) => void;
   hoursPerCycle?: number;
-}> = ({ points, selected, onSelect, hoursPerCycle }) => {
+  /** Formats a value (default `formatCoins`). */
+  format?: (n: number) => string;
+  /** The per-day unit named in the footer ("Wheat/day"); omitted, "Coins per day". */
+  unit?: string;
+  /** The measured thing's name for screen readers ("Profit" by default). */
+  label?: string;
+  /** The median in the coin colour (default: when no `format` is given). */
+  coin?: boolean;
+}> = ({ points, selected, onSelect, hoursPerCycle, format, unit, label = "Profit", coin }) => {
+  const formatCoins = format ?? formatMoney;
+  const gold = coin ?? !format;
   const rows = points.filter((p) => p.runs > 0);
   if (!rows.length) return null;
   const ds = rows.flatMap((p) => (p.dist ? [p.dist] : []));
@@ -34,7 +44,7 @@ export const MonteCarloTable: React.FC<{
   return (
     <div className="@container min-w-0 space-y-1.5">
       <div>
-        <table className="w-full table-fixed border-collapse text-secondary tabular-nums" data-testid="mc-table">
+        <table className="w-full table-fixed border-collapse text-secondary tabular-nums" data-testid="mc-table" aria-label={`${label} per day by online frequency`}>
           <thead>
             <tr className="text-left text-meta text-fg-meta">
               <th className="w-28 py-1 pr-3 font-normal">Online every</th>
@@ -65,7 +75,7 @@ export const MonteCarloTable: React.FC<{
                     {p.every} cycle{p.every === 1 ? "" : "s"}
                     {h(p.every) && <span className="ml-1.5 text-meta text-fg-meta">≈{h(p.every)}</span>}
                   </td>
-                  <td className="py-1.5 pr-3 text-right font-semibold whitespace-nowrap text-coin">{d ? formatCoins(d.median) : "—"}</td>
+                  <td className={cn("py-1.5 pr-3 text-right font-semibold whitespace-nowrap", gold ? "text-coin" : "text-fg")}>{d ? formatCoins(d.median) : "—"}</td>
                   <td className="py-1.5 pr-3 text-right whitespace-nowrap text-fg-body @max-[30rem]:hidden">
                     {d ? (
                       <>
@@ -83,7 +93,7 @@ export const MonteCarloTable: React.FC<{
                           {lo < 0 && <span aria-hidden className="absolute top-0 bottom-0 w-px bg-line-strong" style={{ left: pct(0) }} />}
                           <span aria-hidden className="absolute top-1/2 h-px -translate-y-1/2 bg-fg-meta/50" style={{ left: pct(d.min), width: `calc(${pct(d.max)} - ${pct(d.min)})` }} />
                           <span aria-hidden className="absolute top-0.5 bottom-0.5 rounded-full bg-go/40" style={{ left: pct(d.lo), width: `max(2px, calc(${pct(d.hi)} - ${pct(d.lo)}))` }} />
-                          <span aria-hidden className="absolute top-0 bottom-0 w-0.5 -translate-x-1/2 rounded-full bg-coin" style={{ left: pct(d.median) }} />
+                          <span aria-hidden className={cn("absolute top-0 bottom-0 w-0.5 -translate-x-1/2 rounded-full", gold ? "bg-coin" : "bg-fg")} style={{ left: pct(d.median) }} />
                         </div>
                         <span className="shrink-0 text-right text-meta whitespace-nowrap text-fg-muted">
                           {formatCoins(d.lo)} – {formatCoins(d.hi)}
@@ -105,7 +115,7 @@ export const MonteCarloTable: React.FC<{
         </table>
       </div>
       <p className="flex items-center gap-1.5 text-meta text-fg-meta">
-        Coins per day{rough && ` · under ${ROUGH_BELOW} seeds the range is rough`}
+        {unit ?? "Coins per day"}{rough && ` · under ${ROUGH_BELOW} seeds the range is rough`}
         <InfoHint title="Reading the numbers" width={320}>
           Median: the middle seed, what a typical run makes. Average: the mean, ± its 95% margin of error (it shrinks as you add seeds). The bar: 90% of seeds land in
           the shaded range (5th to 95th percentile), the tick is the median and the thin line runs from the worst seed to the best. A wide range means the result

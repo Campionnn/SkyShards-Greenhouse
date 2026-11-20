@@ -13,7 +13,7 @@ import { priceAge, priceRun, type Quotes } from "./bazaarFormat";
 import { formatCoins, formatCount, nameOf, rarityOf } from "./format";
 import { Leader, NumberInput } from "./controls";
 import { Fact, ResultCard } from "./page/ResultCard";
-import { MoneyTable, type MoneyRow } from "./ReportPanels";
+import { GainFacts, MoneyTable, type MoneyRow } from "./ReportPanels";
 
 
 // Normal-profile (Bazaar) panels. The engine counts what was produced, bought, sold and built
@@ -195,6 +195,7 @@ export const BazaarMoneyPanel: React.FC<{
             />
             <Fact label="Mutations sold so far" value={formatCoins(now.sold)} title="Mutation items sold above the reserve after each online session. Already counted in the profit." />
             {cycleSeconds !== undefined && cycleSeconds > 0 && <Fact value={`~${(86400 / cycleSeconds).toFixed(1)}`} suffix="cycles/day" />}
+            <GainFacts summary={summary} />
             {now.unpriced.length > 0 && (
               <Fact
                 label="No price for"

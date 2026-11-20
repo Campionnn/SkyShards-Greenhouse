@@ -6,6 +6,8 @@ import { Segmented } from "../ui/kit";
 import { CropImage } from "../shared";
 import { debtText, spotFailureText, formatCoins, formatCount, formatDuration, formatPercent, nameOf } from "./format";
 import { DisclosureCard, Fact, LinkButton, ResultCard } from "./page/ResultCard";
+import { formatCompact } from "../../leaderboard/view";
+import { sowdustTotal, xpTotal } from "./focusMetric";
 
 // ---- Money ----------------------------------------------------------------
 
@@ -78,6 +80,27 @@ const MONEY_MODES = [
   { value: "perDay" as const, label: "Per day", title: "Divide every figure by the simulated days" },
 ];
 
+/**
+ * Sowdust and Farming XP as two facts (totals; per day on hover), for the Money cards' facts row:
+ * what harvests earn besides coins, without a table of their own.
+ */
+export const GainFacts: React.FC<{ summary: RunSummary }> = ({ summary }) => {
+  const days = summary.elapsedSeconds / 86400;
+  const rate = (n: number) => (days > 0 ? formatCompact(n / days) : "0");
+  const sowdust = sowdustTotal(summary);
+  const xp = xpTotal(summary);
+  return (
+    <>
+      <Fact
+        label="Sowdust"
+        value={formatCompact(sowdust)}
+        title={`${rate(sowdust)} Sowdust/day. From harvested crop bundles: 5 × round(base / (5 × crop multiplier)) × (1 + fortune/100), per crop item.`}
+      />
+      <Fact label="Farming XP" value={formatCompact(xp)} title={`${rate(xp)} Farming XP/day. 1,600 × the plant's loot multiplier per harvest, with XP effects and Farming Wisdom.`} />
+    </>
+  );
+};
+
 /** Ledger by category: the last Step / Run, and the total or the per-day rate. */
 export const MoneyPanel: React.FC<{
   summary: RunSummary;
@@ -131,6 +154,7 @@ export const MoneyPanel: React.FC<{
         <Fact value={formatCount(spawned)} suffix={`spawned (${summary.mutationsPerDay.toFixed(1)}/day)`} title="Mutations spawned" />
         <Fact label="Rivals" value={`${summary.rivals.spawned} / ${summary.rivals.cleared}`} suffix="spawned / cleared" title="Other mutations that won the roll in a cell labelled for a target." />
         <Fact value={formatCount(summary.replacements)} suffix="re-placements" />
+        <GainFacts summary={summary} />
         <LinkButton className="ml-auto" onClick={() => setShowPlots((v) => !v)} aria-expanded={showPlots}>
           {showPlots ? "Hide per plot" : "Per plot"}
         </LinkButton>

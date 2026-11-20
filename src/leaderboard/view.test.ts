@@ -3,7 +3,7 @@ import { defaultViewerStats, readViewerStats, yieldOf } from "../hooks/useFlowVi
 import { defaultGameData } from "../simulator/data/default";
 import { DEFAULT_BAZAAR_PRICING } from "../simulator/economy/bazaar";
 import type { FlowCell, FlowListEntry } from "./api";
-import { valueResult } from "./pricing";
+import { valueResult, yieldStatsDiffer } from "./pricing";
 import type { RunResult } from "./result";
 import { YIELD_STATS } from "./tiers";
 import {
@@ -56,6 +56,11 @@ import {
   sortRows,
   withLikeCounts,
   profitByEvery,
+  formatMetric,
+  maxValue,
+  metricOf,
+  metricUnit,
+  pointValue,
   rank,
   rankEntries,
   slackFrom,
@@ -188,7 +193,8 @@ describe("leaderboard view: badges and labels", () => {
     expect(old.cropFortune).toEqual({});
     expect(old.tools).toEqual([]);
     // No per-crop terms: the server's yield shape, so nothing is marked scaled.
-    expect(yieldOf(defaultViewerStats())).toEqual(YIELD_STATS);
+    expect({ farmingWisdom: 0, ...yieldOf(defaultViewerStats()) }).toEqual(YIELD_STATS);
+    expect(yieldStatsDiffer(yieldOf(defaultViewerStats()))).toBe(false);
     expect(yieldOf(s).cropFortune).toEqual({ wheat: 50, cactus: 12 });
   });
 
@@ -611,10 +617,10 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
 
   it("URL params round-trip; v2's board names, the switch and junk are handled", () => {
     const p = readListParams(new URLSearchParams("board=ironman&kit=1&sort=effort&plots=2&q=aloe&earning=chorus_fruit&earning=devourer&in=any&noUpkeep=1&maxStart=60&noStall=0"));
-    expect(p).toEqual({ board: "ironman", kit: true, sort: "effort", plots: "2", filters: { query: "aloe", earning: ["chorus_fruit", "devourer"], earningIn: "any", noUpkeep: true, maxStartItems: 60, noStall: false } });
+    expect(p).toEqual({ by: "coins", crop: "wheat", board: "ironman", kit: true, sort: "effort", plots: "2", filters: { query: "aloe", earning: ["chorus_fruit", "devourer"], earningIn: "any", noUpkeep: true, maxStartItems: 60, noStall: false } });
     expect(readListParams(writeListParams(p))).toEqual(p);
     expect(writeListParams(p).get("kit")).toBe("1");
-    expect(writeListParams({ board: null, kit: false, sort: "profit", plots: "any", filters: DEFAULT_FILTERS }).toString()).toBe("");
+    expect(writeListParams({ board: null, kit: false, sort: "profit", plots: "any", filters: DEFAULT_FILTERS, by: "coins", crop: "wheat" }).toString()).toBe("");
     // Old links: ironman_strict is the ironman board, ironman_borrow the same with the switch on (whatever kit says).
     expect(readListParams(new URLSearchParams("board=ironman_strict"))).toMatchObject({ board: "ironman", kit: false });
     expect(readListParams(new URLSearchParams("board=ironman_borrow"))).toMatchObject({ board: "ironman", kit: true });
@@ -626,7 +632,7 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(writeListParams({ ...p, kit: false }).get("noStall")).toBeNull();
     expect(writeListParams({ ...p, filters: { ...p.filters, noStall: true } }).get("noStall")).toBeNull();
     const junk = readListParams(new URLSearchParams("board=x&sort=nope&plots=9&maxStart=-1&earning=<b>&in=sometimes"));
-    expect(junk).toEqual({ board: null, kit: false, sort: "profit", plots: "any", filters: DEFAULT_FILTERS });
+    expect(junk).toEqual({ board: null, kit: false, sort: "profit", plots: "any", filters: DEFAULT_FILTERS, by: "coins", crop: "wheat" });
   });
 
   it("the local test summary: each ironman variant from its own result, the median seed, the spread, failures", () => {
@@ -748,5 +754,167 @@ describe("leaderboard v2/v3: flows set apart from the from-nothing ranking", () 
       { item: "zombud", units: 98 },
       { item: "puffercloud", units: 11 },
     ]);
+  });
+});
+
+describe("leaderboard view: rank metrics (coins, collection, Sowdust, Farming XP)", () => {
+  const gains = (xp: number, sowdust: Record<string, number> = {}) => ({ farming_xp: xp, ...Object.fromEntries(Object.entries(sowdust).map(([k, v]) => [`sowdust:${k}`, v])) });
+  const collection = (crop: string) => ({ by: "collection" as const, crop });
+  const sowdust = { by: "sowdust" as const, crop: "wheat" };
+  const xp = { by: "xp" as const, crop: "wheat" };
+
+  it("metricOf reads coins, one crop, summed Sowdust and Farming XP; null for gains a cell lacks", () => {
+    const r = result({ wheat: 1000, carrot: 50 }, { gains: gains(288, { wheat: 40, carrot: 10 }) });
+    expect(metricOf(r, { by: "coins", crop: "wheat" }, 123)).toBe(123);
+    expect(metricOf(r, collection("carrot"))).toBe(50);
+    expect(metricOf(r, collection("melon"))).toBe(0);
+    expect(metricOf(r, sowdust)).toBe(50);
+    expect(metricOf(r, xp)).toBe(288);
+    const old = result({ wheat: 1000 });
+    expect(metricOf(old, sowdust)).toBeNull();
+    expect(metricOf(old, xp)).toBeNull();
+    expect(metricOf(old, collection("wheat"))).toBe(1000);
+  });
+
+  it("ranks by the metric (coins stay the coin number), with old cells last for Sowdust / XP", () => {
+    const entries = [
+      entry("rich", "Rich", result({ wheat: 100000 }, { gains: gains(100, { wheat: 10 }) })),
+      entry("dusty", "Dusty", result({ wheat: 1000, carrot: 500 }, { gains: gains(5000, { wheat: 900, carrot: 300 }) })),
+      entry("old", "Old", result({ carrot: 4000 })),
+      entry("none", "Pending", null),
+    ];
+    const coins = rankEntries(data, entries, ironman);
+    expect(coins.map((r) => r.entry.id)).toEqual(["rich", "old", "dusty", "none"]);
+    expect(coins.every((r) => r.value === r.profitPerDay)).toBe(true);
+    const dust = rankEntries(data, entries, { ...ironman, metric: sowdust });
+    expect(dust.map((r) => [r.entry.id, r.rank, r.value])).toEqual([
+      ["dusty", 1, 1200],
+      ["rich", 2, 10],
+      ["old", 3, null],
+      ["none", 3, null],
+    ]);
+    expect(dust[0].profitPerDay).toBeCloseTo(valueResult(data, entries[1].cell!, "ironman").profitPerDay);
+    expect(dust[0].sowdustPerDay).toBe(1200);
+    expect(dust[0].xpPerDay).toBe(5000);
+    expect(dust[0].collectionPerDay).toBeNull();
+    expect(dust.find((r) => r.entry.id === "old")!.sowdustPerDay).toBeNull();
+    expect(maxValue(dust)).toBe(1200);
+    const carrots = rankEntries(data, entries, { ...ironman, metric: collection("carrot") });
+    // A flow without any of the crop isn't ranked: it comes after the ranked rows (pending ones included) with rank 0.
+    expect(carrots.map((r) => [r.entry.id, r.rank, r.value])).toEqual([
+      ["old", 1, 4000],
+      ["dusty", 2, 500],
+      ["none", 3, null],
+      ["rich", 0, 0],
+    ]);
+    expect(carrots[0].collectionPerDay).toBe(4000);
+    // Per effort follows the metric.
+    expect(carrots[0].perEffort).toBeCloseTo(4000 / 45);
+    expect(rankEntries(data, entries, { ...ironman, metric: xp })[0].entry.id).toBe("dusty");
+  });
+
+  it("ranked by a collection, flows that make none of the crop are set apart (noneOfMetric, rank 0); ranks stay 1..n", () => {
+    const entries = [
+      entry("a", "A", result({ wheat: 300 })),
+      entry("b", "B", result({ carrot: 900 })),
+      entry("c", "C", result({ wheat: 300, carrot: 1 })),
+      entry("d", "D", result({ melon: 50 })),
+      entry("old", "Old", result({ wheat: 10 }), { stale: true }),
+      entry("p", "Pending", null),
+    ];
+    const rows = rankEntries(data, entries, { ...ironman, metric: collection("wheat") });
+    // A tie keeps its shared rank (c earns one carrot more, so it goes first).
+    expect(rows.map((r) => [r.entry.id, r.rank, r.noneOfMetric])).toEqual([
+      ["c", 1, false],
+      ["a", 1, false],
+      ["old", 3, false],
+      ["p", 4, false],
+      ["b", 0, true],
+      ["d", 0, true],
+    ]);
+    const split = splitRanked(rows);
+    expect(split.ranked.map((r) => r.entry.id)).toEqual(["c", "a", "old", "p"]);
+    expect(split.none.map((r) => r.entry.id)).toEqual(["b", "d"]);
+    expect(split.cantMake).toEqual([]);
+    // The bars' scale ignores them; no other metric sets anything apart.
+    expect(maxValue(rows)).toBe(300);
+    for (const m of [sowdust, xp, { by: "coins" as const, crop: "wheat" }]) expect(rankEntries(data, entries, { ...ironman, metric: m }).some((r) => r.noneOfMetric)).toBe(false);
+  });
+
+  it("the curve, Slack and the sort follow the metric; old curve points have no Sowdust / XP", () => {
+    const curve = Object.fromEntries([1, 2, 3, 4, 6, 8, 12].map((n) => [String(n), { produced: { wheat: 1000 }, bought: {}, consumed: {}, gains: gains(1200 - 100 * n, { wheat: 13 - n }) }]));
+    const row = flowRow(data, entry("a", "A", result({ wheat: 1000 }, { gains: gains(1100, { wheat: 12 }) }), { curve, slack: 1 }), { ...ironman, metric: sowdust }, 1);
+    expect(row.curve.map((p) => p.profitPerDay)).toEqual([12, 11, 10, 9, 7, 5, 1]);
+    // The API's (coin) Slack doesn't stand in for another metric.
+    expect(row.slack).toBeCloseTo(11 / 12, 5);
+    expect(flowRow(data, entry("a", "A", result({ wheat: 1000 }), { curve, slack: 1 }), ironman, 1).slack).toBe(1);
+    const xpRow = flowRow(data, entry("a", "A", result({}), { curve }), { ...ironman, metric: xp });
+    expect(xpRow.curve[0].profitPerDay).toBe(1100);
+    const oldCurve = { "1": { produced: { wheat: 1000 }, bought: {}, consumed: {} } };
+    const old = flowRow(data, entry("b", "B", result({ wheat: 1000 }), { curve: oldCurve }), { ...ironman, metric: sowdust });
+    expect(old.curve[0].profitPerDay).toBeNull();
+    expect(flowRow(data, entry("b", "B", result({ wheat: 1000 }), { curve: oldCurve }), { ...ironman, metric: collection("wheat") }).curve[0].profitPerDay).toBe(1000);
+    expect(pointValue(data, oldCurve["1"], ironman)).toBeCloseTo(1000 * data.crops.wheat.sellPrice);
+  });
+
+  it("scales Sowdust by the crop's fortune ratio and Farming XP by Farming Wisdom", () => {
+    const cell = result({ wheat: 1000 }, { gains: gains(1000, { wheat: 100, carrot: 50 }) });
+    const ff = YIELD_STATS.farmingFortune;
+    const wise = flowRow(data, entry("a", "A", cell), { ...ironman, metric: xp, viewerStats: { ...YIELD_STATS, farmingWisdom: 50 }, useMyStats: true });
+    expect(wise.scaled).toBe(true);
+    expect(wise.value).toBeCloseTo(1500);
+    // Wisdom alone doesn't change items.
+    expect(wise.profitPerDay).toBeCloseTo(valueResult(data, cell, "ironman").profitPerDay);
+    const bonus = flowRow(data, entry("a", "A", cell), { ...ironman, metric: sowdust, viewerStats: { ...YIELD_STATS, cropFortune: { wheat: 200 } }, useMyStats: true });
+    expect(bonus.value).toBeCloseTo(100 * ((1 + (ff + 200) / 100) / (1 + ff / 100)) + 50);
+    const tool = flowRow(data, entry("a", "A", cell), { ...ironman, metric: sowdust, viewerStats: { ...YIELD_STATS, tools: [{ name: "Hoe", fortune: { wheat: 100 } }, { name: "Carrot", fortune: { carrot: 300 } }] }, useMyStats: true });
+    expect(tool.value).toBeCloseTo(100 * ((1 + (ff + 100) / 100) / (1 + ff / 100)) + 50 * ((1 + (ff + 300) / 100) / (1 + ff / 100)));
+    // A missing wisdom is 0 (old saved stats): not "scaled".
+    const { farmingWisdom: _w, ...noWisdom } = YIELD_STATS;
+    void _w;
+    expect(flowRow(data, entry("a", "A", cell), { ...ironman, metric: xp, viewerStats: noWisdom, useMyStats: true }).scaled).toBe(false);
+  });
+
+  it("units, numbers and the URL", () => {
+    expect(metricUnit({ by: "coins", crop: "wheat" })).toBe("Coins/day");
+    expect(metricUnit(collection("cocoa_beans"))).toMatch(/^Cocoa Beans\/day$/i);
+    expect(metricUnit(sowdust)).toBe("Sowdust/day");
+    expect(metricUnit(xp)).toBe("Farming XP/day");
+    expect(formatMetric(sowdust, 12345)).toBe("12.3k");
+    expect(formatMetric(xp, 1_234_567)).toBe("1.2M");
+    expect(formatMetric(xp, 950)).toBe("950");
+    expect(formatMetric(xp, 9.46)).toBe("9.5");
+    expect(formatMetric(xp, 150_400)).toBe("150k");
+    expect(formatMetric(xp, null)).toBe("—");
+    expect(formatMetric({ by: "coins", crop: "wheat" }, 12_345_678)).toBe("12.3M");
+    const p = readListParams(new URLSearchParams("by=collection&crop=carrot"));
+    expect(p).toMatchObject({ by: "collection", crop: "carrot" });
+    expect(writeListParams(p).toString()).toBe("by=collection&crop=carrot");
+    expect(readListParams(writeListParams(p))).toEqual(p);
+    expect(writeListParams({ ...p, crop: "wheat" }).toString()).toBe("by=collection");
+    expect(readListParams(new URLSearchParams("by=xp&crop=carrot"))).toMatchObject({ by: "xp", crop: "wheat" });
+    expect(writeListParams(readListParams(new URLSearchParams("by=xp&crop=carrot"))).toString()).toBe("by=xp");
+    expect(readListParams(new URLSearchParams("by=gold&crop=seeds"))).toMatchObject({ by: "coins", crop: "wheat" });
+    expect(readListParams(new URLSearchParams("by=collection&crop=seeds"))).toMatchObject({ by: "collection", crop: "wheat" });
+  });
+
+  it("the detail page's numbers and curve take a metric (coins by default)", () => {
+    const cells = [1, 2].map((every) => ({ cellKind: "ironman", board: "ironman", tier: "max", every, median: result({ wheat: 1000 / every }, { gains: gains(500 / every, { wheat: 20 / every }) }), spread: null, seeds: 5, engineVersion: "x" })) as unknown as FlowCell[];
+    const s = { quotes: {}, pricing: DEFAULT_BAZAAR_PRICING, viewerStats: null, useMyStats: false };
+    expect(profitByEvery(data, cells, "ironman", "max", s).slice(0, 2).map((p) => p.profitPerDay)).toEqual([1000 * data.crops.wheat.sellPrice, 500 * data.crops.wheat.sellPrice]);
+    expect(profitByEvery(data, cells, "ironman", "max", s, xp).slice(0, 3).map((p) => p.profitPerDay)).toEqual([500, 250, null]);
+    expect(profitByEvery(data, cells, "ironman", "max", { ...s, metric: sowdust }).slice(0, 2).map((p) => p.profitPerDay)).toEqual([20, 10]);
+    const n = boardNumbers(data, cells, "max", 1, s, collection("wheat"));
+    expect(n[0]).toMatchObject({ kind: "ironman", value: 1000 });
+    expect(n[0].profitPerDay).toBeCloseTo(1000 * data.crops.wheat.sellPrice);
+    expect(boardNumbers(data, cells, "max", 1, s)[0].value).toBe(n[0].profitPerDay);
+    expect(n[1]).toMatchObject({ kind: "ironman_kit", value: null, profitPerDay: null });
+  });
+
+  it("the local test summary carries the metric's value", () => {
+    const seeds = [3, 1, 2].map((n) => ({ ok: true, error: null, result: result({ wheat: n * 1000 }, { gains: gains(n * 100) }) }));
+    const s = localKindSummary(data, seeds, "ironman_kit", {}, DEFAULT_BAZAAR_PRICING, xp);
+    expect(s.value).toBe(200);
+    expect(localKindSummary(data, seeds, "ironman_kit", {}, DEFAULT_BAZAAR_PRICING).value).toBe(s.profitPerDay);
   });
 });
