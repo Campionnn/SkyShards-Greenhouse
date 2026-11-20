@@ -2,7 +2,6 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import {
   aloeRow,
   decayStatus,
-  DEAD_PLANT_DECAY_EXTENSION_HOURS,
   DECAY_EXTENSION_HOURS,
   DEVOURER_ROOT_CHANCE,
   HALT_WATER,
@@ -295,7 +294,7 @@ function decayText(p: PlantState, met: boolean, cycles: number): string {
   if (p.decaySecondsRemaining === null) return "never decays";
   const timer = `in ${formatDuration(p.decaySecondsRemaining)} (~${cycles} cycles)`;
   if (met) return `${timer}, then decays`;
-  const ext = `+${formatCount(p.kindId === "dead_plant" ? DEAD_PLANT_DECAY_EXTENSION_HOURS : DECAY_EXTENSION_HOURS)}h`;
+  const ext = `+${formatCount(DECAY_EXTENSION_HOURS)}h`;
   return p.mutatesRemaining === "infinite" ? `${timer}, then ${ext} - never decays (minimum ∞)` : `${timer}, then ${ext} (minimum not met)`;
 }
 

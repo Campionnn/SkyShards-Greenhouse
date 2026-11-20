@@ -3,7 +3,6 @@
 export { createEngine, type Engine } from "./engine";
 export {
   CONFIG_META,
-  DEAD_PLANT_DECAY_EXTENSION_HOURS,
   DECAY_EXTENSION_HOURS,
   DEFAULT_CONFIG,
   DEVOURER_ROOT_CHANCE,

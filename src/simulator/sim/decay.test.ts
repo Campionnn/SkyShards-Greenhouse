@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEAD_PLANT_DECAY_EXTENSION_HOURS, DECAY_EXTENSION_HOURS, type MutationCreditOrder, type SimConfig } from "../config";
+import { DECAY_EXTENSION_HOURS, type MutationCreditOrder, type SimConfig } from "../config";
 import type { Engine } from "../engine";
 import { triggerHolds } from "../flow/triggers";
 import type { PolicyOverrides } from "../flow/types";
@@ -292,16 +292,6 @@ describe("decay check", () => {
     expect(r.summary.extended).toEqual({ chloronite: 4 });
     expect(r.summary.decayed.chloronite).toBeUndefined();
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "chloronite", timesMutated: 0, decaySecondsRemaining: DAY });
-  });
-
-  it("a Dead Plant's extension is 72 h, not 24 h (wiki Greenhouse § Decay Timer)", () => {
-    const s = blank();
-    // A dead plant that never helped (minimum 10 unmet), its timer about to run out.
-    inject(s, 1, "dead_plant", 5, 5, "placed", { decaySecondsRemaining: 1 });
-    const r = engine.run(s, 1);
-    expect(ofKind(r.events, "decayExtended")).toHaveLength(1);
-    expect(plantAt(r.state, 1, 5, 5)!.decaySecondsRemaining).toBeCloseTo(DEAD_PLANT_DECAY_EXTENSION_HOURS * H - CYCLE + 1);
-    expect(DEAD_PLANT_DECAY_EXTENSION_HOURS).toBe(72);
   });
 
   it("each extension is 24 h, and a timer far below 0 gets as many extensions as it needs to get back above 0", () => {

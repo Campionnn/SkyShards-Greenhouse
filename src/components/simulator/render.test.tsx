@@ -143,7 +143,7 @@ describe("simulator panels render", () => {
 
     const dead = card({ ...base, kindId: "dead_plant", isDeadPlant: true, origin: "placed", timesMutated: 0, mutatesRemaining: 10, decaySecondsRemaining: 3 * 86400 });
     expect(dead).toContain("Mutates remaining");
-    expect(dead).toContain("then +72h (minimum not met)"); // a Dead Plant's attempt timer repeats every 72 h
+    expect(dead).toContain("then +24h (minimum not met)");
   });
 
   it("Sanity Check: the plot view gets hover targets only while it is on, and the card lists spawnable and blocked mutations", () => {

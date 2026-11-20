@@ -49,8 +49,6 @@ export const THUNDERLING_CHARGE_PER_STAGE = 2000;
 export const THUNDERLING_MAX_CHARGE = 16000;
 /** Hours a decay timer is extended, repeatedly, while minimum mutations are unmet. */
 export const DECAY_EXTENSION_HOURS = 24;
-/** A Dead Plant's decay attempt timer repeats every 72 h instead (wiki Greenhouse § Decay Timer). */
-export const DEAD_PLANT_DECAY_EXTENSION_HOURS = 72;
 /** Chance per tick a growing Devourer grows a root into a neighbouring cell (staff-confirmed 40%). */
 export const DEVOURER_ROOT_CHANCE = 0.4;
 /** Chance per tick each root spreads another root. */

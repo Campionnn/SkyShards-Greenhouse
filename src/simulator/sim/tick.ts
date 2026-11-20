@@ -1,7 +1,7 @@
 import { effectiveListShared, recomputeEffects, refreshEffects } from "../effects/adapter";
 import type { FlowStep } from "../flow/types";
 import { cellIndex, cellKey, footprint, footprintFits, inBounds, ringCells, TOTAL_CELLS } from "../grid/cells";
-import { DEAD_PLANT_DECAY_EXTENSION_HOURS, DECAY_EXTENSION_HOURS, SPAWN_POOL_FLOOR, WATER_LOSS_PER_CYCLE } from "../config";
+import { DECAY_EXTENSION_HOURS, SPAWN_POOL_FLOOR, WATER_LOSS_PER_CYCLE } from "../config";
 import { chance, nextFloat } from "../rng";
 import { planPool, rollPool, type SpawnPool } from "../spawn/pool";
 import { groundGrid } from "../spawn/eligibility";
@@ -254,25 +254,19 @@ function phaseWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
  * - minimum met: decays. A dead_plant leaves an empty cell; anything else becomes a Dead Plant,
  *   and a primed Blastberry explodes. A spawned Zombud first turns its ring's dead plants into
  *   mobs (1 Zombud each, no fill from stock, no crop bundle).
- * - not met: timer extended by `DECAY_EXTENSION_HOURS` (a Dead Plant: `DEAD_PLANT_DECAY_EXTENSION_HOURS`)
- *   until positive; re-checked at the next expiry.
+ * - not met: timer extended by `DECAY_EXTENSION_HOURS` until positive; re-checked at the next expiry.
  * Dead Plants decay too. No RNG.
  */
-/** How long one decay-timer extension lasts: 72 h for a Dead Plant, 24 h for every other plant (wiki). */
-export function decayExtensionSeconds(p: PlantState): number {
-  return (p.kindId === DEAD_PLANT ? DEAD_PLANT_DECAY_EXTENSION_HOURS : DECAY_EXTENSION_HOURS) * 3600;
-}
-
 function phaseDecay(plot: PlotState, ctx: CycleCtx): void {
   const { data } = ctx.env;
   const pools = poolSnapshot(plot);
+  const extension = DECAY_EXTENSION_HOURS * 3600;
   for (const p of [...plot.plants]) {
     if (!plot.plants.includes(p) || p.decaySecondsRemaining === null) continue;
     p.decaySecondsRemaining -= ctx.cycleSeconds;
     if (p.decaySecondsRemaining > 1e-6) continue;
     const combined = pools.get(p.kindId) ?? null;
     if (!minimumMet(p, combined)) {
-      const extension = decayExtensionSeconds(p);
       // Non-positive extension: leave the timer expired and re-check every tick (avoids an infinite loop).
       if (extension > 0) while (p.decaySecondsRemaining <= 1e-6) p.decaySecondsRemaining += extension;
       ctx.emit(plot.id, {
