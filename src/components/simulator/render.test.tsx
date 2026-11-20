@@ -414,6 +414,11 @@ describe("simulator panels render", () => {
     expect(checked(sowdust, "sowdust")).toBe(true);
     expect(sowdust).toContain("Collection crop: Melon");
     expect(sowdust).toContain(formatMetric({ by: "sowdust", crop: "wheat" }, sowdustTotal(s) / days));
+    // The run total follows the focus: Total profit for coins, Total Sowdust / Total Wheat otherwise.
+    expect(coins).toMatch(/data-testid="kpi-total"[\s\S]*?Total profit/);
+    expect(sowdust).toMatch(/data-testid="kpi-total"[\s\S]*?Total Sowdust[\s\S]*?>[^<]*\d/);
+    expect(sowdust).toContain(formatMetric({ by: "sowdust", crop: "wheat" }, sowdustTotal(s)));
+    expect(wheat).toMatch(/data-testid="kpi-total"[\s\S]*?Total Wheat/);
     // Phone header: the focus metric with its unit as the picker.
     const phone = wrap(<KpiCompact view={view} plotCount={2} focus={{ by: "xp", crop: "wheat" }} onFocusChange={() => {}} />).replace(/<!-- -->/g, "");
     expect(phone).toContain("Farming XP/day");

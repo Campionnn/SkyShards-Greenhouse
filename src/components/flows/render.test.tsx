@@ -237,15 +237,18 @@ describe("leaderboard pages render", () => {
     expect(over).not.toContain("107%");
   });
 
-  it("the rank-by control: Coins by default; Collection shows the crop picker (URL by/crop), and every metric is in the bar", () => {
+  it("the rank-by control: one radio track (frequency left of it), Coins by default; Collection always carries its crop (URL by/crop)", () => {
     const coins = text(wrap(<FlowsPage />));
     expect(coins).toContain('data-testid="rank-by"');
-    expect(coins).toMatch(/role="group" aria-label="Rank by"/);
+    expect(coins).toMatch(/role="radiogroup" aria-label="Rank by"/);
     for (const s of ["Coins", "Collection", "Sowdust", "Farming XP"]) expect(coins).toContain(`>${s}</button>`);
-    expect(coins).toMatch(/aria-pressed="true"[^>]*>Coins</);
-    expect(coins).not.toContain('data-testid="crop-picker"');
+    expect(coins).toMatch(/aria-checked="true"[^>]*>Coins</);
+    // The crop chip is always there (the control keeps its width), showing the default crop.
+    expect(coins).toMatch(/data-testid="crop-picker".{0,800}Wheat/s);
+    // The frequency sits before the rank-by control, so switching metrics never moves it.
+    expect(coins.indexOf('data-testid="frequency-picker"')).toBeLessThan(coins.indexOf('data-testid="rank-by"'));
     const melon = text(wrap(<FlowsPage />, "/flows?by=collection&crop=melon"));
-    expect(melon).toMatch(/aria-pressed="true"[^>]*>Collection</);
+    expect(melon).toMatch(/aria-checked="true"[^>]*>Collection</);
     expect(melon).toMatch(/data-testid="crop-picker".{0,800}Melon/s);
     // The value column head names the unit; its sort label follows the metric.
     expect(melon).toContain('title="Melon/day"');
@@ -253,17 +256,16 @@ describe("leaderboard pages render", () => {
     // An unknown crop falls back to Wheat; crop without by=collection is ignored.
     expect(text(wrap(<FlowsPage />, "/flows?by=collection&crop=nope"))).toMatch(/data-testid="crop-picker".{0,800}Wheat/s);
     const xp = text(wrap(<FlowsPage />, "/flows?by=xp&crop=melon"));
-    expect(xp).toMatch(/aria-pressed="true"[^>]*>Farming XP</);
+    expect(xp).toMatch(/aria-checked="true"[^>]*>Farming XP</);
     expect(xp).toContain('title="Farming XP/day"');
-    expect(xp).not.toContain('data-testid="crop-picker"');
     // Phones: the same control, "XP" short.
-    expect(text(wrap(<RankByControl metric={{ by: "sowdust", crop: "wheat" }} onMetric={() => {}} phone />))).toMatch(/aria-pressed="true"[^>]*>Sowdust<.*>XP</s);
+    expect(text(wrap(<RankByControl metric={{ by: "sowdust", crop: "wheat" }} onMetric={() => {}} phone />))).toMatch(/aria-checked="true"[^>]*>Sowdust<.*>XP</s);
   });
 
   it("the crop picker menu: the 14 base crops with images, the picked one checked", () => {
     // SSR renders no open popover: the trigger shows the picked crop with its image.
     const html = text(wrap(<CropPicker crop="cocoa_beans" onCrop={() => {}} />));
-    expect(html).toContain('aria-label="Collection crop"');
+    expect(html).toContain('aria-label="Collection crop: Cocoa Beans. Change the crop"');
     expect(html).toContain("Cocoa Beans");
     expect(html).toMatch(/<img[^>]*alt="Cocoa Beans"/);
     expect(COLLECTION_CROPS).toHaveLength(14);

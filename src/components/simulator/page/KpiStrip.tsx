@@ -3,10 +3,14 @@ import type { SimulationView } from "../../../hooks/useSimulation";
 import { COINS_METRIC, type RankMetric } from "../../../leaderboard/metric";
 import { uptimeRatio } from "../../../simulator";
 import { cn } from "../../ui/cn";
-import { formatFocus } from "../focusMetricUi";
-import { formatCoins, formatDuration, formatPercent, spotFailureText } from "../format";
+import { formatFocus, focusUnit } from "../focusMetricUi";
+import { formatCoins, formatDuration, formatPercent, nameOf, spotFailureText } from "../format";
 import { FocusName, FocusPicker, MetricTiles } from "./FocusPicker";
-import { focusValues, kpiValues, metricTiles, statusText, type PriceSummary } from "./pageHelpers";
+import { focusTotal, focusValues, kpiValues, metricTiles, statusText, type PriceSummary } from "./pageHelpers";
+
+/** The run total's label: "Total profit", "Total Sowdust", "Total Farming XP", "Total Wheat". */
+const totalLabel = (m: RankMetric): string =>
+  m.by === "coins" ? "Total profit" : m.by === "sowdust" ? "Total Sowdust" : m.by === "xp" ? "Total Farming XP" : `Total ${nameOf(m.crop)}`;
 
 // The numbers under the command bar: the four metric tiles per day (coins, Sowdust, Farming XP, one
 // crop's collection; the focused one is larger, on a highlight that slides to the tile you click),
@@ -52,6 +56,7 @@ export const KpiStrip: React.FC<KpiStripProps> = ({ view, plotCount, priceSummar
   const first = report?.firstFailure;
   const status = statusText(view, plotCount);
   const tiles = metricTiles(view, focus.by === "collection" ? focus.crop : (collectionCrop ?? focus.crop), priceSummary);
+  const total = focusTotal(view, focus, priceSummary);
   return (
     <div className="flex items-end gap-6 px-1 pb-2 sm:px-1.5 max-md:hidden @max-[1240px]:gap-4 @max-[860px]:gap-3" data-testid="kpi-strip">
       {onFocusChange ? (
@@ -62,8 +67,18 @@ export const KpiStrip: React.FC<KpiStripProps> = ({ view, plotCount, priceSummar
         </Kpi>
       )}
       <span aria-hidden className="mb-2 h-8 w-px shrink-0 self-end bg-line" />
-      <Kpi label="Profit" className="pb-2 @max-[1180px]:hidden">
-        <span className={profit < 0 ? "text-problem" : "text-coin"}>{formatCoins(profit)}</span>
+      {/* The focus metric's run total (the tiles are per day): Total profit, Total Sowdust, … */}
+      <Kpi
+        label={totalLabel(focus)}
+        testId="kpi-total"
+        className="pb-2 @max-[760px]:hidden"
+        title={`${totalLabel(focus)} over the whole run (${formatDuration(summary?.elapsedSeconds ?? 0)} simulated). ${focusUnit(focus)} is this divided by the days simulated.`}
+      >
+        {focus.by === "coins" ? (
+          <span className={profit < 0 ? "text-problem" : "text-coin"}>{formatCoins(profit)}</span>
+        ) : (
+          <span className={total < 0 ? "text-problem" : undefined}>{formatFocus(focus, total)}</span>
+        )}
       </Kpi>
       <Kpi label="Simulated" className="pb-2" title={`${(summary?.cyclesRun ?? 0).toLocaleString("en-US")} cycles · ${formatDuration(summary?.elapsedSeconds ?? 0)}`}>
         <span className="@max-[1100px]:hidden">{(summary?.cyclesRun ?? 0).toLocaleString("en-US")}</span>
@@ -78,7 +93,7 @@ export const KpiStrip: React.FC<KpiStripProps> = ({ view, plotCount, priceSummar
         ) : (
           <>
             <span className={unsustainable ? "text-problem" : undefined}>{formatPercent(uptimeRatio(u))}</span>
-            <span className={cn("ml-1 text-secondary font-medium @max-[900px]:hidden", unsustainable ? "text-problem/70" : "text-fg-meta")}>
+            <span className={cn("ml-1 text-secondary font-medium @max-[960px]:hidden", unsustainable ? "text-problem/70" : "text-fg-meta")}>
               {unsustainable ? (first ? `short at cycle ${first.firstRequirementsCycle}` : "not sustainable") : "sustainable"}
             </span>
           </>
@@ -101,7 +116,7 @@ export const KpiCompactDetail: React.FC<KpiStripProps> = ({ view, plotCount, pri
   return (
     <div className="flex min-w-0 items-baseline gap-x-3 px-3 pb-2 text-secondary text-fg-meta md:hidden">
       <span className="shrink-0 whitespace-nowrap">
-        <b className={cn("font-semibold tabular-nums", profit < 0 ? "text-problem" : "text-coin")}>{formatCoins(profit)}</b> profit
+        <b className={cn("font-semibold tabular-nums", profit < 0 ? "text-problem" : "text-coin")}>{formatCoins(profit)}</b> total profit
       </span>
       <span className="shrink-0 whitespace-nowrap tabular-nums">
         {(summary?.cyclesRun ?? 0).toLocaleString("en-US")} cycles · {formatDuration(summary?.elapsedSeconds ?? 0)}

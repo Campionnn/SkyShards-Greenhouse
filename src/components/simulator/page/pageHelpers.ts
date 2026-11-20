@@ -1,7 +1,7 @@
 import type { SimulationView } from "../../../hooks/useSimulation";
 import { CONFIG_META, DEFAULT_CONFIG, type RunSummary, type Scenario } from "../../../simulator";
 import { COINS_METRIC, type RankMetric } from "../../../leaderboard/metric";
-import { metricPerDay } from "../focusMetric";
+import { collectionTotal, metricPerDay, sowdustTotal, xpTotal } from "../focusMetric";
 import { describeStop, stopPlace } from "./stepBy";
 
 // Plain helpers shared by the simulator page's components (kept out of .tsx files so React fast
@@ -85,6 +85,26 @@ export function metricTiles(view: SimulationView, crop: string, priceSummary?: P
     const prev = prevSummary ? metricPerDay(prevSummary, metric, coins) : null;
     return { metric, value, delta: prev === null ? null : value - prev };
   });
+}
+
+/**
+ * The strip's total beside the rates: the whole run's amount of the focus metric. Coins is the profit
+ * (Bazaar when priced, else NPC); the others are their run totals.
+ */
+export function focusTotal(view: SimulationView, metric: RankMetric, priceSummary?: PriceSummary): number {
+  const running = view.status === "running";
+  const summary = (running && view.progress?.summary) || view.snapshot?.state.summary || null;
+  if (!summary) return 0;
+  switch (metric.by) {
+    case "coins":
+      return priceSummary?.(summary)?.profit ?? summary.profit;
+    case "collection":
+      return collectionTotal(summary, metric.crop);
+    case "sowdust":
+      return sowdustTotal(summary);
+    case "xp":
+      return xpTotal(summary);
+  }
 }
 
 /** The metrics shown beside the hero when they aren't the focus (a collection only shows as the focus). */

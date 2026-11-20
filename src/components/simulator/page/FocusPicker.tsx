@@ -25,8 +25,8 @@ export const FocusName: React.FC<{ metric: RankMetric; size?: number; className?
   </span>
 );
 
-/** The tile labels (the unit "/day" is implied by the strip). */
-const TILE_LABEL: Record<RankBy, string> = { coins: "Coins", sowdust: "Sowdust", xp: "Farming XP", collection: "Collection" };
+/** The tile labels: every tile is a rate, said in the label (the strip's Total profit is a total). */
+const TILE_LABEL: Record<RankBy, string> = { coins: "Coins/day", sowdust: "Sowdust/day", xp: "Farming XP/day", collection: "Collection/day" };
 
 const signed = (metric: RankMetric, d: number) => `${d > 0 ? "+" : "−"}${formatFocus(metric, Math.abs(d))}`;
 
@@ -79,7 +79,11 @@ const Tile: React.FC<{ tile: MetricTile; on: boolean; onFocus: (m: RankMetric) =
   const coins = metric.by === "coins";
   const collection = metric.by === "collection";
   const showDelta = on && delta !== null && formatFocus(metric, Math.abs(delta)) !== "0";
-  const title = coins ? `Profit per day at ${priced ? "Bazaar" : "NPC"} prices` : collection ? `${nameOf(metric.crop)} harvested per simulated day` : `${TILE_LABEL[metric.by]} earned per simulated day`;
+  const title = coins
+    ? `Profit per simulated day at ${priced ? "Bazaar" : "NPC"} prices (Total profit ÷ days simulated)`
+    : collection
+      ? `${nameOf(metric.crop)} harvested per simulated day`
+      : `${RANK_BY_LABEL[metric.by]} earned per simulated day`;
   return (
     <div className={cn("relative z-10 flex min-w-0 flex-col justify-end rounded-control px-2.5 pt-1.5 pb-2", collection && "@max-[860px]:hidden")} data-testid={`kpi-${metric.by}`} data-focus={on}>
       {/* The whole tile is the radio; the crop control sits above its stretched area. */}
@@ -95,11 +99,11 @@ const Tile: React.FC<{ tile: MetricTile; on: boolean; onFocus: (m: RankMetric) =
         )}
       >
         <span className="sr-only">
-          {collection ? `${nameOf(metric.crop)} collection` : TILE_LABEL[metric.by]}: {formatFocus(metric, value)} per day
+          {collection ? `${nameOf(metric.crop)} collection` : RANK_BY_LABEL[metric.by]}: {formatFocus(metric, value)} per day
         </span>
       </button>
       <span className="pointer-events-none flex h-4 items-center gap-1 text-label uppercase text-fg-meta">
-        {collection ? "Collection" : TILE_LABEL[metric.by]}
+        {TILE_LABEL[metric.by]}
       </span>
       {/* A fixed-height line, baseline at the bottom: the larger focused number doesn't move its neighbours. */}
       <span className="pointer-events-none mt-1 flex h-[26px] items-baseline gap-1.5 whitespace-nowrap tabular-nums [&>*]:leading-[26px]">

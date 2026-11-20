@@ -365,8 +365,8 @@ export const FlowsPage: React.FC = () => {
           {boardHint}
           <StatsChip viewer={viewer} onOpen={() => setStatsOpen(true)} className="flex-1" />
         </div>
-        <RankByControl metric={metric} onMetric={setMetric} phone />
         <FrequencyPicker viewer={viewer} className="[&>[role=radiogroup]]:flex-1" />
+        <RankByControl metric={metric} onMetric={setMetric} phone />
         <SearchBox value={query} onChange={setQuery} />
         <FilterBar
           board={board}
@@ -425,8 +425,9 @@ export const FlowsPage: React.FC = () => {
         <SearchBox value={query} onChange={setQuery} className="ml-auto max-w-[15rem] min-w-[10rem] flex-1" />
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <RankByControl metric={metric} onMetric={setMetric} />
+        {/* Frequency first: its position never depends on the rank-by control's width. */}
         <FrequencyPicker viewer={viewer} />
+        <RankByControl metric={metric} onMetric={setMetric} />
       </div>
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
         <FilterBar
