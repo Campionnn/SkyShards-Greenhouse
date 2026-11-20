@@ -5,7 +5,8 @@ import type { EffectId, ItemId } from "../data/types";
  *
  * Sowdust (wiki "Sowdust", Greenhouse section): per crop item in the harvested bundle,
  * `5 × ⌊base / (5 × cropMultiplier)⌉ × (1 + fortune / 100)`, summed over the items. `base` is the
- * bundle amount before any yield (data.json drops, × the Jellybean / All-in Aloe stage multiplier),
+ * bundle amount before any yield (the data.json drops; the Jellybean / All-in Aloe stage multiplier
+ * scales their drops but not their Sowdust or XP, which are the same at any stage),
  * `fortune` that item's total Farming Fortune (general + crop + the harvest's tool). Only fortune
  * scales it: not Harvest Boost/Loss, Plant Yield, unique crops or Evergreen. The Sowdust modifiers
  * (Elephant pet, Earthy reforge, Blooming weather) don't apply in the Greenhouse. For a mutation's
@@ -67,9 +68,9 @@ export function xpEffectFactor(effective: ReadonlySet<EffectId> | readonly Effec
 }
 
 /**
- * Farming XP of one harvest: 1600 × loot multiplier × bundle multiplier (Jellybean / All-in Aloe
- * stage; 1 otherwise, 0 gives 0) × XP effects × (1 + Farming Wisdom / 100). Missing or negative
- * wisdom counts as 0.
+ * Farming XP of one harvest: 1600 × loot multiplier × `bundleMult` (the harvest passes 1: the
+ * Jellybean / All-in Aloe stage doesn't change XP; 0 gives 0) × XP effects × (1 + Farming Wisdom /
+ * 100). Missing or negative wisdom counts as 0.
  */
 export function harvestFarmingXp(multiplier: number, effective: ReadonlySet<EffectId> | readonly EffectId[], wisdom: number | undefined, bundleMult = 1): number {
   if (!(multiplier > 0) || !(bundleMult > 0)) return 0;

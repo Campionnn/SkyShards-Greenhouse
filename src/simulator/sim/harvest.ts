@@ -164,13 +164,14 @@ export function harvestPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, scra
   summary.revenue.mutationItems += itemValue;
   summary.revenue.crops += coinValue - rareValue - rareCropValue - itemValue;
   for (const item in rareCrops) bump(summary.rareCrops, item, rareCrops[item]);
-  // Sowdust (from the crop bundle before yield, scaled by fortune only) and Farming XP (the kind's
-  // loot multiplier × the bundle's stage multiplier, XP effects, Farming Wisdom). No rolls.
-  // Missing in old states: created on first use.
-  const sowdust = harvestSowdust(baseDrops, fortuneOf);
+  // Sowdust (from the data.json crop bundle before yield, scaled by fortune only) and Farming XP
+  // (the kind's loot multiplier, XP effects, Farming Wisdom). No rolls. The stage multiplier of
+  // Magic Jellybean / All-in Aloe scales their drops but not these: in game a harvest gives the
+  // same Sowdust and XP at any stage (user-confirmed 2026-11-19). Missing in old states: created on first use.
+  const sowdust = harvestSowdust(def.drops, fortuneOf);
   const sowdustSummary = (summary.sowdust ??= {});
   for (const item in sowdust) bump(sowdustSummary, item, sowdust[item]);
-  summary.farmingXp = (summary.farmingXp ?? 0) + harvestFarmingXp(def.multiplier, effective, stats.farmingWisdom, bundleMult);
+  summary.farmingXp = (summary.farmingXp ?? 0) + harvestFarmingXp(def.multiplier, effective, stats.farmingWisdom);
   bump(summary.harvested, p.kindId);
   effortHarvest(ctx.state, p.kindId);
   const pp = perPlot(summary, plot.id);

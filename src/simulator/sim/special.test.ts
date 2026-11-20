@@ -132,6 +132,9 @@ describe("All-in Aloe", () => {
       expect(h.drops[ALOE_FRAGMENT]).toBeUndefined();
       // The crop bundle is scaled by the stage multiplier too: 9 x 140 at baseline stats.
       expect(h.drops).toMatchObject({ wheat: 9 * 140, sunflower: 9 * 140, moonflower: 9 * 140 });
+      // Sowdust and Farming XP don't follow the stage: the stage-1 bundle's (wheat 140, flowers 140 each) and 1600 × 0.7.
+      expect(r.state.summary.sowdust).toEqual({ wheat: 140, sunflower: 70, moonflower: 70 });
+      expect(r.state.summary.farmingXp).toBeCloseTo(1120, 6);
       return;
     }
     throw new Error("no seed without a reset");
