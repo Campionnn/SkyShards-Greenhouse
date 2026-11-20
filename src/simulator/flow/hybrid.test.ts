@@ -87,8 +87,8 @@ describe("hybrid flows (spawnsFillLayoutInputs)", () => {
   });
 
   it("with spawnsFillLayoutInputs off the growing jellybeans are taken off and all 15 are placed from inventory", () => {
-    // Seed 5: the targets fill slowly enough (cycle 11) that the earliest jellybeans reach stage 12.
-    const { state, events } = runUntilStep(start(hybrid({ spawnsFillLayoutInputs: false }, undefined, 5)), "use", 400);
+    // Seed 4: the targets fill slowly enough (cycle 14) that the earliest jellybeans reach stage 12.
+    const { state, events } = runUntilStep(start(hybrid({ spawnsFillLayoutInputs: false }, undefined, 4)), "use", 400);
     // From stage 12 a jellybean is harvested (early, for its stage multiplier); younger ones are broken.
     const broken = ofKind(events, "destroyed").filter((e) => e.kindId === "magic_jellybean");
     const harvested = ofKind(events, "harvested").filter((e) => e.kindId === "magic_jellybean");
@@ -164,7 +164,8 @@ describe("new triggers", () => {
   });
 
   it("collectedAtLeast counts the starting stock, production and additions, never spending", () => {
-    const spec = layout([["pumpkin", 4, 4], ["melon", 4, 6]], [["gloomgourd", 4, 5]]);
+    // No target slot: the cell between them is AIR, so no Gloomgourd spawns on its own (seed-independent).
+    const spec = layout([["pumpkin", 4, 4], ["melon", 4, 6]]);
     const want: Trigger = { kind: "collectedAtLeast", item: "gloomgourd", qty: 3 };
     const sc = scenario([flow([step("a", spec, [want]), step("b", layout())])], { inventory: { gloomgourd: 2 } });
     // 2 owned, 0 produced: stays.

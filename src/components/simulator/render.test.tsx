@@ -143,7 +143,7 @@ describe("simulator panels render", () => {
 
     const dead = card({ ...base, kindId: "dead_plant", isDeadPlant: true, origin: "placed", timesMutated: 0, mutatesRemaining: 10, decaySecondsRemaining: 3 * 86400 });
     expect(dead).toContain("Mutates remaining");
-    expect(dead).toContain("then +24h (minimum not met)");
+    expect(dead).toContain("then +72h (minimum not met)"); // a Dead Plant's attempt timer repeats every 72 h
   });
 
   it("Sanity Check: the plot view gets hover targets only while it is on, and the card lists spawnable and blocked mutations", () => {
@@ -309,7 +309,7 @@ describe("simulator panels render", () => {
 
   it("the Advanced tab counts the settings changed from their defaults", () => {
     const tuned = structuredClone(sc);
-    tuned.settings.config.waterLossMin = 2;
+    tuned.settings.config.negativeWaterSkipChance = 0.25;
     tuned.settings.config.armorRareCropBug = false;
     const html = wrap(<SettingsPanel scenario={tuned} onChange={() => {}} />).replace(/<!-- -->/g, "");
     expect(html).toContain("Advanced (2)"); // one per changed setting

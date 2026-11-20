@@ -394,10 +394,10 @@ describe("leaderboard v2: boards, starting items, upkeep, stalls, ramp", () => {
     expect(profileRuleKind(undefined)).toBe("borrow");
     expect(
       ruleDifferenceLines(
-        ["starting inventory is not empty", 'advanced setting "allowMutationDebt" differs', 'advanced setting "leaderboardRules" differs', 'advanced setting "waterLossMin" differs'],
-        { waterLossMin: "Water loss min" }
+        ["starting inventory is not empty", 'advanced setting "allowMutationDebt" differs', 'advanced setting "leaderboardRules" differs', 'advanced setting "negativeWaterSkipChance" differs'],
+        { negativeWaterSkipChance: "Negative-water skip chance" }
       )
-    ).toEqual(["starting inventory is not empty", 'the advanced setting "Water loss min" is changed', "the leaderboard's own set-up isn't on"]);
+    ).toEqual(["starting inventory is not empty", 'the advanced setting "Negative-water skip chance" is changed', "the leaderboard's own set-up isn't on"]);
   });
 
   it("upkeep and starting items texts round counts up", () => {

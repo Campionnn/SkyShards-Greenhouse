@@ -3,7 +3,7 @@
 import type { SimConfig } from "./config";
 import { defaultGameData } from "./data/default";
 import type { GameData, KindId, MinimumMutations } from "./data/types";
-import { createEngine, type Engine } from "./engine";
+import { createEngine, type Engine, type EngineTestOptions } from "./engine";
 import type { Condition, Flow, FlowStep, LayoutSpec, PolicyOverrides, StepLayout } from "./flow/types";
 import { defaultSettings } from "./scenario";
 import { DEVOURER_ROOT, insertPlant, newPlant, newRoot } from "./sim/plants";
@@ -37,8 +37,8 @@ export function patchedData(patch: DataPatch, base: GameData = defaultGameData()
   return data;
 }
 
-/** An engine over patched game data (see `DataPatch`). */
-export const engineWith = (patch: DataPatch): Engine => createEngine(patchedData(patch));
+/** An engine over patched game data (see `DataPatch`), optionally with test-only engine options (`NO_WATER_LOSS`). */
+export const engineWith = (patch: DataPatch, options: EngineTestOptions = {}): Engine => createEngine(patchedData(patch), options);
 
 /** No minimum mutations for any kind, so decay is timer-only. */
 export const TIMER_ONLY = engineWith({ timerOnly: true });
@@ -46,6 +46,13 @@ export const TIMER_ONLY = engineWith({ timerOnly: true });
 export const NO_BASE_CROP_DECAY = engineWith({ noBaseCropDecay: true });
 /** Both of the above. */
 export const TIMER_ONLY_NO_BASE_CROP_DECAY = engineWith({ timerOnly: true, noBaseCropDecay: true });
+/**
+ * Plants never lose water (test-only engine option; the game drains a flat `WATER_LOSS_PER_CYCLE`).
+ * For tests about something else that must not dry out or skip stages with the player away.
+ */
+export const NO_WATER_LOSS = createEngine(defaultGameData(), { waterLossPerCycle: 0 });
+/** `TIMER_ONLY` without water loss. */
+export const TIMER_ONLY_NO_WATER_LOSS = engineWith({ timerOnly: true }, { waterLossPerCycle: 0 });
 
 /**
  * Player stats patch: a huge Bioanalysis bonus pushes every non-empty spawn pool

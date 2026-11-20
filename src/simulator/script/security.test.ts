@@ -116,9 +116,9 @@ describe("script sandbox", () => {
   });
 
   it("copies of engine data can't change the engine", () => {
-    const s = engineRun(`function onTick() { stats.farmingFortune = 1e9; config.waterLossMin = -1e9; summary.profit = 1e12; plot.policies.watering = "never" }`, 3);
+    const s = engineRun(`function onTick() { stats.farmingFortune = 1e9; config.negativeWaterSkipChance = -1e9; summary.profit = 1e12; plot.policies.watering = "never" }`, 3);
     expect(s.scenario.settings.playerStats.farmingFortune).not.toBe(1e9);
-    expect(s.scenario.settings.config.waterLossMin).not.toBe(-1e9);
+    expect(s.scenario.settings.config.negativeWaterSkipChance).not.toBe(-1e9);
     expect(s.summary.profit).not.toBe(1e12);
   });
 

@@ -8,6 +8,7 @@ import {
   LAYOUT_B_CODE,
   layout,
   NEVER_ACTIVE,
+  NO_WATER_LOSS,
   plantAt,
   scenario,
   step,
@@ -307,13 +308,14 @@ describe("destruction", () => {
 
   it("a growing Devourer grows a root into a neighbouring cell, destroying what was there", () => {
     // Root chances are fixed (DEVOURER_ROOT_CHANCE 40%), so step until the first root appears.
-    let s = blank({ waterLossMin: 0, waterLossMax: 0 });
+    // No water loss (test-only engine): with the player away the Devourer would dry out and stop growing.
+    let s = blank();
     paintAll(s);
     inject(s, 1, "devourer", 5, 5, "spawned");
     // Fill all 8 neighbours so the root must land on a plant.
     for (const [r, c] of [[4, 4], [4, 5], [4, 6], [5, 4], [5, 6], [6, 4], [6, 5], [6, 6]]) inject(s, 1, "wheat", r, c, "planted");
     for (let i = 0; i < 50; i++) {
-      const r = engine.run(s, 1);
+      const r = NO_WATER_LOSS.run(s, 1);
       s = r.state;
       const grown = ofKind(r.events, "rootSpread");
       if (!grown.length) continue;
@@ -365,6 +367,32 @@ describe("destruction", () => {
     inject(s, 1, "devourer", 5, 5, "spawned", { stage: 16 });
     const r = engine.run(s, 20);
     expect(r.state.plots[0].plants.some((p) => p.kindId === "devourer_root")).toBe(false);
+  });
+
+  it("a Devourer only rolls for a root on a tick it grows a stage (staff: 'upon reaching the next Growth Stage')", () => {
+    // Dried out, it never grows, so it never roots, however long it stands.
+    const dry = blank();
+    paintAll(dry);
+    inject(dry, 1, "devourer", 5, 5, "spawned", { water: -100 });
+    const r = engine.run(dry, 40);
+    expect(ofKind(r.events, "rootSpread")).toHaveLength(0);
+    expect(ofKind(r.events, "advanced").filter((e) => e.kindId === "devourer")).toHaveLength(0);
+    // Growing every tick: every root it makes comes on a tick it advanced.
+    // No water loss (test-only engine), so it never dries out.
+    let s = blank();
+    paintAll(s);
+    inject(s, 1, "devourer", 5, 5, "spawned");
+    let rooted = 0;
+    for (let i = 0; i < 15; i++) {
+      const step = NO_WATER_LOSS.run(s, 1);
+      s = step.state;
+      const fromDevourer = ofKind(step.events, "rootSpread").filter((e) => e.fromRow === 5 && e.fromCol === 5);
+      if (fromDevourer.length) {
+        rooted += 1;
+        expect(ofKind(step.events, "advanced").some((e) => e.kindId === "devourer")).toBe(true);
+      }
+    }
+    expect(rooted).toBeGreaterThan(0);
   });
 
   it("Chorus Fruit teleports onto AIR when there is no ground, turning the landing cell into End Stone", () => {
@@ -534,7 +562,7 @@ describe("blastberry", () => {
     expect(plantAt(r.state, 1, 4, 4)?.kindId).toBe("wheat");
   });
 
-  it("a placed Blastberry starts unprimed and primes at the next tick; primed ones chain-explode", () => {
+  it("a placed Blastberry starts unprimed and primes at the next tick; the player breaking both sets off both blasts", () => {
     const f = flow(
       [
         step("a", layout([["blastberry", 5, 5], ["blastberry", 5, 6]]), [{ kind: "cycles", n: 1 }]),
@@ -545,10 +573,26 @@ describe("blastberry", () => {
     const s = start(scenario([f], {}));
     expect(s.plots[0].plants.find((p) => p.kindId === "blastberry")?.gate.primed).toBe(false);
     const r = engine.run(s, 1); // tick 0 primes them; the step change at its end breaks them
-    // One broken by the player at the step change, the other set off by the first blast.
+    // The player breaks each one at the step change (the first blast leaves its neighbour standing).
     expect(ofKind(r.events, "exploded").map((e) => [e.row, e.col])).toEqual([
       [5, 5],
       [5, 6],
     ]);
+  });
+
+  it("Blastberries are immune to each other's blasts: a blast never destroys or sets off another Blastberry", () => {
+    const s = blank();
+    // A primed placed Blastberry that decays this tick, ringed by a primed one, an unprimed spawn and wheat.
+    inject(s, 1, "blastberry", 5, 5, "placed", { gate: { primed: true }, timesMutated: 8, mutatesRemaining: 0, decaySecondsRemaining: 1 });
+    inject(s, 1, "blastberry", 5, 6, "placed", { gate: { primed: true } });
+    inject(s, 1, "blastberry", 4, 5, "spawned", { stage: 2 });
+    inject(s, 1, "wheat", 6, 5, "planted");
+    const r = engine.run(s, 1);
+    expect(ofKind(r.events, "exploded").map((e) => [e.row, e.col])).toEqual([[5, 5]]);
+    expect(r.summary.destroyed.wheat).toBe(1);
+    expect(r.summary.destroyed.blastberry).toBeUndefined();
+    expect(plantAt(r.state, 1, 5, 6)?.kindId).toBe("blastberry");
+    expect(plantAt(r.state, 1, 5, 6)?.gate.primed).toBe(true);
+    expect(plantAt(r.state, 1, 4, 5)?.kindId).toBe("blastberry");
   });
 });

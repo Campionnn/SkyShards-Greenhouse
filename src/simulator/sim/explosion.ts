@@ -5,10 +5,13 @@ import { buildOccupancy, initialDecaySeconds, minimumMutationsOf, removePlant, s
 import { bump, perPlot } from "./summary";
 import type { PlantState, PlotState } from "./state";
 
-// Blastberry: breaking a primed one by any means destroys the 8 surrounding
-// cells. Primed Blastberries hit chain-explode. Turtlellini survives a hit;
-// the second hit turns it into a Shellfruit.
+// Blastberry: breaking a primed one by any means destroys the 8 surrounding cells. Other
+// Blastberries in range are immune (wiki "Blastberry": "If there is another Blastberry in range,
+// it is ignored and not destroyed"; user-confirmed 2026-11-19), so blasts never chain. Turtlellini
+// survives a hit; the second hit turns it into a Shellfruit.
 // Priming: a spawn primes once fully grown; a placed one primes at the next tick.
+
+const BLASTBERRY = "blastberry";
 
 /**
  * A Shellfruit a blast just made, before its first tick: only these effects work on it yet, taken
@@ -18,7 +21,7 @@ export const SETTLING_EFFECTS: ReadonlySet<string> = new Set(["harvest_boost", "
 
 export const isSettling = (p: PlantState): boolean => p.gate.settling !== undefined;
 
-export const isPrimedBlastberry = (p: PlantState): boolean => p.kindId === "blastberry" && p.gate.primed === true;
+export const isPrimedBlastberry = (p: PlantState): boolean => p.kindId === BLASTBERRY && p.gate.primed === true;
 
 /** Remove as destroyed (a loss) without triggering explosions; see destroyPlant. */
 export function removeAsDestroyed(plot: PlotState, p: PlantState, ctx: CycleCtx, by: string): void {
@@ -36,30 +39,29 @@ export function destroyPlant(plot: PlotState, p: PlantState, ctx: CycleCtx, by: 
   if (primed) explode(plot, p, ctx);
 }
 
-/** Blow up the 8 neighbours of a primed Blastberry that just broke, chaining breadth-first. */
+/**
+ * Blow up the 8 neighbours of a primed Blastberry that just broke. Other Blastberries (primed or not,
+ * placed or spawned) are ignored and stay, so there is never a chain; Turtlellini counts the hit.
+ */
 export function explode(plot: PlotState, origin: { id: number; row: number; col: number }, ctx: CycleCtx): void {
-  const queue = [{ id: origin.id, row: origin.row, col: origin.col }];
-  while (queue.length) {
-    const blast = queue.shift()!;
-    ctx.emit(plot.id, { kind: "exploded", plantId: blast.id, row: blast.row, col: blast.col });
-    const occ = buildOccupancy(plot);
-    const hit = new Set<PlantState>();
-    for (const idx of ringCells(blast.row, blast.col, 1)) {
-      const q = occ[idx];
-      if (q && plot.plants.includes(q)) hit.add(q);
+  ctx.emit(plot.id, { kind: "exploded", plantId: origin.id, row: origin.row, col: origin.col });
+  const occ = buildOccupancy(plot);
+  const hit = new Set<PlantState>();
+  for (const idx of ringCells(origin.row, origin.col, 1)) {
+    const q = occ[idx];
+    if (q && plot.plants.includes(q)) hit.add(q);
+  }
+  for (const q of hit) {
+    if (q.kindId === BLASTBERRY) continue;
+    if (q.kindId === "turtlellini") {
+      q.gate.exploded = (q.gate.exploded ?? 0) + 1;
+      if (q.gate.exploded >= 2) turnIntoShellfruit(plot, q, ctx);
+      continue;
     }
-    for (const q of hit) {
-      if (q.kindId === "turtlellini") {
-        q.gate.exploded = (q.gate.exploded ?? 0) + 1;
-        if (q.gate.exploded >= 2) turnIntoShellfruit(plot, q, ctx);
-        continue;
-      }
-      const chain = isPrimedBlastberry(q);
-      removeAsDestroyed(plot, q, ctx, "blastberry explosion");
-      if (chain) queue.push({ id: q.id, row: q.row, col: q.col });
-    }
+    removeAsDestroyed(plot, q, ctx, "blastberry explosion");
   }
 }
+
 
 function turnIntoShellfruit(plot: PlotState, q: PlantState, ctx: CycleCtx): void {
   const m = ctx.env.data.mutations.shellfruit;

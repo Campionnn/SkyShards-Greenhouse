@@ -272,14 +272,16 @@ describe("flow export / import", () => {
       minimumMutationsOverrides: { wheat: 2 },
       rareDropValues: { chloronite: 1000 },
       perfectPlay: false,
+      waterLossMin: 2,
+      waterLossMax: 3,
     };
-    (saved.settings.config as unknown as Record<string, unknown>) = { ...saved.settings.config, ...removed, waterLossMin: 2, waterLossMax: 3 };
+    (saved.settings.config as unknown as Record<string, unknown>) = { ...saved.settings.config, ...removed, negativeWaterSkipChance: 0.25 };
     const up = migrateScenario(saved);
     const config = up.settings.config as unknown as Record<string, unknown>;
     for (const key of REMOVED_CONFIG) expect(config).not.toHaveProperty(key);
     expect(Object.keys(removed).every((k) => REMOVED_CONFIG.includes(k))).toBe(true);
-    expect(config).toMatchObject({ waterLossMin: 2, waterLossMax: 3 });
-    expect(config).toEqual({ ...defaultSettings().config, waterLossMin: 2, waterLossMax: 3 }); // every kept key survives
+    expect(config).toMatchObject({ negativeWaterSkipChance: 0.25 });
+    expect(config).toEqual({ ...defaultSettings().config, negativeWaterSkipChance: 0.25 }); // every kept key survives
     expect(saved.settings.config).toMatchObject(removed); // input untouched
   });
 
@@ -299,13 +301,16 @@ describe("flow export / import", () => {
     expect(out.state.cycle).toBe(20);
     expect(out.state.scenario.settings.config).not.toHaveProperty("spawnCells");
   });
-  it("keeps a saved water loss as it is (no migration): a saved 2-3 stays even though the default is 18-22", () => {
-    // Saves store the full config, so a saved value can't be told apart from a deliberate choice.
-    const saved = withPlots(LAYOUT_A_CODE);
-    saved.settings.config = { ...saved.settings.config, waterLossMin: 2, waterLossMax: 3 };
-    const up = migrateScenario(saved);
-    expect(up.settings.config).toMatchObject({ waterLossMin: 2, waterLossMax: 3 });
-    expect(withPlots(LAYOUT_A_CODE).settings.config).toMatchObject({ waterLossMin: 18, waterLossMax: 22 });
+  it("drops a saved water loss: it is the fixed WATER_LOSS_PER_CYCLE (20) now, not a setting", () => {
+    for (const [min, max] of [[2, 3], [18, 22], [20, 20], [0, 0]]) {
+      const saved = withPlots(LAYOUT_A_CODE);
+      (saved.settings.config as unknown as Record<string, unknown>) = { ...saved.settings.config, waterLossMin: min, waterLossMax: max };
+      const up = migrateScenario(saved);
+      expect(up.settings.config).not.toHaveProperty("waterLossMin");
+      expect(up.settings.config).not.toHaveProperty("waterLossMax");
+      expect(up.settings.config).toEqual(defaultSettings().config);
+    }
+    expect(withPlots(LAYOUT_A_CODE).settings.config).not.toHaveProperty("waterLossMin");
   });
 
   it("a save from before the loot multipliers: the old capRareCropChance (off) is dropped, so the new capRareCrops default (on) applies", () => {
@@ -364,7 +369,7 @@ describe("selectable flow export / import", () => {
       baseCropUpkeep: "harvestWhenGrown",
       gateInteractions: { ...sc.settings.policies.gateInteractions, wakeSnoozling: false, dischargeThunderling: false },
     };
-    sc.settings.config = { ...sc.settings.config, waterLossMin: 2, waterLossMax: 3, allowMutationDebt: true, plotOrder: [2, 1, 3] };
+    sc.settings.config = { ...sc.settings.config, negativeWaterSkipChance: 0.25, chorusOverflow: false, allowMutationDebt: true, plotOrder: [2, 1, 3] };
     sc.plots[0].policies = { watering: "never" };
     sc.plots[0].flow.steps[0].watch = ["0,0"];
     sc.plots[0].flow.steps[0].exits = [{ when: [{ kind: "cycles", n: 7 }] }];
@@ -376,7 +381,7 @@ describe("selectable flow export / import", () => {
     sc.settings.seed = 321;
     sc.settings.playerStats = { ...sc.settings.playerStats, farmingFortune: 900, floraShard: 8, startTimeOfDay: 18 };
     sc.settings.activity = { kind: "everyN", n: 5, offset: 2 };
-    sc.settings.config = { ...sc.settings.config, waterLossMax: 30, negativeWaterSkipChance: 0, plotOrder: [3, 2, 1] };
+    sc.settings.config = { ...sc.settings.config, soggybudWaterPerNeighbour: 3, negativeWaterSkipChance: 0, plotOrder: [3, 2, 1] };
     sc.settings.policies.gateInteractions.vacuumRat = false;
     return sc;
   };
@@ -505,11 +510,11 @@ describe("selectable flow export / import", () => {
     const before = structuredClone(mine);
     const next = importFlows(mine, JSON.stringify(v2({ settings: {
       playerStats: { farmingFortune: 42 },
-      config: { waterLossMin: 1 },
+      config: { fleshtrapFeedHunger: 4 },
       policies: { watering: "never", gateInteractions: { dischargeThunderling: false } },
     } })));
     expect(next.settings.playerStats).toEqual({ ...mine.settings.playerStats, farmingFortune: 42 });
-    expect(next.settings.config).toEqual({ ...mine.settings.config, waterLossMin: 1 });
+    expect(next.settings.config).toEqual({ ...mine.settings.config, fleshtrapFeedHunger: 4 });
     expect(next.settings.policies).toEqual({
       ...mine.settings.policies,
       watering: "never",
@@ -541,14 +546,14 @@ describe("selectable flow export / import", () => {
       rareDropValues: { chloronite: 1000 },
       waterLossMin: 2,
       waterLossMax: 3,
+      fleshtrapFeedHunger: 4,
       aloeHarvestStage,
     };
     const next = importFlows(mine, JSON.stringify(v2({ settings: { config: oldConfig } })));
     expect(next.settings.config).toEqual({
       ...mine.settings.config,
       keepIdenticalOnStepChange: false,
-      waterLossMin: 2,
-      waterLossMax: 3,
+      fleshtrapFeedHunger: 4,
       aloeHarvestStage,
       aloeAutoHarvest: aloeHarvestStage === 14,
     });
@@ -691,7 +696,7 @@ describe("selectable flow export / import", () => {
     { label: "null seed", section: "seed", extras: { settings: { seed: null } } },
     { label: "boolean seed", section: "seed", extras: { settings: { seed: false } } },
     { label: "string stats field", section: "playerStats", extras: { settings: { playerStats: { farmingFortune: "42" } } } },
-    { label: "null config field", section: "config", extras: { settings: { config: { waterLossMin: null } } } },
+    { label: "null config field", section: "config", extras: { settings: { config: { negativeWaterSkipChance: null } } } },
     { label: "number gate toggle", section: "policies", extras: { settings: { policies: { gateInteractions: { wakeSnoozling: 0 } } } } },
     { label: "string policy toggle", section: "policies", extras: { settings: { policies: { replaceDecayed: "false" } } } },
     { label: "string interval count", section: "activity", extras: { settings: { activity: { kind: "everyN", n: "5", offset: 0 } } } },

@@ -50,6 +50,9 @@ export const REMOVED_CONFIG: readonly string[] = [
   // Became `capRareCrops`, default on (loot multipliers push chances past 100%). A saved value
   // (off, the old default) is dropped so every scenario picks up the cap once.
   "capRareCropChance",
+  // Became the WATER_LOSS_PER_CYCLE constant, a flat 20 (2026-11-19).
+  "waterLossMin",
+  "waterLossMax",
 ];
 
 function migrateCondition(c: unknown): unknown {

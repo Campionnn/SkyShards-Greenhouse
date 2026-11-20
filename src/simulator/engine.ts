@@ -11,9 +11,16 @@ import { run } from "./sim/run";
 import type { StopPoint } from "./sim/stops";
 import type { BatchResult, RunOptions, Scenario, SimulationState } from "./sim/state";
 
+/** Test-only engine options; the app never passes any. */
+export interface EngineTestOptions {
+  /** Water lost per cycle instead of `WATER_LOSS_PER_CYCLE` (0 = no water loss). */
+  waterLossPerCycle?: number;
+}
+
 /** Simulator over one immutable data set. Evaluates scenarios only; never generates or ranks layouts. */
-export function createEngine(data: GameData = defaultGameData()) {
+export function createEngine(data: GameData = defaultGameData(), testOptions: EngineTestOptions = {}) {
   const env: Env = { data, resolveLayout: createLayoutResolver(data) };
+  if (testOptions.waterLossPerCycle !== undefined) env.waterLossPerCycle = testOptions.waterLossPerCycle;
   return {
     data,
     validate: (scenario: Scenario) => validateScenario(scenario, data),

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { HALT_WATER, type SimConfig } from "../config";
+import { HALT_WATER, WATER_LOSS_PER_CYCLE, type SimConfig } from "../config";
 import type { PolicyOverrides } from "../flow/types";
 import type { Engine } from "../engine";
-import { ALWAYS_SPAWN, inject as injectWith, layout, NEVER_ACTIVE, NO_BASE_CROP_DECAY, plantAt, singlePlot, start, TIMER_ONLY } from "../testHelpers";
+import { ALWAYS_SPAWN, inject as injectWith, layout, NEVER_ACTIVE, NO_BASE_CROP_DECAY, NO_WATER_LOSS, plantAt, singlePlot, start, TIMER_ONLY } from "../testHelpers";
 import { isDry } from "./plants";
 import type { ActivitySchedule, Origin, PlantState, PlayerStats, SimulationState, TimedEvent } from "./state";
 
@@ -77,13 +77,13 @@ describe("drying out", () => {
   });
 
   it("a natural drying out is reported once (driedOut event + summary), and the plant is still standing", () => {
-    const s = blank({ config: { waterLossMin: 3, waterLossMax: 3, negativeWaterSkipChance: 0 } });
-    inject(s, 1, "wheat", 5, 5, "planted", { water: -94 }); // -97 after one stage, -100 after two
+    const s = blank({ config: { negativeWaterSkipChance: 0 } });
+    inject(s, 1, "wheat", 5, 5, "planted", { water: -80 }); // -100 after one stage (a flat 20 a cycle)
     const r = engine.run(s, 6);
     expect(ofKind(r.events, "driedOut")).toHaveLength(1);
-    expect(ofKind(r.events, "driedOut")[0].cycle).toBe(1);
+    expect(ofKind(r.events, "driedOut")[0].cycle).toBe(0);
     expect(r.summary.driedOut).toEqual({ wheat: 1 });
-    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", stage: 2, water: HALT });
+    expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", stage: 1, water: HALT });
   });
 });
 
@@ -180,21 +180,25 @@ describe("unique crops", () => {
   });
 });
 
-// A water consumer loses waterLossMin..Max x retain/drain every cycle while not
+// A water consumer loses a flat WATER_LOSS_PER_CYCLE (20) x retain/drain every cycle while not
 // fully grown (advanced, gated, skipped or blocked), and nothing once fully
 // grown or dried out.
 describe("water loss per cycle until fully grown", () => {
-  /** A fixed loss of 20 a cycle and no below-0 skips, so the numbers are exact. */
-  const FIXED = { waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 };
+  /** No below-0 skips, so the numbers are exact. */
+  const FIXED = { negativeWaterSkipChance: 0 };
 
-  it("defaults: 18-22 a cycle", () => {
+  it("a flat 20 a cycle, not a setting and no roll", () => {
+    expect(WATER_LOSS_PER_CYCLE).toBe(20);
     const s = blank();
-    expect(s.scenario.settings.config).toMatchObject({ waterLossMin: 18, waterLossMax: 22 });
+    expect(s.scenario.settings.config).not.toHaveProperty("waterLossMin");
+    expect(s.scenario.settings.config).not.toHaveProperty("waterLossMax");
     inject(s, 1, "wheat", 5, 5, "planted");
     const r = engine.run(s, 1);
-    const water = plantAt(r.state, 1, 5, 5)!.water;
-    expect(water).toBeGreaterThanOrEqual(-22);
-    expect(water).toBeLessThanOrEqual(-18);
+    expect(plantAt(r.state, 1, 5, 5)!.water).toBe(-20);
+    // Water drains no random numbers: a consumer at or above 0 leaves the RNG untouched.
+    const t = blank();
+    inject(t, 1, "wheat", 5, 5, "planted", { water: 100 });
+    expect(engine.run(t, 1).state.rng).toEqual(t.rng);
   });
 
   it("a gated plant still loses water every cycle it is blocked (asleep Snoozling)", () => {
@@ -289,7 +293,7 @@ describe("everything starts at 0 water", () => {
     const sc = (activity: ActivitySchedule) =>
       start(
         singlePlot(layout([["chloronite", 5, 5], ["wheat", 2, 2]]), {
-          config: { waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 },
+          config: { negativeWaterSkipChance: 0 },
           activity,
           policies: { watering: "never" },
         }),
@@ -304,7 +308,7 @@ describe("everything starts at 0 water", () => {
   });
 
   it("the player who builds the starting layout waters it to max (watering: toMax), even if never online again", () => {
-    const s = start(singlePlot(layout([["chloronite", 5, 5], ["wheat", 2, 2]]), { config: { waterLossMin: 20, waterLossMax: 20 }, activity: NEVER_ACTIVE }), engine);
+    const s = start(singlePlot(layout([["chloronite", 5, 5], ["wheat", 2, 2]]), { activity: NEVER_ACTIVE }), engine);
     expect(plantAt(s, 1, 5, 5)!.water).toBe(100);
     expect(plantAt(s, 1, 2, 2)!.water).toBe(100);
     expect(plantAt(engine.run(s, 3).state, 1, 2, 2)!.water).toBe(40);
@@ -324,12 +328,12 @@ describe("everything starts at 0 water", () => {
   });
 
   it("with watering: never a base crop is never raised above 0", () => {
-    const s = start(singlePlot(layout([["wheat", 2, 2]]), { config: { waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 }, activity: ONLINE, policies: { watering: "never" } }), engine);
+    const s = start(singlePlot(layout([["wheat", 2, 2]]), { config: { negativeWaterSkipChance: 0 }, activity: ONLINE, policies: { watering: "never" } }), engine);
     expect(plantAt(engine.run(s, 1).state, 1, 2, 2)!.water).toBe(-20);
   });
 
   it("a fresh spawn drinks below 0 on its first tick; the player's session tops it up", () => {
-    const away = blank({ config: { waterLossMin: 20, waterLossMax: 20, negativeWaterSkipChance: 0 } });
+    const away = blank({ config: { negativeWaterSkipChance: 0 } });
     inject(away, 1, "startlevine", 5, 5, "spawned");
     expect(plantAt(engine.run(away, 1).state, 1, 5, 5)!.water).toBe(-20);
 
@@ -341,13 +345,14 @@ describe("everything starts at 0 water", () => {
 
 describe("uptime: a dried-out target on its own slot is `halted`", () => {
   const withTarget = (patch: Partial<PlantState>, activity: ActivitySchedule = NEVER_ACTIVE) => {
-    const s = blank({ slots: [["startlevine", 5, 5]], activity, config: { waterLossMin: 0, waterLossMax: 0 } });
-    inject(s, 1, "startlevine", 5, 5, "spawned", { stage: 3, ...patch });
+    // No water loss (test-only engine): the wet target must stay growing while the player is away.
+    const s = blank({ slots: [["startlevine", 5, 5]], activity, eng: NO_WATER_LOSS });
+    inject(s, 1, "startlevine", 5, 5, "spawned", { stage: 3, ...patch }, NO_WATER_LOSS);
     return s;
   };
 
   it("records halted (not growing), lowers uptime, and does not make the run unsustainable", () => {
-    const r = engine.run(withTarget({ water: HALT }), 4);
+    const r = NO_WATER_LOSS.run(withTarget({ water: HALT }), 4);
     expect(r.state.plots[0].watchStatus["5,5"]).toBe("halted");
     const report = engine.analyse(r.state);
     expect(report.totals).toEqual({ watched: 4, growing: 0, ready: 0, requirements: 0, blocked: 0, halted: 4 });
@@ -357,13 +362,13 @@ describe("uptime: a dried-out target on its own slot is `halted`", () => {
     expect(report.spots[0]).toMatchObject({ mutationId: "startlevine", halted: 4, uptime: 0 });
 
     // The same target with water is growing: full uptime.
-    const wet = engine.analyse(engine.run(withTarget({ water: 50 }), 4).state);
+    const wet = NO_WATER_LOSS.analyse(NO_WATER_LOSS.run(withTarget({ water: 50 }), 4).state);
     expect(wet.totals).toMatchObject({ watched: 4, growing: 4, halted: 0 });
     expect(wet.uptime).toBe(1);
   });
 
   it("watering ends it: halted on the cycle the tick saw it dry, growing after the session watered it", () => {
-    const r = engine.run(withTarget({ water: HALT }, ONLINE), 3);
+    const r = NO_WATER_LOSS.run(withTarget({ water: HALT }, ONLINE), 3);
     const report = engine.analyse(r.state);
     expect(report.totals).toMatchObject({ watched: 3, halted: 1, growing: 2 });
     expect(report.uptime).toBeCloseTo(2 / 3);
@@ -391,8 +396,8 @@ describe("uptime: a dried-out target on its own slot is `halted`", () => {
 
   it("halted spots and totals are splittable like the rest of the run", () => {
     const s = withTarget({ water: HALT }, { kind: "everyN", n: 3, offset: 1 });
-    const whole = engine.run(s, 6).state;
-    const halves = engine.run(engine.run(s, 3).state, 3).state;
+    const whole = NO_WATER_LOSS.run(s, 6).state;
+    const halves = NO_WATER_LOSS.run(NO_WATER_LOSS.run(s, 3).state, 3).state;
     expect(JSON.stringify(halves)).toBe(JSON.stringify(whole));
   });
 });

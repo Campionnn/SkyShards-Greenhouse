@@ -20,7 +20,7 @@ const one = (spec: LayoutSpec, extra: Partial<FlowStep> = {}, config = {}) =>
 describe("target uptime", () => {
   it("a target whose requirements hold is up, and the run is sustainable", () => {
     // Water loss pinned to 0: with the player away, the nether wart would dry out on cycle 4 and stop counting.
-    const s = one(layout(ASHWREATH_RING, [["ashwreath", 4, 4]]), {}, { waterLossMin: 0, waterLossMax: 0 });
+    const s = one(layout(ASHWREATH_RING, [["ashwreath", 4, 4]]), {}, {});
     const r = engine.run(s, 5);
     const report = engine.analyse(r.state);
     expect(report.totals.watched).toBe(5);

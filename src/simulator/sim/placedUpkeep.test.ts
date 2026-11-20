@@ -16,7 +16,7 @@ const eng = TIMER_ONLY;
 describe("placedUpkeep: replaceBeforeDecay", () => {
   const setup = (policies: PolicyOverrides, inventory: Record<string, number> = { puffercloud: 5 }) => {
     const s = start(
-      singlePlot(layout([["puffercloud", 0, 0]]), { activity: ONLINE, policies, inventory, config: { waterLossMin: 0, waterLossMax: 0 } }),
+      singlePlot(layout([["puffercloud", 0, 0]]), { activity: ONLINE, policies, inventory }),
       eng
     );
     const p = plantAt(s, 1, 0, 0)!;
@@ -84,7 +84,6 @@ describe("onlyReplaceForEmptyTargets", () => {
         activity: ONLINE,
         policies: { spawnedHarvest: "never", ...policies },
         inventory: { zombud: 10, puffercloud: 10 },
-        config: { waterLossMin: 0, waterLossMax: 0 },
       }),
       eng
     );

@@ -3,6 +3,7 @@
 export { createEngine, type Engine } from "./engine";
 export {
   CONFIG_META,
+  DEAD_PLANT_DECAY_EXTENSION_HOURS,
   DECAY_EXTENSION_HOURS,
   DEFAULT_CONFIG,
   DEVOURER_ROOT_CHANCE,
@@ -17,6 +18,7 @@ export {
   SPAWN_POOL_FLOOR,
   THUNDERLING_MAX_CHARGE,
   UNIQUE_CROP_CAP,
+  WATER_LOSS_PER_CYCLE,
   withConfigDefaults,
   withForcedEffects,
 } from "./config";

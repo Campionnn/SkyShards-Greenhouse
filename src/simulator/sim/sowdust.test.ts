@@ -138,9 +138,9 @@ describe("Sowdust and Farming XP in a run", () => {
       const plants: [string, number, number][] = [["wheat", 5, 5], ["nether_wart", 5, 6]];
       if (withPotato) plants.push(["potato", 5, 4]);
       const sc = scenario([flow([step("a", layout(plants))])], {
-        config: { waterLossMin: 0, waterLossMax: 0 },
         policies: { baseCropUpkeep: "harvestWhenGrown" },
       });
+      // The player is online every cycle and waters to max, so the flat water loss never halts it.
       const r = engine.run(start(sc), 30);
       const hs = harvests(r.events);
       const wheatHarvests = hs.filter((h) => h.kindId === "wheat").length;

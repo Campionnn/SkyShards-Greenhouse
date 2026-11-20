@@ -146,6 +146,24 @@ describe("effect propagation (4-way cardinal)", () => {
     // The plant past Fire gets nothing, because inert Fire never relays.
     expect(held(sim, 5, 7)).toEqual([]);
   });
+
+  it("a Godseed alone can't make a spot eligible for another Godseed; a relay of its effects can (wiki Godseed notes)", () => {
+    // A placed Godseed (3x3 at 0,0 covers rows/cols 0-2) gives every positive effect to the empty cells around it.
+    const alone = simulateEffects([at("godseed", 0, 0, { size: 3 })]);
+    // The empty 3x3 spot to its right (anchor 0,3) receives everything from the Godseed...
+    expect(alone.heldOver([0, 3], 3).size).toBeGreaterThan(0);
+    // ...but that doesn't count: at least one non-Godseed plant must give them.
+    expect(alone.isSpecialEligible("godseed", [0, 3], 3)).toBe(false);
+    expect(alone.missingSpecialEffects("godseed", [0, 3], 3).length).toBeGreaterThan(0);
+    // A Wild Rose next to the Godseed relays its effects: the rose gives them, so they count.
+    const relayed = simulateEffects([at("godseed", 0, 0, { size: 3 }), at("wild_rose", 3, 0)]);
+    const required = ["improved_harvest_boost", "improved_water_retain", "improved_xp_boost", "immunity", "bonus_drops", "effect_spread"];
+    const fromRose = [...relayed.heldAt(4, 0)];
+    expect(required.filter((e) => !fromRose.includes(e))).toEqual([]);
+    expect(relayed.isSpecialEligible("godseed", [4, 0], 1)).toBe(true);
+    // The cell right of the Godseed still only gets them from the Godseed itself.
+    expect(relayed.isSpecialEligible("godseed", [0, 3], 1)).toBe(false);
+  });
 });
 
 describe("effect spread since the Oct 13 2026 fix: direction-independent", () => {

@@ -21,6 +21,11 @@ export interface ResolvedLayout {
 export interface Env {
   data: GameData;
   resolveLayout(layout: StepLayout): ResolvedLayout;
+  /**
+   * TEST ONLY: water loss per cycle instead of `WATER_LOSS_PER_CYCLE` (`createEngine(data,
+   * { waterLossPerCycle })`, testHelpers `NO_WATER_LOSS`). The app never sets it.
+   */
+  waterLossPerCycle?: number;
 }
 
 /** Per-plot, per-cycle scratch shared by tick and player phases. Never stored in state, so Sets are fine. */

@@ -324,6 +324,7 @@ export function kindEffectInfo(id: string): KindEffectInfo {
 // Working buffers of `computeEffectMasks` (synchronous, so one set is enough).
 let cellPlantBuf = new Int32Array(0);
 let receivedBuf = new Int32Array(0);
+let receivedPlainBuf = new Int32Array(0);
 let hasBuf = new Int32Array(0);
 let flagBuf = new Uint8Array(0);
 const queueBuf: number[] = [];
@@ -331,6 +332,8 @@ const FLAG_SLOT = 1;
 const FLAG_INERT = 2;
 const FLAG_RELAY = 4;
 const FLAG_QUEUED = 8;
+/** A special ("all positive effects") mutation, e.g. Godseed: what it gives can't make another one eligible. */
+const FLAG_SPECIAL = 16;
 
 /**
  * The core of the effect simulation, on bitmasks: per cell of a `gridSize` x `gridSize` grid, the
@@ -345,14 +348,23 @@ const FLAG_QUEUED = 8;
  *    gave it something new. Every give is a union and the set of relays can't change during the
  *    pass, so any order ends at the same fixed point.
  * Gives go cell by cell; giving the same plant or cell twice changes nothing (a union).
+ *
+ * `specialOut` (optional, same length): per cell, what an EMPTY cell received from plants that are
+ * not special mutations themselves (wiki "Godseed", Notes: "Godseed cannot be used to fully meet the
+ * requirements for another Godseed, at least 1 other non-Godseed crop is required"; a Wild Rose,
+ * Thornshade or Witherbloom relaying a Godseed's effects counts, since the relay gives them). Used
+ * for special eligibility only. Occupied cells get the same mask as `out`.
  */
-export function computeEffectMasks(input: EffectInput, gridSize: number, out: Int32Array): Int32Array {
+export function computeEffectMasks(input: EffectInput, gridSize: number, out: Int32Array, specialOut?: Int32Array): Int32Array {
   const n = input.count;
   const total = gridSize * gridSize;
   if (cellPlantBuf.length < total) {
     cellPlantBuf = new Int32Array(total);
     receivedBuf = new Int32Array(total);
+    receivedPlainBuf = new Int32Array(total);
   }
+  const receivedPlain = receivedPlainBuf;
+  receivedPlain.fill(0, 0, total);
   if (hasBuf.length < n) {
     hasBuf = new Int32Array(Math.max(n, hasBuf.length * 2, 64));
     flagBuf = new Uint8Array(hasBuf.length);
@@ -372,7 +384,7 @@ export function computeEffectMasks(input: EffectInput, gridSize: number, out: In
   for (let i = 0; i < n; i++) {
     has[i] = 0;
     const inert = known ? inertIn[i] === 1 : isEffectInert(kinds[i]);
-    flags[i] = (slots[i] ? FLAG_SLOT : 0) | (inert ? FLAG_INERT : 0);
+    flags[i] = (slots[i] ? FLAG_SLOT : 0) | (inert ? FLAG_INERT : 0) | (SPECIAL_EFFECT_SETS[kinds[i]] ? FLAG_SPECIAL : 0);
     const r0 = rows[i];
     const c0 = cols[i];
     const size = sizes[i];
@@ -392,6 +404,7 @@ export function computeEffectMasks(input: EffectInput, gridSize: number, out: In
     const r0 = rows[i];
     const c0 = cols[i];
     const size = sizes[i];
+    const plain = !(flags[i] & FLAG_SPECIAL);
     for (let dr = 0; dr < size; dr++) {
       const r = r0 + dr;
       if (r < 0 || r >= gridSize) continue;
@@ -406,6 +419,7 @@ export function computeEffectMasks(input: EffectInput, gridSize: number, out: In
           const q = cellPlant[key] - 1;
           if (q < 0) {
             received[key] |= payload;
+            if (plain) receivedPlain[key] |= payload;
             continue;
           }
           if (q === i || flags[q] & FLAG_INERT) continue;
@@ -446,6 +460,7 @@ export function computeEffectMasks(input: EffectInput, gridSize: number, out: In
   for (let key = 0; key < total; key++) {
     const q = cellPlant[key] - 1;
     out[key] = q >= 0 ? has[q] : received[key];
+    if (specialOut) specialOut[key] = q >= 0 ? has[q] : receivedPlain[key];
   }
   return out;
 }
@@ -464,23 +479,32 @@ export function simulateEffects(placements: SimPlacement[], gridSize = 10): Effe
     input.sizes[i] = p.size;
     input.slots[i] = p.isSlot ? 1 : 0;
   }
-  return effectSimulationOf(computeEffectMasks(input, gridSize, new Int32Array(gridSize * gridSize)), gridSize);
+  const special = new Int32Array(gridSize * gridSize);
+  return effectSimulationOf(computeEffectMasks(input, gridSize, new Int32Array(gridSize * gridSize), special), gridSize, special);
 }
 
-/** The `EffectSimulation` view over per-cell held masks (`computeEffectMasks`). Keeps `cellMasks`: don't reuse it. */
-export function effectSimulationOf(cellMasks: Int32Array, gridSize = 10): EffectSimulation {
-  const heldMaskAt = (row: number, col: number): number => {
+/**
+ * The `EffectSimulation` view over per-cell held masks (`computeEffectMasks`). Keeps `cellMasks`: don't reuse it.
+ * `specialMasks` (computeEffectMasks' `specialOut`) is what special eligibility reads; without it,
+ * `cellMasks` (no Godseed rule).
+ */
+export function effectSimulationOf(cellMasks: Int32Array, gridSize = 10, specialMasks?: Int32Array): EffectSimulation {
+  const maskAt = (masks: Int32Array, row: number, col: number): number => {
     if (row < 0 || col < 0 || row >= gridSize || col >= gridSize) return 0;
-    return cellMasks[row * gridSize + col];
+    return masks[row * gridSize + col];
   };
+  const heldMaskAt = (row: number, col: number): number => maskAt(cellMasks, row, col);
 
-  const heldMaskOver = (position: [number, number], size: number): number => {
+  const maskOver = (masks: Int32Array, position: [number, number], size: number): number => {
     let out = 0;
     for (let dr = 0; dr < size; dr++) {
-      for (let dc = 0; dc < size; dc++) out |= heldMaskAt(position[0] + dr, position[1] + dc);
+      for (let dc = 0; dc < size; dc++) out |= maskAt(masks, position[0] + dr, position[1] + dc);
     }
     return out;
   };
+  const heldMaskOver = (position: [number, number], size: number): number => maskOver(cellMasks, position, size);
+  /** What counts towards a special mutation: received from plants that aren't special mutations. */
+  const specialMaskOver = (position: [number, number], size: number): number => maskOver(specialMasks ?? cellMasks, position, size);
 
   const heldAt = (row: number, col: number): Set<string> => new Set(effectList(heldMaskAt(row, col)));
 
@@ -489,7 +513,7 @@ export function effectSimulationOf(cellMasks: Int32Array, gridSize = 10): Effect
   const missingSpecialEffects = (mutationId: string, position: [number, number], size: number): string[] => {
     const required = SPECIAL_EFFECT_SETS[mutationId];
     if (!required) return [];
-    const held = heldMaskOver(position, size);
+    const held = specialMaskOver(position, size);
     return required.filter((e) => !(held & (EFFECT_BIT.get(e) ?? 0)));
   };
 
@@ -501,7 +525,7 @@ export function effectSimulationOf(cellMasks: Int32Array, gridSize = 10): Effect
     isSpecialEligible: (mutationId, position, size) => {
       if (!SPECIAL_EFFECT_SETS[mutationId]) return false;
       const req = specialMask(mutationId);
-      return req !== null && (heldMaskOver(position, size) & req) === req;
+      return req !== null && (specialMaskOver(position, size) & req) === req;
     },
     missingSpecialEffects,
   };

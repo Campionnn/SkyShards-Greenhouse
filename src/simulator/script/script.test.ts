@@ -99,13 +99,13 @@ describe("scripts: variables and determinism", () => {
   });
 
   it("under the leaderboard rules the script's config copy hides the credit settings", () => {
-    const sc = withScripts("let seen = []; let debt = 1; let listed = []; function onTick() { debt = config.allowMutationDebt; seen = [config.bootstrapDebt, config.setupFromStock, config.leaderboardRules, config.waterLossMin]; listed = keys(config).filter((k) => k.includes('Debt') || k === 'leaderboardRules') }");
+    const sc = withScripts("let seen = []; let debt = 1; let listed = []; function onTick() { debt = config.allowMutationDebt; seen = [config.bootstrapDebt, config.setupFromStock, config.leaderboardRules, config.negativeWaterSkipChance]; listed = keys(config).filter((k) => k.includes('Debt') || k === 'leaderboardRules') }");
     sc.settings.config = { ...sc.settings.config, allowMutationDebt: true, bootstrapDebt: true, leaderboardRules: true };
     const r = engine.run(start(sc), 2).state;
     expect(r.scripts?.halt).toBeNull();
     const v = vars(r);
     expect(v["plot:1.debt"]).toBeUndefined();
-    expect(v["plot:1.seen"]).toEqual([undefined, undefined, undefined, sc.settings.config.waterLossMin]);
+    expect(v["plot:1.seen"]).toEqual([undefined, undefined, undefined, sc.settings.config.negativeWaterSkipChance]);
     expect(v["plot:1.listed"]).toEqual([]);
     // Outside the rules the simulator shows the whole config.
     const free = withScripts("let debt = 0; function onTick() { debt = config.allowMutationDebt }");

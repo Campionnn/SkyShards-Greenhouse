@@ -13,9 +13,9 @@ function willGrow(p: PlantState): boolean {
 
 /**
  * Tick phase "destruction", first in the tick (before effects and growth):
- * - Devourer: while growing, `DEVOURER_ROOT_CHANCE` per tick to grow a root into
- *   one of its 8 neighbours, destroying what's there. Each root spreads with
- *   `ROOT_SPREAD_CHANCE`. Roots only grow onto cells with ground, never AIR.
+ * - Roots: each spreads with `ROOT_SPREAD_CHANCE` into one of its 8 neighbours,
+ *   destroying what's there. Roots only grow onto cells with ground, never AIR.
+ *   (A Devourer's own root roll happens when it grows a stage: `devourerGrew`.)
  * - Chorus Fruit: each tick it starts still growing, teleports to any other
  *   cell (air included) and turns it into End Stone. It teleports on the tick
  *   it becomes fully grown, never after. With `chorusOverflow` (default on)
@@ -27,14 +27,11 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
   const { config } = ctx;
   const rng = ctx.state.rng;
 
-  // Snapshot: roots grown this tick spread from next tick.
-  const sources = plot.plants.filter(
-    (p) => (p.kindId === "devourer" && !p.isDeadPlant && p.stage < p.growthStages) || isRoot(p)
-  );
+  // Snapshot: roots grown this tick (by a root, or by a Devourer growing a stage) spread from next tick.
+  const sources = plot.plants.filter(isRoot);
   for (const src of sources) {
     if (!plot.plants.includes(src)) continue;
-    const p = src.kindId === "devourer" ? DEVOURER_ROOT_CHANCE : ROOT_SPREAD_CHANCE;
-    if (!chance(rng, p)) continue;
+    if (!chance(rng, ROOT_SPREAD_CHANCE)) continue;
     growRoot(plot, src, ctx);
   }
 
@@ -95,6 +92,16 @@ export function phaseDestruction(plot: PlotState, ctx: CycleCtx): void {
     occ = buildOccupancy(plot);
   }
   if (moved) sortPlants(plot);
+}
+
+/**
+ * A Devourer just grew a stage (growth phase, after it advanced): `DEVOURER_ROOT_CHANCE` to grow a
+ * root into one of its 8 neighbours (staff: "40% chance to spread roots upon reaching the next
+ * Growth Stage"). No roll on a tick it didn't grow (dry, skipped, gated), nor once fully grown.
+ */
+export function devourerGrew(plot: PlotState, devourer: PlantState, ctx: CycleCtx): void {
+  if (!chance(ctx.state.rng, DEVOURER_ROOT_CHANCE)) return;
+  growRoot(plot, devourer, ctx);
 }
 
 /** Any ground (painted, implied or Chorus End Stone) under the cell; missing means AIR. */

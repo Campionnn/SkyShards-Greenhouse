@@ -1,8 +1,8 @@
 import { effectiveListShared, recomputeEffects, refreshEffects } from "../effects/adapter";
 import type { FlowStep } from "../flow/types";
 import { cellIndex, cellKey, footprint, footprintFits, inBounds, ringCells, TOTAL_CELLS } from "../grid/cells";
-import { DECAY_EXTENSION_HOURS, SPAWN_POOL_FLOOR } from "../config";
-import { chance, intInclusive, nextFloat } from "../rng";
+import { DEAD_PLANT_DECAY_EXTENSION_HOURS, DECAY_EXTENSION_HOURS, SPAWN_POOL_FLOOR, WATER_LOSS_PER_CYCLE } from "../config";
+import { chance, nextFloat } from "../rng";
 import { planPool, rollPool, type SpawnPool } from "../spawn/pool";
 import { groundGrid } from "../spawn/eligibility";
 import { candidatesFor, compiledWeight, spawnTable } from "../spawn/table";
@@ -10,7 +10,7 @@ import { aloeRow } from "../growth/aloe";
 import { afterAdvance, growthBlockedBy, type GateEnv } from "../growth/gates";
 import type { CycleCtx, Phase, TickScratch } from "./context";
 import { creditInputs, isPooled, minimumMet, poolSnapshot } from "./decay";
-import { phaseDestruction } from "./destruction";
+import { devourerGrew, phaseDestruction } from "./destruction";
 import { explode, isPrimedBlastberry } from "./explosion";
 import {
   buildOccupancy,
@@ -58,7 +58,7 @@ export const TICK_PHASES: readonly Phase[] = [
   {
     id: "water",
     summary:
-      "Water consumers not yet fully grown lose waterLossMin-Max water (default 18-22, x retain/drain) every cycle, advanced or not; at the halt level they dry out (halt until watered) and lose no more.",
+      "Water consumers not yet fully grown lose a flat 20 water (x retain/drain) every cycle, advanced or not; at the halt level they dry out (halt until watered) and lose no more.",
     run: phaseWater,
   },
   { id: "spawn", summary: "Every empty cell rolls once for a spawn (at stage 1; 0-stage kinds latch at once); uptime is booked.", run: phaseSpawn },
@@ -102,7 +102,10 @@ function phaseGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void
     active: ctx.active,
     noctilumeTimeChange: ctx.policiesFor(plot.id).gateInteractions.noctilumeTime,
   };
-  for (const p of plot.plants) {
+  // A Devourer's root (after it grows) may destroy a plant mid-loop: iterate a copy, skip removed ones.
+  const hasDevourer = plot.plants.some((q) => q.kindId === "devourer");
+  for (const p of hasDevourer ? [...plot.plants] : plot.plants) {
+    if (hasDevourer && !plot.plants.includes(p)) continue;
     // A tick has passed since it was placed: breaking it no longer gives the item back (placement.ts `pickUp`).
     if (p.gate.pickup) delete p.gate.pickup;
     // A Shellfruit a blast made before this tick: every effect works from now on, latched from what
@@ -150,6 +153,11 @@ function phaseGrowth(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void
             }
             ctx.emit(plot.id, { kind: "advanced", plantId: p.id, kindId: p.kindId, stage: p.stage });
             afterAdvance(p, env);
+            // Devourer: 40% to grow a root on reaching its next stage (sim/destruction.ts).
+            if (p.kindId === "devourer") {
+              devourerGrew(plot, p, ctx);
+              env.occ = buildOccupancy(plot);
+            }
           }
         }
       }
@@ -220,17 +228,18 @@ function drinks(p: PlantState, ctx: CycleCtx, scratch: TickScratch): boolean {
 }
 
 /**
- * Each drinking plant loses waterLossMin..waterLossMax x retainFactor. Below 0 it may skip its next
- * stage. At `HALT_WATER` it dries out and halts until watered (`isDry`); since dry plants don't
- * drink, `driedOut` fires once per dry-out.
- * RNG: per drinking plant in plot order, one intInclusive, then one chance if water < 0.
+ * Each drinking plant loses `WATER_LOSS_PER_CYCLE` (a flat 20, no roll) x retainFactor. Below 0 it
+ * may skip its next stage. At `HALT_WATER` it dries out and halts until watered (`isDry`); since dry
+ * plants don't drink, `driedOut` fires once per dry-out.
+ * RNG: per drinking plant in plot order, one chance roll only if its water is below 0.
  */
 function phaseWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void {
   const { config } = ctx;
   const rng = ctx.state.rng;
+  const base = ctx.env.waterLossPerCycle ?? WATER_LOSS_PER_CYCLE;
   for (const p of plot.plants) {
     if (!drinks(p, ctx, scratch)) continue;
-    const loss = intInclusive(rng, config.waterLossMin, config.waterLossMax) * retainFactor(effectiveListShared(p.held));
+    const loss = base * retainFactor(effectiveListShared(p.held));
     p.water -= loss;
     if (p.water < 0 && chance(rng, config.negativeWaterSkipChance)) p.skipNextGrowth = true;
     if (!isDry(p)) continue;
@@ -245,19 +254,25 @@ function phaseWater(plot: PlotState, ctx: CycleCtx, scratch: TickScratch): void 
  * - minimum met: decays. A dead_plant leaves an empty cell; anything else becomes a Dead Plant,
  *   and a primed Blastberry explodes. A spawned Zombud first turns its ring's dead plants into
  *   mobs (1 Zombud each, no fill from stock, no crop bundle).
- * - not met: timer extended by `DECAY_EXTENSION_HOURS` until positive; re-checked at the next expiry.
+ * - not met: timer extended by `DECAY_EXTENSION_HOURS` (a Dead Plant: `DEAD_PLANT_DECAY_EXTENSION_HOURS`)
+ *   until positive; re-checked at the next expiry.
  * Dead Plants decay too. No RNG.
  */
+/** How long one decay-timer extension lasts: 72 h for a Dead Plant, 24 h for every other plant (wiki). */
+export function decayExtensionSeconds(p: PlantState): number {
+  return (p.kindId === DEAD_PLANT ? DEAD_PLANT_DECAY_EXTENSION_HOURS : DECAY_EXTENSION_HOURS) * 3600;
+}
+
 function phaseDecay(plot: PlotState, ctx: CycleCtx): void {
   const { data } = ctx.env;
   const pools = poolSnapshot(plot);
-  const extension = DECAY_EXTENSION_HOURS * 3600;
   for (const p of [...plot.plants]) {
     if (!plot.plants.includes(p) || p.decaySecondsRemaining === null) continue;
     p.decaySecondsRemaining -= ctx.cycleSeconds;
     if (p.decaySecondsRemaining > 1e-6) continue;
     const combined = pools.get(p.kindId) ?? null;
     if (!minimumMet(p, combined)) {
+      const extension = decayExtensionSeconds(p);
       // Non-positive extension: leave the timer expired and re-check every tick (avoids an infinite loop).
       if (extension > 0) while (p.decaySecondsRemaining <= 1e-6) p.decaySecondsRemaining += extension;
       ctx.emit(plot.id, {

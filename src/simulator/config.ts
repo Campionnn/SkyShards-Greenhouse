@@ -29,6 +29,12 @@ export const SPAWN_PRIORITY: Readonly<Record<string, SpawnPriority>> = { godseed
 export const HALT_WATER = -100;
 /** Water level after watering. */
 export const MAX_WATER = 100;
+/**
+ * Water a consumer loses per cycle while not fully grown, before Water Retain / Drain (wiki
+ * Greenhouse § Water Level: "Drain per Growth Cycle = 20 × (1 + Water Drain) / (1 + Water Retain)").
+ * A fixed amount: no roll. Fully grown and dried-out plants lose none.
+ */
+export const WATER_LOSS_PER_CYCLE = 20;
 /** Cycle length (one growth stage) before speed bonuses, seconds (4 h). */
 export const CYCLE_BASELINE_SECONDS = 14400;
 /** Max unique crops counted by the Unique Crop Bonus (groups standing on all plots + Flora shard). */
@@ -43,6 +49,8 @@ export const THUNDERLING_CHARGE_PER_STAGE = 2000;
 export const THUNDERLING_MAX_CHARGE = 16000;
 /** Hours a decay timer is extended, repeatedly, while minimum mutations are unmet. */
 export const DECAY_EXTENSION_HOURS = 24;
+/** A Dead Plant's decay attempt timer repeats every 72 h instead (wiki Greenhouse § Decay Timer). */
+export const DEAD_PLANT_DECAY_EXTENSION_HOURS = 72;
 /** Chance per tick a growing Devourer grows a root into a neighbouring cell (staff-confirmed 40%). */
 export const DEVOURER_ROOT_CHANCE = 0.4;
 /** Chance per tick each root spreads another root. */
@@ -116,15 +124,6 @@ export type MutationCreditOrder = "ringOrder" | "mostRemainingFirst" | "fewestRe
 export const MUTATION_CREDIT_ORDERS: readonly MutationCreditOrder[] = ["ringOrder", "mostRemainingFirst", "fewestRemainingFirst", "random"];
 
 export interface SimConfig {
-  // ---- Verified ----
-  /**
-   * Water lost per cycle (rolled in [min, max], x retain/drain factor) by a
-   * crop that needs watering while not fully grown, grown that cycle or not.
-   * Fully grown and halted plants lose none.
-   */
-  waterLossMin: number;
-  waterLossMax: number;
-
   // ---- Unpublished: reasoned defaults ----
   /** Chance a stage is skipped while water < 0. */
   negativeWaterSkipChance: number;
@@ -256,9 +255,6 @@ export function normalizeForcedEffects(forced: Record<string, readonly string[]>
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
-  waterLossMin: 18,
-  waterLossMax: 22,
-
   negativeWaterSkipChance: 0.5,
   chorusTeleportTargets: "emptyOnly",
   chorusOverflow: true,
@@ -295,9 +291,6 @@ export interface ConfigMeta {
 }
 
 export const CONFIG_META: ConfigMeta[] = [
-  { key: "waterLossMin", label: "Water loss min", group: "verified", input: { type: "number", min: 0 }, description: "Minimum water a crop that needs watering loses per cycle while not fully grown (whether or not it grew that cycle), before retain/drain. Fully grown and dried-out plants lose none. The default was 2 (per stage grown) before the 0.27.2 rules; a scenario saved then keeps its value until you restore defaults." },
-  { key: "waterLossMax", label: "Water loss max", group: "verified", input: { type: "number", min: 0 }, description: "Maximum water a crop that needs watering loses per cycle while not fully grown (whether or not it grew that cycle), before retain/drain. Fully grown and dried-out plants lose none. The default was 3 (per stage grown) before the 0.27.2 rules; a scenario saved then keeps its value until you restore defaults." },
-
   { key: "negativeWaterSkipChance", label: "Negative-water skip chance", group: "unpublished", input: { type: "number", min: 0, max: 1, step: 0.05 }, description: "Chance a stage is skipped while water is below 0 (before it reaches the halt level)." },
   { key: "soggybudWaterPerNeighbour", label: "Soggybud water per neighbour", group: "unpublished", input: { type: "number", min: 0 }, description: "Water a Soggybud takes each tick from each neighbouring crop that has water (never from another Soggybud)." },
   { key: "soggybudWaterPerStage", label: "Soggybud water per stage", group: "unpublished", input: { type: "number", min: 1 }, description: "Soggybud's growth stage is floor(water / this)." },

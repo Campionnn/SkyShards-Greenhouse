@@ -46,7 +46,7 @@ const twoStep = () =>
   scenario([flow([step("one", layout([["wheat", 0, 0], ["carrot", 0, 2]]), [{ kind: "cycles", n: 5 }]), step("two", layout([["potato", 0, 0]]))], true)], {
     inventory: { chloronite: 5 },
     stats: { farmingFortune: 0 },
-    config: { waterLossMin: 1 },
+    config: { negativeWaterSkipChance: 0.25 },
   });
 
 describe("rules: parse and normalise a submission", () => {

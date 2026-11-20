@@ -7,6 +7,7 @@ import {
   inject,
   layout,
   NEVER_ACTIVE,
+  NO_WATER_LOSS,
   plantAt,
   scenario,
   singlePlot,
@@ -46,7 +47,6 @@ describe("death and decay have no freezing mode", () => {
     const s = start(singlePlot(layout([["wheat", 4, 4]]), {
       activity: NEVER_ACTIVE,
       // Timer-only: the wheat never helped a mutation, so its minimum would otherwise extend it.
-      config: { waterLossMin: 3, waterLossMax: 3 },
     }), TIMER_ONLY);
     s.plots[0].plants[0].decaySecondsRemaining = 1;
     const result = TIMER_ONLY.run(s, 1);
@@ -58,7 +58,6 @@ describe("death and decay have no freezing mode", () => {
   it("thirst halts a plant while the player is away: it stays standing, dried out, and doesn't grow", () => {
     const s = start(singlePlot(layout([["wheat", 4, 4]]), {
       activity: NEVER_ACTIVE,
-      config: { waterLossMin: 3, waterLossMax: 3 },
     }));
     const p = s.plots[0].plants[0];
     p.water = HALT_WATER;
@@ -240,17 +239,17 @@ describe("run: batched and stepped are one path", () => {
 });
 
 describe("growth", () => {
-  // Water loss pinned to 0: with the player away, unwatered plants would dry out and halt mid-test.
-  const noWaterLoss = { waterLossMin: 0, waterLossMax: 0 };
-  const empty = () => start(singlePlot(layout(), { config: { ...noWaterLoss }, activity: NEVER_ACTIVE }));
+  // No water loss (test-only engine): with the player away, unwatered plants would dry out and halt mid-test.
+  const eng = NO_WATER_LOSS;
+  const empty = () => start(singlePlot(layout(), { activity: NEVER_ACTIVE }), eng);
 
   it("#2 a 12-stage mutation spawns at stage 1 and needs 11 growth steps; effects latch at stage 12", () => {
     const s = empty();
     inject(s, 1, "startlevine", 5, 5, "spawned");
     expect(plantAt(s, 1, 5, 5)?.stage).toBe(1);
-    const after10 = engine.run(s, 10).state;
+    const after10 = eng.run(s, 10).state;
     expect(plantAt(after10, 1, 5, 5)).toMatchObject({ stage: 11, lockedEffects: null });
-    const after12 = engine.run(after10, 1);
+    const after12 = eng.run(after10, 1);
     expect(plantAt(after12.state, 1, 5, 5)?.stage).toBe(12);
     expect(plantAt(after12.state, 1, 5, 5)?.lockedEffects).not.toBeNull();
     expect(ofKind(after12.events, "fullyGrown")).toHaveLength(1);
@@ -259,13 +258,12 @@ describe("growth", () => {
   it("a 0-stage spawn is fully grown as it appears and latches the effects its neighbours give it", () => {
     // The Cindershade below the target gives improved_harvest_boost to its cardinal neighbours.
     const sc = singlePlot(layout([["pumpkin", 4, 4], ["melon", 4, 6], ["cindershade", 5, 5]], [["gloomgourd", 4, 5]]), {
-      config: { ...noWaterLoss },
       inventory: { cindershade: 1 },
       activity: NEVER_ACTIVE,
     });
-    let s = start(sc);
+    let s = start(sc, eng);
     for (let i = 0; i < 200; i++) {
-      const r = engine.run(s, 1);
+      const r = eng.run(s, 1);
       s = r.state;
       const spawned = ofKind(r.events, "spawned").find((e) => e.mutationId === "gloomgourd");
       if (!spawned) continue;
@@ -281,11 +279,11 @@ describe("growth", () => {
     const s = empty();
     inject(s, 1, "wheat", 5, 5, "planted");
     inject(s, 1, "nether_wart", 5, 6, "planted");
-    const grown = engine.run(s, 8).state;
+    const grown = eng.run(s, 8).state;
     expect(plantAt(grown, 1, 5, 5)?.lockedEffects).toContain("improved_harvest_boost");
     const plot = grown.plots[0];
     plot.plants = plot.plants.filter((p) => p.kindId !== "nether_wart");
-    const later = engine.run(grown, 3).state;
+    const later = eng.run(grown, 3).state;
     expect(plantAt(later, 1, 5, 5)?.lockedEffects).toContain("improved_harvest_boost");
     expect(plantAt(later, 1, 5, 5)?.held).not.toContain("improved_harvest_boost");
   });
@@ -299,7 +297,7 @@ describe("growth", () => {
     inject(s, 1, "cindershade", 4, 5, "placed");
     inject(s, 1, "cactus", 3, 5, "planted");
     inject(s, 1, "carrot", 6, 5, "planted"); // the receiver below the wheat
-    const grown = engine.run(s, 8).state;
+    const grown = eng.run(s, 8).state;
     const wheat = plantAt(grown, 1, 5, 5)!;
     expect(wheat.lockedEffects).toEqual(expect.arrayContaining(["effect_spread", "improved_harvest_boost"]));
     // While its spreader stands it is a relay, so the carrot receives what it relays.
@@ -307,7 +305,7 @@ describe("growth", () => {
     // Remove every supplier. The wheat keeps its locked set (yield) but spreads only what wheat gives.
     const plot = grown.plots[0];
     plot.plants = plot.plants.filter((p) => !["nether_wart", "cindershade", "cactus"].includes(p.kindId));
-    const later = engine.run(grown, 1).state;
+    const later = eng.run(grown, 1).state;
     expect(plantAt(later, 1, 5, 5)!.lockedEffects).toEqual(wheat.lockedEffects);
     expect(plantAt(later, 1, 5, 5)!.held).toEqual(["xp_boost"]); // only what the carrot gives it now
     expect([...plantAt(later, 1, 6, 5)!.held].sort()).toEqual(["harvest_boost"]); // wheat's own buff only
@@ -316,7 +314,7 @@ describe("growth", () => {
   it("#4 a gated plant takes no growth step and emits growthBlocked until the player acts", () => {
     const s = empty();
     inject(s, 1, "snoozling", 3, 3, "spawned", { stage: 4 });
-    const r = engine.run(s, 3);
+    const r = eng.run(s, 3);
     expect(plantAt(r.state, 1, 3, 3)?.stage).toBe(5); // fell asleep at 5
     expect(ofKind(r.events, "growthBlocked").length).toBe(2);
     expect(ofKind(r.events, "advanced").length).toBe(1);
@@ -326,14 +324,14 @@ describe("growth", () => {
     const s = start(singlePlot(layout(), {}));
     // A stage-4 Snoozling the online player has been watering (a fresh spawn's 0 water could roll a below-0 skip).
     inject(s, 1, "snoozling", 3, 3, "spawned", { stage: 4, water: 100 });
-    const r = engine.run(s, 3);
+    const r = eng.run(s, 3);
     expect(plantAt(r.state, 1, 3, 3)?.stage).toBe(7);
   });
 
   it("Cheesebite halts on its rat until vacuumed", () => {
     const s = empty();
     inject(s, 1, "cheesebite", 5, 5, "spawned", { stage: 3 });
-    const r = engine.run(s, 4);
+    const r = eng.run(s, 4);
     expect(plantAt(r.state, 1, 5, 5)?.stage).toBe(4);
     expect(plantAt(r.state, 1, 5, 5)?.gate.ratAlive).toBe(true);
   });
@@ -341,9 +339,9 @@ describe("growth", () => {
   it("Glasscorn is harvestable at stage 7 and resets from 8 to 1 if left", () => {
     const s = empty();
     inject(s, 1, "glasscorn", 4, 4, "spawned", { stage: 6 });
-    const at7 = engine.run(s, 1).state;
+    const at7 = eng.run(s, 1).state;
     expect(plantAt(at7, 1, 4, 4)?.lockedEffects).not.toBeNull();
-    const reset = engine.run(at7, 2).state;
+    const reset = eng.run(at7, 2).state;
     expect(plantAt(reset, 1, 4, 4)?.stage).toBe(1);
     expect(plantAt(reset, 1, 4, 4)?.lockedEffects).toBeNull();
   });
@@ -351,7 +349,7 @@ describe("growth", () => {
 
 describe("water", () => {
   const dry = (patch: object = {}) =>
-    start(singlePlot(layout(), { config: { waterLossMin: 3, waterLossMax: 3, negativeWaterSkipChance: 0, ...patch }, activity: NEVER_ACTIVE }));
+    start(singlePlot(layout(), { config: { negativeWaterSkipChance: 0, ...patch }, activity: NEVER_ACTIVE }));
 
   it("#5 retain +X% divides loss by 1+X (retain /1.5, improved supersedes it /2), drain adds 30%", async () => {
     const { retainFactor } = await import("./tick");
@@ -364,7 +362,7 @@ describe("water", () => {
   });
 
   it("a Godseed (which always holds improved retain from its own neighbourhood) still drinks", () => {
-    const s = dry({ waterLossMin: 20, waterLossMax: 20 });
+    const s = dry();
     inject(s, 1, "godseed", 4, 4, "spawned");
     inject(s, 1, "cactus", 3, 5, "planted", { stage: 8 }); // gives improved_water_retain
     const r = engine.run(s, 3);
@@ -373,18 +371,19 @@ describe("water", () => {
   });
 
   it("#6 water reaching -100 dries the plant out (it halts, still standing); -99 does not", () => {
+    // A flat WATER_LOSS_PER_CYCLE (20) a cycle.
     const a = dry();
-    inject(a, 1, "wheat", 5, 5, "planted", { water: -96 });
+    inject(a, 1, "wheat", 5, 5, "planted", { water: -79 });
     const wet = engine.run(a, 1);
     expect(plantAt(wet.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", water: -99, stage: 1 });
     expect(ofKind(wet.events, "driedOut")).toHaveLength(0);
     // -99 still grows on, and its next stage takes it over the line.
     const crossed = engine.run(wet.state, 1);
     expect(ofKind(crossed.events, "driedOut")).toHaveLength(1);
-    expect(plantAt(crossed.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", water: -102, stage: 2 });
+    expect(plantAt(crossed.state, 1, 5, 5)).toMatchObject({ kindId: "wheat", water: -119, stage: 2 });
 
     const b = dry();
-    inject(b, 1, "wheat", 5, 5, "planted", { water: -97 });
+    inject(b, 1, "wheat", 5, 5, "planted", { water: -80 });
     const dried = engine.run(b, 1);
     expect(ofKind(dried.events, "driedOut")).toHaveLength(1);
     expect(ofKind(dried.events, "driedOut")[0]).toMatchObject({ kindId: "wheat", row: 5, col: 5 });
@@ -431,11 +430,11 @@ describe("decay and placed items", () => {
   });
 
   it("#9 a spawned mutation's timer starts when it spawns, not when it becomes fully grown", () => {
-    // Water loss pinned to 0 so the unwatered Startlevine doesn't halt mid-growth.
-    const s = start(singlePlot(layout(), { config: { waterLossMin: 0, waterLossMax: 0 }, activity: NEVER_ACTIVE }));
-    inject(s, 1, "startlevine", 5, 5, "spawned");
+    // No water loss (test-only engine) so the unwatered Startlevine doesn't halt mid-growth.
+    const s = start(singlePlot(layout(), { activity: NEVER_ACTIVE }), NO_WATER_LOSS);
+    inject(s, 1, "startlevine", 5, 5, "spawned", {}, NO_WATER_LOSS);
     expect(plantAt(s, 1, 5, 5)?.decaySecondsRemaining).toBe(5 * 86400);
-    const mid = engine.run(s, 10).state;
+    const mid = NO_WATER_LOSS.run(s, 10).state;
     const p = plantAt(mid, 1, 5, 5)!;
     expect(p).toMatchObject({ stage: 11, lockedEffects: null }); // spawned at 1, still growing
     expect(p.decaySecondsRemaining).toBeCloseTo(5 * 86400 - 10 * cycleLen(0));

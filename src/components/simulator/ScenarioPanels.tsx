@@ -209,7 +209,7 @@ export const SettingsPanel: React.FC<{
 
       {tab === "advanced" && (
         <div className="space-y-3">
-          {(["model", "unpublished", "verified"] as ConfigGroup[]).map((group) => (
+          {(["model", "unpublished", "verified"] as ConfigGroup[]).filter((group) => CONFIG_META.some((m) => m.group === group)).map((group) => (
             <div key={group}>
               <SectionLabel>{GROUP_LABEL[group]}</SectionLabel>
               <div className="space-y-1.5">

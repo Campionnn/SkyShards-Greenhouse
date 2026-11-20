@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DECAY_EXTENSION_HOURS, type MutationCreditOrder, type SimConfig } from "../config";
+import { DEAD_PLANT_DECAY_EXTENSION_HOURS, DECAY_EXTENSION_HOURS, type MutationCreditOrder, type SimConfig } from "../config";
 import type { Engine } from "../engine";
 import { triggerHolds } from "../flow/triggers";
 import type { PolicyOverrides } from "../flow/types";
@@ -43,7 +43,7 @@ const CYCLE = 4 * H;
 
 /**
  * An empty plot with optional target slots: only slots roll (every other cell
- * is AIR), nobody loses water, cycles are a fixed 4 h (no base crops planted,
+ * is AIR), cycles are a fixed 4 h (no base crops planted,
  * Flora 0), the player is away. ALWAYS_SPAWN: an eligible target takes every roll.
  * Pass `eng` for patched game data, and use the same engine for inject / run.
  */
@@ -60,7 +60,7 @@ const blank = (
   start(
     singlePlot(layout([], opts.slots ?? []), {
       seed: opts.seed,
-      config: { waterLossMin: 0, waterLossMax: 0, ...opts.config },
+      config: opts.config,
       stats: ALWAYS_SPAWN,
       activity: opts.activity ?? NEVER_ACTIVE,
       policies: opts.policies,
@@ -294,6 +294,16 @@ describe("decay check", () => {
     expect(plantAt(r.state, 1, 5, 5)).toMatchObject({ kindId: "chloronite", timesMutated: 0, decaySecondsRemaining: DAY });
   });
 
+  it("a Dead Plant's extension is 72 h, not 24 h (wiki Greenhouse § Decay Timer)", () => {
+    const s = blank();
+    // A dead plant that never helped (minimum 10 unmet), its timer about to run out.
+    inject(s, 1, "dead_plant", 5, 5, "placed", { decaySecondsRemaining: 1 });
+    const r = engine.run(s, 1);
+    expect(ofKind(r.events, "decayExtended")).toHaveLength(1);
+    expect(plantAt(r.state, 1, 5, 5)!.decaySecondsRemaining).toBeCloseTo(DEAD_PLANT_DECAY_EXTENSION_HOURS * H - CYCLE + 1);
+    expect(DEAD_PLANT_DECAY_EXTENSION_HOURS).toBe(72);
+  });
+
   it("each extension is 24 h, and a timer far below 0 gets as many extensions as it needs to get back above 0", () => {
     const s = blank();
     inject(s, 1, "chloronite", 5, 5, "placed", { decaySecondsRemaining: 1 });
@@ -325,8 +335,9 @@ describe("decay check", () => {
 describe("pool", () => {
   it("a growing plant isn't pooled, even after helping; it joins once fully grown", () => {
     const s = blank({ slots: [["dustgrain", 4, 5]] });
-    inject(s, 1, "wheat", 3, 4, "planted", { stage: 4 });
-    inject(s, 1, "wheat", 3, 5, "planted", { stage: 5 });
+    // Watered: 4 growing cycles x 20 water keep it at or above 0, so no below-0 skip delays it.
+    inject(s, 1, "wheat", 3, 4, "planted", { stage: 4, water: 100 });
+    inject(s, 1, "wheat", 3, 5, "planted", { stage: 5, water: 100 });
     const r = engine.run(s, 1);
     const plot = r.state.plots[0];
     const growing = plantAt(r.state, 1, 3, 4)!;

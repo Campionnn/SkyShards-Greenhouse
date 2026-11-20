@@ -51,8 +51,10 @@ export function recomputeEffects(plot: PlotState, forced?: ForcedEffects, masksO
     gives[i] = info.gives;
     inert[i] = info.inert ? 1 : 0;
   }
-  const masks = computeEffectMasks(input, GRID_SIZE, masksOut ?? new Int32Array(TOTAL_CELLS));
-  const sim = effectSimulationOf(masks, GRID_SIZE);
+  // `special`: what empty cells received from plants other than Godseeds (Godseed eligibility).
+  const special = new Int32Array(TOTAL_CELLS);
+  const masks = computeEffectMasks(input, GRID_SIZE, masksOut ?? new Int32Array(TOTAL_CELLS), special);
+  const sim = effectSimulationOf(masks, GRID_SIZE, special);
   assignHeld(plants, masks, forced);
   return sim;
 }
